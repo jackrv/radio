@@ -3,7 +3,7 @@
 // В этой версии НЕТ сетевых запросов, хранения initData или доступа к SQLite.
 // Авторизация и команды появятся только после подключения защищённого API.
 
-const sampleText = "Улыбка 700 я на ган 110 прийом";
+const sampleText = "Тестова фраза для виправлення";
 const availableViews = new Set(["home", "corrections", "dictionaries", "settings", "users"]);
 
 function showView(name) {

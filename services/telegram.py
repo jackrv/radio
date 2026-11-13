@@ -342,6 +342,9 @@ class TelegramService:
                     self.waiting_for_correction[chat_id] = {
                         "event_id": ev_id,
                         "raw_text": orig_text,
+                        "source_id": (
+                            fix_id if ev_id is None else None
+                        ),
                     }
 
                 requests.post(
@@ -430,11 +433,16 @@ class TelegramService:
             orig_text = pending["raw_text"]
             ev_id = pending["event_id"]
 
+            options = {}
+            if pending.get("source_id") is not None:
+                options["source_id"] = pending["source_id"]
+
             save_correction(
                 orig_text,
                 corrected_text,
                 ev_id,
                 self.db_path,
+                **options,
             )
             # Удаляем ожидание только после успешного сохранения.
             with self.state_lock:

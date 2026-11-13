@@ -8,7 +8,6 @@ from services.event_store import (
     init_db,
     save_event,
     save_correction,
-    apply_learned_corrections,
 )
 
 
@@ -71,12 +70,9 @@ def test_correction_recalculates_all_fields(event_db):
             (event_id,),
         ).fetchone()
 
-        learned = db.execute(
-            """
-            SELECT original, corrected
-            FROM corrections
-            """
-        ).fetchone()
+        legacy_count = db.execute(
+            "SELECT COUNT(*) FROM corrections"
+        ).fetchone()[0]
 
     assert row == (
         CORRECTED,
@@ -87,7 +83,7 @@ def test_correction_recalculates_all_fields(event_db):
         ORIGINAL,
     )
 
-    assert learned == (ORIGINAL, CORRECTED)
+    assert legacy_count == 0
 
 
 def test_failed_update_rolls_back_training(event_db):
@@ -129,16 +125,23 @@ def test_memory_only_training_still_works(tmp_path):
     init_db(path)
 
     save_correction(
-        "Ліпка 700",
-        "Липка 700",
+        "На ган 110",
+        "Наган 110",
         db_path=path,
+        source_id="mem:test-1",
     )
 
-    assert apply_learned_corrections(
-        "Ліпка 700",
-        db_path=path,
-    ) == ("Липка 700", True)
+    with sqlite3.connect(path) as db:
+        votes = db.execute(
+            "SELECT COUNT(*) FROM word_correction_votes"
+        ).fetchone()[0]
 
+        legacy = db.execute(
+            "SELECT COUNT(*) FROM corrections"
+        ).fetchone()[0]
+
+    assert votes == 1
+    assert legacy == 0
 
 def test_missing_event_does_not_save_training(event_db):
     path, _ = event_db

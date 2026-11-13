@@ -1,5 +1,3 @@
-from functools import partial
-
 from core.recognition import WhisperRecognizer
 from core.correction import build_llm_corrector
 from core.pipeline import build_text_pipeline
@@ -7,10 +5,8 @@ from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
 from core.analyzer import correction_is_safe
 
-from services.event_store import (
-    apply_learned_corrections,
-    save_event,
-)
+from services.event_store import save_event
+from core.word_rule_engine import apply_verified_word_rules
 
 
 def build_transcriber(
@@ -35,14 +31,20 @@ def build_transcriber(
         log,
     )
 
+    dictionaries = (callsigns, commands, watch)
+
+    def apply_word_corrections(text):
+        revised = apply_verified_word_rules(
+            text,
+            config.DB_PATH,
+            dictionaries,
+        )
+        return revised, revised != text
+
     process_text = build_text_pipeline(
         correct_with_llm=correct_with_llm,
-        apply_learned_corrections=partial(
-            apply_learned_corrections,
-            db_path=config.DB_PATH,
-            fuzzy_score=config.FUZZY_CORRECTION_SCORE,
-        ),
-        dictionaries=(callsigns, commands, watch),
+        apply_learned_corrections=apply_word_corrections,
+        dictionaries=dictionaries,
         correction_is_safe=correction_is_safe,
         log=log,
     )

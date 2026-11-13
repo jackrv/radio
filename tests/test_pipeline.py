@@ -25,14 +25,18 @@ def make_pipeline(
         dictionaries=dictionaries,
         correction_is_safe=correction_is_safe,
         log=log,
+        llm_guard=lambda old, new: True,
     )
 
     return process_text, log, dictionaries
 
 
-def test_learned_correction_has_priority():
-    apply_learned = Mock(return_value=("Исправленный текст", True))
-    llm = Mock()
+def test_learned_correction_is_passed_to_llm():
+    apply_learned = Mock(side_effect=[
+        ("Исправленный текст", True),
+        ("Исправленный текст плюс", False),
+    ])
+    llm = Mock(return_value="Исправленный текст плюс")
 
     process_text, log, _ = make_pipeline(
         correct_with_llm=llm,
@@ -41,9 +45,9 @@ def test_learned_correction_has_priority():
 
     result = process_text("Исходный текст")
 
-    assert result == "Исправленный текст"
-    llm.assert_not_called()
-    log.info.assert_called_once()
+    assert result == "Исправленный текст плюс"
+    llm.assert_called_once_with("Исправленный текст")
+    assert log.info.call_count == 2
 
 
 def test_safe_llm_correction_is_accepted():
@@ -64,9 +68,11 @@ def test_safe_llm_correction_is_accepted():
 
     assert result == "Исправленный LLM текст"
     llm.assert_called_once_with("Исходный текст")
+    # Проверяем исходное предложение Qwen,
+    # до дополнительных словарных замен.
     is_safe.assert_called_once_with(
         "Исходный текст",
-        "Исправленный LLM текст",
+        "Результат LLM",
         dictionaries,
     )
     log.info.assert_called_once()

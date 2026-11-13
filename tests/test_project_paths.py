@@ -1,4 +1,3 @@
-from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -83,7 +82,7 @@ def test_debug_audio_uses_configured_directory(
     assert all(p.is_file() for p in paths)
 
 
-def test_factory_uses_configured_db_for_corrections(
+def test_factory_uses_configured_db_for_word_corrections(
     tmp_path, monkeypatch
 ):
     monkeypatch.chdir(tmp_path)
@@ -99,7 +98,6 @@ def test_factory_uses_configured_db_for_corrections(
 
     settings.DB_PATH = db_path
     settings.USE_LLM = False
-    settings.FUZZY_CORRECTION_SCORE = 93
 
     selected = {}
 
@@ -107,6 +105,7 @@ def test_factory_uses_configured_db_for_corrections(
         selected["corrections"] = kwargs[
             "apply_learned_corrections"
         ]
+        selected["dictionaries"] = kwargs["dictionaries"]
         return lambda text: text
 
     monkeypatch.setattr(
@@ -150,6 +149,26 @@ def test_factory_uses_configured_db_for_corrections(
 
     corrector = selected["corrections"]
 
-    assert isinstance(corrector, partial)
-    assert corrector.keywords["db_path"] == db_path
-    assert corrector.keywords["fuzzy_score"] == 93
+    word_engine = Mock(return_value="Липка 700")
+
+    monkeypatch.setattr(
+        factory,
+        "apply_verified_word_rules",
+        word_engine,
+    )
+
+    assert corrector("Улыбка 700") == (
+        "Липка 700", True
+    )
+
+    word_engine.assert_called_once_with(
+        "Улыбка 700",
+        db_path,
+        selected["dictionaries"],
+    )
+
+    word_engine.return_value = "Улыбка 700"
+
+    assert corrector("Улыбка 700") == (
+        "Улыбка 700", False
+    )

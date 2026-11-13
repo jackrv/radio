@@ -1,8 +1,9 @@
+import sqlite3
+
 import pytest
 
 from services.event_store import (
     init_db,
-    save_correction,
     apply_learned_corrections,
 )
 
@@ -10,7 +11,13 @@ from services.event_store import (
 def make_db(tmp_path, original, corrected):
     path = str(tmp_path / "test_events.db")
     init_db(path)
-    save_correction(original, corrected, db_path=path)
+    # Имитируем историческую запись старой версии Radio 345.
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO corrections (original, corrected) "
+            "VALUES (?, ?)",
+            (original, corrected),
+        )
     return path
 
 

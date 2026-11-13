@@ -1,5 +1,6 @@
 from config import DB_PATH
 from services.sqlite_connection import get_db
+from services.word_store import init_word_db, save_word_feedback
 
 
 from rapidfuzz import fuzz, process
@@ -41,6 +42,8 @@ def init_db(db_path=DB_PATH):
                 db.execute(
                     f"ALTER TABLE radio_events ADD COLUMN {col} TEXT"
                 )
+
+    init_word_db(db_path)
 
 
 def apply_learned_corrections(
@@ -112,6 +115,8 @@ def save_correction(
     corrected: str,
     event_id: int | None = None,
     db_path=DB_PATH,
+    *,
+    source_id: str | None = None,
 ):
     """Сохраняет обучение и согласованно обновляет событие."""
 
@@ -167,16 +172,9 @@ def save_correction(
                 fmt(from_found),
             )
 
-        # Обучение и обновление события находятся
-        # внутри одной транзакции.
-        db.execute(
-            """
-            INSERT OR REPLACE INTO corrections
-                (original, corrected)
-            VALUES (?, ?)
-            """,
-            (original, corrected),
-        )
+        # Обновление события и обучение отдельным словам
+        # выполняются в одной транзакции.
+        # Архивную таблицу corrections больше не пополняем.
 
         if event_id is not None:
             cs_str, cmd_str, to_str, from_str = fields
@@ -205,6 +203,23 @@ def save_correction(
                 raise LookupError(
                     f"Не удалось обновить событие #{event_id}"
                 )
+
+        # Для событий используем постоянный ID из SQLite,
+        # для сообщений без события — идентификатор Telegram.
+        feedback_source = (
+            f"db:{event_id}"
+            if event_id is not None
+            else source_id
+        )
+
+        if feedback_source is not None:
+            save_word_feedback(
+                db_path,
+                feedback_source,
+                original,
+                corrected,
+                db=db,
+            )
 
 
 

@@ -24,8 +24,8 @@ def test_preserve_ukrainian_callsign_spelling():
         dictionaries,
     )
 
-    # Дополнение текста без потери позывного разрешено.
-    assert correction_is_safe(
+    # Qwen не должна добавлять слова, которых не было в эфире.
+    assert not correction_is_safe(
         "Ліра 68, перевірка",
         "Ліра 68, перевірка зв'язку",
         dictionaries,

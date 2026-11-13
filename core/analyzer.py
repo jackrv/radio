@@ -69,7 +69,7 @@ def correction_is_safe(
         value for kind, value in corrected_items if kind == "word"
     ]
 
-    if len(corrected_words) < len(original_words):
+    if len(corrected_words) != len(original_words):
         return False
 
 

@@ -1,0 +1,49 @@
+name: Publish Radio 345 Mini App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'miniapp/**'
+      - '.github/workflows/miniapp-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: radio345-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Mini App
+        run: |
+          mkdir -p _site
+          cp miniapp/index.html _site/
+          cp miniapp/styles.css _site/
+          cp miniapp/app.js _site/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v4

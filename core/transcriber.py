@@ -1,4 +1,5 @@
 import os
+import re
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
 from core.analyzer import looks_like_garbage
@@ -31,8 +32,26 @@ class Transcriber:
         self.debug_rms = debug_rms
         self.debug_audio = os.getenv("RADIO_DEBUG_AUDIO") == "1"
         self.debug_audio_count = 0
-        self.blacklist = blacklist
+        self.blacklist = {
+            self._blacklist_key(item)
+            for item in blacklist
+            if item
+        }
         self.log = log
+
+    @staticmethod
+    def _blacklist_key(value: str) -> str:
+        """Нормализует текст для сравнения целых фраз."""
+        words = re.findall(
+            r"[^\W_]+",
+            normalize(value),
+            flags=re.UNICODE,
+        )
+        return " ".join(words)
+
+    def _is_blacklisted(self, text: str) -> bool:
+        key = self._blacklist_key(text)
+        return bool(key) and key in self.blacklist
 
     def process_segment(self, pcm):
         audio, rms = prepare_audio(
@@ -75,7 +94,7 @@ class Transcriber:
         if (
             not raw_text
             or looks_like_garbage(raw_text, duration)
-            or any(b in normalize(raw_text) for b in self.blacklist)
+            or self._is_blacklisted(raw_text)
         ):
             return
 
@@ -89,7 +108,7 @@ class Transcriber:
             )
             text = raw_text
         try:
-            self.event_processor.process(text, pcm)
+            self.event_processor.process(text, pcm, raw_text=raw_text)
         except Exception:
             self.log.exception(
                 "Ошибка обработки события; продолжаем прослушивание эфира"

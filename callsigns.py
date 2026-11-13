@@ -190,7 +190,7 @@ class Callsigns:
             alias = CALLSIGN_ALIASES.get(val)
 
             if alias and alias in self.numbers:
-                best = (self._folded.get(alias.translate(FOLD)), 100, 0)
+                best = (alias.translate(FOLD), 100, 0)
             else:
                 best = process.extractOne(
                     val.translate(FOLD),

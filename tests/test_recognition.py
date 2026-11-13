@@ -96,3 +96,48 @@ def test_extract_text_filters_unreliable_segments():
 def test_extract_text_handles_empty_result():
     assert WhisperRecognizer.extract_text({}) == ""
     assert WhisperRecognizer.extract_text({"segments": []}) == ""
+
+
+def test_extract_text_without_confidence_fields():
+    """Отсутствующая метаинформация не вызывает KeyError."""
+
+    result = {
+        "segments": [
+            {"text": "Ліра 68"},
+            {
+                "text": "Наган 110",
+                "no_speech_prob": 0.9,
+            },
+            {
+                "text": "Буря 011",
+                "avg_logprob": -1.5,
+            },
+        ]
+    }
+
+    assert WhisperRecognizer.extract_text(result) == (
+        "Ліра 68 Наган 110 Буря 011"
+    )
+
+
+def test_extract_text_still_filters_unreliable_speech():
+    """При наличии оценок сохраняется прежняя фильтрация."""
+
+    result = {
+        "segments": [
+            {
+                "text": "Помилковий текст",
+                "no_speech_prob": 0.95,
+                "avg_logprob": -1.2,
+            },
+            {
+                "text": "Липка 700",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.2,
+            },
+        ]
+    }
+
+    assert WhisperRecognizer.extract_text(result) == (
+        "Липка 700"
+    )

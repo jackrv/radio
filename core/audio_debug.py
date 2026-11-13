@@ -5,11 +5,13 @@ from pathlib import Path
 
 import numpy as np
 
+from config import DEBUG_AUDIO_DIR
+
 
 def save_debug_audio(pcm, audio, sample_rate, index):
     """Сохраняет исходный PCM и точный вход Whisper."""
 
-    folder = Path("debug_audio")
+    folder = DEBUG_AUDIO_DIR
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     name = (

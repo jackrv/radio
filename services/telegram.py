@@ -25,6 +25,7 @@ class TelegramService:
     set_notify_mode,
 ):
         self.recent_phrases = collections.OrderedDict()
+        self._phrases_lock = threading.Lock()
         self.recent_phrases_max = 200
         self.bot_token = bot_token
         self.chat_id = chat_id
@@ -51,15 +52,17 @@ class TelegramService:
             })
         return json.dumps({"inline_keyboard": [row]})
 
-    def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str = "HTML"):
+    def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML"):
         if not (self.bot_token and self.chat_id):
             return
 
         data = {
             "chat_id": self.chat_id,
             "text": text[:4000],
-            "parse_mode": parse_mode,
         }
+        if parse_mode is not None:
+            data["parse_mode"] = parse_mode
+
         if reply_markup:
             data["reply_markup"] = reply_markup
 
@@ -101,7 +104,7 @@ class TelegramService:
             self.log.warning(
                 "Конвертация в OGG не удалась (%s), отправляю текстом", e
             )
-            self.send_text(caption, reply_markup)
+            self.send_text(caption, reply_markup, parse_mode=None)
             return
 
         duration = max(1, round(len(pcm) / (2 * self.sample_rate)))
@@ -130,7 +133,7 @@ class TelegramService:
                     self.log.error(
                         "Все попытки исчерпаны, отправляю резервным текстом"
                     )
-                    self.send_text(caption, reply_markup)
+                    self.send_text(caption, reply_markup, parse_mode=None)
                 else:
                     time.sleep(2)
 
@@ -155,10 +158,11 @@ class TelegramService:
             return f"db:{event_id}"
 
         token = uuid.uuid4().hex[:8]
-        self.recent_phrases[token] = text
+        with self._phrases_lock:
+            self.recent_phrases[token] = text
 
-        while len(self.recent_phrases) > self.recent_phrases_max:
-            self.recent_phrases.popitem(last=False)
+            while len(self.recent_phrases) > self.recent_phrases_max:
+                self.recent_phrases.popitem(last=False)
 
         return f"mem:{token}"
 
@@ -170,7 +174,8 @@ class TelegramService:
 
         if fix_id.startswith("mem:"):
             token = fix_id.split(":", 1)[1]
-            return self.recent_phrases.get(token), None
+            with self._phrases_lock:
+                return self.recent_phrases.get(token), None
 
         return None, None
 
@@ -202,6 +207,41 @@ class TelegramService:
                     },
                     timeout=15,
                 )
+
+            elif data == "cancel_fix":
+                # Сначала отменяем режим, независимо от состояния сети.
+                with self.state_lock:
+                    self.waiting_for_correction.pop(chat_id, None)
+
+                try:
+                    requests.post(
+                        f"{self.api}/answerCallbackQuery",
+                        data={
+                            "callback_query_id": cq["id"],
+                            "text": "Исправление отменено",
+                        },
+                        timeout=15,
+                    )
+                except requests.RequestException as e:
+                    self.log.warning(
+                        "Не удалось подтвердить отмену: %s", e
+                    )
+
+                if msg_id is not None:
+                    try:
+                        requests.post(
+                            f"{self.api}/deleteMessage",
+                            data={
+                                "chat_id": chat_id,
+                                "message_id": msg_id,
+                            },
+                            timeout=15,
+                        )
+                    except requests.RequestException as e:
+                        self.log.warning(
+                            "Не удалось удалить сообщение отмены: %s",
+                            e,
+                        )
 
             elif data.startswith("fix_"):
                 fix_id = data.split("_", 1)[1]
@@ -261,8 +301,8 @@ class TelegramService:
                 )
 
                 self.send_text(
-                    f"✍️ <b>Режим исправления</b>\\n"
-                    f"Исходный текст: <code>{safe_orig_text}</code>\\n\\n"
+                    f"✍️ <b>Режим исправления</b>\n"
+                    f"Исходный текст: <code>{safe_orig_text}</code>\n\n"
                     f"{copy_hint}",
                     cancel_markup,
                 )
@@ -304,7 +344,7 @@ class TelegramService:
             return
 
         with self.state_lock:
-            pending = self.waiting_for_correction.pop(chat_id, None)
+            pending = self.waiting_for_correction.get(chat_id)
 
         if pending:
             orig_text = pending["raw_text"]
@@ -316,6 +356,10 @@ class TelegramService:
                 ev_id,
                 self.db_path,
             )
+            # Удаляем ожидание только после успешного сохранения.
+            with self.state_lock:
+                if self.waiting_for_correction.get(chat_id) is pending:
+                    self.waiting_for_correction.pop(chat_id, None)
 
             self.log.info(
                 "Обучение сохранено: '%s' -> '%s'",
@@ -324,10 +368,33 @@ class TelegramService:
             )
 
             self.send_text(
-                f"✅ <b>Успешно обучено!</b>\\n"
-                f"Было: <code>{html.escape(orig_text)}</code>\\n"
+                f"✅ <b>Успешно обучено!</b>\n"
+                f"Было: <code>{html.escape(orig_text)}</code>\n"
                 f"Стало: <code>{html.escape(corrected_text)}</code>"
             )
+
+    def _quarantine_update(self, update):
+        """Сохраняет необработанное обновление для ручного восстановления."""
+        import os
+        from pathlib import Path
+
+        path = (
+            Path(self.db_path).expanduser().resolve().parent
+            / "telegram_failed_updates.jsonl"
+        )
+
+        line = json.dumps(update, ensure_ascii=False) + "\n"
+
+        fd = os.open(
+            str(path),
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+            0o600,
+        )
+
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(line)
+            file.flush()
+            os.fsync(file.fileno())
 
     def callback_listener(self):
         """Слушает нажатия кнопок и команды управления режимами/обучением."""
@@ -354,8 +421,65 @@ class TelegramService:
                     continue
 
                 for upd in r.json().get("result", []):
-                    self.handle_update(upd)
-                    self._updates_offset = upd["update_id"] + 1
+                    try:
+                        update_id = upd["update_id"]
+                        if type(update_id) is not int:
+                            raise TypeError("update_id должен быть целым числом")
+                    except (KeyError, TypeError):
+                        self.log.exception(
+                            "Telegram прислал update без корректного update_id"
+                        )
+                        continue
+
+                    try:
+                        self.handle_update(upd)
+
+                    except Exception:
+                        retries = getattr(self, "_update_retries", None)
+
+                        if retries is None:
+                            retries = {}
+                            self._update_retries = retries
+
+                        attempts = retries.get(update_id, 0) + 1
+                        retries[update_id] = attempts
+
+                        self.log.exception(
+                            "Ошибка Telegram update_id=%s, попытка %s/3",
+                            update_id,
+                            attempts,
+                        )
+
+                        if attempts < 3:
+                            time.sleep(5)
+                            break
+
+                        try:
+                            self._quarantine_update(upd)
+                        except Exception:
+                            self.log.exception(
+                                "Не удалось сохранить проблемный Telegram update. "
+                                "Offset не изменён."
+                            )
+                            time.sleep(5)
+                            break
+
+                        self._updates_offset = update_id + 1
+                        retries.pop(update_id, None)
+
+                        self.log.critical(
+                            "Telegram update_id=%s сохранён в "
+                            "telegram_failed_updates.jsonl. "
+                            "Требуется ручная проверка.",
+                            update_id,
+                        )
+
+                    else:
+                        self._updates_offset = update_id + 1
+                        retries = getattr(self, "_update_retries", None)
+
+                        if retries is not None:
+                            retries.pop(update_id, None)
 
             except (requests.RequestException, ValueError, KeyError) as e:
                 self.log.warning("Сбой связи в callback_listener: %s", e)

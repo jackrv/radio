@@ -1,3 +1,5 @@
+from pathlib import Path
+
 # ---------- Настройки моделей и обработки ----------
 
 MODEL_REPO = "mlx-community/whisper-large-v3-turbo"
@@ -5,7 +7,11 @@ LLM_REPO = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 
 USE_LLM = True
 LANGUAGE = "uk"
-DB_PATH = "events.db"
+BASE_DIR = Path(__file__).resolve().parent
+
+DB_PATH = str(BASE_DIR / "events.db")
+LOG_PATH = BASE_DIR / "radio.log"
+DEBUG_AUDIO_DIR = BASE_DIR / "debug_audio"
 COOLDOWN_S = 3.0
 LOG_CALLSIGNS_ONLY = True
 FUZZY_CORRECTION_SCORE = 86
@@ -29,10 +35,12 @@ VAD_LEVEL = 2
 
 # Фильтрация распознанного текста
 BLACKLIST = (
-    "редактор субтитров", "корректор", "субтитры", "продолжение следует",
-    "спасибо за просмотр", "дякую за перегляд", "позивні", "команди",
-    "дякую", "па па", "пам пам", "слабо", "донатичі", "поп поп", "та та",
-    "маха", "папа",
+    "редактор субтитров",
+    "корректор",
+    "субтитры",
+    "продолжение следует",
+    "спасибо за просмотр",
+    "дякую за перегляд",
 )
 
 SHORT_GARBAGE = {

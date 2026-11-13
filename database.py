@@ -1,5 +1,6 @@
-import sqlite3
-from contextlib import contextmanager
+from config import DB_PATH
+from services.sqlite_connection import get_db
+
 from pathlib import Path
 
 
@@ -10,22 +11,9 @@ DICTIONARY_FILES = {
 }
 
 
-@contextmanager
-def get_db(db_path="events.db"):
-    conn = sqlite3.connect(str(db_path), timeout=15)
-    conn.execute("PRAGMA busy_timeout=10000")
-
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
-def init_db(db_path="events.db"):
+def init_db(db_path=DB_PATH):
     """Создаёт новые таблицы, не затрагивая существующие."""
     with get_db(db_path) as db:
         db.execute("""
@@ -51,7 +39,7 @@ def init_db(db_path="events.db"):
         """)
 
 
-def import_dictionaries(source_dir=".", db_path="events.db"):
+def import_dictionaries(source_dir=".", db_path=DB_PATH):
     """
     Однократно импортирует исходные строки TXT-файлов.
     Если категория уже заполнена, импорт остановится,
@@ -102,7 +90,7 @@ def import_dictionaries(source_dir=".", db_path="events.db"):
             )
 
 
-def get_dictionary_lines(dictionary_type, db_path="events.db"):
+def get_dictionary_lines(dictionary_type, db_path=DB_PATH):
     """Возвращает включённые строки в исходном порядке."""
     if dictionary_type not in DICTIONARY_FILES:
         raise ValueError(f"Неизвестный словарь: {dictionary_type}")

@@ -7,6 +7,7 @@ if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.ab
     os.execve(venv_python, [venv_python] + sys.argv, os.environ)
 
 import logging
+from core.log_security import configure_logging
 import queue
 import shutil
 
@@ -48,14 +49,8 @@ from config import (
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # ---------- Логирование ----------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.FileHandler("radio.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
+configure_logging(
+    os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 )
 log = logging.getLogger("radio")
 
@@ -136,6 +131,11 @@ def load_dictionaries():
 def main():
     init_event_db(DB_PATH)
     load_dictionaries()
+    bot_state.enable_persistence(DB_PATH)
+    log.info(
+        "Режим Telegram восстановлен: %s",
+        bot_state.get_notify_mode(),
+    )
 
     if not shutil.which("ffmpeg"):
         log.warning("Утилита ffmpeg не найдена в системе! Конвертация в OGG работать не будет.")

@@ -309,6 +309,8 @@ def test_whisper_restart_limit(monkeypatch):
 
     supervisor, _, log = make_supervisor(queue.Queue())
     supervisor.telegram_listener = None
+    stream = FakeStream()
+    supervisor.stream_factory = lambda **kwargs: stream
 
     now = [100.0]
 
@@ -349,7 +351,9 @@ def test_whisper_restart_limit(monkeypatch):
         "is_alive",
         lambda self: False,
     ):
-        supervisor.run()
+        from pytest import raises
+        with raises(RuntimeError, match="Исчерпаны попытки перезапуска Whisper"):
+            supervisor.run()
 
     # Один первоначальный поток + три перезапуска.
     assert len(FakeThread.instances) == 4
@@ -376,6 +380,9 @@ def test_whisper_restart_limit(monkeypatch):
     ]
 
     assert [call.args[1] for call in restart_logs] == [1, 2, 3]
+
+    # Аудиоустройство освобождено после отказа.
+    assert stream.closed is True
 
 
 def test_whisper_restart_start_failure(monkeypatch):

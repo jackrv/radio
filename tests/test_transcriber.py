@@ -49,7 +49,7 @@ def test_valid_segment():
     recognizer.transcribe.assert_called_once()
     process_text.assert_called_once_with("Липка 700")
     processor.process.assert_called_once_with(
-        "Исправлено: Липка 700", pcm
+        "Исправлено: Липка 700", pcm, raw_text="Липка 700"
     )
 
 
@@ -119,7 +119,7 @@ def test_whisper_error_does_not_stop_processing():
     process_text.assert_called_once_with("Липка 700")
 
     processor.process.assert_called_once_with(
-        "Исправлено: Липка 700", pcm
+        "Исправлено: Липка 700", pcm, raw_text="Липка 700"
     )
 
     worker.log.exception.assert_called_once()
@@ -138,7 +138,7 @@ def test_qwen_error_falls_back_to_whisper_text():
 
     # Сохраняем исходный результат Whisper.
     processor.process.assert_called_once_with(
-        "Липка 700", pcm
+        "Липка 700", pcm, raw_text="Липка 700"
     )
 
     # Ошибка должна попасть в журнал.
@@ -164,7 +164,7 @@ def test_event_processor_error_does_not_stop_transcriber():
     assert processor.process.call_count == 2
 
     processor.process.assert_called_with(
-        "Исправлено: Липка 700", pcm
+        "Исправлено: Липка 700", pcm, raw_text="Липка 700"
     )
 
     worker.log.exception.assert_called_once()

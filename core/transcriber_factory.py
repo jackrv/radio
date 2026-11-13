@@ -1,3 +1,5 @@
+from functools import partial
+
 from core.recognition import WhisperRecognizer
 from core.correction import build_llm_corrector
 from core.pipeline import build_text_pipeline
@@ -35,7 +37,11 @@ def build_transcriber(
 
     process_text = build_text_pipeline(
         correct_with_llm=correct_with_llm,
-        apply_learned_corrections=apply_learned_corrections,
+        apply_learned_corrections=partial(
+            apply_learned_corrections,
+            db_path=config.DB_PATH,
+            fuzzy_score=config.FUZZY_CORRECTION_SCORE,
+        ),
         dictionaries=(callsigns, commands, watch),
         correction_is_safe=correction_is_safe,
         log=log,

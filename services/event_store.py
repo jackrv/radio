@@ -1,26 +1,16 @@
-import sqlite3
-from contextlib import contextmanager
+from config import DB_PATH
+from services.sqlite_connection import get_db
+
 
 from rapidfuzz import fuzz, process
 
-
-@contextmanager
-def get_db(db_path="events.db"):
-    conn = sqlite3.connect(db_path, timeout=15.0)
-
-    try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA busy_timeout=10000;")
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+from callsigns import Callsigns
+from core.analyzer import fmt, split_roles
 
 
-def init_db(db_path="events.db"):
+
+
+def init_db(db_path=DB_PATH):
     with get_db(db_path) as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS radio_events (
@@ -46,7 +36,7 @@ def init_db(db_path="events.db"):
             for row in db.execute("PRAGMA table_info(radio_events)")
         }
 
-        for col in ("recipient", "sender"):
+        for col in ("recipient", "sender", "raw_text"):
             if col not in cols:
                 db.execute(
                     f"ALTER TABLE radio_events ADD COLUMN {col} TEXT"
@@ -55,7 +45,7 @@ def init_db(db_path="events.db"):
 
 def apply_learned_corrections(
     text: str,
-    db_path="events.db",
+    db_path=DB_PATH,
     fuzzy_score=86,
 ) -> tuple[str, bool]:
     with get_db(db_path) as db:
@@ -66,7 +56,13 @@ def apply_learned_corrections(
     if not rows:
         return text, False
 
-    from callsigns import normalize
+    from callsigns import normalize, to_items
+
+    def numbers_of(value: str) -> list[str]:
+        return [
+            num for kind, num in to_items(value)
+            if kind == "num"
+        ]
 
     norm_text = normalize(text)
 
@@ -74,10 +70,16 @@ def apply_learned_corrections(
         if normalize(original) == norm_text:
             return corrected, True
 
+    # Нечёткая коррекция не должна изменять числовые группы.
+    # Точные пользовательские исправления обрабатываются выше.
+    source_numbers = numbers_of(text)
+
     mapping = {
         normalize(original): corrected
         for original, corrected in rows
         if normalize(original)
+        and numbers_of(original) == source_numbers
+        and numbers_of(corrected) == source_numbers
     }
 
     if not mapping:
@@ -95,10 +97,10 @@ def apply_learned_corrections(
     return text, False
 
 
-def resolve_event_text(event_id: int, db_path="events.db"):
+def resolve_event_text(event_id: int, db_path=DB_PATH):
     with get_db(db_path) as db:
         row = db.execute(
-            "SELECT text FROM radio_events WHERE id = ?",
+            "SELECT COALESCE(raw_text, text) FROM radio_events WHERE id = ?",
             (event_id,),
         ).fetchone()
 
@@ -109,22 +111,101 @@ def save_correction(
     original: str,
     corrected: str,
     event_id: int | None = None,
-    db_path="events.db",
+    db_path=DB_PATH,
 ):
+    """Сохраняет обучение и согласованно обновляет событие."""
+
     with get_db(db_path) as db:
+        fields = None
+
+        if event_id is not None:
+            event = db.execute(
+                "SELECT id FROM radio_events WHERE id = ?",
+                (event_id,),
+            ).fetchone()
+
+            if event is None:
+                raise LookupError(
+                    f"Событие #{event_id} не найдено"
+                )
+
+            # Используем актуальные словари из той же SQLite.
+            # Отсутствующая таблица вызовет ошибку,
+            # а не молчаливую очистку полей события.
+            rows = db.execute("""
+                SELECT dictionary_type, raw_line
+                FROM dictionary_entries
+                WHERE enabled = 1
+                  AND dictionary_type IN ('callsigns', 'commands')
+                ORDER BY dictionary_type, line_number
+            """).fetchall()
+
+            lines = {
+                "callsigns": [],
+                "commands": [],
+            }
+
+            for kind, raw_line in rows:
+                lines[kind].append(raw_line)
+
+            callsigns = Callsigns.from_lines(
+                lines["callsigns"]
+            )
+
+            commands = Callsigns.from_lines(
+                lines["commands"]
+            )
+
+            to_found, from_found = split_roles(
+                corrected, callsigns
+            )
+
+            fields = (
+                fmt(callsigns.find(corrected)),
+                fmt(commands.find(corrected)),
+                fmt(to_found),
+                fmt(from_found),
+            )
+
+        # Обучение и обновление события находятся
+        # внутри одной транзакции.
         db.execute(
             """
-            INSERT OR REPLACE INTO corrections (original, corrected)
+            INSERT OR REPLACE INTO corrections
+                (original, corrected)
             VALUES (?, ?)
             """,
             (original, corrected),
         )
 
         if event_id is not None:
-            db.execute(
-                "UPDATE radio_events SET text = ? WHERE id = ?",
-                (corrected, event_id),
+            cs_str, cmd_str, to_str, from_str = fields
+
+            cursor = db.execute(
+                """
+                UPDATE radio_events
+                SET text = ?,
+                    callsigns = ?,
+                    commands = ?,
+                    recipient = ?,
+                    sender = ?
+                WHERE id = ?
+                """,
+                (
+                    corrected,
+                    cs_str,
+                    cmd_str,
+                    to_str,
+                    from_str,
+                    event_id,
+                ),
             )
+
+            if cursor.rowcount != 1:
+                raise LookupError(
+                    f"Не удалось обновить событие #{event_id}"
+                )
+
 
 
 def save_event(
@@ -133,15 +214,16 @@ def save_event(
     recipient: str,
     sender: str,
     text: str,
-    db_path="events.db",
+    db_path=DB_PATH,
+    raw_text: str | None = None,
 ) -> int:
     with get_db(db_path) as db:
         cursor = db.execute(
             """
             INSERT INTO radio_events
-                (callsigns, commands, recipient, sender, text)
-            VALUES (?, ?, ?, ?, ?)
+                (callsigns, commands, recipient, sender, text, raw_text)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (callsigns, commands, recipient, sender, text),
+            (callsigns, commands, recipient, sender, text, raw_text),
         )
         return cursor.lastrowid

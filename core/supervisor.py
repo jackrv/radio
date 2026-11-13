@@ -166,6 +166,7 @@ class ApplicationSupervisor:
                         elif restart_policy.exhausted and not restart_exhausted_logged:
                             self.log.critical("Исчерпаны попытки перезапуска Whisper")
                             restart_exhausted_logged = True
+                            raise RuntimeError("Исчерпаны попытки перезапуска Whisper")
                     if telegram_thread is not None:
                         if telegram_thread.is_alive():
                             if (

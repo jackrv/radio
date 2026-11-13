@@ -43,8 +43,8 @@ class WhisperRecognizer:
             segment["text"].strip()
             for segment in result.get("segments", [])
             if not (
-                segment["no_speech_prob"] > 0.6
-                and segment["avg_logprob"] < -0.8
+                segment.get("no_speech_prob", 0.0) > 0.6
+                and segment.get("avg_logprob", 0.0) < -0.8
             )
             and segment.get("compression_ratio", 0) <= 2.4
         ]

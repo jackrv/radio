@@ -32,7 +32,7 @@ class EventProcessor:
         self.log = log
         self.rollback = rollback
 
-    def process(self, text, pcm):
+    def process(self, text, pcm, raw_text=None):
         cs_found = self.callsigns.find(text)
         cmd_found = self.commands.find(text)
         watch_found = self.watch.find(text)
@@ -68,6 +68,7 @@ class EventProcessor:
                     from_str,
                     text,
                     self.db_path,
+                    **({"raw_text": raw_text} if raw_text is not None else {}),
                 )
 
                 self.log.info(
@@ -99,7 +100,7 @@ class EventProcessor:
         if should_notify and self.fresh(("tg", text)):
             try:
                 fix_id = self.telegram_service.register_phrase_for_fix(
-                    text,
+                    raw_text if raw_text is not None else text,
                     event_id,
                 )
 

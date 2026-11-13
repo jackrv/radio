@@ -58,11 +58,15 @@ def test_empty_dictionaries(monkeypatch):
         Mock(return_value=[]),
     )
 
-    callsigns, commands, watch, prompt = module.load_dictionaries(
-        "test.db", Mock()
-    )
+    log = Mock()
 
-    assert not callsigns.names
-    assert not commands.names
-    assert not watch.names
-    assert prompt == ""
+    try:
+        module.load_dictionaries("test.db", log)
+    except RuntimeError as error:
+        assert "Словарь позывных пуст" in str(error)
+    else:
+        raise AssertionError(
+            "Пустой словарь позывных должен останавливать запуск"
+        )
+
+    log.error.assert_called_once()

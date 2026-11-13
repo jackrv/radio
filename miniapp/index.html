@@ -12,6 +12,7 @@
   <script src="./app.js" defer></script>
   <script src="./api.js" defer></script>
   <script src="./notifications.js" defer></script>
+  <script src="./receiver-controls.js" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -51,7 +52,22 @@
           <div class="two-column">
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</div><h2>Управление эфиром</h2></div><span class="section-icon" aria-hidden="true">◉</span></div>
               <div class="action-row"><div class="action-icon">◌</div><div><div class="action-title">Полная тишина</div><div class="action-description">Отключить уведомления, не прерывая приём</div></div><button class="mini-button" id="silence-toggle" type="button" disabled>Загрузка...</button></div>
-              <div class="action-row"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослушивания</div><div class="action-description">Остановить аудиопоток на заданное время</div></div><button class="mini-button" disabled title="Подключим после авторизации API">Скоро</button></div>
+              <div class="action-row"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослушивания</div><div class="action-description">Остановить аудиопоток на заданное время</div></div><button class="mini-button" id="receiver-pause-button"
+                type="button" disabled>Загрузка...</button></div>
+              <div class="receiver-pause-controls">
+                <label for="receiver-pause-minutes">Длительность паузы</label>
+                <select id="receiver-pause-minutes" disabled>
+                  <option value="5">5 минут</option>
+                  <option value="15" selected>15 минут</option>
+                  <option value="30">30 минут</option>
+                  <option value="60">60 минут</option>
+                </select>
+                <div id="receiver-pause-remaining"
+                     class="receiver-pause-remaining">—</div>
+                <p id="receiver-pause-feedback"
+                   class="notify-feedback" role="status"
+                   aria-live="polite"></p>
+              </div>
             </article>
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">УВЕДОМЛЕНИЯ</div><h2>Режим отправки</h2></div><span class="section-icon" aria-hidden="true">◷</span></div>
               <div class="notice-box"><div class="notice-dot"></div><div><strong id="notification-mode-label">Загрузка...</strong><span id="notification-mode-detail">Получаем режим уведомлений</span></div></div>

@@ -1,6 +1,7 @@
 import queue
 import signal
-from contextlib import contextmanager, nullcontext
+import time
+from contextlib import ExitStack, contextmanager, nullcontext
 import threading
 
 import sounddevice as sd
@@ -59,6 +60,9 @@ class ApplicationSupervisor:
         segmenter_factory=None,
         thread_factory=None,
         heartbeat_context=None,
+        pause_checker=None,
+        pause_gate=None,
+        runtime_state=None,
     ):
         self.frames = frames
         self.segments = segments
@@ -80,6 +84,9 @@ class ApplicationSupervisor:
         self.segmenter_factory = segmenter_factory or VADSegmenter
         self.thread_factory = thread_factory or threading.Thread
         self.heartbeat_context = heartbeat_context or nullcontext
+        self.pause_checker = pause_checker
+        self.pause_gate = pause_gate
+        self.runtime_state = runtime_state
 
     def run(self):
         """Запускает рабочие потоки и цикл обработки аудиокадров."""
@@ -98,28 +105,98 @@ class ApplicationSupervisor:
             )
             telegram_thread.start()
 
-        segmenter = self.segmenter_factory(
-            sample_rate=self.sample_rate,
-            frame_ms=self.frame_ms,
-            vad_level=self.vad_level,
-            preroll_ms=self.preroll_ms,
-            silence_end_ms=self.silence_end_ms,
-            min_speech_ms=self.min_speech_ms,
-            max_segment_s=self.max_segment_s,
-        )
+        def new_segmenter():
+            return self.segmenter_factory(
+                sample_rate=self.sample_rate,
+                frame_ms=self.frame_ms,
+                vad_level=self.vad_level,
+                preroll_ms=self.preroll_ms,
+                silence_end_ms=self.silence_end_ms,
+                min_speech_ms=self.min_speech_ms,
+                max_segment_s=self.max_segment_s,
+            )
+
+        segmenter = new_segmenter()
 
         monitor = QueueDropMonitor(
             self.frames, self.segments, self.log
         )
 
-        with ignore_repeated_sigint(), self.stream_factory(
-            samplerate=self.sample_rate,
-            blocksize=self.frame_len,
-            dtype="int16",
-            channels=1,
-            callback=self.on_audio,
-        ), self.heartbeat_context():
+        audio_stack = ExitStack()
+        paused = None
+
+        def clear_queue(q):
+            while True:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    break
+                else:
+                    q.task_done()
+
+        def transition(should_pause):
+            nonlocal paused, segmenter
+
+            if paused is should_pause:
+                return
+
+            if should_pause:
+                if self.pause_gate is not None:
+                    self.pause_gate.set_paused(True)
+
+                # Сначала закрываем аудиопоток,
+                # затем удаляем накопившиеся данные.
+                audio_stack.close()
+                clear_queue(self.frames)
+                clear_queue(self.segments)
+
+                if self.runtime_state is not None:
+                    self.runtime_state.set("paused")
+
+                paused = True
+                self.log.info("⏸ Приём приостановлен: микрофон закрыт")
+
+            else:
+                # При первом запуске очереди не очищаем.
+                # Очистка нужна только при выходе из паузы.
+                if paused is True:
+                    clear_queue(self.frames)
+                    clear_queue(self.segments)
+
+                # Новый VAD не содержит старой незавершённой фразы.
+                segmenter = new_segmenter()
+
+                audio_stack.enter_context(self.stream_factory(
+                    samplerate=self.sample_rate,
+                    blocksize=self.frame_len,
+                    dtype="int16",
+                    channels=1,
+                    callback=self.on_audio,
+                ))
+
+                if self.pause_gate is not None:
+                    self.pause_gate.set_paused(False)
+
+                if self.runtime_state is not None:
+                    self.runtime_state.set("listening")
+
+                was_paused = paused is True
+                paused = False
+
+                if was_paused:
+                    self.log.info(
+                        "▶️ Приём возобновлён: микрофон открыт"
+                    )
+
+        with ignore_repeated_sigint(), self.heartbeat_context():
             try:
+                requested_pause = (
+                    bool(self.pause_checker())
+                    if self.pause_checker is not None
+                    else False
+                )
+                transition(requested_pause)
+
                 transcriber_error_logged = False
                 restart_policy = RestartPolicy()
                 transcriber_started_at = restart_policy.clock()
@@ -207,6 +284,18 @@ class ApplicationSupervisor:
                             ):
                                 self.log.critical("Исчерпаны попытки перезапуска Telegram")
                                 telegram_restart_exhausted_logged = True
+                    requested_pause = (
+                        bool(self.pause_checker())
+                        if self.pause_checker is not None
+                        else False
+                    )
+
+                    transition(requested_pause)
+
+                    if paused:
+                        time.sleep(0.2)
+                        continue
+
                     try:
                         frame = self.frames.get(timeout=1.0)
                     except queue.Empty:
@@ -216,9 +305,24 @@ class ApplicationSupervisor:
                     segment = segmenter.process(frame)
 
                     if segment is not None:
-                        self.segments.put(segment)
+                        if self.pause_gate is None:
+                            self.segments.put(segment)
+                        else:
+                            generation = self.pause_gate.tag()
+                            if generation is not None:
+                                self.segments.put(
+                                    (generation, segment)
+                                )
 
                     monitor.check()
 
             except KeyboardInterrupt:
                 self.log.info("Остановлено пользователем.")
+            finally:
+                if self.pause_gate is not None:
+                    self.pause_gate.set_paused(True)
+
+                audio_stack.close()
+
+                if self.runtime_state is not None:
+                    self.runtime_state.set("stopped")

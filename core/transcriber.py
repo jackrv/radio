@@ -21,6 +21,7 @@ class Transcriber:
         debug_rms,
         blacklist,
         log,
+        pause_gate=None,
     ):
         self.segments = segments
         self.recognizer = recognizer
@@ -38,6 +39,7 @@ class Transcriber:
             if item
         }
         self.log = log
+        self.pause_gate = pause_gate
 
     @staticmethod
     def _blacklist_key(value: str) -> str:
@@ -53,7 +55,16 @@ class Transcriber:
         key = self._blacklist_key(text)
         return bool(key) and key in self.blacklist
 
-    def process_segment(self, pcm):
+    def process_segment(self, pcm, generation=None):
+        def is_current():
+            return (
+                self.pause_gate is None
+                or self.pause_gate.is_current(generation)
+            )
+
+        if not is_current():
+            return
+
         audio, rms = prepare_audio(
             pcm, self.min_rms, self.normalize_audio
         )
@@ -89,6 +100,9 @@ class Transcriber:
             )
             return
 
+        if not is_current():
+            return
+
         duration = len(pcm) / (2 * self.sample_rate)
 
         if (
@@ -96,6 +110,9 @@ class Transcriber:
             or looks_like_garbage(raw_text, duration)
             or self._is_blacklisted(raw_text)
         ):
+            return
+
+        if not is_current():
             return
 
         self.log.info("Распознано (сырое): %s", raw_text)
@@ -107,8 +124,21 @@ class Transcriber:
                 "Ошибка коррекции текста; используется исходный текст Whisper"
             )
             text = raw_text
+        if not is_current():
+            return
+
         try:
-            self.event_processor.process(text, pcm, raw_text=raw_text)
+            if self.pause_gate is None:
+                self.event_processor.process(
+                    text, pcm, raw_text=raw_text
+                )
+            else:
+                self.pause_gate.run_if_current(
+                    generation,
+                    lambda: self.event_processor.process(
+                        text, pcm, raw_text=raw_text
+                    ),
+                )
         except Exception:
             self.log.exception(
                 "Ошибка обработки события; продолжаем прослушивание эфира"
@@ -116,5 +146,15 @@ class Transcriber:
 
     def run(self):
         while True:
-            pcm = self.segments.get()
-            self.process_segment(pcm)
+            item = self.segments.get()
+
+            if self.pause_gate is None:
+                self.process_segment(item)
+                continue
+
+            generation, pcm = item
+
+            if not self.pause_gate.is_current(generation):
+                continue
+
+            self.process_segment(pcm, generation=generation)

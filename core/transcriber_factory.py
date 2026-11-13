@@ -20,6 +20,7 @@ def build_transcriber(
     cooldown,
     bot_state,
     log,
+    pause_gate=None,
 ):
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
@@ -84,4 +85,5 @@ def build_transcriber(
         debug_rms=config.DEBUG_RMS,
         blacklist=config.BLACKLIST,
         log=log,
+        pause_gate=pause_gate,
     )

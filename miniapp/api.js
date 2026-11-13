@@ -22,20 +22,24 @@
 
   function showReceiver(state) {
     const listening = state === "listening";
+    const paused = state === "paused";
 
     receiver.textContent = listening
       ? "Слушает эфир"
-      : "Приём остановлен";
+      : paused ? "Приём на паузе" : "Приём остановлен";
 
     hero.textContent = listening
       ? "● Приём активен"
-      : "● Нет активного приёма";
+      : paused ? "● Микрофон закрыт" : "● Нет активного приёма";
 
-    hero.style.background = listening ? "#36564e" : "#33404e";
+    hero.style.background = listening
+      ? "#36564e" : paused ? "#60502d" : "#33404e";
 
     description.textContent = listening
       ? "Аудиопоток Radio 345 работает"
-      : "Приёмник отключён или не отвечает";
+      : paused
+        ? "Приём приостановлен, ожидается возобновление"
+        : "Приёмник отключён или не отвечает";
 
     updated.textContent = new Date().toLocaleTimeString("ru-RU");
   }

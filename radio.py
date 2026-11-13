@@ -7,6 +7,8 @@ if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.ab
     os.execve(venv_python, [venv_python] + sys.argv, os.environ)
 
 import logging
+import sqlite3
+import time
 from core.log_security import configure_logging
 import queue
 import shutil
@@ -15,10 +17,15 @@ from core.transcriber_factory import build_transcriber
 
 from core.audio import apply_gain
 from core.supervisor import ApplicationSupervisor
+from core.pause_gate import PauseGate
 from core.cooldown import Cooldown
 from core.bounded_queue import DropOldestQueue
 from services.bot_state import BotState
-from services.receiver_status import receiver_heartbeat
+from services.receiver_status import (
+    receiver_heartbeat,
+    ReceiverRuntimeState,
+)
+from services.receiver_control import read_pause_state
 from dotenv import load_dotenv
 
 
@@ -72,6 +79,8 @@ cooldown = Cooldown(COOLDOWN_S)
 
 # Состояние бота и режимы уведомлений (потокобезопасный доступ через lock)
 bot_state = BotState()
+pause_gate = PauseGate()
+receiver_runtime = ReceiverRuntimeState()
 
 telegram_service = TelegramService(
     bot_token=BOT_TOKEN,
@@ -108,6 +117,7 @@ def transcriber():
         cooldown=cooldown,
         bot_state=bot_state,
         log=log,
+        pause_gate=pause_gate,
     )
 
     worker.recognizer.warmup()
@@ -138,6 +148,33 @@ def main():
         bot_state.get_notify_mode(),
     )
 
+    last_pause_check = float("-inf")
+    cached_pause = False
+
+    def pause_requested():
+        nonlocal last_pause_check, cached_pause
+
+        now = time.monotonic()
+
+        # Не обращаемся к SQLite на каждом аудиокадре.
+        if now - last_pause_check < 0.5:
+            return cached_pause
+
+        last_pause_check = now
+
+        try:
+            cached_pause = read_pause_state(
+                DB_PATH
+            )["pause_requested"]
+        except sqlite3.Error:
+            log.exception(
+                "Не удалось проверить команду паузы. "
+                "Приём временно приостанавливается."
+            )
+            cached_pause = True
+
+        return cached_pause
+
     if not shutil.which("ffmpeg"):
         log.warning("Утилита ffmpeg не найдена в системе! Конвертация в OGG работать не будет.")
 
@@ -158,7 +195,14 @@ def main():
         min_speech_ms=MIN_SPEECH_MS,
         max_segment_s=MAX_SEGMENT_S,
         log=log,
-        heartbeat_context=lambda: receiver_heartbeat(DB_PATH, log),
+        heartbeat_context=lambda: receiver_heartbeat(
+            DB_PATH,
+            log,
+            state_provider=receiver_runtime.get,
+        ),
+        pause_checker=pause_requested,
+        pause_gate=pause_gate,
+        runtime_state=receiver_runtime,
     )
     try:
         supervisor.run()

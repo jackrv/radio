@@ -10,6 +10,25 @@ from contextlib import contextmanager
 from services.sqlite_connection import get_db
 
 
+
+class ReceiverRuntimeState:
+    """Фактическое состояние аудиопотока."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._state = "stopped"
+
+    def set(self, state):
+        if state not in ("listening", "paused", "stopped"):
+            raise ValueError("Недопустимое состояние приёмника")
+        with self._lock:
+            self._state = state
+
+    def get(self):
+        with self._lock:
+            return self._state
+
+
 def init_receiver_db(db_path):
     with get_db(db_path) as db:
         db.execute("""
@@ -22,19 +41,22 @@ def init_receiver_db(db_path):
         """)
 
 
-def record_heartbeat(db_path, instance_id, *, now=None):
+def record_heartbeat(db_path, instance_id, *, now=None, state="listening"):
     timestamp = time.time() if now is None else float(now)
+
+    if state not in ("listening", "paused", "stopped"):
+        raise ValueError("Недопустимое состояние heartbeat")
 
     with get_db(db_path) as db:
         db.execute("""
             INSERT INTO receiver_runtime
                 (id, instance_id, state, updated_at)
-            VALUES (1, ?, 'listening', ?)
+            VALUES (1, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 instance_id = excluded.instance_id,
                 state = excluded.state,
                 updated_at = excluded.updated_at
-        """, (instance_id, timestamp))
+        """, (instance_id, state, timestamp))
 
 
 def mark_stopped(db_path, instance_id):
@@ -69,25 +91,26 @@ def read_receiver_status(db_path, *, now=None, timeout=10):
     state, updated_at = row
 
     if (
-        state == "listening"
+        state in ("listening", "paused")
         and -5 <= timestamp - updated_at <= timeout
     ):
-        return "listening"
+        return state
 
     return "offline"
 
 
 @contextmanager
-def receiver_heartbeat(db_path, log=None, interval=2.0):
+def receiver_heartbeat(db_path, log=None, interval=2.0, state_provider=None):
     """Публикует состояние, пока открыт аудиопоток."""
 
     log = log or logging.getLogger("radio")
+    state_provider = state_provider or (lambda: "listening")
     instance_id = uuid.uuid4().hex
     stop_event = threading.Event()
 
     try:
         init_receiver_db(db_path)
-        record_heartbeat(db_path, instance_id)
+        record_heartbeat(db_path, instance_id, state=state_provider())
     except sqlite3.Error:
         log.exception("Не удалось запустить монитор состояния")
         yield
@@ -96,7 +119,7 @@ def receiver_heartbeat(db_path, log=None, interval=2.0):
     def update():
         while not stop_event.wait(interval):
             try:
-                record_heartbeat(db_path, instance_id)
+                record_heartbeat(db_path, instance_id, state=state_provider())
             except sqlite3.Error:
                 log.exception("Ошибка обновления состояния приёмника")
 

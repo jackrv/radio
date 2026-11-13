@@ -3,7 +3,7 @@
 import sqlite3
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +14,10 @@ from services.miniapp_auth import (
 )
 from services.user_store import require_permission
 from services.receiver_status import read_receiver_status
+from services.receiver_control import (
+    read_pause_state,
+    set_pause_minutes,
+)
 from services.notify_mode_store import (
     load_notify_mode,
     save_notify_mode,
@@ -23,6 +27,11 @@ from services.notify_mode_store import (
 
 class NotificationModeUpdate(BaseModel):
     mode: Literal["all", "watch", "commands", "off"]
+
+
+
+class ReceiverControlUpdate(BaseModel):
+    minutes: int = Field(ge=0, le=240, strict=True)
 
 
 def create_app(db_path, bot_token):
@@ -159,5 +168,32 @@ def create_app(db_path, bot_token):
             ) from None
 
         return {"mode": payload.mode}
+
+    @app.get("/api/receiver/control")
+    def get_receiver_control(user=Depends(current_user)):
+        try:
+            return read_pause_state(db_path)
+        except sqlite3.Error:
+            raise HTTPException(
+                status_code=503,
+                detail="Управление приёмником недоступно",
+            ) from None
+
+    @app.put("/api/receiver/control")
+    def update_receiver_control(
+        payload: ReceiverControlUpdate,
+        user=Depends(current_user),
+    ):
+        require_settings_permission(user, "audio.control")
+
+        try:
+            return set_pause_minutes(
+                db_path, payload.minutes
+            )
+        except sqlite3.Error:
+            raise HTTPException(
+                status_code=503,
+                detail="Не удалось сохранить команду",
+            ) from None
 
     return app

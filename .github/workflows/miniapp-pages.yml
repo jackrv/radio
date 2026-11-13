@@ -37,6 +37,7 @@ jobs:
           cp miniapp/app.js _site/
           cp miniapp/api.js _site/
           cp miniapp/notifications.js _site/
+          cp miniapp/receiver-controls.js _site/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

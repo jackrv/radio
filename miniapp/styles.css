@@ -178,3 +178,59 @@ textarea { width: 100%; background: #101b28; color: #f0f5f9; border: 1px solid #
     grid-template-columns: 1fr;
   }
 }
+
+/* Receiver pause controls */
+
+.receiver-pause-controls {
+  margin-top: 8px;
+  padding: 14px;
+  background: #1b2a36;
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.receiver-pause-controls label {
+  color: #aab9c6;
+  font-size: 12px;
+}
+
+.receiver-pause-controls select {
+  background: #142432;
+  color: #e6f0ec;
+  border: 1px solid #4b6259;
+  border-radius: 9px;
+  padding: 9px;
+  font-size: 12px;
+  max-width: 150px;
+}
+
+.receiver-pause-controls select:disabled {
+  opacity: .5;
+}
+
+.receiver-pause-remaining {
+  width: 100%;
+  font-size: 12px;
+  color: #d0e6d5;
+  font-variant-numeric: tabular-nums;
+}
+
+.receiver-pause-controls .notify-feedback {
+  width: 100%;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .receiver-pause-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .receiver-pause-controls select {
+    max-width: none;
+    width: 100%;
+  }
+}

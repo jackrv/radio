@@ -385,3 +385,83 @@ def test_cors_allows_authenticated_settings_update(setup_api):
     assert response.headers[
         "access-control-allow-origin"
     ] == "https://jackrv.github.io"
+
+
+def test_admin_can_request_receiver_pause(setup_api):
+    client, _ = setup_api
+
+    response = client.put(
+        "/api/receiver/control",
+        headers=auth_header(1001),
+        json={"minutes": 15},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["pause_requested"] is True
+    assert response.json()["remaining_seconds"] > 0
+
+
+def test_admin_can_resume_receiver(setup_api):
+    client, _ = setup_api
+
+    client.put(
+        "/api/receiver/control",
+        headers=auth_header(1001),
+        json={"minutes": 60},
+    )
+
+    response = client.put(
+        "/api/receiver/control",
+        headers=auth_header(1001),
+        json={"minutes": 0},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["pause_requested"] is False
+
+
+def test_viewer_can_read_receiver_control(setup_api):
+    client, _ = setup_api
+
+    response = client.get(
+        "/api/receiver/control",
+        headers=auth_header(2002),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["pause_requested"] is False
+
+
+@pytest.mark.parametrize("user_id", [2002, 3003])
+def test_non_admin_cannot_pause_receiver(setup_api, user_id):
+    client, _ = setup_api
+
+    response = client.put(
+        "/api/receiver/control",
+        headers=auth_header(user_id),
+        json={"minutes": 15},
+    )
+
+    assert response.status_code == 403
+
+
+def test_receiver_control_requires_telegram_auth(setup_api):
+    client, _ = setup_api
+
+    assert client.put(
+        "/api/receiver/control",
+        json={"minutes": 15},
+    ).status_code == 401
+
+
+@pytest.mark.parametrize("minutes", [-1, 241, True, 1.5])
+def test_invalid_receiver_control_request(setup_api, minutes):
+    client, _ = setup_api
+
+    response = client.put(
+        "/api/receiver/control",
+        headers=auth_header(1001),
+        json={"minutes": minutes},
+    )
+
+    assert response.status_code == 422

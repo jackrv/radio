@@ -103,7 +103,14 @@ class TelegramService:
         )
         return proc.stdout
 
+    def _notifications_enabled(self):
+        with self.state_lock:
+            return self.get_notify_mode() != "off"
+
     def send_voice(self, pcm: bytes, caption: str, fix_id=None):
+        if not self._notifications_enabled():
+            return
+
         reply_markup = self.get_keyboard(fix_id)
 
         try:
@@ -112,12 +119,16 @@ class TelegramService:
             self.log.warning(
                 "Конвертация в OGG не удалась (%s), отправляю текстом", e
             )
-            self.send_text(caption, reply_markup, parse_mode=None)
+            if self._notifications_enabled():
+                self.send_text(caption, reply_markup, parse_mode=None)
             return
 
         duration = max(1, round(len(pcm) / (2 * self.sample_rate)))
 
         for attempt in range(1, 4):
+            if not self._notifications_enabled():
+                return
+
             try:
                 r = requests.post(
                     f"{self.api}/sendVoice",
@@ -141,7 +152,10 @@ class TelegramService:
                     self.log.error(
                         "Все попытки исчерпаны, отправляю резервным текстом"
                     )
-                    self.send_text(caption, reply_markup, parse_mode=None)
+                    if self._notifications_enabled():
+                        self.send_text(
+                            caption, reply_markup, parse_mode=None
+                        )
                 else:
                     delay = retry_delay(attempt, e)
                     self.log.warning(
@@ -164,7 +178,12 @@ class TelegramService:
                 continue
 
             try:
-                self.send_voice(*item)
+                if self._notifications_enabled():
+                    self.send_voice(*item)
+                else:
+                    self.log.info(
+                        "Уведомление из очереди отброшено: режим OFF"
+                    )
             except Exception:
                 self.log.exception(
                     "Ошибка фоновой отправки Telegram"
@@ -196,6 +215,9 @@ class TelegramService:
 
     def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None):
         if not (self.bot_token and self.chat_id):
+            return
+
+        if not self._notifications_enabled():
             return
 
         lines = [f"Событие: {watch_str}"]
@@ -411,6 +433,10 @@ class TelegramService:
             "commands": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
             "команды": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
             "cmd": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
+            "/off": ("off", "🔕 Автоматические уведомления отключены."),
+            "off": ("off", "🔕 Автоматические уведомления отключены."),
+            "/silent": ("off", "🔕 Автоматические уведомления отключены."),
+            "тихо": ("off", "🔕 Автоматические уведомления отключены."),
         }
 
         if text_msg in modes:

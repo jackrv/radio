@@ -303,3 +303,85 @@ def test_cors_allows_ngrok_skip_header(setup_api):
 
     assert "authorization" in allowed
     assert "ngrok-skip-browser-warning" in allowed
+
+
+def test_admin_changes_notification_mode(setup_api):
+    from services.bot_state import BotState
+
+    client, db_path = setup_api
+
+    state = BotState()
+    state.enable_persistence(db_path)
+
+    response = client.put(
+        "/api/notifications/mode",
+        headers=auth_header(1001),
+        json={"mode": "off"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"mode": "off"}
+    assert state.get_notify_mode() == "off"
+
+    response = client.get(
+        "/api/notifications/mode",
+        headers=auth_header(1001),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"mode": "off"}
+
+
+def test_viewer_cannot_change_notification_mode(setup_api):
+    client, _ = setup_api
+
+    response = client.put(
+        "/api/notifications/mode",
+        headers=auth_header(2002),
+        json={"mode": "off"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_editor_cannot_change_notification_mode(setup_api):
+    client, _ = setup_api
+
+    response = client.put(
+        "/api/notifications/mode",
+        headers=auth_header(3003),
+        json={"mode": "off"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_invalid_notification_mode_rejected(setup_api):
+    client, _ = setup_api
+
+    response = client.put(
+        "/api/notifications/mode",
+        headers=auth_header(1001),
+        json={"mode": "invalid"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_cors_allows_authenticated_settings_update(setup_api):
+    client, _ = setup_api
+
+    response = client.options(
+        "/api/notifications/mode",
+        headers={
+            "Origin": "https://jackrv.github.io",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers":
+                "authorization,content-type,ngrok-skip-browser-warning",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers[
+        "access-control-allow-origin"
+    ] == "https://jackrv.github.io"

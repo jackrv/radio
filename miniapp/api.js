@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const API = "https://643d-5-248-51-168.ngrok-free.app";
+  const API = document.querySelector('meta[name="radio345-api"]').content;
   const telegram = window.Telegram?.WebApp;
 
   const pill = document.getElementById("connection-pill");

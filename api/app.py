@@ -1,6 +1,9 @@
 """Защищённый HTTP API Radio 345."""
 
 import sqlite3
+from typing import Literal
+
+from pydantic import BaseModel
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +14,15 @@ from services.miniapp_auth import (
 )
 from services.user_store import require_permission
 from services.receiver_status import read_receiver_status
+from services.notify_mode_store import (
+    load_notify_mode,
+    save_notify_mode,
+)
+
+
+
+class NotificationModeUpdate(BaseModel):
+    mode: Literal["all", "watch", "commands", "off"]
 
 
 def create_app(db_path, bot_token):
@@ -28,7 +40,7 @@ def create_app(db_path, bot_token):
         CORSMiddleware,
         allow_origins=["https://jackrv.github.io"],
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "PUT"],
         allow_headers=["Authorization", "ngrok-skip-browser-warning"],
         max_age=300,
     )
@@ -100,5 +112,52 @@ def create_app(db_path, bot_token):
             "api": "ready",
             "receiver": receiver,
         }
+
+    def require_settings_permission(user, permission):
+        try:
+            require_permission(
+                db_path, user["user_id"], permission
+            )
+        except PermissionError:
+            raise HTTPException(
+                status_code=403,
+                detail="Недостаточно прав",
+            ) from None
+        except sqlite3.Error:
+            raise HTTPException(
+                status_code=503,
+                detail="База пользователей недоступна",
+            ) from None
+
+    @app.get("/api/notifications/mode")
+    def get_notification_mode(user=Depends(current_user)):
+        require_settings_permission(user, "settings.read")
+
+        try:
+            mode = load_notify_mode(db_path)
+        except sqlite3.Error:
+            raise HTTPException(
+                status_code=503,
+                detail="Настройки недоступны",
+            ) from None
+
+        return {"mode": mode}
+
+    @app.put("/api/notifications/mode")
+    def update_notification_mode(
+        payload: NotificationModeUpdate,
+        user=Depends(current_user),
+    ):
+        require_settings_permission(user, "settings.write")
+
+        try:
+            save_notify_mode(db_path, payload.mode)
+        except sqlite3.Error:
+            raise HTTPException(
+                status_code=503,
+                detail="Не удалось сохранить настройки",
+            ) from None
+
+        return {"mode": payload.mode}
 
     return app

@@ -6,10 +6,12 @@
   <meta name="theme-color" content="#0e1824">
   <meta name="description" content="Radio 345 — панель управления распознаванием эфира">
   <title>Radio 345 — управление</title>
+  <meta name="radio345-api" content="https://643d-5-248-51-168.ngrok-free.app">
   <link rel="stylesheet" href="./styles.css">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
   <script src="./app.js" defer></script>
   <script src="./api.js" defer></script>
+  <script src="./notifications.js" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -48,11 +50,11 @@
 
           <div class="two-column">
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</div><h2>Управление эфиром</h2></div><span class="section-icon" aria-hidden="true">◉</span></div>
-              <div class="action-row"><div class="action-icon">◌</div><div><div class="action-title">Полная тишина</div><div class="action-description">Отключить уведомления, не прерывая приём</div></div><button class="mini-button" disabled title="Подключим после авторизации API">Скоро</button></div>
+              <div class="action-row"><div class="action-icon">◌</div><div><div class="action-title">Полная тишина</div><div class="action-description">Отключить уведомления, не прерывая приём</div></div><button class="mini-button" id="silence-toggle" type="button" disabled>Загрузка...</button></div>
               <div class="action-row"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослушивания</div><div class="action-description">Остановить аудиопоток на заданное время</div></div><button class="mini-button" disabled title="Подключим после авторизации API">Скоро</button></div>
             </article>
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">УВЕДОМЛЕНИЯ</div><h2>Режим отправки</h2></div><span class="section-icon" aria-hidden="true">◷</span></div>
-              <div class="notice-box"><div class="notice-dot"></div><div><strong>Настройки не загружены</strong><span>После подключения API здесь появится текущий режим и переключатель.</span></div></div>
+              <div class="notice-box"><div class="notice-dot"></div><div><strong id="notification-mode-label">Загрузка...</strong><span id="notification-mode-detail">Получаем режим уведомлений</span></div></div>
               <button class="text-link" type="button" data-view-target="settings">Посмотреть будущие настройки <span>↗</span></button>
             </article>
           </div>
@@ -82,7 +84,18 @@
 
         <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">КОНФИГУРАЦИЯ</div><h1 id="settings-title">Настройки</h1><p class="lead">Впоследствии изменения будут сохраняться через API.</p></div><span class="tag tag-outline">ТОЛЬКО ПРОСМОТР</span></div>
-          <article class="panel wide-panel"><div class="settings-row"><div><h2>Режим уведомлений</h2><p>Все / наблюдение / команды / тишина</p></div><span class="pending">Не загружено</span></div>
+          <article class="panel wide-panel"><div class="settings-row">
+              <div><h2>Режим уведомлений</h2><p>Изменения сохраняются в SQLite</p></div>
+              <span class="pending" id="settings-mode-value">Загрузка...</span>
+            </div>
+            <fieldset class="notify-mode-options" id="notify-mode-fieldset" disabled>
+              <legend class="visually-hidden">Выберите режим уведомлений</legend>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="all"> 📢 Все сообщения</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="watch"> 👀 Наблюдение</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="commands"> ⚡ Команды</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="off"> 🔕 Полная тишина</label>
+            </fieldset>
+            <p id="notify-mode-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
             <div class="settings-row"><div><h2>Коррекция Qwen</h2><p>Включение и отключение модели</p></div><span class="pending">Не загружено</span></div>
             <div class="settings-row"><div><h2>Чувствительность VAD</h2><p>Уровень определения речи</p></div><span class="pending">Не загружено</span></div>
             <div class="settings-row"><div><h2>Длительность фразы</h2><p>Настройки сегментации аудио</p></div><span class="pending">Не загружено</span></div>

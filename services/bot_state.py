@@ -1,3 +1,5 @@
+import logging
+import sqlite3
 import threading
 
 from services.notify_mode_store import (
@@ -17,7 +19,21 @@ class BotState:
         self._notify_mode_db_path = None
 
     def get_notify_mode(self):
-        """Вызывается под self.lock при конкурентном доступе."""
+        """Возвращает актуальный режим из общей SQLite."""
+        if self._notify_mode_db_path is None:
+            return self.notify_mode
+
+        try:
+            self.notify_mode = load_notify_mode(
+                self._notify_mode_db_path
+            )
+        except sqlite3.Error:
+            logging.getLogger("radio").exception(
+                "Не удалось прочитать режим уведомлений. "
+                "Автоматическая отправка временно отключена."
+            )
+            return "off"
+
         return self.notify_mode
 
     def enable_persistence(self, db_path):

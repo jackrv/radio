@@ -4,7 +4,7 @@ import logging
 
 from services.sqlite_connection import get_db
 
-VALID_MODES = frozenset({"all", "watch", "commands"})
+VALID_MODES = frozenset({"all", "watch", "commands", "off"})
 DEFAULT_MODE = "all"
 
 

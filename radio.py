@@ -18,6 +18,7 @@ from core.supervisor import ApplicationSupervisor
 from core.cooldown import Cooldown
 from core.bounded_queue import DropOldestQueue
 from services.bot_state import BotState
+from services.receiver_status import receiver_heartbeat
 from dotenv import load_dotenv
 
 
@@ -157,6 +158,7 @@ def main():
         min_speech_ms=MIN_SPEECH_MS,
         max_segment_s=MAX_SEGMENT_S,
         log=log,
+        heartbeat_context=lambda: receiver_heartbeat(DB_PATH, log),
     )
     try:
         supervisor.run()

@@ -1,6 +1,6 @@
 import queue
 import signal
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import threading
 
 import sounddevice as sd
@@ -58,6 +58,7 @@ class ApplicationSupervisor:
         stream_factory=None,
         segmenter_factory=None,
         thread_factory=None,
+        heartbeat_context=None,
     ):
         self.frames = frames
         self.segments = segments
@@ -78,6 +79,7 @@ class ApplicationSupervisor:
         self.stream_factory = stream_factory or sd.RawInputStream
         self.segmenter_factory = segmenter_factory or VADSegmenter
         self.thread_factory = thread_factory or threading.Thread
+        self.heartbeat_context = heartbeat_context or nullcontext
 
     def run(self):
         """Запускает рабочие потоки и цикл обработки аудиокадров."""
@@ -116,7 +118,7 @@ class ApplicationSupervisor:
             dtype="int16",
             channels=1,
             callback=self.on_audio,
-        ):
+        ), self.heartbeat_context():
             try:
                 transcriber_error_logged = False
                 restart_policy = RestartPolicy()

@@ -1,0 +1,40 @@
+debug_audio/
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Секреты
+.env
+.env.*
+!.env.example
+# SQLite
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+# Логи и записи аудио
+*.log
+*.wav
+*.npy
+*.ogg
+*.opus
+# Локальные словари
+callsigns.txt
+commands.txt
+telegram.txt
+# Резервные копии
+*.bak
+*.backup
+*.before_*.py
+# macOS
+.DS_Store
+
+.vscode/
+
+vosk-model-*/

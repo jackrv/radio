@@ -1,4 +1,5 @@
 import json
+import queue
 import html
 import logging
 import subprocess
@@ -10,6 +11,7 @@ import requests
 import collections
 
 from services.event_store import resolve_event_text, save_correction
+from services.telegram_retry import retry_delay
 
 class TelegramService:
     def __init__(
@@ -41,6 +43,12 @@ class TelegramService:
         self.get_notify_mode = get_notify_mode
         self.set_notify_mode = set_notify_mode
         self._updates_offset = None
+
+        # Ограниченная очередь исходящих голосовых уведомлений.
+        self._outgoing_queue = queue.Queue(maxsize=32)
+        self._outgoing_lock = threading.Lock()
+        self._outgoing_thread = None
+        self._outgoing_stop = threading.Event()
 
     def get_keyboard(self, fix_id=None):
         """Кнопки управления сообщением."""
@@ -120,7 +128,7 @@ class TelegramService:
                         "reply_markup": reply_markup,
                     },
                     files={"voice": ("phrase.ogg", ogg, "audio/ogg")},
-                    timeout=60,
+                    timeout=(10, 60),
                 )
                 r.raise_for_status()
                 return
@@ -135,7 +143,56 @@ class TelegramService:
                     )
                     self.send_text(caption, reply_markup, parse_mode=None)
                 else:
-                    time.sleep(2)
+                    delay = retry_delay(attempt, e)
+                    self.log.warning(
+                        "Повтор Telegram через %s сек.", delay
+                    )
+                    time.sleep(delay)
+
+    def _outgoing_loop(self):
+        """Отправляет сообщения и завершается после опустошения очереди."""
+        while True:
+            if (
+                self._outgoing_stop.is_set()
+                and self._outgoing_queue.empty()
+            ):
+                return
+
+            try:
+                item = self._outgoing_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            try:
+                self.send_voice(*item)
+            except Exception:
+                self.log.exception(
+                    "Ошибка фоновой отправки Telegram"
+                )
+            finally:
+                self._outgoing_queue.task_done()
+
+    def shutdown(self, timeout=10.0):
+        """Прекращает приём и ожидает завершения отправки."""
+        with self._outgoing_lock:
+            self._outgoing_stop.set()
+            thread = self._outgoing_thread
+
+        if thread is not None:
+            thread.join(timeout=max(0.0, timeout))
+
+        pending = self._outgoing_queue.unfinished_tasks
+
+        if pending:
+            self.log.warning(
+                "Telegram: завершение с %d неотправленными "
+                "или незавершёнными уведомлениями",
+                pending,
+            )
+            return False
+
+        self.log.info("Очередь Telegram обработана")
+        return True
 
     def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None):
         if not (self.bot_token and self.chat_id):
@@ -147,11 +204,34 @@ class TelegramService:
 
         caption = "\n".join(lines) + f"\n\n{text}"
 
-        threading.Thread(
-            target=self.send_voice,
-            args=(pcm, caption, fix_id),
-            daemon=True,
-        ).start()
+        with self._outgoing_lock:
+            if self._outgoing_stop.is_set():
+                self.log.warning(
+                    "Telegram завершает работу: уведомление пропущено"
+                )
+                return
+
+            try:
+                self._outgoing_queue.put_nowait(
+                    (pcm, caption, fix_id)
+                )
+            except queue.Full:
+                self.log.error(
+                    "Очередь Telegram переполнена (32): "
+                    "новое уведомление пропущено"
+                )
+                return
+
+            if (
+                self._outgoing_thread is None
+                or not self._outgoing_thread.is_alive()
+            ):
+                self._outgoing_thread = threading.Thread(
+                    target=self._outgoing_loop,
+                    name="telegram-outbox",
+                    daemon=True,
+                )
+                self._outgoing_thread.start()
 
     def register_phrase_for_fix(self, text: str, event_id: int | None) -> str:
         if event_id is not None:

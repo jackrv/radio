@@ -158,7 +158,10 @@ def main():
         max_segment_s=MAX_SEGMENT_S,
         log=log,
     )
-    supervisor.run()
+    try:
+        supervisor.run()
+    finally:
+        telegram_service.shutdown(timeout=10.0)
 
 
 if __name__ == "__main__":

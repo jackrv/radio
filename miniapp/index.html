@@ -13,7 +13,7 @@
   <script src="./api.js" defer></script>
   <script src="./notifications.js" defer></script>
   <script src="./receiver-controls.js" defer></script>
-  <script src="./correction-editor.js?v=2" defer></script>
+  <script src="./correction-editor.js?v=3" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -84,6 +84,10 @@
             <label for="corrected-text" class="form-label">Исправленный текст</label>
             <textarea id="corrected-text" rows="4" spellcheck="false" disabled></textarea>
             <div class="editor-footer"><span class="subtle-note">Текст подставляется из SQLite.</span><button class="outline-button" id="restore-example" type="button" disabled>Вернуть текст</button></div>
+            <label class="auto-close-option" for="close-after-save">
+              <input id="close-after-save" type="checkbox" checked>
+              <span>Закрывать приложение после сохранения</span>
+            </label>
             <button class="primary-button" id="save-correction-button" type="button" disabled>Сохранить исправление</button>
             <p class="notify-feedback" id="correction-feedback" role="status" aria-live="polite">Для редактирования выбери сообщение в Telegram.</p>
           </article>

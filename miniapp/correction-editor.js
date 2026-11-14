@@ -10,9 +10,33 @@
   const save = document.getElementById("save-correction-button");
   const restore = document.getElementById("restore-example");
   const feedback = document.getElementById("correction-feedback");
+  const autoClose = document.getElementById("close-after-save");
 
   let draft = null;
   let busy = false;
+
+  // Сохраняем предпочтение отдельно на каждом устройстве.
+  const preferenceKey = "radio345:auto-close-after-save";
+
+  try {
+    const stored = localStorage.getItem(preferenceKey);
+    if (stored !== null) {
+      autoClose.checked = stored === "true";
+    }
+  } catch (_) {
+    // Если хранилище недоступно, используем значение чекбокса.
+  }
+
+  autoClose.addEventListener("change", () => {
+    try {
+      localStorage.setItem(
+        preferenceKey,
+        String(autoClose.checked)
+      );
+    } catch (_) {
+      // Выбор всё равно действует в текущем сеансе.
+    }
+  });
 
   async function request(method, body = null) {
     if (!telegram?.initData) {
@@ -81,7 +105,26 @@
       draft.current_text = result.corrected_text;
       edited.value = result.corrected_text;
       edited.disabled = true;
-      feedback.textContent = "✅ Исправление сохранено в SQLite. Можно закрыть окно.";
+      if (
+        autoClose.checked &&
+        typeof telegram?.close === "function"
+      ) {
+        feedback.textContent =
+          "✅ Исправление сохранено. Закрываем редактор...";
+
+        // Показываем подтверждение перед закрытием.
+        window.setTimeout(() => {
+          try {
+            telegram.close();
+          } catch (_) {
+            feedback.textContent =
+              "✅ Исправление сохранено. Закрой окно вручную.";
+          }
+        }, 500);
+      } else {
+        feedback.textContent =
+          "✅ Исправление сохранено в SQLite. Можно закрыть окно.";
+      }
     } catch (error) {
       feedback.textContent = error.message;
       save.disabled = false;

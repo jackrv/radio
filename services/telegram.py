@@ -29,6 +29,7 @@ class TelegramService:
     waiting_for_correction,
     get_notify_mode,
     set_notify_mode,
+    apply_telegram_mode=None,
 ):
         self.recent_phrases = collections.OrderedDict()
         self._phrases_lock = threading.Lock()
@@ -46,6 +47,7 @@ class TelegramService:
         self.waiting_for_correction = waiting_for_correction
         self.get_notify_mode = get_notify_mode
         self.set_notify_mode = set_notify_mode
+        self.apply_telegram_mode = apply_telegram_mode
         self._updates_offset = None
 
         # Ограниченная очередь исходящих голосовых уведомлений.
@@ -445,8 +447,28 @@ class TelegramService:
 
         if text_msg in modes:
             mode, response = modes[text_msg]
+            update_id = upd.get("update_id")
+
             with self.state_lock:
-                self.set_notify_mode(mode)
+                if (
+                    self.apply_telegram_mode is not None
+                    and type(update_id) is int
+                ):
+                    applied = self.apply_telegram_mode(
+                        mode, update_id
+                    )
+                else:
+                    # Совместимость с прямыми вызовами handle_update
+                    # без update_id, в том числе в старых тестах.
+                    self.set_notify_mode(mode)
+                    applied = True
+
+            if not applied:
+                self.log.info(
+                    "Повторная Telegram-команда %s пропущена",
+                    update_id,
+                )
+                return
 
             self.log.info("Режим изменен на: %s", mode)
             self.send_text(response)

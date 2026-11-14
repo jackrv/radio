@@ -67,3 +67,55 @@ def save_notify_mode(db_path, mode):
             """,
             ("notify_mode", mode),
         )
+
+
+def apply_telegram_notify_mode(db_path, update_id, mode):
+    """Атомарно сохраняет команду Telegram и её offset.
+
+    Возвращает True, если команда применена впервые.
+    False означает, что это обновление уже подтверждено.
+    """
+    from services.telegram_offset_store import (
+        _ensure_table as ensure_offset_table,
+    )
+
+    if mode not in VALID_MODES:
+        raise ValueError("Недопустимый режим уведомлений")
+
+    if type(update_id) is not int or update_id < 0:
+        raise ValueError("Некорректный Telegram update_id")
+
+    with get_db(db_path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        ensure_table(db)
+        ensure_offset_table(db)
+
+        row = db.execute("""
+            SELECT next_offset
+            FROM telegram_poll_state
+            WHERE id = 1
+        """).fetchone()
+
+        if row is not None and update_id < row[0]:
+            return False
+
+        db.execute("""
+            INSERT INTO bot_settings
+                (setting_key, setting_value)
+            VALUES ('notify_mode', ?)
+            ON CONFLICT(setting_key) DO UPDATE SET
+                setting_value = excluded.setting_value
+        """, (mode,))
+
+        db.execute("""
+            INSERT INTO telegram_poll_state
+                (id, next_offset)
+            VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                next_offset = MAX(
+                    telegram_poll_state.next_offset,
+                    excluded.next_offset
+                )
+        """, (update_id + 1,))
+
+    return True

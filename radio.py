@@ -92,6 +92,7 @@ telegram_service = TelegramService(
     waiting_for_correction=bot_state.waiting_for_correction,
     get_notify_mode=bot_state.get_notify_mode,
     set_notify_mode=bot_state.set_notify_mode,
+    apply_telegram_mode=bot_state.apply_telegram_mode,
 )
 
 # ---------- База данных (потокобезопасно) ----------

@@ -6,6 +6,7 @@ from services.notify_mode_store import (
     VALID_MODES,
     load_notify_mode,
     save_notify_mode,
+    apply_telegram_notify_mode,
 )
 
 
@@ -61,3 +62,26 @@ class BotState:
             )
 
         self.notify_mode = mode
+
+
+    def apply_telegram_mode(self, mode, update_id):
+        """Вызывается под self.lock из TelegramService."""
+        if self._notify_mode_db_path is None:
+            raise RuntimeError(
+                "Сначала включите сохранение BotState"
+            )
+
+        applied = apply_telegram_notify_mode(
+            self._notify_mode_db_path,
+            update_id,
+            mode,
+        )
+
+        if applied:
+            self.notify_mode = mode
+        else:
+            self.notify_mode = load_notify_mode(
+                self._notify_mode_db_path
+            )
+
+        return applied

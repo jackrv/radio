@@ -7,15 +7,15 @@
   <meta name="description" content="Radio 345 — панель управления распознаванием эфира">
   <title>Radio 345 — управление</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css?v=6">
+  <link rel="stylesheet" href="./styles.css?v=7">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
   <script src="./app.js?v=6" defer></script>
-  <script src="./client.js?v=1" defer></script>
+  <script src="./client.js?v=2" defer></script>
   <script src="./api.js?v=6" defer></script>
   <script src="./notifications.js?v=6" defer></script>
   <script src="./receiver-controls.js?v=6" defer></script>
-  <script src="./correction-editor.js?v=5" defer></script>
-  <script src="./management.js?v=1" defer></script>
+  <script src="./correction-editor.js?v=6" defer></script>
+  <script src="./management.js?v=2" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -83,7 +83,7 @@
 
         <section class="view" id="view-corrections" aria-labelledby="corrections-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">ПРОВЕРКА РАСПОЗНАВАНИЯ</div><h1 id="corrections-title">Исправления</h1><p class="lead">Исправь фразу, не копируя текст вручную.</p></div><span class="tag tag-outline">SQLITE</span></div>
-          <article class="panel wide-panel margin-bottom">
+          <article class="panel wide-panel margin-bottom" id="phrases-panel">
             <h2>Журнал фраз</h2>
             <form id="phrases-search" class="toolbar"><label class="visually-hidden" for="phrases-query">Поиск фраз</label><input id="phrases-query" maxlength="200" placeholder="Найти текст"><button type="submit" class="outline-button">Найти / обновить</button></form>
             <p class="subtle-note">События SQLite и временные фразы (до 24 часов, максимум 200). Для редактирования нужна роль редактора или администратора.</p>
@@ -91,7 +91,7 @@
             <div class="toolbar"><button id="phrases-prev" class="outline-button" type="button">Назад</button><button id="phrases-next" class="outline-button" type="button">Далее</button></div>
             <p id="phrases-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
           </article>
-          <article class="panel wide-panel"><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
+          <article class="panel wide-panel" id="correction-editor-panel"><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
             <label for="original-text" class="form-label">Исходный текст</label><div class="source-text" id="original-text">Открой редактор кнопкой под сообщением Telegram.</div>
             <label for="corrected-text" class="form-label">Исправленный текст</label>
             <textarea id="corrected-text" rows="4" spellcheck="false" disabled></textarea>

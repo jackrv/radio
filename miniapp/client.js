@@ -3,7 +3,7 @@
 // Shared transport for management screens. No credentials or phrase text in storage.
 window.Radio345 = (() => {
   const base = document.querySelector('meta[name="radio345-api"]').content;
-  async function request(path, method = "GET", body) {
+  async function request(path, method = "GET", body, format = "json") {
     const initData = window.Telegram?.WebApp?.initData;
     if (!initData) throw new Error("Открой панель через Telegram-бота.");
     const controller = new AbortController();
@@ -37,7 +37,7 @@ window.Radio345 = (() => {
         error.status = response.status;
         throw error;
       }
-      return await response.json();
+      return format === "blob" ? await response.blob() : await response.json();
     } catch (error) {
       if (error.name === "AbortError") throw new Error("Сервер не ответил за 15 секунд. Повтори попытку.");
       throw error;

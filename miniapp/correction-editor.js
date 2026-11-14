@@ -54,6 +54,11 @@
   }
 
   function openEditor() {
+    // Keep async journal rendering below the editor. It must not move the field
+    // after scrolling, especially in Telegram's mobile WebView.
+    const panel = document.getElementById("correction-editor-panel");
+    const journal = document.getElementById("phrases-panel");
+    if (panel && journal) journal.before(panel);
     document.querySelector('[data-view-target="corrections"]').click();
   }
 
@@ -131,8 +136,9 @@
       save.disabled = false;
       restore.disabled = false;
       feedback.textContent = "Текст уже подставлен. Исправь ошибку и сохрани.";
-      edited.focus();
-      edited.scrollIntoView({ block: "center", behavior: "smooth" });
+      // Do not open the mobile keyboard until the operator taps the field.
+      // Avoid competing smooth scroll and keyboard viewport animations.
+      edited.scrollIntoView({ block: "center", behavior: "instant" });
     } catch (error) {
       feedback.textContent = error.message;
     }

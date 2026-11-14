@@ -18,6 +18,9 @@ from services.telegram_phrase_store import (
     register_phrase, load_phrase, update_phrase_text, RETENTION_SECONDS,
 )
 from services.sqlite_connection import get_db
+from services.telegram_media_store import (
+    remember_message, callback_fix_id, deletion_intent, deletion_result, FIX_RE,
+)
 from services.telegram_pending import (
     save_pending_correction,
     load_pending_correction,
@@ -72,7 +75,8 @@ class TelegramService:
 
     def get_keyboard(self, fix_id=None):
         """Кнопки управления сообщением."""
-        row = [{"text": "🗑 Удалить", "callback_data": "del"}]
+        delete_data = f"del:{fix_id}" if fix_id and FIX_RE.fullmatch(fix_id) else "del"
+        row = [{"text": "🗑 Удалить", "callback_data": delete_data}]
         rows = [row]
         if fix_id is not None:
             if (
@@ -120,8 +124,29 @@ class TelegramService:
                 timeout=15,
             )
             r.raise_for_status()
+            if reply_markup:
+                try:
+                    markup = json.loads(reply_markup)
+                    for row in markup.get("inline_keyboard", []):
+                        for button in row:
+                            data = button.get("callback_data", "")
+                            if data.startswith("del:"):
+                                self._remember_sent(r, data[4:])
+                except (TypeError, ValueError):
+                    pass
         except requests.RequestException as e:
             self.log.error("Telegram (текст) не отправлен: %s", e)
+
+    def _remember_sent(self, response, fix_id):
+        if not fix_id:
+            return
+        try:
+            payload = response.json()
+            if isinstance(payload, dict) and payload.get("ok") is True:
+                remember_message(self.db_path, fix_id, payload.get("result"))
+        except (sqlite3.Error, ValueError):
+            # Do not retry an already sent message when local metadata fails.
+            self.log.warning("Не удалось сохранить связь сообщения Telegram с фразой")
 
     def pcm_to_ogg(self, pcm: bytes) -> bytes:
         proc = subprocess.run(
@@ -181,6 +206,7 @@ class TelegramService:
                     timeout=(10, 60),
                 )
                 r.raise_for_status()
+                self._remember_sent(r, fix_id)
                 return
             except requests.RequestException as e:
                 self.log.warning(
@@ -373,18 +399,26 @@ class TelegramService:
             data = cq.get("data", "")
             msg_id = (cq.get("message") or {}).get("message_id")
 
-            if data == "del":
+            if data == "del" or data.startswith("del:"):
+                fix_id = callback_fix_id(self.db_path, data, cq.get("message") or {})
+                if fix_id:
+                    # Durable intent survives a crash after Telegram deletes the message.
+                    deletion_intent(self.db_path, fix_id)
                 d = requests.post(
                     f"{self.api}/deleteMessage",
                     data={"chat_id": chat_id, "message_id": msg_id},
                     timeout=15,
                 ).json()
 
+                success = d.get("ok") is True or d.get("description") == "Bad Request: message to delete not found"
+                if fix_id:
+                    deletion_result(self.db_path, fix_id, success)
+
                 requests.post(
                     f"{self.api}/answerCallbackQuery",
                     data={
                         "callback_query_id": cq["id"],
-                        "text": "Удалено" if d.get("ok") else "Ошибка",
+                        "text": "Удалено" if success else "Ошибка",
                     },
                     timeout=15,
                 )

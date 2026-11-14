@@ -9,6 +9,12 @@
   const roles = { viewer: "Наблюдатель", editor: "Редактор", admin: "Администратор" };
   const states = { active: "Активно", pending: "Ожидает подтверждений / проверка конфликтов", disabled: "Отключено" };
   const loaded = new Set();
+  const audioUrls = new Set();
+  function releaseAudio() {
+    for (const url of audioUrls) URL.revokeObjectURL(url);
+    audioUrls.clear();
+  }
+  window.addEventListener("pagehide", releaseAudio);
 
   function node(tag, text, className) {
     const item = document.createElement(tag);
@@ -51,6 +57,7 @@
       message(prefix === "rules" ? "dictionary-feedback" : "phrases-feedback", "Загрузка...");
       try {
         const data = await request(`${path}?q=${encodeURIComponent(query)}&offset=${offset}&limit=20`);
+        if (prefix === "phrases") releaseAudio();
         $(prefix + "-list").replaceChildren();
         for (const item of data.items) $(prefix + "-list").append(render(item));
         if (!data.items.length) $(prefix + "-list").append(node("p", "Записей нет.", "subtle-note"));
@@ -77,6 +84,33 @@
     card.append(node("div", `${localDate(item.created_at)} · ${item.fix_id.startsWith("mem:") ? "Временная фраза" : item.fix_id}`, "subtle-note"));
     card.append(node("p", item.current_text, "phrase-text"));
     if (item.original_text !== item.current_text) card.append(node("p", `Исходный текст: ${item.original_text}`, "subtle-note phrase-text"));
+    if (item.has_audio) {
+      const listen = button("▶ Прослушать аудио", async () => {
+        listen.disabled = true;
+        listen.textContent = "Загружаем аудио...";
+        try {
+          const blob = await request(`/api/phrases/audio?fix_id=${encodeURIComponent(item.fix_id)}`, "GET", undefined, "blob");
+          if (!card.isConnected) return;
+          const player = node("audio");
+          player.controls = true;
+          const url = URL.createObjectURL(blob);
+          audioUrls.add(url);
+          player.src = url;
+          player.addEventListener("error", () => {
+            message("phrases-feedback", "Устройство не воспроизводит OGG. Прослушай исходное голосовое в Telegram.", true);
+            URL.revokeObjectURL(url); audioUrls.delete(url);
+          });
+          card.append(player);
+          listen.hidden = true;
+        } catch (error) {
+          message("phrases-feedback", error.message, true);
+          listen.disabled = false; listen.textContent = "▶ Повторить загрузку аудио";
+        }
+      });
+      card.append(listen);
+    } else {
+      card.append(node("p", "Аудиозапись не привязана к этой фразе.", "subtle-note"));
+    }
     if (canEdit()) card.append(button("Исправить", () => {
       const url = new URL(window.location.href);
       url.searchParams.set("fix_id", item.fix_id);
@@ -281,7 +315,7 @@
 
   const loaders = { home: overview, corrections: phrases, dictionaries: loadDictionary, settings, users };
   async function loadView(name) {
-    if (!me || !loaders[name] || loaded.has(name)) return;
+    if (!me || !loaders[name] || (loaded.has(name) && name !== "corrections")) return;
     loaded.add(name);
     await loaders[name]();
   }

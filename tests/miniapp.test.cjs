@@ -15,13 +15,15 @@ class Element {
     this.value = "";
     this.textContent = "";
     this.style = {};
+    this.isConnected = true;
     this.classList = { toggle() {} };
   }
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = items; }
   setAttribute() {}
-  focus() {}
-  scrollIntoView() {}
+  focus() { this.focused = true; }
+  scrollIntoView(options) { this.scrolled = options; }
+  before(item) { this.beforeItem = item; }
   click() {}
   addEventListener(name, callback) { (this.events[name] ||= []).push(callback); }
   async fire(name) { for (const callback of this.events[name] || []) await callback({ preventDefault() {} }); await tick(); }
@@ -72,6 +74,12 @@ test("client never sends a request without Telegram authorization", async () => 
   const client = clientFixture(async () => { calls++; }, false);
   await assert.rejects(client.request("/api/phrases"), /Telegram/);
   assert.equal(calls, 0);
+});
+
+test("audio is fetched as a blob with the same authentication", async () => {
+  const audio = new Blob(["OggSfake"]);
+  const client = clientFixture(async () => ({ ok: true, blob: async () => audio }));
+  assert.equal(await client.request("/api/phrases/audio?fix_id=db%3A1", "GET", undefined, "blob"), audio);
 });
 
 for (const code of [401, 403, 404, 409, 503]) {
@@ -170,6 +178,21 @@ test("viewer dictionary buttons and fields stay disabled", async () => {
   assert.equal(calls.some(c => c.method === "PUT"), false);
 });
 
+test("viewer can load an authenticated audio player beside a phrase", async () => {
+  const { get, view, calls } = await managementFixture("viewer", (url) => {
+    if (url.startsWith("/api/phrases?")) return { items: [{ fix_id: "db:1", current_text: "Ліра", has_audio: true }], has_more: false };
+    if (url.startsWith("/api/phrases/audio?")) return new Blob(["OggSfake"]);
+  });
+  await view("corrections");
+  const card = get("phrases-list").children[0];
+  const listen = card.children.find(child => child.tagName === "button");
+  await listen.fire("click");
+  assert.equal(listen.hidden, true);
+  assert.equal(card.children.at(-1).tagName, "audio");
+  assert.equal(card.children.at(-1).controls, true);
+  assert(calls.some(call => call.url === "/api/phrases/audio?fix_id=db%3A1"));
+});
+
 test("admin user edit sends expected version and requires confirmation", async () => {
   const { get, view, calls } = await managementFixture();
   await view("users");
@@ -222,6 +245,9 @@ async function correctionFixture(autoClose) {
 test("editor can save twice without auto-close using the latest expected text", async () => {
   const { get, writes, isClosed } = await correctionFixture(false);
   assert.equal(get("corrected-text").value, "Лира 68");
+  assert.equal(get("phrases-panel").beforeItem, get("correction-editor-panel"));
+  assert.equal(get("corrected-text").focused, undefined);
+  assert.equal(get("corrected-text").scrolled.behavior, "instant");
   get("corrected-text").value = "Ліра 68";
   await get("save-correction-button").fire("click");
   assert.equal(get("corrected-text").disabled, false);

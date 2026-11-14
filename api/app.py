@@ -266,5 +266,5 @@ def create_app(db_path, bot_token):
                 detail="Не удалось сохранить команду",
             ) from None
 
-    app.include_router(management_router(db_path, current_user, require_settings_permission))
+    app.include_router(management_router(db_path, current_user, require_settings_permission, bot_token))
     return app

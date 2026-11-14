@@ -5,8 +5,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
+from fastapi.responses import Response
 
 from services import miniapp_management as store
+from services.miniapp_correction_editor import load_edit_draft
+from services.telegram_media_store import audio_file_id
+from services.telegram_audio import download_voice, AudioUnavailable
 
 
 class Entry(BaseModel):
@@ -49,7 +53,7 @@ class SettingsUpdate(BaseModel):
     expected_revision: int = Field(ge=0, strict=True)
 
 
-def management_router(db_path, current_user, check_permission):
+def management_router(db_path, current_user, check_permission, bot_token):
     router = APIRouter(prefix="/api")
 
     def call(user, permission, operation, *args):
@@ -80,6 +84,18 @@ def management_router(db_path, current_user, check_permission):
     @router.get("/dictionaries/{kind}")
     def dictionary(kind: Literal["callsigns", "commands", "telegram"], user=Depends(current_user)):
         return call(user, "dictionaries.read", store.read_dictionary, kind)
+
+    @router.get("/phrases/audio")
+    def audio(fix_id: str = Query(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$"),
+              user=Depends(current_user)):
+        # Same TTL, deletion and authentication rules as the phrase itself.
+        call(user, "events.read", load_edit_draft, fix_id)
+        file_id = call(user, "events.read", audio_file_id, fix_id)
+        try:
+            content = download_voice(bot_token, file_id)
+        except AudioUnavailable:
+            raise HTTPException(502, "Не удалось получить аудио из Telegram") from None
+        return Response(content, media_type="audio/ogg", headers={"Cache-Control": "no-store"})
 
     @router.put("/dictionaries/{kind}")
     def update_dictionary(kind: Literal["callsigns", "commands", "telegram"],

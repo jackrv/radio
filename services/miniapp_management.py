@@ -12,6 +12,7 @@ from services.sqlite_connection import get_db
 from services.user_store import _require_permission, _valid_id
 from services.word_store import refresh_word_rule_statuses
 from services.telegram_phrase_store import ensure_table, RETENTION_SECONDS
+from services.telegram_media_store import ensure_table as ensure_media_table
 
 
 class ManagementConflict(Exception):
@@ -102,8 +103,11 @@ def write_dictionary(db_path, actor_id, kind, entries, expected_version):
 def list_phrases(db_path, query="", offset=0, limit=20):
     with get_db(db_path) as db:
         ensure_table(db)
+        ensure_media_table(db)
         db.execute("DELETE FROM telegram_recent_phrases WHERE created_at <= ?",
                    (int(time.time()) - RETENTION_SECONDS,))
+        db.execute("""DELETE FROM telegram_phrase_messages WHERE fix_id LIKE 'mem:%'
+            AND NOT EXISTS (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:' || p.token=fix_id)""")
         db.create_function("casefold", 1, lambda text: (text or "").casefold())
         rows = db.execute("""
             SELECT * FROM (
@@ -113,11 +117,16 @@ def list_phrases(db_path, query="", offset=0, limit=20):
                 UNION ALL
                 SELECT 'mem:' || token, original_text, current_text,
                        datetime(created_at, 'unixepoch') FROM telegram_recent_phrases
-            ) WHERE instr(casefold(original_text), ?) > 0 OR instr(casefold(current_text), ?) > 0
+            ) AS phrases WHERE (instr(casefold(original_text), ?) > 0 OR instr(casefold(current_text), ?) > 0)
+              AND NOT EXISTS (SELECT 1 FROM telegram_phrase_messages m
+                  WHERE m.fix_id=phrases.fix_id AND m.state<>'visible')
             ORDER BY created_at DESC, fix_id DESC LIMIT ? OFFSET ?
         """, (query.casefold(), query.casefold(), limit + 1, offset)).fetchall()
-    return {"items": [dict(zip(("fix_id", "original_text", "current_text", "created_at"), r))
-                      for r in rows[:limit]], "has_more": len(rows) > limit}
+        media = {row[0]: bool(db.execute(
+            "SELECT 1 FROM telegram_phrase_messages WHERE fix_id=? AND state='visible' AND voice_file_id IS NOT NULL",
+            (row[0],)).fetchone()) for row in rows[:limit]}
+    return {"items": [{**dict(zip(("fix_id", "original_text", "current_text", "created_at"), r)),
+                       "has_audio": bool(media.get(r[0]))} for r in rows[:limit]], "has_more": len(rows) > limit}
 
 
 def list_rules(db_path, query="", offset=0, limit=20):

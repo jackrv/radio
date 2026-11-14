@@ -5,6 +5,7 @@ import re
 from services.event_store import save_correction
 from services.sqlite_connection import get_db
 from services.telegram_phrase_store import load_phrase, update_phrase_text
+from services.telegram_media_store import is_hidden
 
 
 class CorrectionConflict(Exception):
@@ -20,6 +21,8 @@ def event_id_from_fix_id(fix_id: str) -> int:
 
 
 def load_edit_draft(db_path, fix_id: str):
+    if is_hidden(db_path, fix_id):
+        raise LookupError("Сообщение удалено")
     if fix_id.startswith("mem:"):
         phrase = load_phrase(db_path, fix_id[4:])
         if phrase is None:
@@ -55,6 +58,8 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
     with get_db(db_path) as db:
         # Serializes edits with other SQLite writers; protects against lost updates.
         db.execute("BEGIN IMMEDIATE")
+        if is_hidden(db_path, fix_id, db=db):
+            raise LookupError("Сообщение удалено")
         if memory_token is not None:
             phrase = load_phrase(db_path, memory_token, db=db)
             if phrase is None:

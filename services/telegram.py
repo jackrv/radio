@@ -11,7 +11,11 @@ import requests
 import collections
 
 from services.event_store import resolve_event_text, save_correction
-from services.telegram_retry import retry_delay
+from services.telegram_retry import retry_delay, listener_retry_delay
+from services.telegram_offset_store import (
+    load_telegram_offset,
+    save_telegram_offset,
+)
 
 class TelegramService:
     def __init__(
@@ -510,8 +514,23 @@ class TelegramService:
             file.flush()
             os.fsync(file.fileno())
 
+    def _advance_offset(self, update_id):
+        next_offset = update_id + 1
+
+        # Сначала сохраняем в SQLite, только потом
+        # считаем обновление подтверждённым в памяти.
+        save_telegram_offset(self.db_path, next_offset)
+        self._updates_offset = next_offset
+
     def callback_listener(self):
         """Слушает нажатия кнопок и команды управления режимами/обучением."""
+
+        if self._updates_offset is None:
+            self._updates_offset = load_telegram_offset(
+                self.db_path
+            )
+
+        consecutive_errors = 0
 
         while True:
             try:
@@ -528,11 +547,24 @@ class TelegramService:
                 )
 
                 if r.status_code != 200:
+                    consecutive_errors += 1
+                    delay = listener_retry_delay(consecutive_errors)
+
                     self.log.warning(
-                        "Telegram getUpdates вернул статус %s", r.status_code
+                        "Telegram getUpdates: HTTP %s; "
+                        "повтор через %s сек. (ошибок подряд: %s)",
+                        r.status_code, delay, consecutive_errors,
                     )
-                    time.sleep(5)
+                    time.sleep(delay)
                     continue
+
+                if consecutive_errors:
+                    self.log.info(
+                        "Связь с Telegram восстановлена "
+                        "после %s ошибок опроса",
+                        consecutive_errors,
+                    )
+                    consecutive_errors = 0
 
                 for upd in r.json().get("result", []):
                     try:
@@ -543,6 +575,14 @@ class TelegramService:
                         self.log.exception(
                             "Telegram прислал update без корректного update_id"
                         )
+                        continue
+
+                    # Защита от повторного получения уже
+                    # подтверждённого обновления.
+                    if (
+                        self._updates_offset is not None
+                        and update_id < self._updates_offset
+                    ):
                         continue
 
                     try:
@@ -578,7 +618,7 @@ class TelegramService:
                             time.sleep(5)
                             break
 
-                        self._updates_offset = update_id + 1
+                        self._advance_offset(update_id)
                         retries.pop(update_id, None)
 
                         self.log.critical(
@@ -589,12 +629,19 @@ class TelegramService:
                         )
 
                     else:
-                        self._updates_offset = update_id + 1
+                        self._advance_offset(update_id)
                         retries = getattr(self, "_update_retries", None)
 
                         if retries is not None:
                             retries.pop(update_id, None)
 
             except (requests.RequestException, ValueError, KeyError) as e:
-                self.log.warning("Сбой связи в callback_listener: %s", e)
-                time.sleep(5)
+                consecutive_errors += 1
+                delay = listener_retry_delay(consecutive_errors)
+
+                self.log.warning(
+                    "Сбой связи в callback_listener: %s; "
+                    "повтор через %s сек. (ошибок подряд: %s)",
+                    e, delay, consecutive_errors,
+                )
+                time.sleep(delay)

@@ -70,10 +70,6 @@ def test_correction_recalculates_all_fields(event_db):
             (event_id,),
         ).fetchone()
 
-        legacy_count = db.execute(
-            "SELECT COUNT(*) FROM corrections"
-        ).fetchone()[0]
-
     assert row == (
         CORRECTED,
         "липка 700, наган 112",
@@ -82,8 +78,6 @@ def test_correction_recalculates_all_fields(event_db):
         "наган 112",
         ORIGINAL,
     )
-
-    assert legacy_count == 0
 
 
 def test_failed_update_rolls_back_training(event_db):
@@ -113,7 +107,7 @@ def test_failed_update_rolls_back_training(event_db):
         ).fetchone()[0]
 
         count = db.execute(
-            "SELECT COUNT(*) FROM corrections"
+            "SELECT COUNT(*) FROM word_correction_votes"
         ).fetchone()[0]
 
     assert text == ORIGINAL
@@ -136,12 +130,7 @@ def test_memory_only_training_still_works(tmp_path):
             "SELECT COUNT(*) FROM word_correction_votes"
         ).fetchone()[0]
 
-        legacy = db.execute(
-            "SELECT COUNT(*) FROM corrections"
-        ).fetchone()[0]
-
     assert votes == 1
-    assert legacy == 0
 
 def test_missing_event_does_not_save_training(event_db):
     path, _ = event_db
@@ -156,7 +145,7 @@ def test_missing_event_does_not_save_training(event_db):
 
     with sqlite3.connect(path) as db:
         count = db.execute(
-            "SELECT COUNT(*) FROM corrections"
+            "SELECT COUNT(*) FROM word_correction_votes"
         ).fetchone()[0]
 
     assert count == 0

@@ -1,7 +1,6 @@
 import re
 import sys
 from collections import defaultdict
-from pathlib import Path
 
 from rapidfuzz import fuzz, process
 
@@ -120,18 +119,13 @@ def to_items(text: str) -> list[tuple[str, str]]:
 
 class Callsigns:
     """
-    Формат файла (всё, кроме слов и номеров, необязательно):
+    Формат рядків словника (усе, крім слів і номерів, необов’язкове):
         # комментарий
         липка: 204 205 300-310     слово с номерами и диапазонами
         липка: *                   слово с любым номером
         вовк                       слово без номера
         буревій 1313               «слово номер» (по одной паре в строке)
     """
-
-    
-    def __init__(self, path, threshold=80, standalone_threshold=90):
-        lines = Path(path).read_text(encoding="utf-8").splitlines()
-        self._load_lines(lines, threshold, standalone_threshold)
 
     @classmethod
     def from_lines(cls, lines, threshold=80, standalone_threshold=90):
@@ -218,8 +212,12 @@ class Callsigns:
 
 
 if __name__ == "__main__":
-    # быстрая проверка без микрофона:
-    #   python callsigns.py commands.txt "арба п'ятнадцять п'ятнадцять"
-    cs = Callsigns(sys.argv[1])
+    # Швидка перевірка розділу dictionaries.txt без мікрофона:
+    #   python callsigns.py commands "арба п'ятнадцять п'ятнадцять"
+    from config import DICTIONARIES_PATH
+    from database import parse_dictionary_file
+
+    sections = parse_dictionary_file(DICTIONARIES_PATH.read_text(encoding="utf-8-sig"))
+    cs = Callsigns.from_lines([line for line, on in sections[sys.argv[1]] if on])
     for name, num, score in cs.find(" ".join(sys.argv[2:])):
         print(name, num or "", f"({score:.0f})")

@@ -25,9 +25,7 @@ __pycache__/
 *.ogg
 *.opus
 # Локальные словари
-callsigns.txt
-commands.txt
-telegram.txt
+dictionaries.txt
 # Резервные копии
 *.bak
 *.backup
@@ -37,7 +35,6 @@ telegram.txt
 
 .vscode/
 
-vosk-model-*/
 telegram_failed_updates.jsonl
 diagnostics.json
 diagnostics-report.json

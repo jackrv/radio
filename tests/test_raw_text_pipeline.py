@@ -47,7 +47,6 @@ def test_transcriber_passes_original_text(monkeypatch):
 
 
 def make_processor(db_path):
-    from unittest.mock import patch
 
     callsigns = Mock()
     callsigns.find.return_value = []

@@ -1,6 +1,5 @@
 from pathlib import Path
 import sqlite3
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -13,16 +12,29 @@ from services.user_store import bootstrap_admin
 from services.telegram_offset_store import save_telegram_offset, load_telegram_offset
 
 
+SOURCE = """# коментар не імпортується
+[callsigns]
+Ліра: 68
+# @radio345-disabled: Ліпка: 700
+
+[commands]
+Прийом
+
+[telegram]
+Ліра: 68
+"""
+
+
 def sources(folder):
     folder.mkdir(exist_ok=True)
-    for name, text in {"callsigns.txt": "Ліра: 68\n# @radio345-disabled: Ліпка: 700\n", "commands.txt": "Прийом\n", "telegram.txt": "Ліра: 68\n"}.items():
-        (folder / name).write_text(text)
+    path = folder / "dictionaries.txt"
+    path.write_text(SOURCE, encoding="utf-8")
+    return path
 
 
 @pytest.fixture
 def setup(tmp_path):
-    source = tmp_path / "source"
-    sources(source)
+    source = sources(tmp_path / "source")
     db = tmp_path / "events.db"
     initialize_database(db, source)
     bootstrap_admin(db, 1001)
@@ -33,8 +45,10 @@ def test_reset_exports_backs_up_and_keeps_admin_and_identity_counters(setup, tmp
     db, _ = setup
     old_id = save_event("", "", "", "", "тест", db)
     save_telegram_offset(db, 700)
-    export = tmp_path / "export"
+    export = tmp_path / "export" / "dictionaries.txt"
     result = reset_database(db, export, tmp_path / "backup")
+    assert result["exported"] == {"callsigns": 2, "commands": 1, "telegram": 1}
+    assert export.stat().st_mode & 0o777 == 0o600
     assert result["active_admins"] == 1
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM radio_events").fetchone()[0] == 0
@@ -49,15 +63,15 @@ def test_reset_exports_backs_up_and_keeps_admin_and_identity_counters(setup, tmp
         assert conn.execute("SELECT raw_line,enabled FROM dictionary_entries WHERE dictionary_type='callsigns' ORDER BY line_number").fetchall() == [("Ліра: 68", 1), ("Ліпка: 700", 0)]
 
 
-def test_import_deletes_only_working_sources_after_commit(tmp_path):
-    source = tmp_path / "source"
-    sources(source)
-    template = source / "callsigns.example.txt"
-    template.write_text("# Порожній шаблон\n")
+def test_import_deletes_only_working_source_after_commit(tmp_path):
+    source = sources(tmp_path / "source")
+    template = source.parent / "dictionaries.example.txt"
+    template.write_text("[callsigns]\n# липка: 700\n")
     db = tmp_path / "events.db"
-    result = initialize_database(db, source, delete_sources=True)
+    result = initialize_database(db, source, delete_source=True)
     assert result["cleanup_remaining"] == []
-    assert not (source / "callsigns.txt").exists()
+    assert result["imported"] == {"callsigns": 2, "commands": 1, "telegram": 1}
+    assert not source.exists()
     assert template.exists()
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM dictionary_entries").fetchone()[0] == 4
@@ -66,41 +80,40 @@ def test_import_deletes_only_working_sources_after_commit(tmp_path):
 def test_failed_import_never_deletes_sources(setup):
     db, source = setup
     with pytest.raises(RuntimeError):
-        import_dictionaries(source, db, delete_sources=True)
-    assert all((source / name).exists() for name in ("callsigns.txt", "commands.txt", "telegram.txt"))
+        import_dictionaries(source, db, delete_source=True)
+    assert source.exists()
 
 
 def test_import_failure_rolls_back_all_categories_and_preserves_sources(tmp_path):
-    source = tmp_path / "source"
-    sources(source)
+    source = sources(tmp_path / "source")
     db = tmp_path / "events.db"
     from database import init_db
     init_db(db)
     with get_db(db) as conn:
         conn.execute("CREATE TRIGGER fail_import BEFORE INSERT ON dictionary_entries WHEN NEW.dictionary_type='telegram' BEGIN SELECT RAISE(ABORT,'test'); END")
     with pytest.raises(sqlite3.Error):
-        import_dictionaries(source, db, delete_sources=True)
+        import_dictionaries(source, db, delete_source=True)
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM dictionary_entries").fetchone()[0] == 0
-    assert (source / "callsigns.txt").is_file()
+    assert source.is_file()
 
 
-def test_empty_templates_cannot_initialize_receiver(tmp_path):
-    source = tmp_path / "source"
-    source.mkdir()
-    for name in ("callsigns", "commands", "telegram"):
-        (source / f"{name}.txt").write_text("# Порожній шаблон\n")
-    with pytest.raises(ValueError):
-        initialize_database(tmp_path / "events.db", source, delete_sources=True)
-    assert (source / "callsigns.txt").exists()
+def test_shipped_template_cannot_initialize_receiver(tmp_path):
+    template = Path(__file__).resolve().parent.parent / "dictionaries.example.txt"
+    source = tmp_path / "dictionaries.txt"
+    source.write_bytes(template.read_bytes())
+    with pytest.raises(ValueError, match="callsigns"):
+        initialize_database(tmp_path / "events.db", source, delete_source=True)
+    assert source.exists()
+    assert not (tmp_path / "events.db").exists()
 
 
 def test_export_never_overwrites_operator_files(setup):
     db, source = setup
-    original = (source / "callsigns.txt").read_bytes()
+    original = source.read_bytes()
     with pytest.raises(FileExistsError):
         export_dictionaries(db, source)
-    assert (source / "callsigns.txt").read_bytes() == original
+    assert source.read_bytes() == original
 
 
 def test_active_receiver_blocks_reset(setup, tmp_path):
@@ -109,8 +122,8 @@ def test_active_receiver_blocks_reset(setup, tmp_path):
     init_receiver_db(db)
     record_heartbeat(db, "test", state="listening")
     with pytest.raises(RuntimeError):
-        reset_database(db, tmp_path / "export", tmp_path / "backup")
-    assert not (tmp_path / "export").exists()
+        reset_database(db, tmp_path / "export.txt", tmp_path / "backup")
+    assert not (tmp_path / "export.txt").exists()
 
 
 def test_failed_reset_preserves_database_and_backup(setup, tmp_path):
@@ -119,7 +132,7 @@ def test_failed_reset_preserves_database_and_backup(setup, tmp_path):
     with get_db(db) as conn:
         conn.execute("CREATE TRIGGER fail_reset BEFORE DELETE ON radio_events BEGIN SELECT RAISE(ABORT,'test'); END")
     with pytest.raises(sqlite3.Error):
-        reset_database(db, tmp_path / "export", tmp_path / "backup")
+        reset_database(db, tmp_path / "export.txt", tmp_path / "backup")
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM radio_events").fetchone()[0] == 1
     assert len(list((tmp_path / "backup").glob("*.db"))) == 1

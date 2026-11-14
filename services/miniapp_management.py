@@ -7,7 +7,7 @@ import time
 
 import config
 from callsigns import Callsigns
-from database import DICTIONARY_FILES
+from database import DICTIONARY_TYPES
 from services.sqlite_connection import get_db
 from services.user_store import _require_permission, _valid_id
 from services.word_store import refresh_word_rule_statuses
@@ -34,7 +34,7 @@ def _dictionary(db, kind):
 
 
 def read_dictionary(db_path, kind):
-    if kind not in DICTIONARY_FILES:
+    if kind not in DICTIONARY_TYPES:
         raise ValueError("Невідомий словник")
     with get_db(db_path) as db:
         return _dictionary(db, kind)
@@ -83,7 +83,7 @@ def validate_dictionary(entries, kind):
 
 
 def write_dictionary(db_path, actor_id, kind, entries, expected_version):
-    if kind not in DICTIONARY_FILES:
+    if kind not in DICTIONARY_TYPES:
         raise ValueError("Невідомий словник")
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")

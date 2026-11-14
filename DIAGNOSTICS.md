@@ -6,7 +6,7 @@
 ## Перевірка без зупинки приймача
 
 ```bash
-venv/bin/python diagnose_radio345.py --verify-backup --network
+.venv/bin/python diagnose_radio345.py --verify-backup --network
 ```
 
 Без прапорців виконуються перевірка SQLite, розбір локальних `radio*.log` та
@@ -79,7 +79,7 @@ Long polling `getUpdates` близько 30 секунд є штатним оч�
    не дають WER або оцінки коротких позивних. Зміни фільтрів і повторів робіть
    після вимірювань та окремих тестів.
 
-Автоматичні перевірки: `venv/bin/python -m pytest -q` і
+Автоматичні перевірки: `.venv/bin/python -m pytest -q` і
 `node --test tests/miniapp.test.cjs`. Вони перевіряють транзакції, відновлення,
 безпеку чисел і позивних та знеособлення діагностики на тимчасових даних,
 але не вимірюють якість живої MLX-моделі.

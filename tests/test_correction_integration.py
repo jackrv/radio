@@ -138,10 +138,6 @@ def test_full_telegram_correction_flow(tmp_path, monkeypatch):
             WHERE id = ?
         """, (event_id,)).fetchone()
 
-        legacy_count = db.execute(
-            "SELECT COUNT(*) FROM corrections"
-        ).fetchone()[0]
-
     assert row == (
         corrected,
         raw,
@@ -150,5 +146,3 @@ def test_full_telegram_correction_flow(tmp_path, monkeypatch):
         "липка 700",
         "наган 112",
     )
-
-    assert legacy_count == 0

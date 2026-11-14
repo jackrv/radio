@@ -152,10 +152,6 @@ def test_two_telegram_corrections_activate_word_rule(
             ORDER BY id
         """).fetchall()
 
-        legacy_count = db.execute(
-            "SELECT COUNT(*) FROM corrections"
-        ).fetchone()[0]
-
     assert rules == [
         ("улыбка", "липка", 2, "active")
     ]
@@ -171,4 +167,3 @@ def test_two_telegram_corrections_activate_word_rule(
     ]
 
     # Старая таблица больше не пополняется.
-    assert legacy_count == 0

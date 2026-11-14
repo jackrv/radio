@@ -2,12 +2,20 @@ import logging
 import threading
 from unittest.mock import Mock
 
+import pytest
+
 from services.bot_state import BotState
 from services.notify_mode_store import (
     load_notify_mode,
     save_notify_mode,
 )
 from services.telegram import TelegramService
+
+
+@pytest.fixture(autouse=True)
+def isolated_cwd(tmp_path, monkeypatch):
+    """Відносний db_path сервісу ніколи не створює файл у корені проєкту."""
+    monkeypatch.chdir(tmp_path)
 
 
 def test_off_is_persistent(tmp_path):

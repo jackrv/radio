@@ -8,50 +8,49 @@ import sqlite3
 import time
 
 from callsigns import Callsigns
-from database import DICTIONARY_FILES, init_db as init_dictionaries, import_dictionaries
+from database import (
+    DICTIONARY_TYPES, format_dictionary_file, init_db as init_dictionaries,
+    import_dictionaries, parse_dictionary_file,
+)
 from services.event_store import init_db as init_events
 from services.sqlite_connection import get_db
 from services.user_store import init_users_db
 
 
-def initialize_database(db_path, source_dir, *, delete_sources=False):
-    """Імпорт запускається явно; порожні шаблони не є робочими словниками."""
-    source_dir = Path(source_dir)
-    lines = (source_dir / "callsigns.txt").read_text(encoding="utf-8-sig").splitlines()
-    enabled = [line for line in lines if not line.startswith("# @radio345-disabled: ")]
+def initialize_database(db_path, source_path, *, delete_source=False):
+    """Імпорт запускається явно; шаблон без записів не є робочим словником."""
+    source_path = Path(source_path)
+    sections = parse_dictionary_file(source_path.read_text(encoding="utf-8-sig"))
+    enabled = [line for line, on in sections["callsigns"] if on]
     if not Callsigns.from_lines(enabled).names:
-        raise ValueError("Файл callsigns.txt не містить увімкнених позивних")
+        raise ValueError(f"У розділі [callsigns] файлу {source_path.name} немає увімкнених позивних")
     init_dictionaries(db_path)
     init_events(db_path)
     init_users_db(db_path)
-    return import_dictionaries(source_dir, db_path, delete_sources=delete_sources)
+    return import_dictionaries(source_path, db_path, delete_source=delete_source)
 
 
 def _export(db, destination):
+    """Записує всі словники в один новий файл; наявний файл не перезаписується."""
     destination = Path(destination)
-    destination.mkdir(parents=True, exist_ok=True)
-    paths = [destination / filename for filename in DICTIONARY_FILES.values()]
-    if any(path.exists() or path.is_symlink() for path in paths):
-        raise FileExistsError("Експорт зупинено: локальні TXT вже існують; їх не перезаписано")
-    created = []
-    counts = {}
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"Експорт зупинено: {destination.name} вже існує; його не перезаписано")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    entries = {
+        kind: [(line, bool(enabled)) for line, enabled in db.execute(
+            "SELECT raw_line,enabled FROM dictionary_entries WHERE dictionary_type=? ORDER BY line_number", (kind,))]
+        for kind in DICTIONARY_TYPES
+    }
+    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        for kind, filename in DICTIONARY_FILES.items():
-            rows = db.execute("SELECT raw_line,enabled FROM dictionary_entries WHERE dictionary_type=? ORDER BY line_number", (kind,)).fetchall()
-            text = "\n".join(line if enabled else "# @radio345-disabled: " + line for line, enabled in rows)
-            path = destination / filename
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            created.append(path)
-            with os.fdopen(fd, "w", encoding="utf-8") as file:
-                file.write(text + ("\n" if rows else ""))
-                file.flush()
-                os.fsync(file.fileno())
-            counts[kind] = len(rows)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(format_dictionary_file(entries))
+            file.flush()
+            os.fsync(file.fileno())
     except BaseException:
-        for path in created:
-            path.unlink(missing_ok=True)
+        destination.unlink(missing_ok=True)
         raise
-    return counts
+    return {kind: len(rows) for kind, rows in entries.items()}
 
 
 def export_dictionaries(db_path, destination):

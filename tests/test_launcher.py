@@ -1,5 +1,6 @@
 """Launcher checks use temporary files and mocked services, never the live radio."""
 
+import sys
 import signal
 import subprocess
 from unittest.mock import Mock
@@ -48,10 +49,12 @@ def mocked_services(tmp_path, monkeypatch):
     (tmp_path / "api").mkdir()
     for name in ["radio.py", "api/local_server.py", ".env", "events.db"]:
         (tmp_path / name).touch()
-    monkeypatch.setattr(launcher.sys, "argv", ["start_radio345.py"])
+    monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
     monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")
     monkeypatch.setattr(launcher.shutil, "which", lambda _: "/mock/ngrok")
     monkeypatch.setattr(launcher, "port_busy", lambda _: False)
+    monkeypatch.setattr(launcher, "ensure_dictionaries", lambda *args, **kwargs: True)
+    monkeypatch.setattr(launcher, "ensure_admin", lambda *args, **kwargs: True)
     monkeypatch.setattr(launcher, "wait_for_api", Mock())
     monkeypatch.setattr(launcher, "wait_for_ngrok", lambda _: "https://radio.example")
     monkeypatch.setattr(launcher, "read_expected_api_url", lambda: "https://radio.example")

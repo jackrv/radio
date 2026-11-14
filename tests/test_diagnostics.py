@@ -12,7 +12,6 @@ from database import init_db as init_dictionaries
 from services.event_store import init_db
 from services.sqlite_connection import get_db
 from services.user_store import init_users_db, bootstrap_admin
-from services.telegram import TelegramService
 from tests.test_telegram_outbox import make_service
 
 

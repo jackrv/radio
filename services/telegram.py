@@ -14,6 +14,7 @@ import requests
 import collections
 from core.diagnostics import runtime, error_kind
 
+from services.access_requests import profile_of, register_request, resolve_request
 from services.event_store import resolve_event_text, save_correction
 from services.telegram_phrase_store import (
     register_phrase, load_phrase, update_phrase_text, RETENTION_SECONDS,
@@ -33,6 +34,11 @@ from services.telegram_offset_store import (
     load_telegram_offset,
     save_telegram_offset,
 )
+
+MINIAPP_URL = "https://jackrv.github.io/radio/"
+ROLE_LABELS = {"viewer": "спостерігач", "editor": "редактор", "admin": "адміністратор"}
+ACCESS_CALLBACK_RE = re.compile(r"acc:(viewer|editor|reject):([1-9][0-9]{0,18})")
+
 
 class TelegramService:
     def __init__(
@@ -88,8 +94,7 @@ class TelegramService:
                 rows.append([{
                     "text": "✏️ Виправити в редакторі",
                     "web_app": {
-                        "url": "https://jackrv.github.io/radio/?fix_id="
-                        + quote(fix_id, safe=""),
+                        "url": MINIAPP_URL + "?fix_id=" + quote(fix_id, safe=""),
                     },
                 }])
                 rows.append([{
@@ -104,12 +109,14 @@ class TelegramService:
                 })
         return json.dumps({"inline_keyboard": rows})
 
-    def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML"):
-        if not (self.bot_token and self.chat_id):
+    def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML", *, chat_id=None):
+        """Надсилає текст у робочий чат або, якщо задано ``chat_id``, в інший особистий чат."""
+        target = chat_id or self.chat_id
+        if not (self.bot_token and target):
             return
 
         data = {
-            "chat_id": self.chat_id,
+            "chat_id": target,
             "text": text[:4000],
         }
         if parse_mode is not None:
@@ -449,6 +456,10 @@ class TelegramService:
             data = cq.get("data", "")
             msg_id = (cq.get("message") or {}).get("message_id")
 
+            if data.startswith("acc:"):
+                self._handle_access_decision(cq, chat_id, msg_id, data)
+                return
+
             if data == "del" or data.startswith("del:"):
                 fix_id = callback_fix_id(self.db_path, data, cq.get("message") or {})
                 if fix_id:
@@ -592,6 +603,11 @@ class TelegramService:
         if not msg:
             return
 
+        # /start приймається з будь-якого особистого чату: так нові
+        # користувачі просять доступ, не знаючи свого Telegram ID.
+        if self._handle_start(msg):
+            return
+
         chat_id = str((msg.get("chat") or {}).get("id", ""))
         if chat_id != str(self.chat_id):
             return
@@ -722,6 +738,122 @@ class TelegramService:
                 f"Було: <code>{html.escape(orig_text)}</code>\n"
                 f"Стало: <code>{html.escape(corrected_text)}</code>"
             )
+
+    def _miniapp_markup(self):
+        return json.dumps({"inline_keyboard": [[
+            {"text": "📻 Відкрити Radio 345", "web_app": {"url": MINIAPP_URL}},
+        ]]})
+
+    def _handle_start(self, msg):
+        """Обробляє /start в особистому чаті. Повертає True, якщо це був /start."""
+        words = (msg.get("text") or "").split()
+        if not words or words[0].split("@", 1)[0].lower() != "/start":
+            return False
+        chat = msg.get("chat") or {}
+        sender = msg.get("from") or {}
+        if chat.get("type") != "private" or type(sender.get("id")) is not int or sender["id"] != chat.get("id"):
+            return False
+
+        if str(chat["id"]) == str(self.chat_id):
+            self.send_text(
+                "📻 <b>Radio 345</b> на зв’язку.\n"
+                "Режими сповіщень: /all, /watch, /commands, /off.\n"
+                "Запити на доступ нових користувачів надходитимуть сюди.",
+                reply_markup=self._miniapp_markup(),
+            )
+            return True
+
+        state, role = register_request(self.db_path, sender)
+        user_chat = chat["id"]
+        if state == "member":
+            self.send_text(
+                f"✅ У вас є доступ до Radio 345 (роль: {ROLE_LABELS.get(role, role)}).",
+                reply_markup=self._miniapp_markup(), chat_id=user_chat,
+            )
+        elif state == "new":
+            self.send_text(
+                "📨 Запит на доступ надіслано адміністратору. "
+                "Щойно його розглянуть, ви отримаєте повідомлення.",
+                chat_id=user_chat,
+            )
+            self._notify_access_request(sender)
+        elif state == "pending":
+            self.send_text("⏳ Запит уже надіслано. Очікуйте рішення адміністратора.", chat_id=user_chat)
+        elif state == "rejected":
+            self.send_text("Адміністратор поки не надав доступ.", chat_id=user_chat)
+        else:
+            self.log.warning("Забагато нерозглянутих запитів на доступ; новий запит не надіслано")
+            self.send_text("Зараз забагато запитів. Спробуйте пізніше.", chat_id=user_chat)
+        self.log.info("Запит доступу через /start: %s", state)
+        return True
+
+    @staticmethod
+    def _access_card(user_id, name, username):
+        lines = ["👤 <b>Запит на доступ до Radio 345</b>"]
+        lines.append(f"Ім’я: {html.escape(name) if name else '—'}")
+        if username:
+            lines.append(f"Username: @{html.escape(username)}")
+        lines.append(f"Telegram ID: <code>{user_id}</code>")
+        return "\n".join(lines)
+
+    def _notify_access_request(self, sender):
+        name, username = profile_of(sender)
+        user_id = sender["id"]
+        markup = json.dumps({"inline_keyboard": [
+            [
+                {"text": "👁 Спостерігач", "callback_data": f"acc:viewer:{user_id}"},
+                {"text": "✏️ Редактор", "callback_data": f"acc:editor:{user_id}"},
+            ],
+            [{"text": "✖️ Відхилити", "callback_data": f"acc:reject:{user_id}"}],
+        ]})
+        self.send_text(self._access_card(user_id, name, username), reply_markup=markup)
+
+    def _answer_callback(self, cq, text):
+        try:
+            self._request("post", "answerCallbackQuery",
+                data={"callback_query_id": cq.get("id"), "text": text}, timeout=15)
+        except requests.RequestException:
+            pass
+
+    def _handle_access_decision(self, cq, chat_id, msg_id, data):
+        match = ACCESS_CALLBACK_RE.fullmatch(data)
+        actor = (cq.get("from") or {}).get("id")
+        if not match or type(actor) is not int:
+            self._answer_callback(cq, "Некоректний запит")
+            return
+        action, user_id = match.group(1), int(match.group(2))
+        try:
+            result = resolve_request(self.db_path, actor, user_id, None if action == "reject" else action)
+        except PermissionError:
+            self._answer_callback(cq, "Лише адміністратор може надавати доступ")
+            return
+
+        status, role = result["status"], ROLE_LABELS.get(result["role"], result["role"])
+        outcome = {
+            "granted": f"✅ Доступ надано: {role}",
+            "already": f"ℹ️ Доступ уже є: {role}",
+            "admin": "ℹ️ Це адміністратор; роль змінюється лише в Mini App",
+            "rejected": "✖️ Запит відхилено",
+        }[status]
+        card = self._access_card(user_id, result["telegram_name"], result["username"])
+        try:
+            # Без reply_markup Telegram прибирає кнопки: рішення не натиснуть удруге.
+            self._request("post", "editMessageText", data={
+                "chat_id": chat_id, "message_id": msg_id,
+                "text": f"{card}\n\n<b>{outcome}</b>", "parse_mode": "HTML",
+            }, timeout=15)
+        except requests.RequestException as exc:
+            self.log.warning("Не вдалося оновити картку запиту доступу: %s", type(exc).__name__)
+        self._answer_callback(cq, outcome.split(" ", 1)[1])
+
+        if status == "granted":
+            self.send_text(
+                f"✅ Адміністратор надав вам доступ до Radio 345 (роль: {role}).",
+                reply_markup=self._miniapp_markup(), chat_id=user_id,
+            )
+        elif status == "rejected":
+            self.send_text("Адміністратор не надав доступ до Radio 345.", chat_id=user_id)
+        self.log.info("Рішення щодо запиту доступу: %s", status)
 
     def _quarantine_update(self, update):
         """Сохраняет необработанное обновление для ручного восстановления."""

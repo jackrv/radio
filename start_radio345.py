@@ -22,13 +22,15 @@ import shutil
 import signal
 import socket
 import subprocess
-import sys
 import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
+from project_python import select_python
+from services.admin_setup import ensure_admin
+from services.dictionary_setup import ensure_dictionaries, interactive_console
 
 ROOT = Path(__file__).resolve().parent
 API_PORT = 8765
@@ -62,8 +64,7 @@ def port_busy(port: int) -> bool:
 
 
 def get_python() -> str:
-    local_python = ROOT / "venv" / "bin" / "python"
-    return str(local_python) if local_python.is_file() else sys.executable
+    return select_python(ROOT)
 
 
 def read_expected_api_url() -> str | None:
@@ -338,8 +339,24 @@ def main() -> int:
     if not (ROOT / ".env").is_file():
         output("Помилка: не знайдено .env (Telegram-токен має залишатися локальним)")
         return 2
-    if not (ROOT / "events.db").is_file():
-        output("Помилка: не знайдено робочу events.db; порожню базу не створено")
+    py = get_python()
+    db_path = ROOT / "events.db"
+    if not ensure_dictionaries(
+        db_path, ROOT / "dictionaries.txt", py,
+        interactive=interactive_console(),
+        ask=lambda prompt: input(f"[launcher] {prompt}"),
+        out=output,
+    ):
+        return 2
+    if not ensure_admin(
+        db_path,
+        launcher_setting("TELEGRAM_BOT_TOKEN"),
+        launcher_setting("TELEGRAM_CHAT_ID"),
+        f"{py} -m api.bootstrap_admin",
+        interactive=interactive_console(),
+        ask=lambda prompt: input(f"[launcher] {prompt}"),
+        out=output,
+    ):
         return 2
     try:
         desired_ngrok_url = valid_https_endpoint(args.ngrok_url) if args.ngrok_url else None
@@ -359,7 +376,6 @@ def main() -> int:
             output(f"Помилка: порт {port} зайнятий ({name}). Зупиніть раніше запущену службу.")
             return 2
 
-    py = get_python()
     output(f"Python: {py}")
     processes: list[ManagedProcess] = []
     try:

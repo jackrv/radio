@@ -85,7 +85,7 @@
 
         <section class="view" id="view-corrections" aria-labelledby="corrections-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">ПЕРЕВІРКА РОЗПІЗНАВАННЯ</div><h1 id="corrections-title">Виправлення</h1><p class="lead">Виправ фразу без ручного копіювання тексту.</p></div><span class="tag tag-outline">SQLITE</span></div>
-          <article class="panel wide-panel margin-bottom" id="phrases-panel">
+          <article class="panel margin-bottom" id="phrases-panel">
             <h2>Журнал фраз</h2>
             <form id="phrases-search" class="toolbar"><label class="visually-hidden" for="phrases-query">Пошук фраз</label><input id="phrases-query" maxlength="200" placeholder="Знайти текст"><button type="submit" class="outline-button">Знайти / оновити</button></form>
             <p class="subtle-note">Події SQLite й тимчасові фрази (до 24 годин, максимум 200). Для редагування потрібна роль редактора або адміністратора.</p>
@@ -93,7 +93,7 @@
             <div class="toolbar"><button id="phrases-prev" class="outline-button" type="button">Назад</button><button id="phrases-next" class="outline-button" type="button">Далі</button></div>
             <p id="phrases-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
           </article>
-          <article class="panel wide-panel" id="correction-editor-panel" hidden><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор розпізнавання</h2></div><span class="section-icon">✎</span></div>
+          <article class="panel" id="correction-editor-panel" hidden><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор розпізнавання</h2></div><span class="section-icon">✎</span></div>
             <button id="editor-back" class="text-link" type="button">← До журналу фраз</button>
             <div class="editor-audio-section">
               <button id="editor-audio-load" class="outline-button" type="button" disabled>▶ Прослухати початковий запис</button>
@@ -115,7 +115,7 @@
 
         <section class="view" id="view-dictionaries" aria-labelledby="dictionaries-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">БАЗА ЗНАНЬ</div><h1 id="dictionaries-title">Словники</h1><p class="lead">Керування позивними, командами й списком спостереження.</p></div><span class="tag tag-outline">SQLITE</span></div>
-          <article class="panel wide-panel">
+          <article class="panel">
             <label class="form-label" for="dictionary-kind">Розділ словника</label>
             <select id="dictionary-kind"><option value="callsigns">Позивні та номери</option><option value="commands">Команди</option><option value="telegram">Список спостереження</option><option value="rules">Навчені заміни</option></select>
             <div class="toolbar"><button id="dictionary-refresh" class="outline-button" type="button">Оновити</button><button id="dictionary-add" class="outline-button" type="button" disabled>Додати рядок</button></div>
@@ -134,7 +134,7 @@
 
         <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">КОНФІГУРАЦІЯ</div><h1 id="settings-title">Налаштування</h1><p class="lead">Сповіщення застосовуються одразу. Розпізнавання — після перезапуску.</p></div><span class="tag tag-outline">НАЛАШТУВАННЯ ПРИЙМАЧА</span></div>
-          <article class="panel wide-panel"><div class="settings-row">
+          <article class="panel"><div class="settings-row">
               <div><h2>Режим сповіщень</h2><p>Зміни зберігаються у SQLite</p></div>
               <span class="pending" id="settings-mode-value">Завантаження...</span>
             </div>
@@ -166,7 +166,7 @@
 
         <section class="view" id="view-users" aria-labelledby="users-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">КОНТРОЛЬ ДОСТУПУ</div><h1 id="users-title">Користувачі</h1><p class="lead">Адміністратор, редактор і спостерігач.</p></div><span class="tag tag-outline">SQLITE</span></div>
-          <article class="panel wide-panel">
+          <article class="panel">
             <div class="toolbar"><h2>Доступ до панелі</h2><button id="users-refresh" class="outline-button" type="button">Оновити</button></div>
             <p class="subtle-note">Спостерігач читає журнал і словники. Редактор виправляє фрази й словники. Адміністратор керує налаштуваннями та доступом. Telegram ID можна дізнатися в розділі «Головна» потрібного користувача.</p>
             <div id="users-list" class="stack"></div>

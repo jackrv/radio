@@ -83,16 +83,11 @@ def test_word_learning_rollback(db_path):
             SELECT text FROM radio_events WHERE id = ?
         """, (event_id,)).fetchone()[0]
 
-        corrections = db.execute("""
-            SELECT COUNT(*) FROM corrections
-        """).fetchone()[0]
-
         votes = db.execute("""
             SELECT COUNT(*) FROM word_correction_votes
         """).fetchone()[0]
 
     assert text == "На ган 110"
-    assert corrections == 0
     assert votes == 0
 
 
@@ -105,16 +100,11 @@ def test_memory_correction_without_event(db_path):
     )
 
     with get_db(db_path) as db:
-        legacy_count = db.execute(
-            "SELECT COUNT(*) FROM corrections"
-        ).fetchone()[0]
-
         votes = db.execute("""
             SELECT source_id, original, corrected
             FROM word_correction_votes
         """).fetchall()
 
-    assert legacy_count == 0
     assert votes == [
         ("mem:abc123", "на ган", "наган"),
     ]

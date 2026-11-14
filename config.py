@@ -10,11 +10,11 @@ LANGUAGE = "uk"
 BASE_DIR = Path(__file__).resolve().parent
 
 DB_PATH = str(BASE_DIR / "events.db")
+DICTIONARIES_PATH = BASE_DIR / "dictionaries.txt"
 LOG_PATH = BASE_DIR / "radio.log"
 DEBUG_AUDIO_DIR = BASE_DIR / "debug_audio"
 COOLDOWN_S = 3.0
 LOG_CALLSIGNS_ONLY = True
-FUZZY_CORRECTION_SCORE = 86
 
 # Чувствительность аудио
 GAIN = 1.0

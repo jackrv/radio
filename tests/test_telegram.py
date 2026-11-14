@@ -2,7 +2,15 @@ import json
 import logging
 import threading
 
+import pytest
+
 from services.telegram import TelegramService
+
+
+@pytest.fixture(autouse=True)
+def isolated_cwd(tmp_path, monkeypatch):
+    """Відносний db_path сервісу ніколи не створює файл у корені проєкту."""
+    monkeypatch.chdir(tmp_path)
 
 
 def make_service():

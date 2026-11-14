@@ -2,14 +2,8 @@ from contextlib import nullcontext
 from config import DB_PATH
 from services.sqlite_connection import get_db
 from services.word_store import init_word_db, save_word_feedback
-
-
-from rapidfuzz import fuzz, process
-
 from callsigns import Callsigns
 from core.analyzer import fmt, split_roles
-
-
 
 
 def init_db(db_path=DB_PATH):
@@ -23,13 +17,6 @@ def init_db(db_path=DB_PATH):
                 recipient TEXT,
                 sender TEXT,
                 text TEXT
-            )
-        """)
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS corrections (
-                id INTEGER PRIMARY KEY,
-                original TEXT UNIQUE,
-                corrected TEXT
             )
         """)
 
@@ -53,60 +40,6 @@ def init_db(db_path=DB_PATH):
             SELECT 1, COALESCE(MAX(id),0)+1 FROM radio_events""")
 
     init_word_db(db_path)
-
-
-def apply_learned_corrections(
-    text: str,
-    db_path=DB_PATH,
-    fuzzy_score=86,
-) -> tuple[str, bool]:
-    with get_db(db_path) as db:
-        rows = db.execute(
-            "SELECT original, corrected FROM corrections"
-        ).fetchall()
-
-    if not rows:
-        return text, False
-
-    from callsigns import normalize, to_items
-
-    def numbers_of(value: str) -> list[str]:
-        return [
-            num for kind, num in to_items(value)
-            if kind == "num"
-        ]
-
-    norm_text = normalize(text)
-
-    for original, corrected in rows:
-        if normalize(original) == norm_text:
-            return corrected, True
-
-    # Нечёткая коррекция не должна изменять числовые группы.
-    # Точные пользовательские исправления обрабатываются выше.
-    source_numbers = numbers_of(text)
-
-    mapping = {
-        normalize(original): corrected
-        for original, corrected in rows
-        if normalize(original)
-        and numbers_of(original) == source_numbers
-        and numbers_of(corrected) == source_numbers
-    }
-
-    if not mapping:
-        return text, False
-
-    best = process.extractOne(
-        norm_text,
-        list(mapping.keys()),
-        scorer=fuzz.ratio,
-    )
-
-    if best and best[1] >= fuzzy_score:
-        return mapping[best[0]], True
-
-    return text, False
 
 
 def resolve_event_text(event_id: int, db_path=DB_PATH):
@@ -189,7 +122,6 @@ def save_correction(
 
         # Обновление события и обучение отдельным словам
         # выполняются в одной транзакции.
-        # Архивную таблицу corrections больше не пополняем.
 
         if event_id is not None:
             cs_str, cmd_str, to_str, from_str = fields

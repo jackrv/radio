@@ -8,7 +8,6 @@ import pytest
 from callsigns import Callsigns
 from core.transcriber_factory import build_transcriber
 from services.event_store import init_db as init_event_db
-from services.sqlite_connection import get_db
 from services.word_store import init_word_db, save_word_feedback
 
 
@@ -88,36 +87,6 @@ def test_runtime_uses_word_rules(db_path):
     ) == "Липка 700, на связи"
 
 
-def test_legacy_phrase_rule_is_not_used(db_path):
-    with get_db(db_path) as db:
-        db.execute("""
-            INSERT INTO corrections (original, corrected)
-            VALUES (?, ?)
-        """, ("Липка 700", "Ошибочный текст"))
-
-    worker = make_worker(db_path)
-
-    assert worker.process_text(
-        "Липка 700"
-    ) == "Липка 700"
-
-
-def test_word_rules_take_priority_over_legacy(db_path):
-    teach_lipka(db_path)
-
-    with get_db(db_path) as db:
-        db.execute("""
-            INSERT INTO corrections (original, corrected)
-            VALUES (?, ?)
-        """, ("Улыбка 700", "Наган 110"))
-
-    worker = make_worker(db_path)
-
-    assert worker.process_text(
-        "Улыбка 700"
-    ) == "Липка 700"
-
-
 def test_invalid_number_is_unchanged(db_path):
     teach_lipka(db_path)
     worker = make_worker(db_path)
@@ -161,24 +130,6 @@ def test_qwen_works_without_word_rule(db_path, monkeypatch):
     assert worker.process_text("Лира 68") == "Ліра 68"
     llm.assert_called_once_with("Лира 68")
 
-def test_legacy_phrase_not_applied_after_qwen(
-    db_path, monkeypatch
-):
-    with get_db(db_path) as db:
-        db.execute(
-            "INSERT INTO corrections (original, corrected) "
-            "VALUES (?, ?)",
-            ("Ліра 68", "Старое ошибочное исправление"),
-        )
-
-    monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
-        lambda *args: lambda text: "Ліра 68",
-    )
-
-    worker = make_worker(db_path)
-
-    assert worker.process_text("Лира 68") == "Ліра 68"
 
 def test_qwen_cannot_change_numbers(
     db_path, monkeypatch
@@ -193,7 +144,6 @@ def test_qwen_cannot_change_numbers(
     assert worker.process_text(
         "Сигнал 68"
     ) == "Сигнал 68"
-
 
 
 def test_qwen_complements_learned_callsign(

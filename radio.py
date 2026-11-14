@@ -1,8 +1,10 @@
 import os
 import sys
 
-# Автоматический перезапуск через локальный venv, если скрипт запущен системным Python
-venv_python = os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv", "bin", "python")
+# Автоматичний перезапуск через .venv проєкту, якщо запущено іншим Python.
+from project_python import select_python
+
+venv_python = select_python()
 if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.abspath(venv_python):
     os.execve(venv_python, [venv_python] + sys.argv, os.environ)
 
@@ -36,6 +38,7 @@ from services.event_store import init_db as init_event_db
 
 from services.telegram import TelegramService
 from services.dictionary_loader import load_dictionaries as load_sqlite_dictionaries
+from services.dictionary_setup import ensure_dictionaries, interactive_console
 
 import config
 
@@ -138,6 +141,12 @@ def load_dictionaries():
 
 
 def main():
+    # До створення таблиць: порожні словники пропонуємо імпортувати з dictionaries.txt.
+    if not ensure_dictionaries(
+        DB_PATH, config.DICTIONARIES_PATH, sys.executable,
+        interactive=interactive_console(),
+    ):
+        raise SystemExit(2)
     diagnostics.configure(config.BASE_DIR / "diagnostics.json")
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)

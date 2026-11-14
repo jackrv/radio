@@ -14,21 +14,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("init", "export", "reset"))
     parser.add_argument("--db", type=Path, default=Path(config.DB_PATH))
-    parser.add_argument("--source-dir", type=Path, default=config.BASE_DIR)
+    parser.add_argument("--file", type=Path, default=config.DICTIONARIES_PATH,
+                        help="Єдиний файл словників (типово dictionaries.txt у корені)")
     parser.add_argument("--backup-dir", type=Path, default=config.BASE_DIR / ".local-backups")
-    parser.add_argument("--delete-sources", action="store_true", help="Видалити лише три робочі TXT після успішного імпорту")
+    parser.add_argument("--delete-source", action="store_true", help="Видалити файл словників після успішного імпорту")
     parser.add_argument("--confirm-reset", action="store_true", help="Явно дозволити очищення даних із попередньою резервною копією")
     parser.add_argument("--remove-admins", action="store_true", help="Також видалити адміністраторів під час reset")
     args = parser.parse_args()
     try:
         if args.action == "init":
-            result = initialize_database(args.db, args.source_dir, delete_sources=args.delete_sources)
+            result = initialize_database(args.db, args.file, delete_source=args.delete_source)
         elif args.action == "export":
-            result = {"exported": export_dictionaries(args.db, args.source_dir)}
+            result = {"exported": export_dictionaries(args.db, args.file)}
         else:
             if not args.confirm_reset:
                 parser.error("Для очищення потрібен --confirm-reset. Спочатку зупиніть усі служби.")
-            result = reset_database(args.db, args.source_dir, args.backup_dir, keep_admins=not args.remove_admins)
+            result = reset_database(args.db, args.file, args.backup_dir, keep_admins=not args.remove_admins)
     except (sqlite3.Error, OSError, RuntimeError, ValueError) as exc:
         # Do not print SQLite SQL fragments or operator dictionary contents.
         if isinstance(exc, (RuntimeError, ValueError, FileExistsError)):

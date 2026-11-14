@@ -41,4 +41,5 @@ diagnostics.json
 diagnostics-report.json
 .radio-diagnostics-*
 .local-backups/
+.local-notification-sounds/
 .radio345.lock

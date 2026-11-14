@@ -10,6 +10,8 @@ import re
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import quote
 
 import requests
@@ -50,6 +52,29 @@ ROLE_LABELS = {"viewer": "спостерігач", "editor": "редактор",
 # Без токена — кнопка старої версії: вважається застарілою.
 ACCESS_CALLBACK_RE = re.compile(r"acc:(viewer|editor|reject):([1-9][0-9]{0,18})(?::([0-9a-f]{8}))?")
 
+_delivery_trace = ContextVar("radio345_telegram_delivery", default={})
+
+
+@contextmanager
+def delivery_trace(*, notification=None, recipient=None, attempt=None,
+                   queue_wait_s=None, audio_bytes=None, audio_duration_s=None):
+    """Лише випадковий ID і технічні числа; контекст ізольований між потоками."""
+    fields = dict(_delivery_trace.get())
+    fields.update({key: value for key, value in {
+        "notification": notification, "recipient": recipient, "attempt": attempt,
+        "queue_wait_s": queue_wait_s, "audio_bytes": audio_bytes,
+        "audio_duration_s": audio_duration_s,
+    }.items() if value is not None})
+    token = _delivery_trace.set(fields)
+    try:
+        yield
+    finally:
+        _delivery_trace.reset(token)
+
+
+def current_notification():
+    return _delivery_trace.get().get("notification")
+
 
 class TelegramBase:
     def __init__(self, bot_token, sample_rate, db_path, log):
@@ -67,6 +92,7 @@ class TelegramBase:
         started = time.monotonic()
         runtime.count(f"telegram.{operation}.attempts")
         outcome = "interrupted"
+        api_result = "unverified"
         try:
             response = getattr(requests, method)(f"{self.api}/{operation}", **kwargs)
             status = response.status_code
@@ -80,6 +106,7 @@ class TelegramBase:
                 else:
                     if isinstance(payload, dict) and type(payload.get("ok")) is bool:
                         result = "api_confirmed" if payload["ok"] else "api_rejected"
+                        api_result = "confirmed" if payload["ok"] else "rejected"
                         runtime.count(f"telegram.{operation}.{result}")
                         runtime.count(f"telegram.{result}")
             return response
@@ -92,9 +119,12 @@ class TelegramBase:
         finally:
             elapsed = time.monotonic() - started
             runtime.observe(f"telegram.{operation}", elapsed)
+            context = "".join(f" {key}={value}" for key, value in _delivery_trace.get().items())
+            if operation in ("sendVoice", "sendMessage"):
+                context += f" api_result={api_result}"
             # No caption, user IDs, token, file IDs, URL or exception message.
             logging.getLogger("radio.diagnostics").info(
-                "TG_DIAG operation=%s outcome=%s elapsed_s=%.3f", operation, outcome, elapsed,
+                "TG_DIAG operation=%s outcome=%s elapsed_s=%.3f%s", operation, outcome, elapsed, context,
             )
 
     def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML", *, chat_id):

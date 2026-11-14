@@ -100,13 +100,7 @@ class EventProcessor:
                     event_id,
                 )
 
-                self.log.info(
-                    "  -> в Telegram [отримувачів: %d]: %s",
-                    len(recipients),
-                    text,
-                )
-
-                self.telegram_service.notify(
+                notification = self.telegram_service.notify(
                     watch_str or "Ефір",
                     to_str,
                     from_str,
@@ -115,6 +109,11 @@ class EventProcessor:
                     fix_id=fix_id,
                     recipients=recipients,
                 )
+                if notification:
+                    self.log.info(
+                        "  -> черга Telegram [notification=%s; отримувачів: %d]: %s",
+                        notification, len(recipients), text,
+                    )
             except Exception:
                 self.log.exception(
                     "Помилка надсилання сповіщення Telegram"

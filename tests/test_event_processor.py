@@ -65,6 +65,22 @@ def test_all_mode_sends_notification():
     save_event.assert_not_called()
 
 
+def test_rejected_notification_is_not_logged_as_queued():
+    processor, _, telegram, log = make_processor()
+    telegram.notify.return_value = None
+    processor.process("Обычная фраза", b"pcm")
+    telegram.notify.assert_called_once()
+    log.info.assert_not_called()
+
+
+def test_queue_log_contains_the_accepted_notification_id():
+    processor, _, telegram, log = make_processor()
+    telegram.notify.return_value = "0123456789abcdef"
+    processor.process("Обычная фраза", b"pcm")
+    message = log.info.call_args.args[0] % log.info.call_args.args[1:]
+    assert "черга Telegram" in message and "notification=0123456789abcdef" in message
+
+
 def test_watch_mode_notifies_only_watch_matches():
     watch = FakeDictionary({"Наблюдаемая фраза": [("наблюдение", None, None)]})
     processor, _, telegram, _ = make_processor(

@@ -24,10 +24,12 @@ class Transcriber:
         log,
         pause_gate=None,
         health=None,
+        notification_filter=None,
     ):
         self.segments = segments
         # Стан прогресу для супервізора; None — без контролю (тести, старий код).
         self.health = health
+        self.notification_filter = notification_filter
         self._whisper_called = False
         self._whisper_failed = False
         self.recognizer = recognizer
@@ -102,6 +104,19 @@ class Transcriber:
                     'Аудио #%d: %s | RMS=%.4f',
                     self.debug_audio_count, paths[0], rms,
                 )
+
+        if self.notification_filter is not None:
+            try:
+                with runtime.timed("asr.notification_filter"):
+                    isolated_notification = self.notification_filter.is_notification(pcm)
+            except Exception:
+                runtime.count("asr.notification_filter_error")
+                self.log.exception("Помилка фільтра сповіщень; сегмент передано Whisper")
+            else:
+                if isolated_notification:
+                    runtime.count("asr.notification_filtered")
+                    self.log.info("Відкинуто окремий звук сповіщення: збіг із локальним зразком")
+                    return
 
         self._whisper_called = True
         try:

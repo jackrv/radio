@@ -4,6 +4,7 @@ from core.pipeline import build_text_pipeline
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
 from core.analyzer import correction_is_safe
+from core.notification_filter import NotificationSoundFilter
 
 from services.event_store import save_event
 from core.word_rule_engine import apply_verified_word_rules
@@ -73,6 +74,12 @@ def build_transcriber(
         log=log,
     )
 
+    notification_filter = None
+    if getattr(config, "FILTER_NOTIFICATION_SOUNDS", False):
+        notification_filter = NotificationSoundFilter.from_directory(
+            config.NOTIFICATION_SOUNDS_DIR, config.SR, log,
+        )
+
     return Transcriber(
         segments=segments,
         recognizer=recognizer,
@@ -86,4 +93,5 @@ def build_transcriber(
         log=log,
         pause_gate=pause_gate,
         health=health,
+        notification_filter=notification_filter,
     )

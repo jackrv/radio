@@ -10,7 +10,7 @@ import time
 import requests
 
 from core.diagnostics import runtime
-from services.telegram_common import OGG_TIMEOUT_S
+from services.telegram_common import OGG_TIMEOUT_S, current_notification, delivery_trace
 from services.telegram_media_store import remember_voice
 from services.telegram_phrase_store import register_phrase
 from services.telegram_retry import retry_delay
@@ -66,6 +66,7 @@ class OutboxMixin:
     # ---------- Черга ----------
 
     def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None, recipients=()):
+        """Повертає випадковий ID прийнятого сповіщення або None, якщо черга його не прийняла."""
         runtime.count("telegram.notify_requested")
         if not self.bot_token:
             runtime.count("telegram.notify_unconfigured")
@@ -85,7 +86,8 @@ class OutboxMixin:
                 self.log.warning("Telegram завершує роботу: сповіщення пропущено")
                 return
             try:
-                self._outgoing_queue.put_nowait((time.monotonic(), (pcm, caption, fix_id, list(recipients))))
+                notification = secrets.token_hex(8)
+                self._outgoing_queue.put_nowait((time.monotonic(), notification, (pcm, caption, fix_id, list(recipients))))
                 runtime.count("telegram.enqueued")
                 runtime.gauge("telegram.queue_depth", self._outgoing_queue.qsize())
             except queue.Full:
@@ -97,6 +99,7 @@ class OutboxMixin:
                     target=self._outgoing_loop, name="telegram-outbox", daemon=True,
                 )
                 self._outgoing_thread.start()
+            return notification
 
     def _outgoing_loop(self):
         """Надсилає повідомлення й завершується після спорожнення черги."""
@@ -104,13 +107,15 @@ class OutboxMixin:
             if self._outgoing_stop.is_set() and self._outgoing_queue.empty():
                 return
             try:
-                queued_at, item = self._outgoing_queue.get(timeout=0.2)
-                runtime.observe("telegram.queue_wait", time.monotonic() - queued_at)
+                queued_at, notification, item = self._outgoing_queue.get(timeout=0.2)
+                queue_wait = time.monotonic() - queued_at
+                runtime.observe("telegram.queue_wait", queue_wait)
                 runtime.gauge("telegram.queue_depth", self._outgoing_queue.qsize())
             except queue.Empty:
                 continue
             try:
-                self.send_voice(*item)
+                with delivery_trace(notification=notification, queue_wait_s=round(queue_wait, 3)):
+                    self.send_voice(*item)
             except Exception:
                 runtime.count("telegram.worker_error")
                 self.log.exception("Помилка фонового надсилання Telegram")
@@ -152,6 +157,10 @@ class OutboxMixin:
         return proc.stdout
 
     def send_voice(self, pcm: bytes, caption: str, fix_id, recipients):
+        with delivery_trace(notification=current_notification() or secrets.token_hex(8)):
+            self._send_voice(pcm, caption, fix_id, recipients)
+
+    def _send_voice(self, pcm, caption, fix_id, recipients):
         active = [r for r in recipients if self._current_role(r) is not None]
         if not active:
             runtime.count("telegram.queue_discarded_off")
@@ -162,18 +171,20 @@ class OutboxMixin:
         except CONVERSION_ERRORS as e:
             runtime.count("telegram.conversion_failed")
             self.log.warning("Конвертація в OGG не вдалася (%s), надсилаю текстом", e)
-            for recipient in active:
+            for index, recipient in enumerate(active, 1):
                 role = self._current_role(recipient)
                 if role is not None:
                     runtime.count("telegram.text_fallback")
-                    self.send_text(caption, self.keyboard_for(role, fix_id),
-                                   parse_mode=None, chat_id=recipient["chat_id"])
+                    with delivery_trace(recipient=index):
+                        self.send_text(caption, self.keyboard_for(role, fix_id),
+                                       parse_mode=None, chat_id=recipient["chat_id"])
             return
 
         duration = max(1, round(len(pcm) / (2 * self.sample_rate)))
         voice_ref = None  # file_id першого надісланого: далі без повторного завантаження
-        for recipient in active:
-            sent = self._deliver_voice(recipient, ogg, voice_ref, caption, duration, fix_id)
+        for index, recipient in enumerate(active, 1):
+            with delivery_trace(recipient=index, audio_bytes=len(ogg), audio_duration_s=duration):
+                sent = self._deliver_voice(recipient, ogg, voice_ref, caption, duration, fix_id)
             if voice_ref is None and sent:
                 voice_ref = sent
 
@@ -193,7 +204,8 @@ class OutboxMixin:
             else:
                 kwargs["files"] = {"voice": ("phrase.ogg", ogg, "audio/ogg")}
             try:
-                r = self._request("post", "sendVoice", **kwargs)
+                with delivery_trace(attempt=attempt):
+                    r = self._request("post", "sendVoice", **kwargs)
                 r.raise_for_status()
             except requests.RequestException as e:
                 status = getattr(getattr(e, "response", None), "status_code", None)

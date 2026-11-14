@@ -1,4 +1,3 @@
-import threading
 from unittest.mock import Mock, patch
 
 import pytest
@@ -11,13 +10,9 @@ from services.telegram_retry import listener_retry_delay
 def make_service():
     return TelegramService(
         bot_token="test_token",
-        chat_id="123",
         sample_rate=16000,
         db_path=":memory:",
         log=Mock(),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
 
@@ -40,7 +35,7 @@ def test_listener_recovers_after_timeouts():
 
     with (
         patch(
-            "services.telegram.requests.get",
+            "requests.get",
             side_effect=[
                 requests.Timeout("network unavailable"),
                 requests.Timeout("network unavailable"),
@@ -48,7 +43,7 @@ def test_listener_recovers_after_timeouts():
                 KeyboardInterrupt(),
             ],
         ),
-        patch("services.telegram.time.sleep",
+        patch("time.sleep",
               side_effect=delays.append),
     ):
         with pytest.raises(KeyboardInterrupt):
@@ -71,14 +66,14 @@ def test_listener_recovers_after_http_error():
 
     with (
         patch(
-            "services.telegram.requests.get",
+            "requests.get",
             side_effect=[
                 failed_response,
                 successful_response(),
                 KeyboardInterrupt(),
             ],
         ),
-        patch("services.telegram.time.sleep",
+        patch("time.sleep",
               side_effect=delays.append),
     ):
         with pytest.raises(KeyboardInterrupt):
@@ -107,9 +102,9 @@ def test_listener_survives_sqlite_error_when_saving_offset():
 
     delays = []
     with (
-        patch("services.telegram.requests.get", side_effect=[update, update, KeyboardInterrupt()]),
-        patch("services.telegram.save_telegram_offset", side_effect=save),
-        patch("services.telegram.time.sleep", side_effect=delays.append),
+        patch("requests.get", side_effect=[update, update, KeyboardInterrupt()]),
+        patch("services.telegram_updates.save_telegram_offset", side_effect=save),
+        patch("time.sleep", side_effect=delays.append),
     ):
         with pytest.raises(KeyboardInterrupt):
             service.callback_listener()

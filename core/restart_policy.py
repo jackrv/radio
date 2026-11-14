@@ -6,7 +6,7 @@ class RestartPolicy:
 
     def __init__(self, delays=(5.0, 15.0, 45.0), clock=None):
         if not delays or any(delay <= 0 for delay in delays):
-            raise ValueError("Задержки должны быть положительными")
+            raise ValueError("Затримки мають бути додатними")
 
         self.delays = tuple(delays)
         self.clock = clock or time.monotonic

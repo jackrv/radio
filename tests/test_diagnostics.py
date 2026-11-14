@@ -12,7 +12,9 @@ from database import init_db as init_dictionaries
 from services.event_store import init_db
 from services.sqlite_connection import get_db
 from services.user_store import init_users_db, bootstrap_admin
-from tests.test_telegram_outbox import make_service
+from tests.test_telegram_outbox import RECIPIENTS, make_service
+import services.telegram_common as telegram_common
+import services.telegram_outbox as telegram_outbox
 
 
 def test_nested_reset_is_classified_without_serializing_exception():
@@ -47,18 +49,18 @@ def test_snapshot_io_failure_does_not_break_application(tmp_path):
 
 
 def test_network_measurements_leave_retries_unchanged_and_redact_data(monkeypatch, caplog):
-    import services.telegram as telegram
     metrics = RuntimeDiagnostics()
-    monkeypatch.setattr(telegram, "runtime", metrics)
+    monkeypatch.setattr(telegram_common, "runtime", metrics)
+    monkeypatch.setattr(telegram_outbox, "runtime", metrics)
     s = make_service()
     s.pcm_to_ogg = Mock(return_value=b"ogg")
     response = Mock(status_code=200)
     response.json.return_value = {"ok": True}
     error = requests.ConnectionError("SECRET", ConnectionResetError(54, "PRIVATE"))
     with caplog.at_level(logging.INFO, logger="radio.diagnostics"):
-        with patch("services.telegram.requests.post", side_effect=[error, response]) as post:
-            with patch("services.telegram.time.sleep") as sleep:
-                s.send_voice(b"\0\0", "PRIVATE_PHRASE", "db:1")
+        with patch("requests.post", side_effect=[error, response]) as post:
+            with patch("time.sleep") as sleep:
+                s.send_voice(b"\0\0", "PRIVATE_PHRASE", "db:1", RECIPIENTS)
     assert post.call_count == 2
     sleep.assert_called_once_with(2)
     counters = metrics.snapshot()["counters"]
@@ -72,27 +74,27 @@ def test_network_measurements_leave_retries_unchanged_and_redact_data(monkeypatc
 
 
 def test_ogg_failure_records_fallback_without_changing_plain_text(monkeypatch):
-    import services.telegram as telegram
     metrics = RuntimeDiagnostics()
-    monkeypatch.setattr(telegram, "runtime", metrics)
+    monkeypatch.setattr(telegram_common, "runtime", metrics)
+    monkeypatch.setattr(telegram_outbox, "runtime", metrics)
     s = make_service()
     s.pcm_to_ogg = Mock(side_effect=FileNotFoundError)
     s.send_text = Mock()
-    s.send_voice(b"\0\0", "private")
+    s.send_voice(b"\0\0", "private", None, RECIPIENTS)
     assert metrics.snapshot()["counters"]["telegram.text_fallback"] == 1
     assert s.send_text.call_args.kwargs["parse_mode"] is None
 
 
 def test_http_200_api_rejection_is_not_counted_as_confirmed(monkeypatch):
-    import services.telegram as telegram
     metrics = RuntimeDiagnostics()
-    monkeypatch.setattr(telegram, "runtime", metrics)
+    monkeypatch.setattr(telegram_common, "runtime", metrics)
+    monkeypatch.setattr(telegram_outbox, "runtime", metrics)
     s = make_service()
     s.pcm_to_ogg = Mock(return_value=b"ogg")
     response = Mock(status_code=200)
     response.json.return_value = {"ok": False}
-    with patch("services.telegram.requests.post", return_value=response) as post:
-        s.send_voice(b"\0\0", "private")
+    with patch("requests.post", return_value=response) as post:
+        s.send_voice(b"\0\0", "private", None, RECIPIENTS)
     counters = metrics.snapshot()["counters"]
     assert counters["telegram.sendVoice.api_rejected"] == 1
     assert counters.get("telegram.api_confirmed", 0) == 0
@@ -100,15 +102,15 @@ def test_http_200_api_rejection_is_not_counted_as_confirmed(monkeypatch):
 
 
 def test_queue_overflow_and_wait_are_measured(monkeypatch):
-    import services.telegram as telegram
     metrics = RuntimeDiagnostics()
-    monkeypatch.setattr(telegram, "runtime", metrics)
+    monkeypatch.setattr(telegram_common, "runtime", metrics)
+    monkeypatch.setattr(telegram_outbox, "runtime", metrics)
     s = make_service()
     # Hold worker creation so the queue can be filled deterministically.
     s._outgoing_thread = Mock()
     s._outgoing_thread.is_alive.return_value = True
     for _ in range(33):
-        s.notify("", "", "", "private", b"\0\0")
+        s.notify("", "", "", "private", b"\0\0", recipients=RECIPIENTS)
     assert metrics.snapshot()["counters"]["telegram.queue_overflow"] == 1
     s.send_voice = Mock()
     s._outgoing_stop.set()

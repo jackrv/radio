@@ -1,10 +1,10 @@
 import logging
-import threading
 
 import requests
 
 from services.telegram import TelegramService
 from services.telegram_retry import retry_delay
+from tests.test_telegram_outbox import RECIPIENTS
 
 
 def test_exponential_backoff():
@@ -29,14 +29,11 @@ def test_telegram_429_retry_after():
 def test_send_voice_retries_after_429(monkeypatch):
     service = TelegramService(
         bot_token="test-token",
-        chat_id="123",
         sample_rate=16000,
         db_path=":memory:",
         log=logging.getLogger("test_telegram_retry"),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
+    service._user_state = lambda user_id: ("admin", "all")
 
     monkeypatch.setattr(
         service, "pcm_to_ogg", lambda pcm: b"fake-ogg"
@@ -64,13 +61,13 @@ def test_send_voice_retries_after_429(monkeypatch):
         return response
 
     monkeypatch.setattr(
-        "services.telegram.requests.post", fake_post
+        "requests.post", fake_post
     )
     monkeypatch.setattr(
-        "services.telegram.time.sleep", delays.append
+        "time.sleep", delays.append
     )
 
-    service.send_voice(b"\x00\x00", "Test")
+    service.send_voice(b"\x00\x00", "Test", None, RECIPIENTS)
 
     assert len(calls) == 2
     assert delays == [7]

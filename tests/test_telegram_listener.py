@@ -1,22 +1,17 @@
-import threading
+import requests
 from unittest.mock import Mock
 
 import pytest
 
-import services.telegram as telegram_module
 from services.telegram import TelegramService
 
 
 def test_offset_survives_listener_restart(monkeypatch):
     service = TelegramService(
         bot_token="test_token",
-        chat_id="123",
         sample_rate=16000,
         db_path=":memory:",
         log=Mock(),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
     # Не вызываем настоящий обработчик команд.
@@ -42,7 +37,7 @@ def test_offset_survives_listener_restart(monkeypatch):
     )
 
     monkeypatch.setattr(
-        telegram_module.requests,
+        requests,
         "get",
         mock_get,
     )

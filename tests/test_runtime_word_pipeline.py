@@ -1,5 +1,4 @@
 import logging
-import threading
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -43,11 +42,6 @@ def make_worker(db_path):
 
     empty = Callsigns.from_lines([])
 
-    bot_state = SimpleNamespace(
-        lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-    )
-
     cooldown = SimpleNamespace(
         fresh=lambda key: True,
         rollback=lambda key: None,
@@ -62,7 +56,6 @@ def make_worker(db_path):
         prompt="",
         telegram_service=Mock(),
         cooldown=cooldown,
-        bot_state=bot_state,
         log=logging.getLogger("test_runtime_words"),
     )
 

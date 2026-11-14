@@ -143,7 +143,6 @@ def test_factory_uses_configured_db_for_word_corrections(
         prompt="prompt",
         telegram_service=Mock(),
         cooldown=Mock(),
-        bot_state=Mock(),
         log=Mock(),
     )
 

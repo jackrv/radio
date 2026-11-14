@@ -1,15 +1,15 @@
 """/start від нових користувачів і рішення адміністратора — лише тимчасові бази."""
 
 import json
+import re
 import logging
 import sqlite3
-import threading
 from unittest.mock import Mock
 
 import pytest
 
 from services.access_requests import (
-    MAX_PENDING_REQUESTS, REQUEST_RETRY_SECONDS, register_request, resolve_request,
+    MAX_PENDING_REQUESTS, REQUEST_RETRY_SECONDS, register_request, request_token, resolve_request,
 )
 from services.sqlite_connection import get_db
 from services.telegram import TelegramService
@@ -114,8 +114,10 @@ def test_pending_requests_are_limited(db_path):
 
 def make_service(db_path):
     service = TelegramService(
-        bot_token="token", chat_id=ADMIN_CHAT, sample_rate=16000, db_path=db_path,
-        log=logging.getLogger("test"), state_lock=threading.Lock(), get_notify_mode=lambda: "all", set_notify_mode=lambda mode: None,
+        bot_token="token",
+        sample_rate=16000,
+        db_path=db_path,
+        log=logging.getLogger("test"),
     )
     service.send_text = Mock()
     service._request = Mock()
@@ -139,20 +141,22 @@ def test_start_from_stranger_notifies_admin_once(db_path):
     service.handle_update(start_from(NEWBIE, "/start@radio345_bot"))
 
     messages = sent(service)
-    to_admin = [m for m in messages if m[1] is None]
+    to_admin = [m for m in messages if m[1] == ADMIN]
     to_user = [m for m in messages if m[1] == 2002]
     assert len(to_admin) == 1, "повторний /start не спамить адміністратора"
     card, _, markup = to_admin[0]
     assert "Іван Петренко" in card and "@ivan_p" in card and "<code>2002</code>" in card
     buttons = [b["callback_data"] for row in json.loads(markup)["inline_keyboard"] for b in row]
-    assert buttons == ["acc:viewer:2002", "acc:editor:2002", "acc:reject:2002"]
+    token = request_token(db_path, 2002)
+    assert re.fullmatch(r"[0-9a-f]{8}", token)
+    assert buttons == [f"acc:viewer:2002:{token}", f"acc:editor:2002:{token}", f"acc:reject:2002:{token}"]
     assert "надіслано" in to_user[0][0] and "Очікуйте" in to_user[1][0]
 
 
 def test_profile_text_is_html_escaped(db_path):
     service = make_service(db_path)
     service.handle_update(start_from({"id": 2002, "first_name": "<b>x</b> & y"}))
-    card = [m for m in sent(service) if m[1] is None][0][0]
+    card = [m for m in sent(service) if m[1] == ADMIN][0][0]
     assert "&lt;b&gt;x&lt;/b&gt; &amp; y" in card
 
 
@@ -170,7 +174,7 @@ def test_start_in_admin_chat_is_greeting_not_request(db_path):
     service = make_service(db_path)
     service.handle_update(start_from({"id": ADMIN, "first_name": "Адмін"}))
     [(text, chat, _)] = sent(service)
-    assert chat is None and "Radio 345" in text
+    assert chat == ADMIN and "Radio 345" in text
     with sqlite3.connect(db_path) as db:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if "telegram_access_requests" in tables:
@@ -194,7 +198,7 @@ def test_other_text_from_stranger_is_still_ignored(db_path):
 def decision(data, actor=ADMIN, chat=ADMIN_CHAT):
     return {"update_id": 2, "callback_query": {
         "id": "cb", "data": data, "from": {"id": actor},
-        "message": {"message_id": 77, "chat": {"id": int(chat)}},
+        "message": {"message_id": 77, "chat": {"id": int(chat), "type": "private"}},
     }}
 
 
@@ -203,7 +207,7 @@ def test_admin_button_grants_access_and_notifies_user(db_path):
     service.handle_update(start_from(NEWBIE))
     service.send_text.reset_mock()
 
-    service.handle_update(decision("acc:editor:2002"))
+    service.handle_update(decision(f"acc:editor:2002:{request_token(db_path, 2002)}"))
 
     assert (2002, "editor", 1) in users(db_path)
     edit = [c for c in service._request.call_args_list if c.args[1] == "editMessageText"][0]
@@ -218,7 +222,7 @@ def test_admin_button_reject_notifies_user(db_path):
     service = make_service(db_path)
     service.handle_update(start_from(NEWBIE))
     service.send_text.reset_mock()
-    service.handle_update(decision("acc:reject:2002"))
+    service.handle_update(decision(f"acc:reject:2002:{request_token(db_path, 2002)}"))
     assert all(row[0] != 2002 for row in users(db_path))
     [(text, chat, _)] = sent(service)
     assert chat == 2002 and "не надав" in text
@@ -227,7 +231,7 @@ def test_admin_button_reject_notifies_user(db_path):
 def test_decision_button_outside_admin_chat_is_ignored(db_path):
     service = make_service(db_path)
     service.handle_update(start_from(NEWBIE))
-    service.handle_update(decision("acc:editor:2002", actor=2002, chat="2002"))
+    service.handle_update(decision(f"acc:editor:2002:{request_token(db_path, 2002)}", actor=2002, chat="2002"))
     assert all(row[0] != 2002 for row in users(db_path))
 
 
@@ -236,7 +240,7 @@ def test_decision_by_non_admin_is_refused(db_path):
         db.execute("INSERT INTO telegram_users (user_id, role) VALUES (3003, 'editor')")
     service = make_service(db_path)
     service.handle_update(start_from(NEWBIE))
-    service.handle_update(decision("acc:editor:2002", actor=3003))
+    service.handle_update(decision(f"acc:editor:2002:{request_token(db_path, 2002)}", actor=3003, chat="3003"))
     assert all(row[0] != 2002 for row in users(db_path))
     answer = [c for c in service._request.call_args_list if c.args[1] == "answerCallbackQuery"][-1]
     assert "адміністратор" in answer.kwargs["data"]["text"]
@@ -288,10 +292,10 @@ def test_cards_go_to_every_active_admin_and_second_admin_can_decide(db_path):
     service = make_service(db_path)
     service.handle_update(start_from(NEWBIE))
     cards = [c.kwargs.get("chat_id") for c in service.send_text.call_args_list if "Telegram ID:" in c.args[0]]
-    assert cards == [None, 5005], "робочий чат (адмін 1001) і другий адміністратор"
+    assert cards == [ADMIN, 5005], "картки лише активним адміністраторам"
 
     service.handle_update({"update_id": 9, "callback_query": {
-        "id": "cb", "data": "acc:viewer:2002", "from": {"id": 5005},
+        "id": "cb", "data": f"acc:viewer:2002:{request_token(db_path, 2002)}", "from": {"id": 5005},
         "message": {"message_id": 3, "chat": {"id": 5005, "type": "private"}},
     }})
     assert (2002, "viewer", 1) in users(db_path)
@@ -304,7 +308,7 @@ def test_disabled_env_owner_loses_telegram_privileges(db_path):
     service = make_service(db_path)
     register_request(db_path, NEWBIE, now=1)
 
-    service.handle_update(decision("acc:editor:2002", actor=ADMIN))
+    service.handle_update(decision(f"acc:editor:2002:{request_token(db_path, 2002)}", actor=ADMIN))
     assert all(row[0] != 2002 for row in users(db_path)), "відключений не може схвалювати"
 
     service._request.reset_mock()
@@ -322,3 +326,27 @@ def test_disabled_env_owner_loses_telegram_privileges(db_path):
     service.handle_update(start_from({"id": ADMIN, "first_name": "Власник"}))
     cards = [c.kwargs.get("chat_id") for c in service.send_text.call_args_list if "Telegram ID:" in c.args[0]]
     assert cards == [5005], "відключений власник .env просить доступ як усі"
+
+
+
+def test_old_card_cannot_approve_a_newer_request(db_path):
+    register_request(db_path, NEWBIE, now=1)
+    old = request_token(db_path, 2002)
+    assert resolve_request(db_path, ADMIN, 2002, "editor", token=old)["status"] == "granted"
+    with get_db(db_path) as db:
+        db.execute("UPDATE telegram_users SET enabled=0 WHERE user_id=2002")
+    register_request(db_path, NEWBIE, now=2)  # користувач знову надіслав /start
+    assert request_token(db_path, 2002) != old
+    assert resolve_request(db_path, ADMIN, 2002, "editor", token=old)["status"] == "stale"
+    assert (2002, "editor", 0) in users(db_path)
+    fresh = request_token(db_path, 2002)
+    assert resolve_request(db_path, ADMIN, 2002, "viewer", token=fresh)["status"] == "granted"
+
+
+def test_button_without_token_is_stale(db_path):
+    service = make_service(db_path)
+    service.handle_update(start_from(NEWBIE))
+    service.handle_update(decision("acc:editor:2002"))
+    assert all(row[0] != 2002 for row in users(db_path))
+    answer = [c for c in service._request.call_args_list if c.args[1] == "answerCallbackQuery"][-1]
+    assert "розглянуто" in answer.kwargs["data"]["text"]

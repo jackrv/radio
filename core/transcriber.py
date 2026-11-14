@@ -23,8 +23,13 @@ class Transcriber:
         blacklist,
         log,
         pause_gate=None,
+        health=None,
     ):
         self.segments = segments
+        # Стан прогресу для супервізора; None — без контролю (тести, старий код).
+        self.health = health
+        self._whisper_called = False
+        self._whisper_failed = False
         self.recognizer = recognizer
         self.process_text = process_text
         self.event_processor = event_processor
@@ -98,11 +103,13 @@ class Transcriber:
                     self.debug_audio_count, paths[0], rms,
                 )
 
+        self._whisper_called = True
         try:
             with runtime.timed("asr.whisper"):
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
         except Exception:
+            self._whisper_failed = True
             runtime.count("asr.whisper_error")
             self.log.exception(
                 "Помилка розпізнавання Whisper; сегмент пропущено"
@@ -159,12 +166,29 @@ class Transcriber:
                 "Помилка обробки події; продовжуємо прослуховування ефіру"
             )
 
+    def _tracked(self, pcm, generation=None):
+        """Обробка сегмента з відміткою початку й результату для контролю прогресу."""
+        if self.health is None:
+            self.process_segment(pcm, generation=generation)
+            return
+        self._whisper_called = False
+        self._whisper_failed = False
+        self.health.started()
+        try:
+            self.process_segment(pcm, generation=generation)
+        finally:
+            self.health.finished(
+                None if not self._whisper_called else not self._whisper_failed
+            )
+
     def run(self):
+        if self.health is not None:
+            self.health.reset()
         while True:
             item = self.segments.get()
 
             if self.pause_gate is None:
-                self.process_segment(item)
+                self._tracked(item)
                 continue
 
             generation, pcm = item
@@ -172,4 +196,4 @@ class Transcriber:
             if not self.pause_gate.is_current(generation):
                 continue
 
-            self.process_segment(pcm, generation=generation)
+            self._tracked(pcm, generation=generation)

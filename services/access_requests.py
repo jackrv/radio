@@ -4,6 +4,7 @@ Telegram ID — ідентичність для авторизації; ім’�
 відображаються. Таблиця запитів обмежує повторні сповіщення адміністратора.
 """
 
+import secrets
 import time
 
 from services.sqlite_connection import get_db
@@ -23,8 +24,12 @@ def ensure_table(db):
         telegram_name TEXT NOT NULL DEFAULT '',
         username TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL CHECK (status IN ('pending', 'rejected')),
-        requested_at REAL NOT NULL
+        requested_at REAL NOT NULL,
+        token TEXT NOT NULL DEFAULT ''
     )""")
+    columns = {row[1] for row in db.execute("PRAGMA table_info(telegram_access_requests)")}
+    if "token" not in columns:
+        db.execute("ALTER TABLE telegram_access_requests ADD COLUMN token TEXT NOT NULL DEFAULT ''")
 
 
 def _bounded(value, limit):
@@ -76,21 +81,36 @@ def register_request(db_path, sender, now=None):
         if pending >= MAX_PENDING_REQUESTS:
             return "limit", None
 
+        # Новий токен — нова заявка: кнопки старих карток до неї не застосовні.
         db.execute("""INSERT INTO telegram_access_requests
-            (user_id, telegram_name, username, status, requested_at) VALUES (?,?,?,'pending',?)
+            (user_id, telegram_name, username, status, requested_at, token) VALUES (?,?,?,'pending',?,?)
             ON CONFLICT(user_id) DO UPDATE SET telegram_name=excluded.telegram_name,
-                username=excluded.username, status='pending', requested_at=excluded.requested_at
-        """, (user_id, name, username, now))
+                username=excluded.username, status='pending', requested_at=excluded.requested_at,
+                token=excluded.token
+        """, (user_id, name, username, now, secrets.token_hex(4)))
         return "new", None
 
 
-def resolve_request(db_path, actor_id, user_id, role, now=None):
+def request_token(db_path, user_id):
+    """Токен заявки, що очікує рішення, для кнопок картки (або None)."""
+    with get_db(db_path) as db:
+        ensure_table(db)
+        row = db.execute(
+            "SELECT token FROM telegram_access_requests WHERE user_id=? AND status='pending'",
+            (user_id,),
+        ).fetchone()
+    return row[0] if row and row[0] else None
+
+
+def resolve_request(db_path, actor_id, user_id, role, now=None, token=None):
     """Рішення адміністратора: ``role`` — viewer/editor або None для відмови.
 
     Повертає словник зі ``status``: ``granted``, ``rejected``, ``already``
     (доступ із цією роллю вже є), ``admin`` (користувач — адміністратор;
     змінювати його тут не можна) або ``stale`` (заявки, що очікує рішення,
-    немає: стара кнопка не повинна скасувати пізніше відключення).
+    немає або ``token`` не збігається: кнопка старої картки не повинна
+    спрацювати на нову заявку чи скасувати пізніше відключення).
+    Кнопки Telegram завжди передають ``token``; None — виклик без картки.
     """
     _valid_id(user_id)
     if role is not None and role not in GRANTABLE_ROLES:
@@ -103,10 +123,10 @@ def resolve_request(db_path, actor_id, user_id, role, now=None):
         ensure_profiles(db)
         _require_permission(db, actor_id, "users.manage")
         request = db.execute(
-            "SELECT telegram_name, username, status FROM telegram_access_requests WHERE user_id=?",
+            "SELECT telegram_name, username, status, token FROM telegram_access_requests WHERE user_id=?",
             (user_id,),
         ).fetchone()
-        name, username, request_status = request or ("", "", None)
+        name, username, request_status, request_token_value = request or ("", "", None, "")
         result = {"user_id": user_id, "telegram_name": name, "username": username, "role": role}
         user = db.execute(
             "SELECT role, enabled FROM telegram_users WHERE user_id=?", (user_id,),
@@ -121,7 +141,7 @@ def resolve_request(db_path, actor_id, user_id, role, now=None):
                 db.execute("DELETE FROM telegram_access_requests WHERE user_id=?", (user_id,))
             return {**result, "status": "already", "role": user[0]}
 
-        if request_status != "pending":
+        if request_status != "pending" or (token is not None and token != request_token_value):
             return {**result, "status": "stale"}
 
         if role is None:

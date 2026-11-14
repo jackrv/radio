@@ -1,3 +1,4 @@
+import requests
 """Сторож мікрофона, виявлення сну Mac і метрики коротких/тихих сегментів."""
 
 import queue
@@ -199,20 +200,83 @@ def test_failing_notification_never_stops_reception():
 
 def test_admin_alert_retries_until_delivered(monkeypatch):
     import logging
-    import threading
 
     from services.telegram import TelegramService
 
-    monkeypatch.setattr("services.telegram.time.sleep", Mock())
+    monkeypatch.setattr("time.sleep", Mock())
     service = TelegramService(
-        bot_token="t", chat_id="1001", sample_rate=16000, db_path=":memory:",
-        log=logging.getLogger("test"), state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all", set_notify_mode=lambda m: None,
+        bot_token="t",
+        sample_rate=16000,
+        db_path=":memory:",
+        log=logging.getLogger("test"),
     )
+    service._admin_chats = Mock(return_value=[1001])
+    service._user_state = Mock(return_value=("admin", "all"))
     import requests
     service._request = Mock(side_effect=[requests.ConnectionError(), Mock(status_code=502), Mock(status_code=200)])
     before = counter("telegram.alert_sent")
     service.notify_admin_async("⚠️ test").join(timeout=5)
     assert service._request.call_count == 3
-    assert service._request.call_args.kwargs["data"]["chat_id"] == "1001"
+    assert service._request.call_args.kwargs["data"]["chat_id"] == 1001
     assert counter("telegram.alert_sent") == before + 1
+
+
+# ---------- Прогрес розпізнавання ----------
+
+from core.recognition_health import RecognitionHealth
+
+
+def test_stuck_segment_is_detected():
+    clock = [0.0]
+    health = RecognitionHealth(clock=lambda: clock[0])
+    health.started()
+    clock[0] = 179.0
+    assert health.problem() is None
+    clock[0] = 181.0
+    assert health.problem()[0] == "stuck"
+    health.finished(True)
+    assert health.problem() is None
+
+
+def test_error_streak_counts_only_whisper_calls():
+    health = RecognitionHealth()
+    for _ in range(4):
+        health.finished(False)
+        health.finished(None)  # тихий сегмент без Whisper не скидає серію
+    assert health.problem() is None
+    health.finished(False)
+    assert health.problem() == ("failing", 5)
+    health.finished(True)
+    assert health.problem() is None
+
+
+def test_transcriber_reports_whisper_failures_and_filtered_segments():
+    health = RecognitionHealth()
+    loud = (np.ones(16000) * 3000).astype(np.int16).tobytes()
+    quiet = (np.ones(16000) * 10).astype(np.int16).tobytes()
+    recognizer = Mock()
+    recognizer.transcribe.side_effect = RuntimeError("Metal OOM")
+    worker = Transcriber(
+        segments=None, recognizer=recognizer, process_text=Mock(), event_processor=Mock(),
+        sample_rate=16000, min_rms=0.02, normalize_audio=True, debug_rms=False,
+        blacklist=(), log=Mock(), health=health,
+    )
+    for _ in range(5):
+        worker._tracked(loud)
+        worker._tracked(quiet)
+    assert health.problem() == ("failing", 5)
+
+
+def test_supervisor_alerts_once_and_reports_recovery():
+    state = {"problem": None}
+    health = Mock(problem=lambda: state["problem"])
+    calls = []
+    log = Mock()
+    sup = supervisor(Frames([]), log, stall_timeout_s=float("inf"), suspend_threshold_s=float("inf"),
+                     recognition_health=health, on_recognition_problem=lambda k, v: calls.append(k))
+    reported = None
+    for problem in [None, ("stuck", 200.0), ("stuck", 260.0), None, None]:
+        state["problem"] = problem
+        reported = sup._check_recognition(reported)
+    assert calls == ["stuck", "recovered"]
+    log.critical.assert_called_once()

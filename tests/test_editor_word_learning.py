@@ -1,5 +1,4 @@
 import logging
-import threading
 
 import pytest
 
@@ -16,13 +15,9 @@ def setup_service(tmp_path):
 
     service = TelegramService(
         bot_token="test-token",
-        chat_id="123",
         sample_rate=16000,
         db_path=str(path),
         log=logging.getLogger("test_word_learning"),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
     service.send_text = lambda *args, **kwargs: None

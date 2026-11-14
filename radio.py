@@ -23,9 +23,7 @@ from core.supervisor import ApplicationSupervisor
 from core.pause_gate import PauseGate
 from core.cooldown import Cooldown
 from core.bounded_queue import DropOldestQueue
-from services.bot_state import BotState
 from services.receiver_status import (
-    another_receiver_running,
     receiver_heartbeat,
     ReceiverRuntimeState,
 )
@@ -43,6 +41,8 @@ from services.dictionary_loader import load_dictionaries as load_sqlite_dictiona
 from services.dictionary_setup import ensure_dictionaries, interactive_console
 from services.user_notify_store import list_recipients
 from services.db_backup import start_backup_scheduler
+from core.instance_lock import acquire_instance_lock
+from core.recognition_health import RecognitionHealth
 
 import config
 
@@ -68,7 +68,6 @@ log = logging.getLogger("radio")
 
 # ---------- Telegram ----------
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 
 # ---------- Настройки импортированы из config.py ----------
 
@@ -77,25 +76,22 @@ commands = None
 watch = None
 PROMPT = ""
 
+_instance_lock = None
+recognition_health = RecognitionHealth()
 frames = DropOldestQueue(100)
 segments = DropOldestQueue(5)
 cooldown = Cooldown(COOLDOWN_S)
 
-# Состояние бота и режимы уведомлений (потокобезопасный доступ через lock)
-bot_state = BotState()
 pause_gate = PauseGate()
 receiver_runtime = ReceiverRuntimeState()
 
+# Отримувачів і права визначає база користувачів; TELEGRAM_CHAT_ID потрібен
+# лише для реєстрації першого адміністратора.
 telegram_service = TelegramService(
     bot_token=BOT_TOKEN,
-    chat_id=CHAT_ID,
     sample_rate=SR,
     db_path=DB_PATH,
     log=log,
-    state_lock=bot_state.lock,
-    get_notify_mode=bot_state.get_notify_mode,
-    set_notify_mode=bot_state.set_notify_mode,
-    apply_telegram_mode=bot_state.apply_telegram_mode,
 )
 
 # ---------- База данных (потокобезопасно) ----------
@@ -119,17 +115,15 @@ def transcriber():
         prompt=PROMPT,
         telegram_service=telegram_service,
         cooldown=cooldown,
-        bot_state=bot_state,
         log=log,
         pause_gate=pause_gate,
+        health=recognition_health,
     )
 
     worker.recognizer.warmup()
 
-    if not (BOT_TOKEN and CHAT_ID):
-        log.warning(
-            "Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN і TELEGRAM_CHAT_ID у .env"
-        )
+    if not BOT_TOKEN:
+        log.warning("Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN у .env")
 
     log.info("Слухаю ефір... (Ctrl+C для виходу)")
     worker.run()
@@ -151,17 +145,16 @@ def main():
     ):
         raise SystemExit(2)
     # Два приймачі на одному мікрофоні подвоюють події та повідомлення.
-    if another_receiver_running(DB_PATH):
-        log.error(
-            "Інший приймач Radio 345 уже працює. Зупиніть його й запустіть знову "
-            "(після аварійного завершення зачекайте 10 с)."
-        )
+    # Блокування тримається до кінця процесу й знімається ОС навіть після аварії.
+    global _instance_lock
+    _instance_lock = acquire_instance_lock(config.BASE_DIR / ".radio345.lock")
+    if _instance_lock is None:
+        log.error("Інший приймач Radio 345 уже працює. Зупиніть його й запустіть знову.")
         raise SystemExit(2)
     diagnostics.configure(config.BASE_DIR / "diagnostics.json")
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
     load_dictionaries()
-    bot_state.enable_persistence(DB_PATH)
     recipients = list_recipients(DB_PATH)
     if recipients:
         log.info(
@@ -169,7 +162,10 @@ def main():
             ", ".join(f"{r['role']}={r['mode']}" for r in recipients),
         )
     else:
-        log.info("Режим Telegram робочого чату: %s", bot_state.get_notify_mode())
+        log.warning(
+            "Немає активних користувачів: сповіщення не надсилаються. "
+            "Зареєструйте адміністратора: python -m api.bootstrap_admin"
+        )
 
     last_pause_check = float("-inf")
     cached_pause = False
@@ -198,6 +194,22 @@ def main():
 
         return cached_pause
 
+    def report_recognition(kind, value):
+        messages = {
+            "stuck": (
+                "⚠️ <b>Розпізнавання не відповідає</b>\n"
+                f"Обробка сегмента триває вже {max(1, round(value / 60))} хв. Аудіо надходить, "
+                "але фрази не розпізнаються. Перезапустіть Radio 345."
+            ),
+            "failing": (
+                "⚠️ <b>Розпізнавання не працює</b>\n"
+                f"Whisper повертає помилку на {value} сегментах поспіль. "
+                "Перевірте журнал radio.log і перезапустіть Radio 345."
+            ),
+            "recovered": "✅ Розпізнавання знову працює.",
+        }
+        telegram_service.notify_admin_async(messages[kind])
+
     def report_suspension(gap_s):
         resumed = datetime.now()
         stopped = resumed - timedelta(seconds=gap_s)
@@ -219,7 +231,7 @@ def main():
         on_audio=on_audio,
         transcriber=transcriber,
         telegram_listener=(
-            telegram_service.callback_listener if BOT_TOKEN and CHAT_ID else None
+            telegram_service.callback_listener if BOT_TOKEN else None
         ),
         sample_rate=SR,
         frame_ms=FRAME_MS,
@@ -239,6 +251,8 @@ def main():
         pause_gate=pause_gate,
         runtime_state=receiver_runtime,
         on_suspension=report_suspension,
+        recognition_health=recognition_health,
+        on_recognition_problem=report_recognition,
     )
     # Щоденна перевірена копія бази в .local-backups/ (останні 7).
     backup_stop = start_backup_scheduler(DB_PATH, config.BASE_DIR / ".local-backups", log=log)

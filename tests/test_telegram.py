@@ -1,10 +1,12 @@
 import json
 import logging
-import threading
+from unittest.mock import Mock
 
 import pytest
 
 from services.telegram import TelegramService
+from services.user_notify_store import load_user_mode
+from services.user_store import bootstrap_admin, init_users_db
 
 
 @pytest.fixture(autouse=True)
@@ -16,13 +18,9 @@ def isolated_cwd(tmp_path, monkeypatch):
 def make_service():
     return TelegramService(
         bot_token="",
-        chat_id="",
         sample_rate=16000,
         db_path="unused_test.db",
         log=logging.getLogger("test"),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
 
@@ -54,20 +52,10 @@ def test_register_phrase_ids():
 
 
 def test_notification_modes():
-    modes = {"value": "all"}
-
-    service = TelegramService(
-        bot_token="",
-        chat_id="123",
-        sample_rate=16000,
-        db_path="unused_test.db",
-        log=logging.getLogger("test"),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: modes["value"],
-        set_notify_mode=lambda mode: modes.update(value=mode),
-    )
-
-    service.send_text = lambda text, reply_markup=None, parse_mode="HTML": None
+    service = make_service()
+    init_users_db(service.db_path)
+    bootstrap_admin(service.db_path, 123)
+    service.send_text = Mock()
 
     for command, expected in [
         ("/watch", "watch"),
@@ -76,28 +64,26 @@ def test_notification_modes():
     ]:
         service.handle_update({
             "message": {
-                "chat": {"id": 123},
+                "chat": {"id": 123, "type": "private"},
+                "from": {"id": 123},
                 "text": command,
             }
         })
-        assert modes["value"] == expected
+        assert load_user_mode(service.db_path, 123) == ("admin", expected)
+        assert service.send_text.call_args.kwargs["chat_id"] == 123
 
 
 def test_foreign_chat_is_ignored():
-    from unittest.mock import Mock
-
-    modes = {"value": "all"}
     service = make_service()
-    service.chat_id = "123"
-    service.set_notify_mode = lambda mode: modes.update(value=mode)
     service.send_text = Mock()
 
     service.handle_update({
         "message": {
-            "chat": {"id": 456},
+            "chat": {"id": 456, "type": "private"},
+            "from": {"id": 456},
             "text": "/watch",
         }
     })
 
-    assert modes["value"] == "all"
+    assert load_user_mode(service.db_path, 456) is None
     service.send_text.assert_not_called()

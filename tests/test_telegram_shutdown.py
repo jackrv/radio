@@ -2,18 +2,15 @@ import logging
 import threading
 
 from services.telegram import TelegramService
+from tests.test_telegram_outbox import RECIPIENTS
 
 
 def make_service():
     return TelegramService(
         bot_token="test-token",
-        chat_id="123",
         sample_rate=16000,
         db_path=":memory:",
         log=logging.getLogger("test_telegram_shutdown"),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
 
@@ -22,6 +19,7 @@ def notify(service, number):
         "Эфир", "", "",
         f"Сообщение {number}",
         b"\x00\x00",
+        recipients=RECIPIENTS,
     )
 
 
@@ -40,7 +38,7 @@ def test_shutdown_flushes_pending_messages():
     sent = []
     result = []
 
-    def fake_send(pcm, caption, fix_id):
+    def fake_send(pcm, caption, fix_id, recipients):
         started.set()
         assert release.wait(timeout=5)
         sent.append(caption)
@@ -76,7 +74,7 @@ def test_shutdown_timeout(caplog):
     started = threading.Event()
     release = threading.Event()
 
-    def fake_send(pcm, caption, fix_id):
+    def fake_send(pcm, caption, fix_id, recipients):
         started.set()
         release.wait(timeout=5)
 

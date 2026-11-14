@@ -18,9 +18,9 @@ def build_transcriber(
     prompt,
     telegram_service,
     cooldown,
-    bot_state,
     log,
     pause_gate=None,
+    health=None,
 ):
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
@@ -58,13 +58,11 @@ def build_transcriber(
         save_event=save_event,
         telegram_service=telegram_service,
         fresh=cooldown.fresh,
+        select_recipients=telegram_service.recipients_for,
         rollback=cooldown.rollback,
-        state_lock=bot_state.lock,
-        get_notify_mode=bot_state.get_notify_mode,
         db_path=config.DB_PATH,
         log_callsigns_only=config.LOG_CALLSIGNS_ONLY,
         log=log,
-        select_recipients=telegram_service.recipients_for,
     )
 
     recognizer = WhisperRecognizer(
@@ -87,4 +85,5 @@ def build_transcriber(
         blacklist=config.BLACKLIST,
         log=log,
         pause_gate=pause_gate,
+        health=health,
     )

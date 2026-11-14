@@ -131,15 +131,14 @@ def test_editor_requires_telegram_auth(client_and_db):
 
 def test_bot_keyboard_opens_web_editor():
     import json
-    import threading
     from unittest.mock import Mock
     from services.telegram import TelegramService
 
     service = TelegramService(
-        bot_token="test", chat_id="123", sample_rate=16000,
-        db_path=":memory:", log=Mock(), state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
+        bot_token="test",
+        sample_rate=16000,
+        db_path=":memory:",
+        log=Mock(),
     )
     rows = json.loads(service.get_keyboard("db:97"))["inline_keyboard"]
     assert rows[1][0]["web_app"]["url"] == (

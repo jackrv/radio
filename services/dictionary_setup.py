@@ -116,7 +116,8 @@ def ensure_dictionaries(
         return False
 
     root = Path(__file__).resolve().parent.parent
-    result = run([python, str(root / "manage_database.py"), "init",
+    # Після імпорту словники живуть у базі; файл потрібен лише для порожнього проєкту.
+    result = run([python, str(root / "manage_database.py"), "init", "--delete-source",
                   "--db", str(db_path), "--file", str(source_path)], cwd=root)
     if result.returncode != 0:
         out("Помилка: імпорт не виконано (подробиці вище). Запуск зупинено.")
@@ -129,7 +130,10 @@ def ensure_dictionaries(
     if status is None or status["callsigns"][1] == 0:
         out("Помилка: після імпорту позивних у базі не виявлено. Запуск зупинено.")
         return False
-    out("✅ Словники імпортовано. Файл словників залишено на місці.")
+    if source_path.exists():
+        out(f"✅ Словники імпортовано. {source_path.name} змінився під час імпорту, тому його залишено.")
+    else:
+        out(f"✅ Словники імпортовано, {source_path.name} видалено. Повернути файл: manage_database.py export")
     return True
 
 

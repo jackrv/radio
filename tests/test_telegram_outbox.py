@@ -3,18 +3,19 @@ import threading
 
 from services.telegram import TelegramService
 
+RECIPIENTS = [{"chat_id": 1001, "role": "admin", "mode": "all"}]
+
 
 def make_service():
-    return TelegramService(
+    service = TelegramService(
         bot_token="test-token",
-        chat_id="123",
         sample_rate=16000,
         db_path=":memory:",
         log=logging.getLogger("test_telegram_outbox"),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
+    # Ці тести перевіряють транспорт і чергу; авторизація має окремі інтеграційні тести.
+    service._user_state = lambda user_id: ("admin", "all")
+    return service
 
 
 def notify(service, number):
@@ -24,6 +25,7 @@ def notify(service, number):
         "",
         f"Сообщение {number}",
         b"\x00\x00",
+        recipients=RECIPIENTS,
     )
 
 
@@ -32,7 +34,8 @@ def test_outbox_fifo_and_single_worker():
     sent = []
     worker_ids = []
 
-    def fake_send(pcm, caption, fix_id):
+    def fake_send(pcm, caption, fix_id, recipients):
+        assert recipients == RECIPIENTS
         sent.append(caption)
         worker_ids.append(threading.get_ident())
 
@@ -59,7 +62,7 @@ def test_outbox_overflow_does_not_block(caplog):
     release = threading.Event()
     sent = []
 
-    def fake_send(pcm, caption, fix_id):
+    def fake_send(pcm, caption, fix_id, recipients):
         if not started.is_set():
             started.set()
             release.wait(timeout=5)
@@ -80,7 +83,7 @@ def test_outbox_overflow_does_not_block(caplog):
         with caplog.at_level(logging.ERROR):
             notify(service, 33)
 
-        assert "переполнена" in caplog.text
+        assert "переповнено" in caplog.text
 
     finally:
         release.set()
@@ -95,7 +98,7 @@ def test_worker_survives_send_exception(caplog):
     service = make_service()
     attempts = []
 
-    def fake_send(pcm, caption, fix_id):
+    def fake_send(pcm, caption, fix_id, recipients):
         attempts.append(caption)
 
         if "Сообщение 1" in caption:

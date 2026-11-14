@@ -73,6 +73,12 @@
     currentMode = mode;
     if (Array.isArray(allowedModes)) {
       allowed = allowedModes.filter((value) => value in names);
+      // «Увімкнути» повертає попередній режим; «all» може бути недоступним для ролі.
+      if (!allowed.includes(previousMode)) {
+        previousMode = allowed.includes("commands")
+          ? "commands"
+          : allowed.find((value) => value !== "off") || previousMode;
+      }
     }
 
     if (mode !== "off") {

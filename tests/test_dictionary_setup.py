@@ -62,7 +62,7 @@ def test_empty_database_imports_after_confirmation(tmp_path):
     assert ok is True
     ask.assert_called_once()
     assert dictionary_status(tmp_path / "events.db")["callsigns"] == (1, 1)
-    assert (tmp_path / "dictionaries.txt").exists(), "файл не видаляється без явного прапорця"
+    assert not (tmp_path / "dictionaries.txt").exists(), "після імпорту словники живуть лише в базі"
     assert "липка" not in "\n".join(messages), "вміст словників не виводиться"
 
 
@@ -154,6 +154,7 @@ def test_failed_import_stops_start(tmp_path):
     ok, _, messages = ensure(tmp_path, run=lambda *a, **k: SimpleNamespace(returncode=1))
     assert ok is False
     assert any("не виконано" in line for line in messages)
+    assert (tmp_path / "dictionaries.txt").exists(), "після невдалого імпорту файл лишається"
 
 
 def test_active_admin_detection(tmp_path):

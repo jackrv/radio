@@ -455,3 +455,31 @@ test("connection loss during work shows a banner but keeps the panel", async () 
   await client.request("/api/status");
   assert.equal(get("connection-lost").hidden, true);
 });
+
+test("enable after OFF returns a mode the role is allowed to use", async () => {
+  const { doc, get } = documentFixture();
+  const calls = [];
+  const context = {
+    document: doc, Error,
+    window: {
+      Telegram: { WebApp: { initData: "signed-data" } },
+      setInterval: () => 1, setTimeout, clearTimeout,
+      Radio345: {
+        user: async () => ({ role: "viewer" }),
+        request: async (path, method, body) => {
+          calls.push({ method, body });
+          return method === "PUT" ? { mode: body.mode, allowed: ["commands", "off", "watch"] }
+            : { mode: "off", allowed: ["commands", "off", "watch"] };
+        }
+      }
+    }
+  };
+  doc.querySelectorAll = () => [];
+  doc.visibilityState = "visible";
+  vm.runInNewContext(source("notifications.js"), context);
+  await tick();
+  await get("silence-toggle").fire("click");
+  const put = calls.find(call => call.method === "PUT");
+  assert.ok(put, "кнопка «Увімкнути» не ігнорується");
+  assert.equal(put.body.mode, "commands");
+});

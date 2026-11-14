@@ -14,12 +14,13 @@ from services.telegram_audio import download_voice, AudioUnavailable, MAX_AUDIO_
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
 from tests.test_mem_editor_persistence import service
+from tests.test_telegram_outbox import RECIPIENTS
 
 
 def phrase(db):
     eid = save_event("", "", "", "", "Лира 68", db)
     fix_id = f"db:{eid}"
-    message = {"chat": {"id": 123}, "message_id": 777, "voice": {"file_id": "voice-test-id"}}
+    message = {"chat": {"id": 1001, "type": "private"}, "message_id": 777, "voice": {"file_id": "voice-test-id"}}
     remember_message(db, fix_id, message)
     return fix_id, message
 
@@ -31,11 +32,11 @@ def test_successful_send_links_audio_without_storing_bytes(setup):
     response = Mock()
     response.json.return_value = {"ok": True, "result": {
         "chat": {"id": 123}, "message_id": 777, "voice": {"file_id": "voice-test-id"}}}
-    with patch("services.telegram.requests.post", return_value=response):
-        s.send_voice(b"\0\0", "test", "db:1")
+    with patch("requests.post", return_value=response):
+        s.send_voice(b"\0\0", "test", "db:1", RECIPIENTS)
     assert audio_file_id(db, "db:1") == "voice-test-id"
     with sqlite3.connect(db) as conn:
-        assert conn.execute("SELECT message_id FROM telegram_phrase_messages").fetchone()[0] == 777
+        assert conn.execute("SELECT chat_id, message_id FROM telegram_phrase_messages").fetchone() == (None, None)
 
 
 def test_metadata_failure_never_retries_successful_send(setup):
@@ -44,9 +45,9 @@ def test_metadata_failure_never_retries_successful_send(setup):
     s.pcm_to_ogg = Mock(return_value=b"OggSfake")
     response = Mock()
     response.json.return_value = {"ok": True, "result": {"message_id": 777}}
-    with patch("services.telegram.requests.post", return_value=response) as post:
-        with patch("services.telegram.remember_message", side_effect=sqlite3.OperationalError("test")):
-            s.send_voice(b"\0\0", "test", "db:1")
+    with patch("requests.post", return_value=response) as post:
+        with patch("services.telegram_outbox.remember_voice", side_effect=sqlite3.OperationalError("test")):
+            s.send_voice(b"\0\0", "test", "db:1", RECIPIENTS)
     assert post.call_count == 1
 
 
@@ -57,7 +58,7 @@ def test_delete_hides_phrase_and_blocks_draft_and_audio(setup, legacy):
     s = service(db)
     if legacy:
         message["reply_markup"] = {"inline_keyboard": [[{"callback_data": "fix_" + fix_id}]]}
-    with patch("services.telegram.requests.post") as post:
+    with patch("requests.post") as post:
         post.return_value.json.return_value = {"ok": True}
         s.handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del" if legacy else "del:" + fix_id, "message": message}})
     assert is_hidden(db, fix_id)
@@ -73,7 +74,7 @@ def test_delete_hides_phrase_and_blocks_draft_and_audio(setup, legacy):
 def test_failed_deletion_keeps_phrase_visible(setup):
     _, db = setup
     fix_id, message = phrase(db)
-    with patch("services.telegram.requests.post") as post:
+    with patch("requests.post") as post:
         post.return_value.json.return_value = {"ok": False, "description": "Bad Request: message can't be deleted"}
         service(db).handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}})
     assert not is_hidden(db, fix_id)
@@ -84,11 +85,11 @@ def test_uncertain_delete_is_hidden_until_retried(setup):
     _, db = setup
     fix_id, message = phrase(db)
     update = {"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}}
-    with patch("services.telegram.requests.post", side_effect=requests.Timeout):
+    with patch("requests.post", side_effect=requests.Timeout):
         with pytest.raises(requests.Timeout):
             service(db).handle_update(update)
     assert is_hidden(db, fix_id)
-    with patch("services.telegram.requests.post") as post:
+    with patch("requests.post") as post:
         post.return_value.json.return_value = {"ok": False, "description": "Bad Request: message to delete not found"}
         service(db).handle_update(update)
     with sqlite3.connect(db) as conn:
@@ -98,8 +99,8 @@ def test_uncertain_delete_is_hidden_until_retried(setup):
 def test_sqlite_failure_prevents_remote_deletion(setup):
     _, db = setup
     fix_id, message = phrase(db)
-    with patch("services.telegram.deletion_intent", side_effect=sqlite3.OperationalError("test")):
-        with patch("services.telegram.requests.post") as post:
+    with patch("services.telegram_updates.deletion_intent", side_effect=sqlite3.OperationalError("test")):
+        with patch("requests.post") as post:
             with pytest.raises(sqlite3.Error):
                 service(db).handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}})
     post.assert_not_called()

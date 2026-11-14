@@ -73,6 +73,8 @@ class ApplicationSupervisor:
         suspend_threshold_s=60.0,
         wall_clock=None,
         on_suspension=None,
+        recognition_health=None,
+        on_recognition_problem=None,
     ):
         self.frames = frames
         self.segments = segments
@@ -104,6 +106,39 @@ class ApplicationSupervisor:
         self.wall_clock = wall_clock or time.time
         # Сповіщення про розрив приймання (не повинне блокувати цикл аудіо).
         self.on_suspension = on_suspension
+        # Прогрес розпізнавання: зависання або серія помилок Whisper при живому потоці.
+        self.recognition_health = recognition_health
+        self.on_recognition_problem = on_recognition_problem
+
+    def _check_recognition(self, reported):
+        """Повідомляє один раз про проблему й один раз про відновлення."""
+        if self.recognition_health is None:
+            return None
+        problem = self.recognition_health.problem()
+        if problem is not None and reported is None:
+            kind, value = problem
+            runtime.count("asr.unhealthy")
+            runtime.gauge("asr.health", kind)
+            if kind == "stuck":
+                self.log.critical("Розпізнавання не відповідає %d с: обробка сегмента зависла", round(value))
+            else:
+                self.log.critical("Whisper повертає помилку на %d сегментах поспіль", value)
+            self._notify_recognition(kind, value)
+            return kind
+        if problem is None and reported is not None:
+            runtime.gauge("asr.health", "ok")
+            self.log.info("Розпізнавання знову працює")
+            self._notify_recognition("recovered", 0)
+            return None
+        return reported
+
+    def _notify_recognition(self, kind, value):
+        if self.on_recognition_problem is None:
+            return
+        try:
+            self.on_recognition_problem(kind, value)
+        except Exception:
+            self.log.exception("Не вдалося повідомити про стан розпізнавання")
 
     def run(self):
         """Запускает рабочие потоки и цикл обработки аудиокадров."""
@@ -228,8 +263,8 @@ class ApplicationSupervisor:
                         self.runtime_state.set("stopped")
 
                     self.log.exception(
-                        "Не удалось открыть микрофон. "
-                        "Повторная попытка через 5 секунд"
+                        "Не вдалося відкрити мікрофон. "
+                        "Повторна спроба через 5 секунд"
                     )
                     return
 
@@ -272,7 +307,9 @@ class ApplicationSupervisor:
                 telegram_restart_exhausted_logged = False
                 last_wall = self.wall_clock()
                 last_mono = time.monotonic()
+                reported_problem = None
                 while not stop_requested.is_set():
+                    reported_problem = self._check_recognition(reported_problem)
                     # Сон Mac (наприклад, закрита кришка) зупиняє процес повністю.
                     # Беремо більший із розривів: monotonic на macOS може не йти уві сні.
                     now_wall, now_mono = self.wall_clock(), time.monotonic()

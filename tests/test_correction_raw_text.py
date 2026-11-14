@@ -1,4 +1,3 @@
-import threading
 from unittest.mock import Mock
 
 from core.event_processor import EventProcessor
@@ -53,8 +52,7 @@ def test_event_processor_registers_whisper_original():
         save_event=Mock(return_value=21),
         telegram_service=telegram,
         fresh=lambda _: True,
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
+        select_recipients=lambda wants: [{"chat_id": 1, "role": "admin", "mode": "all"}],
         db_path="unused-test.db",
         log_callsigns_only=True,
         log=Mock(),

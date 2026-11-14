@@ -14,7 +14,6 @@ def make_dependencies():
         "prompt": "Липка, Наган, Буря",
         "telegram_service": Mock(),
         "cooldown": Mock(),
-        "bot_state": Mock(),
         "log": Mock(),
     }
 
@@ -59,7 +58,7 @@ def test_build_transcriber(
     assert event_kwargs["telegram_service"] is deps["telegram_service"]
     assert event_kwargs["db_path"] == config.DB_PATH
     assert event_kwargs["fresh"] == deps["cooldown"].fresh
-    assert event_kwargs["state_lock"] is deps["bot_state"].lock
+    assert event_kwargs["select_recipients"] is deps["telegram_service"].recipients_for
 
     mock_pipeline.assert_called_once()
     assert mock_pipeline.call_args.kwargs["dictionaries"] == (

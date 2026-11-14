@@ -1,4 +1,3 @@
-from threading import RLock
 from unittest.mock import Mock
 
 from core.event_processor import EventProcessor
@@ -30,7 +29,6 @@ def make_processor(
     telegram = Mock()
     telegram.register_phrase_for_fix.return_value = "fix123"
     log = Mock()
-    lock = RLock()
 
     processor = EventProcessor(
         callsigns=callsigns,
@@ -41,8 +39,9 @@ def make_processor(
         telegram_service=telegram,
         fresh=fresh or Mock(return_value=True),
         rollback=rollback,
-        state_lock=lock,
-        get_notify_mode=lambda: mode,
+        select_recipients=lambda wants: [
+            {"chat_id": 1, "role": "admin", "mode": mode}
+        ] if mode != "off" and wants(mode) else [],
         db_path="test.db",
         log_callsigns_only=log_callsigns_only,
         log=log,
@@ -60,7 +59,8 @@ def test_all_mode_sends_notification():
         "Обычная фраза", None
     )
     telegram.notify.assert_called_once_with(
-        "Ефір", "", "", "Обычная фраза", b"pcm", fix_id="fix123"
+        "Ефір", "", "", "Обычная фраза", b"pcm", fix_id="fix123",
+        recipients=[{"chat_id": 1, "role": "admin", "mode": "all"}],
     )
     save_event.assert_not_called()
 
@@ -175,7 +175,8 @@ def test_sqlite_error_does_not_block_telegram():
 
     # Telegram должен получить уведомление.
     telegram.notify.assert_called_once_with(
-        "Ефір", "", "", "Команда", b"pcm", fix_id="fix123"
+        "Ефір", "", "", "Команда", b"pcm", fix_id="fix123",
+        recipients=[{"chat_id": 1, "role": "admin", "mode": "all"}],
     )
 
     # Помилка SQLite должна попасть в журнал.

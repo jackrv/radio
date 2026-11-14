@@ -40,7 +40,12 @@ def read_dictionary(db_path, kind):
         return _dictionary(db, kind)
 
 
+MAX_DICTIONARY_ENTRIES = 1000
+
+
 def validate_dictionary(entries, kind):
+    if len(entries) > MAX_DICTIONARY_ENTRIES:
+        raise ValueError(f"Словник має містити не більше {MAX_DICTIONARY_ENTRIES} записів")
     enabled = []
     expanded_numbers = 0
     for entry in entries:
@@ -102,6 +107,8 @@ def write_dictionary(db_path, actor_id, kind, entries, expected_version):
 
 
 def list_phrases(db_path, query="", offset=0, limit=20):
+    # Коротка окрема транзакція очищення: пошук нижче не тримає блокування запису,
+    # тож перегляд журналу не затримує збереження нових подій приймачем.
     with get_db(db_path) as db:
         ensure_table(db)
         ensure_media_table(db)
@@ -109,6 +116,7 @@ def list_phrases(db_path, query="", offset=0, limit=20):
                    (int(time.time()) - RETENTION_SECONDS,))
         db.execute("""DELETE FROM telegram_phrase_messages WHERE fix_id LIKE 'mem:%'
             AND NOT EXISTS (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:' || p.token=fix_id)""")
+    with get_db(db_path) as db:
         db.create_function("casefold", 1, lambda text: (text or "").casefold())
         rows = db.execute("""
             SELECT * FROM (

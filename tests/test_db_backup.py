@@ -83,9 +83,18 @@ def test_corrupt_copy_is_discarded(live, tmp_path, monkeypatch):
     assert list((tmp_path / "backups").iterdir()) == []
 
 
-def test_abandoned_temp_file_is_cleaned(live, tmp_path):
+def test_only_abandoned_temp_files_are_cleaned(live, tmp_path):
+    import os
+    import time
+
     folder = tmp_path / "backups"
     folder.mkdir()
-    (folder / ".events-auto-20261101T000000Z.db.tmp").write_bytes(b"partial")
+    old = folder / ".events-auto-20261101T000000Z.db.tmp"
+    old.write_bytes(b"partial")
+    hour_ago = time.time() - 7200
+    os.utime(old, (hour_ago, hour_ago))
+    fresh = folder / ".events-auto-20261115T030000Z.db.tmp"
+    fresh.write_bytes(b"in progress")
     prune_backups(folder)
-    assert list(folder.iterdir()) == []
+    assert not old.exists()
+    assert fresh.exists(), "копію, що ще пишеться, не видалено"

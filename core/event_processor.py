@@ -11,13 +11,11 @@ class EventProcessor:
         save_event,
         telegram_service,
         fresh,
-        state_lock,
-        get_notify_mode,
+        select_recipients,
         db_path,
         log_callsigns_only,
         log,
         rollback=None,
-        select_recipients=None,
     ):
         self.callsigns = callsigns
         self.commands = commands
@@ -26,13 +24,11 @@ class EventProcessor:
         self.save_event = save_event
         self.telegram_service = telegram_service
         self.fresh = fresh
-        self.state_lock = state_lock
-        self.get_notify_mode = get_notify_mode
         self.db_path = db_path
         self.log_callsigns_only = log_callsigns_only
         self.log = log
         self.rollback = rollback
-        # Особисті режими: функція(wants) -> отримувачі. Без неї — загальний режим.
+        # Особисті режими: функція(wants) -> отримувачі за поточними правами з бази.
         self.select_recipients = select_recipients
 
     def process(self, text, pcm, raw_text=None):
@@ -95,17 +91,9 @@ class EventProcessor:
                 or (mode == "commands" and bool(cmd_found or cs_found))
             )
 
-        recipients = None
-        if self.select_recipients is not None:
-            recipients = self.select_recipients(wants)
-            should_notify = bool(recipients)
-            current_mode = "особисті: %d" % len(recipients)
-        else:
-            with self.state_lock:
-                current_mode = self.get_notify_mode()
-            should_notify = wants(current_mode)
+        recipients = self.select_recipients(wants)
 
-        if should_notify and self.fresh(("tg", text)):
+        if recipients and self.fresh(("tg", text)):
             try:
                 fix_id = self.telegram_service.register_phrase_for_fix(
                     raw_text if raw_text is not None else text,
@@ -113,8 +101,8 @@ class EventProcessor:
                 )
 
                 self.log.info(
-                    "  -> в Telegram [режим: %s]: %s",
-                    current_mode,
+                    "  -> в Telegram [отримувачів: %d]: %s",
+                    len(recipients),
                     text,
                 )
 
@@ -125,7 +113,7 @@ class EventProcessor:
                     text,
                     pcm,
                     fix_id=fix_id,
-                    **({"recipients": recipients} if recipients is not None else {}),
+                    recipients=recipients,
                 )
             except Exception:
                 self.log.exception(

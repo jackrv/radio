@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import sqlite3
 import threading
+import time
 
 from core.diagnostics import runtime
 
@@ -23,6 +24,7 @@ AUTO_RE = re.compile(r"events-auto-(\d{8}T\d{6}Z)\.db\Z")
 TEMP_RE = re.compile(r"\.events-auto-\d{8}T\d{6}Z\.db\.tmp\Z")
 DEFAULT_KEEP = 7
 BACKUP_INTERVAL_S = 24 * 3600
+STALE_TEMP_S = 3600
 
 
 def _quoted(name):
@@ -82,9 +84,15 @@ def prune_backups(backup_dir, keep=DEFAULT_KEEP):
         raise ValueError("Потрібно зберігати принаймні одну копію")
     for old in auto_backups(backup_dir)[keep:]:
         old.unlink(missing_ok=True)
+    # Лише покинуті тимчасові файли: свіжий може належати копії, що ще пишеться.
+    cutoff = time.time() - STALE_TEMP_S
     for path in Path(backup_dir).iterdir():
         if TEMP_RE.fullmatch(path.name):
-            path.unlink(missing_ok=True)
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink(missing_ok=True)
+            except FileNotFoundError:
+                pass
 
 
 def latest_backup_age(backup_dir, now=None):

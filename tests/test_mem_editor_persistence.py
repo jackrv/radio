@@ -36,10 +36,10 @@ def setup(tmp_path):
 
 def service(db):
     return TelegramService(
-        bot_token="test", chat_id="123", sample_rate=16000,
-        db_path=str(db), log=Mock(), state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda _: None,
+        bot_token="test",
+        sample_rate=16000,
+        db_path=str(db),
+        log=Mock(),
     )
 
 
@@ -274,7 +274,7 @@ def test_phrase_update_failure_rolls_back_votes(setup):
 def test_sqlite_registration_failure_leaves_only_delete_button(setup):
     db, _ = setup
     s = service(db)
-    with patch("services.telegram.register_phrase", side_effect=sqlite3.OperationalError("test")):
+    with patch("services.telegram_outbox.register_phrase", side_effect=sqlite3.OperationalError("test")):
         fix_id = s.register_phrase_for_fix("Лира 68", None)
     assert fix_id is None
     rows = json.loads(s.get_keyboard(fix_id))["inline_keyboard"]

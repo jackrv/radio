@@ -1,23 +1,19 @@
+import requests
+import time
 import json
-import threading
 from unittest.mock import Mock
 
 import pytest
 
-import services.telegram as telegram_module
 from services.telegram import TelegramService
 
 
 def make_service(tmp_path):
     return TelegramService(
         bot_token="test_token",
-        chat_id="123",
         sample_rate=16000,
         db_path=str(tmp_path / "events.db"),
         log=Mock(),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
 
@@ -43,8 +39,8 @@ def test_temporary_failure_retries_without_advancing_offset(
         side_effect=[response, response, KeyboardInterrupt()]
     )
 
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
-    monkeypatch.setattr(telegram_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(requests, "get", mock_get)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
     with pytest.raises(KeyboardInterrupt):
         service.callback_listener()
@@ -83,8 +79,8 @@ def test_poison_update_is_saved_and_next_update_processed(
         ]
     )
 
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
-    monkeypatch.setattr(telegram_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(requests, "get", mock_get)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
     with pytest.raises(KeyboardInterrupt):
         service.callback_listener()
@@ -127,8 +123,8 @@ def test_failed_quarantine_does_not_advance_offset(
         ]
     )
 
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
-    monkeypatch.setattr(telegram_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(requests, "get", mock_get)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
     with pytest.raises(KeyboardInterrupt):
         service.callback_listener()

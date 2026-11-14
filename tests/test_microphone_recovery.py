@@ -1,3 +1,4 @@
+import requests
 import queue
 from unittest.mock import Mock
 

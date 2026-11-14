@@ -1,12 +1,13 @@
+import requests
+import time
 import json
 import sqlite3
-import threading
 from unittest.mock import Mock
 
 import pytest
 
-import services.telegram as telegram_module
 from services.telegram import TelegramService
+import services.telegram_updates as telegram_updates
 from services.telegram_offset_store import (
     load_telegram_offset,
     save_telegram_offset,
@@ -16,13 +17,9 @@ from services.telegram_offset_store import (
 def make_service(db_path):
     return TelegramService(
         bot_token="test_token",
-        chat_id="123",
         sample_rate=16000,
         db_path=str(db_path),
         log=Mock(),
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
     )
 
 
@@ -62,7 +59,7 @@ def test_new_service_resumes_from_persisted_offset(
         KeyboardInterrupt(),
     ])
 
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
+    monkeypatch.setattr(requests, "get", mock_get)
 
     with pytest.raises(KeyboardInterrupt):
         first.callback_listener()
@@ -79,7 +76,7 @@ def test_new_service_resumes_from_persisted_offset(
         KeyboardInterrupt(),
     ])
 
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
+    monkeypatch.setattr(requests, "get", mock_get)
 
     with pytest.raises(KeyboardInterrupt):
         second.callback_listener()
@@ -110,8 +107,8 @@ def test_quarantined_update_offset_survives_restart(
         KeyboardInterrupt(),
     ])
 
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
-    monkeypatch.setattr(telegram_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(requests, "get", mock_get)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
     with pytest.raises(KeyboardInterrupt):
         service.callback_listener()
@@ -130,7 +127,7 @@ def test_quarantined_update_offset_survives_restart(
 
     restarted = make_service(db)
     mock_get = Mock(side_effect=[KeyboardInterrupt()])
-    monkeypatch.setattr(telegram_module.requests, "get", mock_get)
+    monkeypatch.setattr(requests, "get", mock_get)
 
     with pytest.raises(KeyboardInterrupt):
         restarted.callback_listener()
@@ -148,7 +145,7 @@ def test_failed_offset_save_does_not_acknowledge(
     service.handle_update = Mock()
 
     monkeypatch.setattr(
-        telegram_module.requests,
+        requests,
         "get",
         Mock(side_effect=[response_for(update), KeyboardInterrupt()]),
     )
@@ -157,12 +154,12 @@ def test_failed_offset_save_does_not_acknowledge(
         raise sqlite3.OperationalError("disk unavailable")
 
     monkeypatch.setattr(
-        telegram_module,
+        telegram_updates,
         "save_telegram_offset",
         fail_save,
     )
     delays = []
-    monkeypatch.setattr(telegram_module.time, "sleep", delays.append)
+    monkeypatch.setattr(time, "sleep", delays.append)
 
     # Слухач не падає: пауза й повтор, але update не підтверджено.
     with pytest.raises(KeyboardInterrupt):

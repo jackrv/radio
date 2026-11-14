@@ -162,3 +162,13 @@ def test_imported_dictionary_saves_unchanged_in_mini_app(setup):
     for kind in ("callsigns", "commands", "telegram"):
         current = read_dictionary(db, kind)
         write_dictionary(db, 1001, kind, current["entries"], current["version"])
+
+
+def test_import_and_api_share_entry_limit(tmp_path):
+    from services.miniapp_management import MAX_DICTIONARY_ENTRIES
+
+    source = tmp_path / "dictionaries.txt"
+    rows = "\n".join(f"Ліра: {n}" for n in range(1, MAX_DICTIONARY_ENTRIES + 2))
+    source.write_text(f"[callsigns]\n{rows}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=str(MAX_DICTIONARY_ENTRIES)):
+        initialize_database(tmp_path / "events.db", source)

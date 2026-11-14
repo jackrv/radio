@@ -14,6 +14,7 @@ __pycache__/
 # SQLite
 *.db
 *.db-*
+*.db.*
 *.sqlite
 *.sqlite-*
 *.sqlite3
@@ -40,3 +41,4 @@ diagnostics.json
 diagnostics-report.json
 .radio-diagnostics-*
 .local-backups/
+.radio345.lock

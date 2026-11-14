@@ -1,5 +1,4 @@
 import sqlite3
-import threading
 from unittest.mock import Mock
 
 import core.transcriber as transcriber_module
@@ -67,8 +66,7 @@ def make_processor(db_path):
         save_event=save_event,
         telegram_service=Mock(),
         fresh=lambda _: True,
-        state_lock=threading.Lock(),
-        get_notify_mode=lambda: "watch",
+        select_recipients=lambda wants: [],
         db_path=str(db_path),
         log_callsigns_only=False,
         log=Mock(),

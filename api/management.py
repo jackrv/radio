@@ -19,7 +19,7 @@ class Entry(BaseModel):
 
 
 class DictionaryUpdate(BaseModel):
-    entries: list[Entry] = Field(max_length=1000)
+    entries: list[Entry] = Field(max_length=store.MAX_DICTIONARY_ENTRIES)
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

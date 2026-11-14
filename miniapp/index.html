@@ -13,6 +13,7 @@
   <script src="./api.js" defer></script>
   <script src="./notifications.js" defer></script>
   <script src="./receiver-controls.js" defer></script>
+  <script src="./correction-editor.js" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -77,14 +78,14 @@
         </section>
 
         <section class="view" id="view-corrections" aria-labelledby="corrections-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">ОБУЧЕНИЕ МОДЕЛИ</div><h1 id="corrections-title">Исправления</h1><p class="lead">Новый редактор с заранее заполненным полем текста.</p></div><span class="tag tag-outline">ПРОТОТИП</span></div>
-          <article class="panel wide-panel"><div class="panel-header"><div><div class="eyebrow">ПРИМЕР, НЕ ИЗ ЭФИРА</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
-            <label for="original-text" class="form-label">Исходный текст</label><div class="source-text" id="original-text">Тестова фраза для виправлення</div>
+          <div class="section-heading"><div><div class="eyebrow">ОБУЧЕНИЕ МОДЕЛИ</div><h1 id="corrections-title">Исправления</h1><p class="lead">Исправь фразу, не копируя текст вручную.</p></div><span class="tag tag-outline">ПРОТОТИП</span></div>
+          <article class="panel wide-panel"><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
+            <label for="original-text" class="form-label">Исходный текст</label><div class="source-text" id="original-text">Открой редактор кнопкой под сообщением Telegram.</div>
             <label for="corrected-text" class="form-label">Исправленный текст</label>
-            <textarea id="corrected-text" rows="4" spellcheck="false">Тестова фраза для виправлення</textarea>
-            <div class="editor-footer"><span class="subtle-note">Текст предварительно заполнен. Можно сразу редактировать.</span><button class="outline-button" id="restore-example" type="button">Вернуть пример</button></div>
-            <button class="primary-button" type="button" disabled>Сохранить в SQLite — после подключения API</button>
-            <div class="inline-warning">Это демонстрация поля редактирования. Изменения пока никуда не отправляются и не сохраняются.</div>
+            <textarea id="corrected-text" rows="4" spellcheck="false" disabled></textarea>
+            <div class="editor-footer"><span class="subtle-note">Текст подставляется из SQLite.</span><button class="outline-button" id="restore-example" type="button" disabled>Вернуть текст</button></div>
+            <button class="primary-button" id="save-correction-button" type="button" disabled>Сохранить исправление</button>
+            <p class="notify-feedback" id="correction-feedback" role="status" aria-live="polite">Для редактирования выбери сообщение в Telegram.</p>
           </article>
         </section>
 

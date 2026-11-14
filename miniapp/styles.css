@@ -89,7 +89,7 @@ textarea { width: 100%; background: #101b28; color: #f0f5f9; border: 1px solid #
 .editor-footer { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:10px 0 20px; }
 .subtle-note { color:#8ea0ad; font-size:11px; line-height:1.55; }
 .outline-button { color:var(--lime); border:1px solid #4f7359; background:none; padding:9px 12px; border-radius:8px; font-size:11px; cursor:pointer; white-space:nowrap; }
-.primary-button { width:100%; border:none; border-radius:11px; padding:14px 13px; background:#4a6150; color:#ced8cd; cursor:not-allowed; font-size:13px; font-weight:800; }
+.primary-button { width:100%; border:none; border-radius:11px; padding:14px 13px; background:#4a6150; color:#ced8cd; cursor:pointer; font-size:13px; font-weight:800; }
 .inline-warning { margin-top:13px; color:#c2a983; line-height:1.6; font-size:11px; }
 .stack { display: flex; flex-direction: column; gap:11px; }
 .item-card { border:1px solid var(--border); background:var(--surface); border-radius:13px; padding:17px 19px; display:flex; align-items:center; gap:17px; }
@@ -234,3 +234,6 @@ textarea { width: 100%; background: #101b28; color: #f0f5f9; border: 1px solid #
     width: 100%;
   }
 }
+
+.primary-button:disabled { cursor:not-allowed; opacity:0.55; }
+.primary-button:not(:disabled) { background:var(--lime); color:#172414; }

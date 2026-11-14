@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 import uuid
+from urllib.parse import quote
 
 import requests
 import collections
@@ -65,12 +66,28 @@ class TelegramService:
     def get_keyboard(self, fix_id=None):
         """Кнопки управления сообщением."""
         row = [{"text": "🗑 Удалить", "callback_data": "del"}]
+        rows = [row]
         if fix_id is not None:
-            row.append({
-                "text": "✏️ Исправить",
-                "callback_data": f"fix_{fix_id}",
-            })
-        return json.dumps({"inline_keyboard": [row]})
+            if fix_id.startswith("db:"):
+                # Web App buttons are supported in private Telegram chats.
+                rows.append([{
+                    "text": "✏️ Исправить в редакторе",
+                    "web_app": {
+                        "url": "https://jackrv.github.io/radio/?fix_id="
+                        + quote(fix_id, safe=""),
+                    },
+                }])
+                rows.append([{
+                    "text": "💬 Исправить сообщением",
+                    "callback_data": f"fix_{fix_id}",
+                }])
+            else:
+                # In-memory phrases will get a persistent editor in a later step.
+                row.append({
+                    "text": "✏️ Исправить",
+                    "callback_data": f"fix_{fix_id}",
+                })
+        return json.dumps({"inline_keyboard": rows})
 
     def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML"):
         if not (self.bot_token and self.chat_id):

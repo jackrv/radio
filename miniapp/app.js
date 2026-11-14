@@ -1,9 +1,6 @@
 "use strict";
 
-// В этой версии НЕТ сетевых запросов, хранения initData или доступа к SQLite.
-// Авторизация и команды появятся только после подключения защищённого API.
-
-const sampleText = "Тестова фраза для виправлення";
+// Navigation. API-based correction editing is in correction-editor.js.
 const availableViews = new Set(["home", "corrections", "dictionaries", "settings", "users"]);
 
 function showView(name) {
@@ -25,11 +22,6 @@ function showView(name) {
 for (const button of document.querySelectorAll("[data-view-target]")) {
   button.addEventListener("click", () => showView(button.dataset.viewTarget));
 }
-
-document.getElementById("restore-example").addEventListener("click", () => {
-  document.getElementById("corrected-text").value = sampleText;
-  document.getElementById("corrected-text").focus();
-});
 
 const webApp = window.Telegram?.WebApp;
 if (webApp) {

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from services.miniapp_auth import (
@@ -13,6 +13,11 @@ from services.miniapp_auth import (
     verify_init_data,
 )
 from services.user_store import require_permission
+from services.miniapp_correction_editor import (
+    CorrectionConflict,
+    load_edit_draft,
+    save_edit_draft,
+)
 from services.receiver_status import read_receiver_status
 from services.receiver_control import (
     read_pause_state,
@@ -36,6 +41,12 @@ class ReceiverControlUpdate(BaseModel):
     expected_revision: int | None = Field(
         default=None, ge=0, strict=True
     )
+
+
+class CorrectionDraftUpdate(BaseModel):
+    fix_id: str = Field(pattern=r"^db:[1-9][0-9]{0,17}$")
+    expected_text: str = Field(max_length=5000)
+    corrected_text: str = Field(min_length=1, max_length=5000)
 
 
 def create_app(db_path, bot_token):
@@ -141,6 +152,44 @@ def create_app(db_path, bot_token):
                 status_code=503,
                 detail="База пользователей недоступна",
             ) from None
+
+    @app.get("/api/corrections/draft")
+    def get_correction_draft(
+        fix_id: str = Query(pattern=r"^db:[1-9][0-9]{0,17}$"),
+        user=Depends(current_user),
+    ):
+        require_settings_permission(user, "corrections.write")
+        try:
+            return load_edit_draft(db_path, fix_id)
+        except LookupError:
+            raise HTTPException(status_code=404, detail="Событие не найдено") from None
+        except sqlite3.Error:
+            raise HTTPException(status_code=503, detail="База недоступна") from None
+
+    @app.put("/api/corrections/draft")
+    def save_correction_draft(
+        payload: CorrectionDraftUpdate,
+        user=Depends(current_user),
+    ):
+        require_settings_permission(user, "corrections.write")
+        try:
+            return save_edit_draft(
+                db_path,
+                payload.fix_id,
+                payload.expected_text,
+                payload.corrected_text,
+            )
+        except CorrectionConflict:
+            raise HTTPException(
+                status_code=409,
+                detail="Текст уже изменён. Открой редактор заново.",
+            ) from None
+        except LookupError:
+            raise HTTPException(status_code=404, detail="Событие не найдено") from None
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Некорректный текст") from None
+        except sqlite3.Error:
+            raise HTTPException(status_code=503, detail="База недоступна") from None
 
     @app.get("/api/notifications/mode")
     def get_notification_mode(user=Depends(current_user)):

@@ -1,7 +1,10 @@
 """Незавершённые исправления Telegram в SQLite."""
 
+import re
+
 from services.sqlite_connection import get_db
 from services.event_store import save_correction
+from services.telegram_phrase_store import update_phrase_text
 from services.telegram_offset_store import (
     _ensure_table as ensure_offset_table,
     save_telegram_offset,
@@ -118,6 +121,14 @@ def apply_pending_correction(
             db=db,
             **options,
         )
+
+        source = pending.get("source_id")
+        if source and re.fullmatch(r"mem:[0-9a-f]{32}", source):
+            # The pending chat correction must stay usable even when a
+            # recent-phrase entry has already expired or was pruned.
+            update_phrase_text(
+                db, source[4:], corrected_text, allow_missing=True
+            )
 
         db.execute("""
             DELETE FROM telegram_pending_corrections

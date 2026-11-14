@@ -2,16 +2,22 @@ import json
 import queue
 import html
 import logging
+import sqlite3
+import re
 import subprocess
 import threading
 import time
-import uuid
+import secrets
 from urllib.parse import quote
 
 import requests
 import collections
 
 from services.event_store import resolve_event_text, save_correction
+from services.telegram_phrase_store import (
+    register_phrase, load_phrase, update_phrase_text, RETENTION_SECONDS,
+)
+from services.sqlite_connection import get_db
 from services.telegram_pending import (
     save_pending_correction,
     load_pending_correction,
@@ -39,6 +45,7 @@ class TelegramService:
     apply_telegram_mode=None,
 ):
         self.recent_phrases = collections.OrderedDict()
+        self._phrase_created_at = {}
         self._phrases_lock = threading.Lock()
         self.recent_phrases_max = 200
         self.bot_token = bot_token
@@ -68,7 +75,10 @@ class TelegramService:
         row = [{"text": "🗑 Удалить", "callback_data": "del"}]
         rows = [row]
         if fix_id is not None:
-            if fix_id.startswith("db:"):
+            if (
+                fix_id.startswith("db:")
+                or re.fullmatch(r"mem:[0-9a-f]{32}", fix_id)
+            ):
                 # Web App buttons are supported in private Telegram chats.
                 rows.append([{
                     "text": "✏️ Исправить в редакторе",
@@ -82,7 +92,7 @@ class TelegramService:
                     "callback_data": f"fix_{fix_id}",
                 }])
             else:
-                # In-memory phrases will get a persistent editor in a later step.
+                # Legacy/in-memory fallback when persistent storage is unavailable.
                 row.append({
                     "text": "✏️ Исправить",
                     "callback_data": f"fix_{fix_id}",
@@ -288,12 +298,34 @@ class TelegramService:
         if event_id is not None:
             return f"db:{event_id}"
 
-        token = uuid.uuid4().hex[:8]
-        with self._phrases_lock:
-            self.recent_phrases[token] = text
+        token = secrets.token_hex(16)
+        if self.bot_token and self.chat_id:
+            try:
+                register_phrase(
+                    self.db_path, token, text,
+                    max_phrases=min(self.recent_phrases_max, 200),
+                )
+            except (sqlite3.Error, ValueError) as exc:
+                self.log.warning(
+                    "Не удалось сохранить временную фразу в SQLite: %s; "
+                    "используется исправление через чат", exc,
+                )
+                token = secrets.token_hex(8)
+        else:
+            # Without Telegram credentials no notifications can be sent.
+            token = secrets.token_hex(8)
 
-            while len(self.recent_phrases) > self.recent_phrases_max:
-                self.recent_phrases.popitem(last=False)
+        with self._phrases_lock:
+            now = time.time()
+            for old_token, created_at in list(self._phrase_created_at.items()):
+                if created_at <= now - RETENTION_SECONDS:
+                    self.recent_phrases.pop(old_token, None)
+                    del self._phrase_created_at[old_token]
+            self.recent_phrases[token] = text
+            self._phrase_created_at[token] = now
+            while len(self.recent_phrases) > min(self.recent_phrases_max, 200):
+                old_token, _ = self.recent_phrases.popitem(last=False)
+                self._phrase_created_at.pop(old_token, None)
 
         return f"mem:{token}"
 
@@ -305,7 +337,25 @@ class TelegramService:
 
         if fix_id.startswith("mem:"):
             token = fix_id.split(":", 1)[1]
+            if re.fullmatch(r"[0-9a-f]{32}", token):
+                try:
+                    phrase = load_phrase(self.db_path, token)
+                    return (
+                        (phrase["original_text"], None)
+                        if phrase is not None else (None, None)
+                    )
+                except sqlite3.Error as exc:
+                    self.log.warning("Не удалось прочитать фразу: %s", exc)
+                    return None, None
             with self._phrases_lock:
+                created_at = self._phrase_created_at.get(token)
+                if (
+                    created_at is not None
+                    and created_at <= time.time() - RETENTION_SECONDS
+                ):
+                    self.recent_phrases.pop(token, None)
+                    self._phrase_created_at.pop(token, None)
+                    return None, None
                 return self.recent_phrases.get(token), None
 
         return None, None
@@ -552,13 +602,22 @@ class TelegramService:
             else:
                 # Совместимость со старыми прямыми вызовами
                 # handle_update без Telegram update_id.
-                save_correction(
-                    orig_text,
-                    corrected_text,
-                    ev_id,
-                    self.db_path,
-                    **options,
-                )
+                source = pending.get("source_id", "") or ""
+                if re.fullmatch(r"mem:[0-9a-f]{32}", source):
+                    with get_db(self.db_path) as db:
+                        db.execute("BEGIN IMMEDIATE")
+                        save_correction(
+                            orig_text, corrected_text, ev_id, self.db_path,
+                            db=db, **options,
+                        )
+                        update_phrase_text(
+                            db, source[4:], corrected_text, allow_missing=True,
+                        )
+                else:
+                    save_correction(
+                        orig_text, corrected_text, ev_id, self.db_path,
+                        **options,
+                    )
 
             # Удаляем ожидание только после успешного сохранения.
             with self.state_lock:

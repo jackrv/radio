@@ -44,7 +44,7 @@ class ReceiverControlUpdate(BaseModel):
 
 
 class CorrectionDraftUpdate(BaseModel):
-    fix_id: str = Field(pattern=r"^db:[1-9][0-9]{0,17}$")
+    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     expected_text: str = Field(max_length=5000)
     corrected_text: str = Field(min_length=1, max_length=5000)
 
@@ -155,7 +155,7 @@ def create_app(db_path, bot_token):
 
     @app.get("/api/corrections/draft")
     def get_correction_draft(
-        fix_id: str = Query(pattern=r"^db:[1-9][0-9]{0,17}$"),
+        fix_id: str = Query(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$"),
         user=Depends(current_user),
     ):
         require_settings_permission(user, "corrections.write")

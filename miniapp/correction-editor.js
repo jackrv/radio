@@ -65,10 +65,17 @@
         throw new Error("Нет прав на исправление текста.");
       }
       if (response.status === 404) {
-        throw new Error("Событие не найдено. Возможно, оно удалено.");
+        throw new Error(
+          fixId?.startsWith("mem:")
+            ? "Фраза недоступна: прошло 24 часа или она вытеснена из 200 последних."
+            : "Событие не найдено. Возможно, оно удалено."
+        );
       }
       if (response.status === 409) {
         throw new Error("Текст изменился. Открой редактор заново.");
+      }
+      if (response.status === 503) {
+        throw new Error("База временно недоступна. Повтори попытку позже.");
       }
       throw new Error(`Ошибка сохранения: HTTP ${response.status}`);
     }
@@ -137,7 +144,7 @@
   async function start() {
     if (!fixId) return; // Opened through the regular Mini App menu.
     openEditor();
-    if (!/^db:[1-9][0-9]{0,17}$/.test(fixId)) {
+    if (!/^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$/.test(fixId)) {
       feedback.textContent = "Неизвестный идентификатор события.";
       return;
     }

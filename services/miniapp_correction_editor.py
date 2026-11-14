@@ -1,9 +1,10 @@
-"""Mini App edit draft and atomic correction of a persisted radio event."""
+"""Mini App drafts and atomic corrections of events and temporary phrases."""
 
 import re
 
 from services.event_store import save_correction
 from services.sqlite_connection import get_db
+from services.telegram_phrase_store import load_phrase, update_phrase_text
 
 
 class CorrectionConflict(Exception):
@@ -19,6 +20,12 @@ def event_id_from_fix_id(fix_id: str) -> int:
 
 
 def load_edit_draft(db_path, fix_id: str):
+    if fix_id.startswith("mem:"):
+        phrase = load_phrase(db_path, fix_id[4:])
+        if phrase is None:
+            raise LookupError("Фраза не найдена или устарела")
+        return {"fix_id": fix_id, **phrase}
+
     event_id = event_id_from_fix_id(fix_id)
     with get_db(db_path) as db:
         row = db.execute(
@@ -39,7 +46,8 @@ def load_edit_draft(db_path, fix_id: str):
 
 def save_edit_draft(db_path, fix_id: str, expected_text: str,
                     corrected_text: str):
-    event_id = event_id_from_fix_id(fix_id)
+    memory_token = fix_id[4:] if fix_id.startswith("mem:") else None
+    event_id = None if memory_token is not None else event_id_from_fix_id(fix_id)
     corrected = corrected_text.strip()
     if not corrected or len(corrected) > 5000:
         raise ValueError("Исправленный текст должен быть непустым")
@@ -47,20 +55,33 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
     with get_db(db_path) as db:
         # Serializes edits with other SQLite writers; protects against lost updates.
         db.execute("BEGIN IMMEDIATE")
-        row = db.execute(
-            "SELECT COALESCE(raw_text, text), text "
-            "FROM radio_events WHERE id = ?",
-            (event_id,),
-        ).fetchone()
+        if memory_token is not None:
+            phrase = load_phrase(db_path, memory_token, db=db)
+            if phrase is None:
+                raise LookupError("Фраза не найдена или устарела")
+            original = phrase["original_text"]
+            current = phrase["current_text"]
+        else:
+            row = db.execute(
+                "SELECT COALESCE(raw_text, text), text "
+                "FROM radio_events WHERE id = ?",
+                (event_id,),
+            ).fetchone()
+            if row is None:
+                raise LookupError("Событие не найдено")
+            original, current = row
 
-        if row is None:
-            raise LookupError("Событие не найдено")
-        original, current = row
         if current != expected_text:
             raise CorrectionConflict("Текст изменился в другой сессии")
 
-        # Uses the existing transaction-aware event and word-learning service.
-        save_correction(original, corrected, event_id, db_path, db=db)
+        # One transaction: word feedback + current text + rollback on errors.
+        save_correction(
+            original, corrected, event_id, db_path,
+            source_id=fix_id if memory_token is not None else None,
+            db=db,
+        )
+        if memory_token is not None:
+            update_phrase_text(db, memory_token, corrected)
 
     return {
         "fix_id": fix_id,

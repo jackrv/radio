@@ -18,6 +18,7 @@
   let writing = false;
   let reading = false;
   let generation = 0;
+  let conflictPending = false;
 
   async function request(method, path, payload) {
     if (!telegram?.initData) {
@@ -50,6 +51,14 @@
 
     if (response.status === 403) {
       throw new Error("Недостаточно прав.");
+    }
+
+    if (response.status === 409) {
+      const error = new Error(
+        "Состояние уже изменено в другой вкладке."
+      );
+      error.conflict = true;
+      throw error;
     }
 
     if (!response.ok) {
@@ -140,6 +149,13 @@
 
       actualState = status.receiver;
       setControl(command);
+
+      if (conflictPending) {
+        conflictPending = false;
+        feedback.textContent =
+          "Состояние обновлено. Проверьте его перед новой командой.";
+        feedback.style.color = "#edb07b";
+      }
     } catch (error) {
       feedback.textContent = error.message;
       feedback.style.color = "#ff9b9b";
@@ -155,7 +171,19 @@
       ? 0
       : Number(select.value);
 
+    const expectedRevision = control.revision;
+
     if (!Number.isInteger(minutes)) return;
+
+    if (
+      !Number.isSafeInteger(expectedRevision) ||
+      expectedRevision < 0
+    ) {
+      feedback.textContent =
+        "Сервер не передал версию команды. Обновите API.";
+      feedback.style.color = "#ff9b9b";
+      return;
+    }
 
     writing = true;
     generation++;
@@ -170,7 +198,10 @@
       const result = await request(
         "PUT",
         "/api/receiver/control",
-        { minutes }
+        {
+          minutes,
+          expected_revision: expectedRevision
+        }
       );
 
       setControl(result);
@@ -180,8 +211,21 @@
         : "Команда паузы принята. Ожидаем микрофон.";
 
     } catch (error) {
-      feedback.textContent = `Ошибка: ${error.message}`;
-      feedback.style.color = "#ff9b9b";
+      if (error.conflict) {
+        conflictPending = true;
+
+        // Запрещаем повторную команду со старой версией.
+        control = null;
+        deadline = 0;
+
+        feedback.textContent =
+          "Команда отклонена: состояние изменилось " +
+          "в другой вкладке. Обновляем данные...";
+        feedback.style.color = "#edb07b";
+      } else {
+        feedback.textContent = `Ошибка: ${error.message}`;
+        feedback.style.color = "#ff9b9b";
+      }
     } finally {
       writing = false;
       render();

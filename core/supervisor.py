@@ -124,6 +124,7 @@ class ApplicationSupervisor:
 
         audio_stack = ExitStack()
         paused = None
+        retry_at = 0.0
 
         def clear_queue(q):
             while True:
@@ -135,7 +136,7 @@ class ApplicationSupervisor:
                     q.task_done()
 
         def transition(should_pause):
-            nonlocal paused, segmenter
+            nonlocal paused, segmenter, retry_at
 
             if paused is should_pause:
                 return
@@ -157,6 +158,11 @@ class ApplicationSupervisor:
                 self.log.info("⏸ Приём приостановлен: микрофон закрыт")
 
             else:
+                # После ошибки открытия не повторяем попытку
+                # чаще одного раза в пять секунд.
+                if time.monotonic() < retry_at:
+                    return
+
                 # При первом запуске очереди не очищаем.
                 # Очистка нужна только при выходе из паузы.
                 if paused is True:
@@ -166,13 +172,32 @@ class ApplicationSupervisor:
                 # Новый VAD не содержит старой незавершённой фразы.
                 segmenter = new_segmenter()
 
-                audio_stack.enter_context(self.stream_factory(
-                    samplerate=self.sample_rate,
-                    blocksize=self.frame_len,
-                    dtype="int16",
-                    channels=1,
-                    callback=self.on_audio,
-                ))
+                try:
+                    audio_stack.enter_context(self.stream_factory(
+                        samplerate=self.sample_rate,
+                        blocksize=self.frame_len,
+                        dtype="int16",
+                        channels=1,
+                        callback=self.on_audio,
+                    ))
+                except Exception:
+                    # Не объявляем микрофон работающим.
+                    paused = True
+                    retry_at = time.monotonic() + 5.0
+
+                    if self.pause_gate is not None:
+                        self.pause_gate.set_paused(True)
+
+                    if self.runtime_state is not None:
+                        self.runtime_state.set("stopped")
+
+                    self.log.exception(
+                        "Не удалось открыть микрофон. "
+                        "Повторная попытка через 5 секунд"
+                    )
+                    return
+
+                retry_at = 0.0
 
                 if self.pause_gate is not None:
                     self.pause_gate.set_paused(False)

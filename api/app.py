@@ -17,6 +17,7 @@ from services.receiver_status import read_receiver_status
 from services.receiver_control import (
     read_pause_state,
     set_pause_minutes,
+    PauseVersionConflict,
 )
 from services.notify_mode_store import (
     load_notify_mode,
@@ -32,6 +33,9 @@ class NotificationModeUpdate(BaseModel):
 
 class ReceiverControlUpdate(BaseModel):
     minutes: int = Field(ge=0, le=240, strict=True)
+    expected_revision: int | None = Field(
+        default=None, ge=0, strict=True
+    )
 
 
 def create_app(db_path, bot_token):
@@ -188,8 +192,18 @@ def create_app(db_path, bot_token):
 
         try:
             return set_pause_minutes(
-                db_path, payload.minutes
+                db_path,
+                payload.minutes,
+                expected_revision=payload.expected_revision,
             )
+        except PauseVersionConflict:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Состояние приёмника изменилось. "
+                    "Обновите данные перед повторной командой."
+                ),
+            ) from None
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,

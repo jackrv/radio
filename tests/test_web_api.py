@@ -465,3 +465,43 @@ def test_invalid_receiver_control_request(setup_api, minutes):
     )
 
     assert response.status_code == 422
+
+
+def test_receiver_api_rejects_stale_revision(setup_api):
+    client, _ = setup_api
+    headers = auth_header(1001)
+
+    initial = client.get(
+        "/api/receiver/control", headers=headers
+    ).json()
+
+    version = initial["revision"]
+
+    first = client.put(
+        "/api/receiver/control",
+        headers=headers,
+        json={
+            "minutes": 15,
+            "expected_revision": version,
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["revision"] == version + 1
+
+    stale = client.put(
+        "/api/receiver/control",
+        headers=headers,
+        json={
+            "minutes": 30,
+            "expected_revision": version,
+        },
+    )
+    assert stale.status_code == 409
+
+    current = client.get(
+        "/api/receiver/control", headers=headers
+    ).json()
+
+    assert current["revision"] == version + 1
+    assert current["pause_requested"] is True
+    assert current["remaining_seconds"] <= 900

@@ -15,7 +15,6 @@ def test_offset_survives_listener_restart(monkeypatch):
         db_path=":memory:",
         log=Mock(),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )

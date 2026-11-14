@@ -56,7 +56,6 @@ def make_service(mode):
         db_path="unused_test.db",
         log=logging.getLogger("test_silent_mode"),
         state_lock=lock,
-        waiting_for_correction={},
         get_notify_mode=lambda: mode["value"],
         set_notify_mode=lambda value: mode.update(value=value),
     )

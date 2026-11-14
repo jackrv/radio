@@ -3,6 +3,15 @@
 // Shared transport for management screens. No credentials or phrase text in storage.
 window.Radio345 = (() => {
   const base = document.querySelector('meta[name="radio345-api"]').content;
+  // Доступність сервера: будь-яка HTTP-відповідь — сервер на зв’язку;
+  // збій fetch (вимкнений Mac, тунель без CORS) або тайм-аут — недоступний.
+  const connectionListeners = [];
+  function report(reachable) {
+    for (const listener of connectionListeners) {
+      try { listener(reachable); } catch (_) { /* екран стану не має ламати запит */ }
+    }
+  }
+  function onConnection(listener) { connectionListeners.push(listener); }
   async function request(path, method = "GET", body, format = "json") {
     const initData = window.Telegram?.WebApp?.initData;
     if (!initData) throw new Error("Відкрий панель через Telegram-бота.");
@@ -20,6 +29,7 @@ window.Radio345 = (() => {
         signal: controller.signal,
         credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer"
       });
+      report(true);
       if (!response.ok) {
         const messages = {
           401: "Авторизація застаріла. Закрий і знову відкрий Mini App.",
@@ -39,7 +49,16 @@ window.Radio345 = (() => {
       }
       return format === "blob" ? await response.blob() : await response.json();
     } catch (error) {
-      if (error.name === "AbortError") throw new Error("Сервер не відповів протягом 15 секунд. Повтори спробу.");
+      if (error.name === "AbortError") {
+        report(false);
+        const timeout = new Error("Сервер не відповів протягом 15 секунд. Повтори спробу.");
+        timeout.unreachable = true;
+        throw timeout;
+      }
+      if (error?.name === "TypeError") {
+        report(false);
+        error.unreachable = true;
+      }
       throw error;
     } finally {
       window.clearTimeout(timer);
@@ -50,5 +69,5 @@ window.Radio345 = (() => {
     if (!me) me = request("/api/me").catch(error => { me = null; throw error; });
     return me;
   }
-  return { request, user };
+  return { request, user, onConnection };
 })();

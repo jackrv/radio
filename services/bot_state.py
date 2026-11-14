@@ -16,7 +16,6 @@ class BotState:
     def __init__(self):
         self.lock = threading.Lock()
         self.notify_mode = "all"
-        self.waiting_for_correction = {}
         self._notify_mode_db_path = None
 
     def get_notify_mode(self):

@@ -305,55 +305,47 @@ def test_cors_allows_ngrok_skip_header(setup_api):
     assert "ngrok-skip-browser-warning" in allowed
 
 
-def test_admin_changes_notification_mode(setup_api):
-    from services.bot_state import BotState
-
-    client, db_path = setup_api
-
-    state = BotState()
-    state.enable_persistence(db_path)
-
-    response = client.put(
-        "/api/notifications/mode",
-        headers=auth_header(1001),
-        json={"mode": "off"},
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"mode": "off"}
-    assert state.get_notify_mode() == "off"
-
-    response = client.get(
-        "/api/notifications/mode",
-        headers=auth_header(1001),
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"mode": "off"}
-
-
-def test_viewer_cannot_change_notification_mode(setup_api):
+def test_admin_changes_own_notification_mode_including_all(setup_api):
     client, _ = setup_api
 
-    response = client.put(
-        "/api/notifications/mode",
-        headers=auth_header(2002),
-        json={"mode": "off"},
-    )
+    for mode in ("off", "all"):
+        response = client.put(
+            "/api/notifications/mode",
+            headers=auth_header(1001),
+            json={"mode": mode},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"mode": mode, "allowed": ["all", "commands", "off", "watch"]}
 
-    assert response.status_code == 403
+    response = client.get("/api/notifications/mode", headers=auth_header(1001))
+    assert response.json()["mode"] == "all"
 
 
-def test_editor_cannot_change_notification_mode(setup_api):
+@pytest.mark.parametrize("user_id", [2002, 3003])
+def test_viewer_and_editor_manage_own_mode_but_not_all(setup_api, user_id):
     client, _ = setup_api
 
+    response = client.get("/api/notifications/mode", headers=auth_header(user_id))
+    assert response.status_code == 200
+    assert response.json() == {"mode": "commands", "allowed": ["commands", "off", "watch"]}
+
     response = client.put(
         "/api/notifications/mode",
-        headers=auth_header(3003),
-        json={"mode": "off"},
+        headers=auth_header(user_id),
+        json={"mode": "all"},
     )
-
     assert response.status_code == 403
+    assert "адміністратору" in response.json()["detail"]
+
+    response = client.put(
+        "/api/notifications/mode",
+        headers=auth_header(user_id),
+        json={"mode": "watch"},
+    )
+    assert response.status_code == 200
+    assert client.get("/api/notifications/mode", headers=auth_header(user_id)).json()["mode"] == "watch"
+    # Режим інших користувачів не змінюється.
+    assert client.get("/api/notifications/mode", headers=auth_header(1001)).json()["mode"] == "all"
 
 
 def test_invalid_notification_mode_rejected(setup_api):

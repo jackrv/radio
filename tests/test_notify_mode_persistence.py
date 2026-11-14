@@ -138,7 +138,6 @@ def test_telegram_mode_command_persists(tmp_path):
         db_path=path,
         log=Mock(),
         state_lock=state.lock,
-        waiting_for_correction=state.waiting_for_correction,
         get_notify_mode=state.get_notify_mode,
         set_notify_mode=state.set_notify_mode,
     )

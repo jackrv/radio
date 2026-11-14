@@ -16,7 +16,6 @@ def make_service(tmp_path):
         db_path=str(tmp_path / "events.db"),
         log=Mock(),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )

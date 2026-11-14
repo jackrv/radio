@@ -13,14 +13,35 @@ from database import (
     import_dictionaries, parse_dictionary_file,
 )
 from services.event_store import init_db as init_events
+from services.miniapp_management import validate_dictionary
 from services.sqlite_connection import get_db
 from services.user_store import init_users_db
+
+
+def validate_sections(sections, filename):
+    """Ті самі правила, що й у Mini App: імпортоване завжди можна зберегти без змін.
+
+    Повідомлення містить розділ і номер запису, але не сам текст словника.
+    """
+    for kind, rows in sections.items():
+        entries = [{"raw_line": line, "enabled": enabled} for line, enabled in rows]
+        for number, entry in enumerate(entries, start=1):
+            try:
+                # Формат одного запису; вимогу «є позивні» перевіряємо окремо нижче.
+                validate_dictionary([entry], "commands")
+            except ValueError as exc:
+                raise ValueError(f"{filename}, розділ [{kind}], запис {number}: {exc}") from None
+        try:
+            validate_dictionary(entries, kind)
+        except ValueError as exc:
+            raise ValueError(f"{filename}, розділ [{kind}]: {exc}") from None
 
 
 def initialize_database(db_path, source_path, *, delete_source=False):
     """Імпорт запускається явно; шаблон без записів не є робочим словником."""
     source_path = Path(source_path)
     sections = parse_dictionary_file(source_path.read_text(encoding="utf-8-sig"))
+    validate_sections(sections, source_path.name)
     enabled = [line for line, on in sections["callsigns"] if on]
     if not Callsigns.from_lines(enabled).names:
         raise ValueError(f"У розділі [callsigns] файлу {source_path.name} немає увімкнених позивних")

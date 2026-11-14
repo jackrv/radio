@@ -1,10 +1,5 @@
-import sqlite3
 import threading
 from unittest.mock import Mock
-
-import pytest
-
-import services.telegram as telegram_module
 
 from core.event_processor import EventProcessor
 from services.event_store import (
@@ -12,7 +7,6 @@ from services.event_store import (
     save_event,
     resolve_event_text,
 )
-from services.telegram import TelegramService
 
 
 def test_resolve_returns_whisper_original(tmp_path):
@@ -79,54 +73,3 @@ def test_event_processor_registers_whisper_original():
     assert telegram.notify.call_args.args[3] == (
         "Липка 700, прийом"
     )
-
-
-def test_failed_save_preserves_pending(tmp_path, monkeypatch):
-    pending = {
-        "123": {
-            "event_id": 21,
-            "raw_text": "Ліпка 700",
-        }
-    }
-
-    service = TelegramService(
-        bot_token="fake_token",
-        chat_id="123",
-        sample_rate=16000,
-        db_path=str(tmp_path / "events.db"),
-        log=Mock(),
-        state_lock=threading.Lock(),
-        waiting_for_correction=pending,
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
-    )
-
-    service.send_text = Mock()
-
-    save = Mock(side_effect=[
-        sqlite3.OperationalError("database is locked"),
-        None,
-    ])
-
-    monkeypatch.setattr(
-        telegram_module, "save_correction", save
-    )
-
-    update = {
-        "message": {
-            "chat": {"id": 123},
-            "text": "Липка 700",
-        }
-    }
-
-    with pytest.raises(sqlite3.OperationalError):
-        service.handle_update(update)
-
-    assert pending["123"]["raw_text"] == "Ліпка 700"
-    service.send_text.assert_not_called()
-
-    service.handle_update(update)
-
-    assert "123" not in pending
-    assert save.call_count == 2
-    service.send_text.assert_called_once()

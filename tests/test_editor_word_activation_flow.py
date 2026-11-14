@@ -1,6 +1,4 @@
 import sqlite3
-import threading
-from unittest.mock import Mock
 
 from callsigns import Callsigns
 from database import init_db as init_dictionary_db
@@ -8,13 +6,11 @@ from services.event_store import (
     init_db as init_event_db,
     save_event,
 )
-from services.telegram import TelegramService
+from services.miniapp_correction_editor import save_edit_draft
 from core.word_rule_engine import apply_verified_word_rules
 
 
-def test_two_telegram_corrections_activate_word_rule(
-    tmp_path, monkeypatch
-):
+def test_two_editor_corrections_activate_word_rule(tmp_path):
     db_path = str(tmp_path / "telegram_learning.db")
 
     init_dictionary_db(db_path)
@@ -36,64 +32,19 @@ def test_two_telegram_corrections_activate_word_rule(
     empty = Callsigns.from_lines([])
     dictionaries = (callsigns, empty, empty)
 
-    # Запрещаем реальные сетевые запросы.
-    monkeypatch.setattr(
-        "services.telegram.requests.post",
-        Mock(),
-    )
-
-    pending = {}
-
-    service = TelegramService(
-        bot_token="test_token",
-        chat_id="123",
-        sample_rate=16000,
-        db_path=db_path,
-        log=Mock(),
-        state_lock=threading.Lock(),
-        waiting_for_correction=pending,
-        get_notify_mode=lambda: "all",
-        set_notify_mode=lambda mode: None,
-    )
-
-    service.send_text = Mock()
-
-    def correct_through_telegram(original, corrected, number):
+    def correct_through_editor(original, corrected, number):
         event_id = save_event(
             "", "", "", "",
             original,
             db_path=db_path,
             raw_text=original,
         )
-
-        # Имитируем нажатие кнопки исправления.
-        service.handle_update({
-            "callback_query": {
-                "id": f"callback_{number}",
-                "data": f"fix_db:{event_id}",
-                "message": {
-                    "chat": {"id": 123},
-                    "message_id": 100 + number,
-                },
-            },
-        })
-
-        assert pending["123"]["event_id"] == event_id
-        assert pending["123"]["raw_text"] == original
-
-        # Имитируем отправку исправленного текста.
-        service.handle_update({
-            "message": {
-                "chat": {"id": 123},
-                "text": corrected,
-            },
-        })
-
-        assert "123" not in pending
+        # Виправлення через редактор Mini App.
+        save_edit_draft(db_path, f"db:{event_id}", original, corrected)
         return event_id
 
     # Первое независимое исправление.
-    first_id = correct_through_telegram(
+    first_id = correct_through_editor(
         "Улыбка 700",
         "Липка 700",
         1,
@@ -107,7 +58,7 @@ def test_two_telegram_corrections_activate_word_rule(
     ) == "Улыбка 700"
 
     # Второе независимое исправление.
-    second_id = correct_through_telegram(
+    second_id = correct_through_editor(
         "Улыбка 720",
         "Липка 720",
         2,

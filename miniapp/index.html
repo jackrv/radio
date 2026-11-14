@@ -7,20 +7,29 @@
   <meta name="description" content="Radio 345 — панель керування розпізнаванням ефіру">
   <title>Radio 345 — керування</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css?v=10">
+  <link rel="stylesheet" href="./styles.css?v=12">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="./app.js?v=10" defer></script>
-  <script src="./keyboard.js?v=10" defer></script>
-  <script src="./client.js?v=10" defer></script>
-  <script src="./api.js?v=10" defer></script>
-  <script src="./notifications.js?v=10" defer></script>
-  <script src="./receiver-controls.js?v=10" defer></script>
-  <script src="./correction-editor.js?v=10" defer></script>
-  <script src="./management.js?v=10" defer></script>
+  <script src="./app.js?v=12" defer></script>
+  <script src="./keyboard.js?v=12" defer></script>
+  <script src="./client.js?v=12" defer></script>
+  <script src="./service-gate.js?v=12" defer></script>
+  <script src="./api.js?v=12" defer></script>
+  <script src="./notifications.js?v=12" defer></script>
+  <script src="./receiver-controls.js?v=12" defer></script>
+  <script src="./correction-editor.js?v=12" defer></script>
+  <script src="./management.js?v=12" defer></script>
 </head>
 <body>
   <button id="keyboard-done" class="keyboard-done" type="button" hidden>⌨ Сховати клавіатуру</button>
-  <div class="shell">
+  <section class="service-gate" id="service-gate" role="status" aria-live="polite">
+    <div class="logo service-gate-logo" aria-hidden="true"><span>345</span></div>
+    <h1 id="service-gate-title">Підключення до Radio 345…</h1>
+    <p class="lead" id="service-gate-text">Перевіряємо зв’язок із сервісом.</p>
+    <button class="outline-button" id="service-gate-retry" type="button" hidden>Спробувати зараз</button>
+    <p class="subtle-note" id="service-gate-note" hidden></p>
+  </section>
+  <div class="connection-lost" id="connection-lost" role="alert" hidden>Зв’язок із сервісом втрачено. Повторюємо спроби…</div>
+  <div class="shell" hidden>
     <header class="topbar">
       <div class="brand"><div class="logo" aria-hidden="true"><span class="logo-pulse"></span><span>345</span></div>
         <div><div class="brand-overline">СИСТЕМА МОНІТОРИНГУ</div><div class="brand-title">RADIO <strong>345</strong></div></div>
@@ -135,13 +144,13 @@
         <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
           <div class="section-heading"><div><div class="eyebrow">КОНФІГУРАЦІЯ</div><h1 id="settings-title">Налаштування</h1><p class="lead">Сповіщення застосовуються одразу. Розпізнавання — після перезапуску.</p></div><span class="tag tag-outline">НАЛАШТУВАННЯ ПРИЙМАЧА</span></div>
           <article class="panel"><div class="settings-row">
-              <div><h2>Режим сповіщень</h2><p>Зміни зберігаються у SQLite</p></div>
+              <div><h2>Мій режим сповіщень</h2><p>Діє лише для вашого чату з ботом</p></div>
               <span class="pending" id="settings-mode-value">Завантаження...</span>
             </div>
             <fieldset class="notify-mode-options" id="notify-mode-fieldset" disabled>
               <legend class="visually-hidden">Виберіть режим сповіщень</legend>
-              <label class="notify-option"><input type="radio" name="notify-mode" value="all"> 📢 Усі повідомлення</label>
-              <label class="notify-option"><input type="radio" name="notify-mode" value="watch"> 👀 Наблюдение</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="all"> 📢 Усі повідомлення (адміністратор)</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="watch"> 👀 Спостереження</label>
               <label class="notify-option"><input type="radio" name="notify-mode" value="commands"> ⚡ Команди</label>
               <label class="notify-option"><input type="radio" name="notify-mode" value="off"> 🔕 Повна тиша</label>
             </fieldset>

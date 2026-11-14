@@ -59,7 +59,7 @@ def test_delete_hides_phrase_and_blocks_draft_and_audio(setup, legacy):
         message["reply_markup"] = {"inline_keyboard": [[{"callback_data": "fix_" + fix_id}]]}
     with patch("services.telegram.requests.post") as post:
         post.return_value.json.return_value = {"ok": True}
-        s.handle_update({"callback_query": {"id": "delete", "data": "del" if legacy else "del:" + fix_id, "message": message}})
+        s.handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del" if legacy else "del:" + fix_id, "message": message}})
     assert is_hidden(db, fix_id)
     assert list_phrases(db)["items"] == []
     for route in ["/api/corrections/draft", "/api/phrases/audio"]:
@@ -75,7 +75,7 @@ def test_failed_deletion_keeps_phrase_visible(setup):
     fix_id, message = phrase(db)
     with patch("services.telegram.requests.post") as post:
         post.return_value.json.return_value = {"ok": False, "description": "Bad Request: message can't be deleted"}
-        service(db).handle_update({"callback_query": {"id": "delete", "data": "del:" + fix_id, "message": message}})
+        service(db).handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}})
     assert not is_hidden(db, fix_id)
     assert len(list_phrases(db)["items"]) == 1
 
@@ -83,7 +83,7 @@ def test_failed_deletion_keeps_phrase_visible(setup):
 def test_uncertain_delete_is_hidden_until_retried(setup):
     _, db = setup
     fix_id, message = phrase(db)
-    update = {"callback_query": {"id": "delete", "data": "del:" + fix_id, "message": message}}
+    update = {"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}}
     with patch("services.telegram.requests.post", side_effect=requests.Timeout):
         with pytest.raises(requests.Timeout):
             service(db).handle_update(update)
@@ -101,7 +101,7 @@ def test_sqlite_failure_prevents_remote_deletion(setup):
     with patch("services.telegram.deletion_intent", side_effect=sqlite3.OperationalError("test")):
         with patch("services.telegram.requests.post") as post:
             with pytest.raises(sqlite3.Error):
-                service(db).handle_update({"callback_query": {"id": "delete", "data": "del:" + fix_id, "message": message}})
+                service(db).handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}})
     post.assert_not_called()
 
 

@@ -115,8 +115,7 @@ def test_pending_requests_are_limited(db_path):
 def make_service(db_path):
     service = TelegramService(
         bot_token="token", chat_id=ADMIN_CHAT, sample_rate=16000, db_path=db_path,
-        log=logging.getLogger("test"), state_lock=threading.Lock(), waiting_for_correction={},
-        get_notify_mode=lambda: "all", set_notify_mode=lambda mode: None,
+        log=logging.getLogger("test"), state_lock=threading.Lock(), get_notify_mode=lambda: "all", set_notify_mode=lambda mode: None,
     )
     service.send_text = Mock()
     service._request = Mock()
@@ -248,3 +247,78 @@ def test_malformed_decision_changes_nothing(db_path, data):
     service = make_service(db_path)
     service.handle_update(decision(data))
     assert users(db_path) == [(ADMIN, "admin", 1)]
+
+
+# ---------- Рецензія: застарілі рішення, недоставлені картки, передача адмінки ----------
+
+def test_old_approve_button_cannot_restore_revoked_access(db_path):
+    register_request(db_path, NEWBIE, now=1)
+    assert resolve_request(db_path, ADMIN, 2002, "editor")["status"] == "granted"
+    with get_db(db_path) as db:
+        db.execute("UPDATE telegram_users SET enabled=0 WHERE user_id=2002")
+    assert resolve_request(db_path, ADMIN, 2002, "editor")["status"] == "stale"
+    assert resolve_request(db_path, ADMIN, 2002, None)["status"] == "stale"
+    assert (2002, "editor", 0) in users(db_path), "пізніше відключення не скасовано"
+
+
+def test_decision_without_any_request_changes_nothing(db_path):
+    assert resolve_request(db_path, ADMIN, 2002, "viewer")["status"] == "stale"
+    assert all(row[0] != 2002 for row in users(db_path))
+
+
+def test_undelivered_card_is_resent_on_next_start(db_path):
+    service = make_service(db_path)
+    delivered = []
+    service.send_text = Mock(side_effect=lambda text, *a, **k: (
+        delivered.append(k.get("chat_id")) or len(delivered) > 1
+        if "Telegram ID:" in text else True))
+    service.handle_update(start_from(NEWBIE))
+    first_reply = service.send_text.call_args.args[0]
+    assert "Не вдалося передати" in first_reply
+
+    service.handle_update(start_from(NEWBIE))
+    assert len(delivered) == 2, "картку надіслано повторно без доби очікування"
+    assert "надіслано" in service.send_text.call_args.args[0]
+    assert register_request(db_path, NEWBIE)[0] == "pending"
+
+
+def test_cards_go_to_every_active_admin_and_second_admin_can_decide(db_path):
+    with get_db(db_path) as db:
+        db.execute("INSERT INTO telegram_users (user_id, role) VALUES (5005, 'admin')")
+    service = make_service(db_path)
+    service.handle_update(start_from(NEWBIE))
+    cards = [c.kwargs.get("chat_id") for c in service.send_text.call_args_list if "Telegram ID:" in c.args[0]]
+    assert cards == [None, 5005], "робочий чат (адмін 1001) і другий адміністратор"
+
+    service.handle_update({"update_id": 9, "callback_query": {
+        "id": "cb", "data": "acc:viewer:2002", "from": {"id": 5005},
+        "message": {"message_id": 3, "chat": {"id": 5005, "type": "private"}},
+    }})
+    assert (2002, "viewer", 1) in users(db_path)
+
+
+def test_disabled_env_owner_loses_telegram_privileges(db_path):
+    with get_db(db_path) as db:
+        db.execute("INSERT INTO telegram_users (user_id, role) VALUES (5005, 'admin')")
+        db.execute("UPDATE telegram_users SET enabled=0 WHERE user_id=?", (ADMIN,))
+    service = make_service(db_path)
+    register_request(db_path, NEWBIE, now=1)
+
+    service.handle_update(decision("acc:editor:2002", actor=ADMIN))
+    assert all(row[0] != 2002 for row in users(db_path)), "відключений не може схвалювати"
+
+    service._request.reset_mock()
+    service.handle_update({"update_id": 10, "callback_query": {
+        "id": "cb", "data": "del:db:5", "from": {"id": ADMIN},
+        "message": {"message_id": 4, "chat": {"id": ADMIN, "type": "private"}},
+    }})
+    with sqlite3.connect(db_path) as db:
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master")}
+        if "telegram_phrase_messages" in tables:
+            assert db.execute("SELECT COUNT(*) FROM telegram_phrase_messages").fetchone()[0] == 0
+    assert [c.args[1] for c in service._request.call_args_list][0] == "deleteMessage", "лише власна копія"
+
+    service.send_text.reset_mock()
+    service.handle_update(start_from({"id": ADMIN, "first_name": "Власник"}))
+    cards = [c.kwargs.get("chat_id") for c in service.send_text.call_args_list if "Telegram ID:" in c.args[0]]
+    assert cards == [5005], "відключений власник .env просить доступ як усі"

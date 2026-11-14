@@ -21,7 +21,6 @@ def make_service(db_path):
         db_path=str(db_path),
         log=Mock(),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )
@@ -151,7 +150,7 @@ def test_failed_offset_save_does_not_acknowledge(
     monkeypatch.setattr(
         telegram_module.requests,
         "get",
-        Mock(return_value=response_for(update)),
+        Mock(side_effect=[response_for(update), KeyboardInterrupt()]),
     )
 
     def fail_save(path, offset):
@@ -162,9 +161,13 @@ def test_failed_offset_save_does_not_acknowledge(
         "save_telegram_offset",
         fail_save,
     )
+    delays = []
+    monkeypatch.setattr(telegram_module.time, "sleep", delays.append)
 
-    with pytest.raises(sqlite3.OperationalError):
+    # Слухач не падає: пауза й повтор, але update не підтверджено.
+    with pytest.raises(KeyboardInterrupt):
         service.callback_listener()
 
+    assert delays == [5]
     assert service._updates_offset is None
     assert load_telegram_offset(db) is None

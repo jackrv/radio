@@ -22,7 +22,6 @@ def make_service(tmp_path):
         db_path=str(db),
         log=Mock(),
         state_lock=state.lock,
-        waiting_for_correction=state.waiting_for_correction,
         get_notify_mode=state.get_notify_mode,
         set_notify_mode=state.set_notify_mode,
         apply_telegram_mode=state.apply_telegram_mode,

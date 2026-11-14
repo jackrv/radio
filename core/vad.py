@@ -2,6 +2,8 @@ import collections
 
 import webrtcvad
 
+from core.diagnostics import runtime
+
 
 class VADSegmenter:
     """Выделяет речевые сегменты из последовательности PCM int16 кадров."""
@@ -63,6 +65,10 @@ class VADSegmenter:
 
             if speech_ms >= self.min_speech_ms:
                 segment = b"".join(self.voiced)
+            else:
+                # Видно, скільки коротких фрагментів відсіяно порогом MIN_SPEECH_MS.
+                runtime.count("vad.short_discarded")
+                runtime.observe("vad.short_discarded_speech", speech_ms / 1000)
 
             self.in_speech = False
             self.voiced = []

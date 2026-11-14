@@ -144,3 +144,21 @@ def test_concurrent_events_keep_unique_monotonic_ids(setup):
         ids = list(pool.map(lambda _: save_event("", "", "", "", "тест", db), range(12)))
     assert len(set(ids)) == 12
     assert sorted(ids) == list(range(1, 13))
+
+
+@pytest.mark.parametrize("line", ["alpha: xyz", "Ліра: 1-99999", "дві команди тут"])
+def test_import_uses_mini_app_rules(tmp_path, line):
+    source = tmp_path / "dictionaries.txt"
+    source.write_text(f"[callsigns]\nЛіра: 68\n{line}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"\[callsigns\], запис 2"):
+        initialize_database(tmp_path / "events.db", source)
+    assert not (tmp_path / "events.db").exists()
+
+
+def test_imported_dictionary_saves_unchanged_in_mini_app(setup):
+    from services.miniapp_management import read_dictionary, write_dictionary
+
+    db, _ = setup
+    for kind in ("callsigns", "commands", "telegram"):
+        current = read_dictionary(db, kind)
+        write_dictionary(db, 1001, kind, current["entries"], current["version"])

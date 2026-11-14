@@ -34,7 +34,6 @@ def test_send_voice_retries_after_429(monkeypatch):
         db_path=":memory:",
         log=logging.getLogger("test_telegram_retry"),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )

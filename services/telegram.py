@@ -11,23 +11,16 @@ import secrets
 from urllib.parse import quote
 
 import requests
-import collections
 from core.diagnostics import runtime, error_kind
 
-from services.access_requests import profile_of, register_request, resolve_request
-from services.event_store import resolve_event_text, save_correction
-from services.telegram_phrase_store import (
-    register_phrase, load_phrase, update_phrase_text, RETENTION_SECONDS,
+from services.access_requests import mark_undelivered, profile_of, register_request, resolve_request
+from services.telegram_phrase_store import register_phrase
+from services.user_notify_store import (
+    apply_telegram_user_mode, has_any_user, list_recipients,
+    load_user_mode, save_user_mode,
 )
-from services.sqlite_connection import get_db
 from services.telegram_media_store import (
-    remember_message, callback_fix_id, deletion_intent, deletion_result, FIX_RE,
-)
-from services.telegram_pending import (
-    save_pending_correction,
-    load_pending_correction,
-    cancel_pending_correction,
-    apply_pending_correction,
+    remember_message, remember_voice, callback_fix_id, deletion_intent, deletion_result, FIX_RE,
 )
 from services.telegram_retry import retry_delay, listener_retry_delay
 from services.telegram_offset_store import (
@@ -36,6 +29,32 @@ from services.telegram_offset_store import (
 )
 
 MINIAPP_URL = "https://jackrv.github.io/radio/"
+_MODE_REPLIES = {
+    "all": "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>",
+    "watch": "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>",
+    "commands": "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>",
+    "off": "🔕 Автоматичні сповіщення вимкнено.",
+}
+# Команди й текстові синоніми режимів (російські форми — вхідні дані користувачів).
+MODE_COMMANDS = {
+    alias: (mode, _MODE_REPLIES[mode])
+    for mode, aliases in {
+        "all": ("/all", "all", "все", "всі"),
+        "watch": ("/watch", "watch", "вач", "спостереження"),
+        "commands": ("/commands", "commands", "команды", "cmd", "команди"),
+        "off": ("/off", "off", "/silent", "тихо", "тиша"),
+    }.items()
+    for alias in aliases
+}
+MODE_NAMES = {
+    "all": "усі фрази", "watch": "список спостереження",
+    "commands": "команди й позивні", "off": "вимкнено",
+}
+MODE_HELP = {
+    "admin": "/all, /watch, /commands, /off",
+    "editor": "/watch, /commands, /off",
+    "viewer": "/watch, /commands, /off",
+}
 ROLE_LABELS = {"viewer": "спостерігач", "editor": "редактор", "admin": "адміністратор"}
 ACCESS_CALLBACK_RE = re.compile(r"acc:(viewer|editor|reject):([1-9][0-9]{0,18})")
 
@@ -49,14 +68,10 @@ class TelegramService:
     db_path,
     log,
     state_lock,
-    waiting_for_correction,
     get_notify_mode,
     set_notify_mode,
     apply_telegram_mode=None,
 ):
-        self.recent_phrases = collections.OrderedDict()
-        self._phrase_created_at = {}
-        self._phrases_lock = threading.Lock()
         self.recent_phrases_max = 200
         self.bot_token = bot_token
         self.chat_id = chat_id
@@ -68,7 +83,6 @@ class TelegramService:
         )
         self.log = log
         self.state_lock = state_lock
-        self.waiting_for_correction = waiting_for_correction
         self.get_notify_mode = get_notify_mode
         self.set_notify_mode = set_notify_mode
         self.apply_telegram_mode = apply_telegram_mode
@@ -97,23 +111,16 @@ class TelegramService:
                         "url": MINIAPP_URL + "?fix_id=" + quote(fix_id, safe=""),
                     },
                 }])
-                rows.append([{
-                    "text": "💬 Виправити повідомленням",
-                    "callback_data": f"fix_{fix_id}",
-                }])
-            else:
-                # Legacy/in-memory fallback when persistent storage is unavailable.
-                row.append({
-                    "text": "✏️ Виправити",
-                    "callback_data": f"fix_{fix_id}",
-                })
         return json.dumps({"inline_keyboard": rows})
 
     def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML", *, chat_id=None):
-        """Надсилає текст у робочий чат або, якщо задано ``chat_id``, в інший особистий чат."""
+        """Надсилає текст у робочий чат або, якщо задано ``chat_id``, в інший особистий чат.
+
+        Повертає True, якщо Telegram прийняв повідомлення.
+        """
         target = chat_id or self.chat_id
         if not (self.bot_token and target):
-            return
+            return False
 
         data = {
             "chat_id": target,
@@ -131,7 +138,8 @@ class TelegramService:
                 timeout=15,
             )
             r.raise_for_status()
-            if reply_markup:
+            # Прив’язка фрази — лише до повідомлення робочого чату.
+            if reply_markup and str(target) == str(self.chat_id):
                 try:
                     markup = json.loads(reply_markup)
                     for row in markup.get("inline_keyboard", []):
@@ -141,8 +149,10 @@ class TelegramService:
                                 self._remember_sent(r, data[4:])
                 except (TypeError, ValueError):
                     pass
+            return True
         except requests.RequestException as e:
             self.log.error("Telegram (текст) не надіслано: %s", e)
+            return False
 
     def _request(self, method, operation, **kwargs):
         started = time.monotonic()
@@ -212,7 +222,10 @@ class TelegramService:
         with self.state_lock:
             return self.get_notify_mode() != "off"
 
-    def send_voice(self, pcm: bytes, caption: str, fix_id=None):
+    def send_voice(self, pcm: bytes, caption: str, fix_id=None, recipients=None):
+        if recipients is not None:
+            self._send_voice_to_recipients(pcm, caption, fix_id, recipients)
+            return
         if not self._notifications_enabled():
             return
 
@@ -273,6 +286,154 @@ class TelegramService:
                     )
                     time.sleep(delay)
 
+    def recipients_for(self, wants):
+        """Отримувачі фрази за особистими режимами.
+
+        ``wants(mode)`` — чи підходить фраза під режим. Поки в базі немає
+        жодного користувача, робочий чат із .env отримує повідомлення за
+        загальним режимом. Після реєстрації отримувачів визначає лише база:
+        відключений власник .env більше нічого не отримує.
+        """
+        try:
+            users = list_recipients(self.db_path)
+            registered = has_any_user(self.db_path)
+        except sqlite3.Error:
+            self.log.exception("Не вдалося прочитати отримувачів сповіщень")
+            users, registered = [], False
+        if self.chat_id and not registered:
+            with self.state_lock:
+                mode = self.get_notify_mode()
+            users.append({"chat_id": self.chat_id, "role": "admin", "mode": mode, "legacy": True})
+        selected = [u for u in users if u["mode"] != "off" and wants(u["mode"])]
+        # Робочий чат першим: його повідомлення прив’язується до фрази.
+        selected.sort(key=lambda u: str(u["chat_id"]) != str(self.chat_id))
+        return selected
+
+    def keyboard_for(self, role, fix_id):
+        """Кнопки за роллю: редактор Mini App — для admin/editor, видалення — для всіх."""
+        if role in ("admin", "editor"):
+            return self.get_keyboard(fix_id)
+        delete_data = f"del:{fix_id}" if fix_id and FIX_RE.fullmatch(fix_id) else "del"
+        return json.dumps({"inline_keyboard": [[{"text": "🗑 Видалити", "callback_data": delete_data}]]})
+
+    def _recipient_active(self, recipient):
+        if recipient.get("legacy"):
+            return self._notifications_enabled()
+        try:
+            state = load_user_mode(self.db_path, int(recipient["chat_id"]))
+        except (sqlite3.Error, ValueError):
+            return False
+        return state is not None and state[1] != "off"
+
+    def _send_voice_to_recipients(self, pcm, caption, fix_id, recipients):
+        active = [r for r in recipients if self._recipient_active(r)]
+        if not active:
+            runtime.count("telegram.queue_discarded_off")
+            return
+        try:
+            with runtime.timed("telegram.ogg_conversion"):
+                ogg = self.pcm_to_ogg(pcm)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            runtime.count("telegram.conversion_failed")
+            self.log.warning("Конвертація в OGG не вдалася (%s), надсилаю текстом", e)
+            for recipient in active:
+                if self._recipient_active(recipient):
+                    runtime.count("telegram.text_fallback")
+                    self.send_text(caption, self.keyboard_for(recipient["role"], fix_id),
+                                   parse_mode=None, chat_id=recipient["chat_id"])
+            return
+
+        duration = max(1, round(len(pcm) / (2 * self.sample_rate)))
+        voice_ref = None  # file_id першого надісланого: далі без повторного завантаження
+        for recipient in active:
+            sent = self._deliver_voice(recipient, ogg, voice_ref, caption, duration, fix_id)
+            if voice_ref is None and sent:
+                voice_ref = sent
+
+    def _deliver_voice(self, recipient, ogg, voice_ref, caption, duration, fix_id):
+        """Надсилає голосове одному отримувачу. Повертає file_id або None."""
+        chat_id = recipient["chat_id"]
+        work_chat = str(chat_id) == str(self.chat_id)
+        reply_markup = self.keyboard_for(recipient["role"], fix_id)
+        for attempt in range(1, 4):
+            if not self._recipient_active(recipient):
+                return None
+            data = {"chat_id": chat_id, "caption": caption[:1000],
+                    "duration": duration, "reply_markup": reply_markup}
+            kwargs = {"data": data, "timeout": (10, 60)}
+            if voice_ref:
+                data["voice"] = voice_ref
+            else:
+                kwargs["files"] = {"voice": ("phrase.ogg", ogg, "audio/ogg")}
+            try:
+                r = self._request("post", "sendVoice", **kwargs)
+                r.raise_for_status()
+            except requests.RequestException as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status == 403:
+                    # Користувач не запускав бота або заблокував його: повтори марні.
+                    runtime.count("telegram.recipient_blocked")
+                    self.log.warning("Telegram відхилив надсилання користувачу (403); пропущено")
+                    return None
+                self.log.warning("Спроба %d/3 надіслати голосове не вдалася: %s", attempt, e)
+                if attempt == 3:
+                    runtime.count("telegram.voice_exhausted")
+                    runtime.count("telegram.text_fallback")
+                    self.log.error("Усі спроби вичерпано, надсилаю резервним текстом")
+                    if self._recipient_active(recipient):
+                        self.send_text(caption, reply_markup, parse_mode=None,
+                                       chat_id=None if work_chat else chat_id)
+                    return None
+                delay = retry_delay(attempt, e)
+                self.log.warning("Повтор Telegram через %s сек.", delay)
+                time.sleep(delay)
+                continue
+
+            file_id = None
+            try:
+                message = (r.json() or {}).get("result") or {}
+                file_id = (message.get("voice") or {}).get("file_id")
+            except (ValueError, AttributeError):
+                pass
+            try:
+                if work_chat:
+                    self._remember_sent(r, fix_id)
+                else:
+                    remember_voice(self.db_path, fix_id, file_id)
+            except sqlite3.Error:
+                self.log.warning("Не вдалося зберегти зв’язок голосового з фразою")
+            return file_id if isinstance(file_id, str) else None
+        return None
+
+    def notify_admin_async(self, text, delays=(0, 15, 60, 180)):
+        """Службове повідомлення в робочий чат у фоні, з повторами.
+
+        Після пробудження Mac мережа з’являється не одразу, тож надсилаємо
+        кількома спробами й ніколи не блокуємо потік аудіо.
+        """
+        if not (self.bot_token and self.chat_id):
+            return None
+
+        def deliver():
+            for delay in delays:
+                if delay:
+                    time.sleep(delay)
+                try:
+                    r = self._request("post", "sendMessage", data={
+                        "chat_id": self.chat_id, "text": text[:4000], "parse_mode": "HTML",
+                    }, timeout=15)
+                    if r.status_code == 200:
+                        runtime.count("telegram.alert_sent")
+                        return
+                except requests.RequestException:
+                    pass
+            runtime.count("telegram.alert_failed")
+            self.log.warning("Службове повідомлення адміністратору не надіслано")
+
+        thread = threading.Thread(target=deliver, name="telegram-alert", daemon=True)
+        thread.start()
+        return thread
+
     def _outgoing_loop(self):
         """Отправляет сообщения и завершается после опустошения очереди."""
         while True:
@@ -290,7 +451,10 @@ class TelegramService:
                 continue
 
             try:
-                if self._notifications_enabled():
+                if len(item) == 4:
+                    # Особисті режими перевіряються для кожного отримувача.
+                    self.send_voice(*item)
+                elif self._notifications_enabled():
                     self.send_voice(*item)
                 else:
                     runtime.count("telegram.queue_discarded_off")
@@ -328,13 +492,17 @@ class TelegramService:
         self.log.info("Чергу Telegram оброблено")
         return True
 
-    def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None):
+    def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None, recipients=None):
         runtime.count("telegram.notify_requested")
         if not (self.bot_token and self.chat_id):
             runtime.count("telegram.notify_unconfigured")
             return
 
-        if not self._notifications_enabled():
+        if recipients is not None:
+            if not recipients:
+                runtime.count("telegram.notify_skipped_off")
+                return
+        elif not self._notifications_enabled():
             runtime.count("telegram.notify_skipped_off")
             return
 
@@ -353,9 +521,8 @@ class TelegramService:
                 return
 
             try:
-                self._outgoing_queue.put_nowait(
-                    (time.monotonic(), (pcm, caption, fix_id))
-                )
+                item = (pcm, caption, fix_id) if recipients is None else (pcm, caption, fix_id, list(recipients))
+                self._outgoing_queue.put_nowait((time.monotonic(), item))
                 runtime.count("telegram.enqueued")
                 runtime.gauge("telegram.queue_depth", self._outgoing_queue.qsize())
             except queue.Full:
@@ -377,71 +544,30 @@ class TelegramService:
                 )
                 self._outgoing_thread.start()
 
-    def register_phrase_for_fix(self, text: str, event_id: int | None) -> str:
+    def register_phrase_for_fix(self, text: str, event_id: int | None) -> str | None:
+        """Ідентифікатор фрази для редактора Mini App.
+
+        ``db:<id>`` — подія SQLite; ``mem:<token>`` — тимчасова фраза на 24 години.
+        None — фразу не вдалося зберегти: повідомлення матиме лише «Видалити».
+        """
         if event_id is not None:
             return f"db:{event_id}"
+        if not (self.bot_token and self.chat_id):
+            return None
 
         token = secrets.token_hex(16)
-        if self.bot_token and self.chat_id:
-            try:
-                register_phrase(
-                    self.db_path, token, text,
-                    max_phrases=min(self.recent_phrases_max, 200),
-                )
-            except (sqlite3.Error, ValueError) as exc:
-                self.log.warning(
-                    "Не вдалося зберегти тимчасову фразу в SQLite: %s; "
-                    "використовується виправлення через чат", exc,
-                )
-                token = secrets.token_hex(8)
-        else:
-            # Without Telegram credentials no notifications can be sent.
-            token = secrets.token_hex(8)
-
-        with self._phrases_lock:
-            now = time.time()
-            for old_token, created_at in list(self._phrase_created_at.items()):
-                if created_at <= now - RETENTION_SECONDS:
-                    self.recent_phrases.pop(old_token, None)
-                    del self._phrase_created_at[old_token]
-            self.recent_phrases[token] = text
-            self._phrase_created_at[token] = now
-            while len(self.recent_phrases) > min(self.recent_phrases_max, 200):
-                old_token, _ = self.recent_phrases.popitem(last=False)
-                self._phrase_created_at.pop(old_token, None)
-
+        try:
+            register_phrase(
+                self.db_path, token, text,
+                max_phrases=min(self.recent_phrases_max, 200),
+            )
+        except (sqlite3.Error, ValueError) as exc:
+            self.log.warning(
+                "Не вдалося зберегти тимчасову фразу в SQLite: %s; "
+                "виправлення в редакторі недоступне", exc,
+            )
+            return None
         return f"mem:{token}"
-
-    def resolve_phrase_by_fix_id(self, fix_id: str) -> tuple[str | None, int | None]:
-        if fix_id.startswith("db:"):
-            ev_id = int(fix_id.split(":", 1)[1])
-            text = resolve_event_text(ev_id, self.db_path)
-            return (text, ev_id) if text is not None else (None, None)
-
-        if fix_id.startswith("mem:"):
-            token = fix_id.split(":", 1)[1]
-            if re.fullmatch(r"[0-9a-f]{32}", token):
-                try:
-                    phrase = load_phrase(self.db_path, token)
-                    return (
-                        (phrase["original_text"], None)
-                        if phrase is not None else (None, None)
-                    )
-                except sqlite3.Error as exc:
-                    self.log.warning("Не вдалося прочитати фразу: %s", exc)
-                    return None, None
-            with self._phrases_lock:
-                created_at = self._phrase_created_at.get(token)
-                if (
-                    created_at is not None
-                    and created_at <= time.time() - RETENTION_SECONDS
-                ):
-                    self.recent_phrases.pop(token, None)
-                    self._phrase_created_at.pop(token, None)
-                    return None, None
-                return self.recent_phrases.get(token), None
-
-        return None, None
 
     def handle_update(self, upd):
         cq = upd.get("callback_query")
@@ -451,6 +577,7 @@ class TelegramService:
                 ((cq.get("message") or {}).get("chat") or {}).get("id", "")
             )
             if chat_id != str(self.chat_id):
+                self._handle_member_callback(cq, chat_id)
                 return
 
             data = cq.get("data", "")
@@ -458,6 +585,11 @@ class TelegramService:
 
             if data.startswith("acc:"):
                 self._handle_access_decision(cq, chat_id, msg_id, data)
+                return
+
+            if (data == "del" or data.startswith("del:")) and not self._may_hide_phrases(cq):
+                # Не адміністратор: прибирається лише власна копія повідомлення.
+                self._handle_member_callback(cq, chat_id)
                 return
 
             if data == "del" or data.startswith("del:"):
@@ -483,121 +615,7 @@ class TelegramService:
                     },
                     timeout=15,
                 )
-
-            elif data == "cancel_fix":
-                # Сначала очищаем сохранённое ожидание.
-                if type(upd.get("update_id")) is int:
-                    cancel_pending_correction(
-                        self.db_path, chat_id
-                    )
-
-                # Затем очищаем оперативную память.
-                with self.state_lock:
-                    self.waiting_for_correction.pop(chat_id, None)
-
-                try:
-                    requests.post(
-                        f"{self.api}/answerCallbackQuery",
-                        data={
-                            "callback_query_id": cq["id"],
-                            "text": "Виправлення скасовано",
-                        },
-                        timeout=15,
-                    )
-                except requests.RequestException as e:
-                    self.log.warning(
-                        "Не вдалося підтвердити скасування: %s", e
-                    )
-
-                if msg_id is not None:
-                    try:
-                        requests.post(
-                            f"{self.api}/deleteMessage",
-                            data={
-                                "chat_id": chat_id,
-                                "message_id": msg_id,
-                            },
-                            timeout=15,
-                        )
-                    except requests.RequestException as e:
-                        self.log.warning(
-                            "Не вдалося видалити повідомлення скасування: %s",
-                            e,
-                        )
-
-            elif data.startswith("fix_"):
-                fix_id = data.split("_", 1)[1]
-                orig_text, ev_id = self.resolve_phrase_by_fix_id(fix_id)
-
-                if not orig_text:
-                    requests.post(
-                        f"{self.api}/answerCallbackQuery",
-                        data={
-                            "callback_query_id": cq["id"],
-                            "text": "Фраза застаріла",
-                        },
-                        timeout=15,
-                    )
-                    return
-
-                pending = {
-                    "event_id": ev_id,
-                    "raw_text": orig_text,
-                    "source_id": (
-                        fix_id if ev_id is None else None
-                    ),
-                }
-
-                if type(upd.get("update_id")) is int:
-                    save_pending_correction(
-                        self.db_path, chat_id, pending
-                    )
-
-                with self.state_lock:
-                    self.waiting_for_correction[chat_id] = pending
-
-                requests.post(
-                    f"{self.api}/answerCallbackQuery",
-                    data={
-                        "callback_query_id": cq["id"],
-                        "text": "Надішліть правильний текст",
-                    },
-                    timeout=15,
-                )
-
-                safe_orig_text = html.escape(orig_text)
-
-                keyboard = []
-                if len(orig_text) <= 256:
-                    keyboard.append({
-                        "text": "📋 Скопіювати текст",
-                        "copy_text": {"text": orig_text},
-                    })
-
-                keyboard.append({
-                    "text": "❌ Скасувати",
-                    "callback_data": "cancel_fix",
-                })
-
-                cancel_markup = json.dumps(
-                    {"inline_keyboard": [keyboard]},
-                    ensure_ascii=False,
-                )
-
-                copy_hint = (
-                    "Натисніть «Скопіювати текст», потім вставте його "
-                    "в поле введення та надішліть."
-                    if len(orig_text) <= 256
-                    else "Скопіюйте початковий текст із повідомлення вручну, "
-                         "відредагуйте й надішліть."
-                )
-
-                self.send_text(
-                    f"✍️ <b>Режим виправлення</b>\n"
-                    f"Початковий текст: <code>{safe_orig_text}</code>\n\n"
-                    f"{copy_hint}",
-                    cancel_markup,
-                )
+            return
 
         msg = upd.get("message")
         if not msg:
@@ -607,6 +625,8 @@ class TelegramService:
         # користувачі просять доступ, не знаючи свого Telegram ID.
         if self._handle_start(msg):
             return
+        if self._handle_user_mode_command(msg, upd.get("update_id")):
+            return
 
         chat_id = str((msg.get("chat") or {}).get("id", ""))
         if chat_id != str(self.chat_id):
@@ -614,25 +634,11 @@ class TelegramService:
 
         text_msg = (msg.get("text") or "").strip().lower()
 
-        modes = {
-            "/all": ("all", "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>"),
-            "all": ("all", "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>"),
-            "все": ("all", "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>"),
-            "/watch": ("watch", "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>"),
-            "watch": ("watch", "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>"),
-            "вач": ("watch", "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>"),
-            "/commands": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
-            "commands": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
-            "команды": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
-            "cmd": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
-            "/off": ("off", "🔕 Автоматичні сповіщення вимкнено."),
-            "off": ("off", "🔕 Автоматичні сповіщення вимкнено."),
-            "/silent": ("off", "🔕 Автоматичні сповіщення вимкнено."),
-            "тихо": ("off", "🔕 Автоматичні сповіщення вимкнено."),
-        }
+        modes = MODE_COMMANDS
 
-        for alias, canonical in {"всі": "/all", "спостереження": "/watch", "команди": "/commands", "тиша": "/off"}.items():
-            modes[alias] = modes[canonical]
+        if text_msg in modes and self._registered_users():
+            # Особисті режими обробляються вище; відключеним — нічого.
+            return
 
         if text_msg in modes:
             mode, response = modes[text_msg]
@@ -663,81 +669,120 @@ class TelegramService:
             self.send_text(response)
             return
 
-        corrected_text = (msg.get("text") or "").strip()
-        if not corrected_text:
+    @staticmethod
+    def _private_sender(msg_or_cq, chat):
+        """ID користувача, якщо це його особистий чат із ботом."""
+        sender = msg_or_cq.get("from") or {}
+        if chat.get("type") not in (None, "private"):
+            return None
+        user_id = sender.get("id")
+        if type(user_id) is not int or str(user_id) != str(chat.get("id")):
+            return None
+        return user_id
+
+    def _handle_member_callback(self, cq, chat_id):
+        """Кнопки в особистих чатах користувачів: лише видалення власної копії."""
+        message = cq.get("message") or {}
+        data = cq.get("data", "")
+        if self._private_sender(cq, message.get("chat") or {}) is None:
             return
+        if data.startswith("acc:"):
+            # Картки заявок отримують усі адміністратори; права перевіряє resolve_request.
+            self._handle_access_decision(cq, chat_id, message.get("message_id"), data)
+            return
+        if not (data == "del" or data.startswith("del:")):
+            return
+        success = False
+        try:
+            r = self._request("post", "deleteMessage",
+                data={"chat_id": chat_id, "message_id": message.get("message_id")}, timeout=15)
+            success = r.status_code == 200
+        except requests.RequestException:
+            pass
+        self._answer_callback(cq, "Видалено" if success else "Помилка")
 
-        with self.state_lock:
-            pending = self.waiting_for_correction.get(chat_id)
+    def _handle_user_mode_command(self, msg, update_id):
+        """Особистий режим: /all, /watch, /commands, /off від користувача.
 
-        if (
-            pending is None
-            and type(upd.get("update_id")) is int
-        ):
-            pending = load_pending_correction(
-                self.db_path, chat_id
-            )
+        У робочому чаті без зареєстрованого користувача діє загальний режим
+        (повертаємо False, щоб спрацювала стара обробка).
+        """
+        text = (msg.get("text") or "").strip().lower()
+        if text not in MODE_COMMANDS:
+            return False
+        chat = msg.get("chat") or {}
+        user_id = self._private_sender(msg, chat)
+        work_chat = str(chat.get("id", "")) == str(self.chat_id)
+        if user_id is None:
+            return False
+        try:
+            state = load_user_mode(self.db_path, user_id)
+        except sqlite3.Error:
+            self.log.exception("Не вдалося прочитати режим користувача")
+            return not work_chat
+        if state is None:
+            # Сторонніх і відключених ігноруємо мовчки; доступ просять через /start.
+            # Загальний режим робочого чату діє, лише поки користувачів немає.
+            return not (work_chat and not self._registered_users())
 
-        if pending:
-            orig_text = pending["raw_text"]
-            ev_id = pending["event_id"]
-
-            options = {}
-            if pending.get("source_id") is not None:
-                options["source_id"] = pending["source_id"]
-
-            if type(upd.get("update_id")) is int:
-                stored = apply_pending_correction(
-                    self.db_path,
-                    chat_id,
-                    corrected_text,
-                    upd["update_id"],
-                )
-
-                if stored is None:
-                    with self.state_lock:
-                        self.waiting_for_correction.pop(
-                            chat_id, None
-                        )
-                    return
-
-                orig_text = stored["raw_text"]
+        mode, response = MODE_COMMANDS[text]
+        target = None if work_chat else user_id
+        try:
+            if type(update_id) is int:
+                applied = apply_telegram_user_mode(self.db_path, user_id, update_id, mode)
             else:
-                # Совместимость со старыми прямыми вызовами
-                # handle_update без Telegram update_id.
-                source = pending.get("source_id", "") or ""
-                if re.fullmatch(r"mem:[0-9a-f]{32}", source):
-                    with get_db(self.db_path) as db:
-                        db.execute("BEGIN IMMEDIATE")
-                        save_correction(
-                            orig_text, corrected_text, ev_id, self.db_path,
-                            db=db, **options,
-                        )
-                        update_phrase_text(
-                            db, source[4:], corrected_text, allow_missing=True,
-                        )
-                else:
-                    save_correction(
-                        orig_text, corrected_text, ev_id, self.db_path,
-                        **options,
-                    )
-
-            # Удаляем ожидание только после успешного сохранения.
-            with self.state_lock:
-                if self.waiting_for_correction.get(chat_id) is pending:
-                    self.waiting_for_correction.pop(chat_id, None)
-
-            self.log.info(
-                "Навчання збережено: '%s' -> '%s'",
-                orig_text,
-                corrected_text,
-            )
-
+                save_user_mode(self.db_path, user_id, mode)
+                applied = True
+        except PermissionError:
             self.send_text(
-                f"✅ <b>Навчання успішно збережено!</b>\n"
-                f"Було: <code>{html.escape(orig_text)}</code>\n"
-                f"Стало: <code>{html.escape(corrected_text)}</code>"
+                "⛔️ Режим /all доступний лише адміністратору. "
+                f"Доступні режими: {MODE_HELP.get(state[0], MODE_HELP['viewer'])}.",
+                chat_id=target,
             )
+            return True
+        except LookupError:
+            return True
+        if not applied:
+            self.log.info("Повторну Telegram-команду %s пропущено", update_id)
+            return True
+        self.log.info("Особистий режим користувача змінено на: %s", mode)
+        self.send_text(response, chat_id=target)
+        return True
+
+    def _registered_users(self):
+        try:
+            return has_any_user(self.db_path)
+        except sqlite3.Error:
+            return True  # обережно: без бази привілеїв .env не надаємо
+
+    def _may_hide_phrases(self, cq):
+        """Приховати фразу для всіх може лише активний адміністратор."""
+        if not self._registered_users():
+            return True
+        actor = (cq.get("from") or {}).get("id")
+        if type(actor) is not int:
+            return False
+        try:
+            state = load_user_mode(self.db_path, actor)
+        except (sqlite3.Error, ValueError):
+            return False
+        return state is not None and state[0] == "admin"
+
+    def _admin_chats(self):
+        """Чати для карток заявок: усі активні адміністратори або робочий чат."""
+        try:
+            admins = [u["chat_id"] for u in list_recipients(self.db_path) if u["role"] == "admin"]
+        except sqlite3.Error:
+            admins = []
+        return admins or ([self.chat_id] if self.chat_id else [])
+
+    def _mode_hint(self, user_id, role):
+        try:
+            state = load_user_mode(self.db_path, user_id)
+        except sqlite3.Error:
+            state = None
+        current = f"Ваш режим сповіщень: {MODE_NAMES[state[1]]}. " if state else ""
+        return f"{current}Змінити: {MODE_HELP.get(role, MODE_HELP['viewer'])}."
 
     def _miniapp_markup(self):
         return json.dumps({"inline_keyboard": [[
@@ -754,10 +799,16 @@ class TelegramService:
         if chat.get("type") != "private" or type(sender.get("id")) is not int or sender["id"] != chat.get("id"):
             return False
 
-        if str(chat["id"]) == str(self.chat_id):
+        try:
+            owner_state = load_user_mode(self.db_path, chat["id"])
+        except sqlite3.Error:
+            owner_state = None
+        if str(chat["id"]) == str(self.chat_id) and (owner_state or not self._registered_users()):
+            state = owner_state
+            mode_line = f"Ваш режим сповіщень: {MODE_NAMES[state[1]]}.\n" if state else ""
             self.send_text(
                 "📻 <b>Radio 345</b> на зв’язку.\n"
-                "Режими сповіщень: /all, /watch, /commands, /off.\n"
+                f"{mode_line}Режими сповіщень: {MODE_HELP['admin']}.\n"
                 "Запити на доступ нових користувачів надходитимуть сюди.",
                 reply_markup=self._miniapp_markup(),
             )
@@ -767,16 +818,25 @@ class TelegramService:
         user_chat = chat["id"]
         if state == "member":
             self.send_text(
-                f"✅ У вас є доступ до Radio 345 (роль: {ROLE_LABELS.get(role, role)}).",
+                f"✅ У вас є доступ до Radio 345 (роль: {ROLE_LABELS.get(role, role)}).\n"
+                + self._mode_hint(user_chat, role),
                 reply_markup=self._miniapp_markup(), chat_id=user_chat,
             )
         elif state == "new":
-            self.send_text(
-                "📨 Запит на доступ надіслано адміністратору. "
-                "Щойно його розглянуть, ви отримаєте повідомлення.",
-                chat_id=user_chat,
-            )
-            self._notify_access_request(sender)
+            if self._notify_access_request(sender):
+                self.send_text(
+                    "📨 Запит на доступ надіслано адміністратору. "
+                    "Щойно його розглянуть, ви отримаєте повідомлення.",
+                    chat_id=user_chat,
+                )
+            else:
+                # Картку не доставлено: наступний /start надішле її знову, без доби очікування.
+                mark_undelivered(self.db_path, sender["id"])
+                state = "undelivered"
+                self.send_text(
+                    "⚠️ Не вдалося передати запит адміністратору. Спробуйте /start трохи пізніше.",
+                    chat_id=user_chat,
+                )
         elif state == "pending":
             self.send_text("⏳ Запит уже надіслано. Очікуйте рішення адміністратора.", chat_id=user_chat)
         elif state == "rejected":
@@ -806,7 +866,12 @@ class TelegramService:
             ],
             [{"text": "✖️ Відхилити", "callback_data": f"acc:reject:{user_id}"}],
         ]})
-        self.send_text(self._access_card(user_id, name, username), reply_markup=markup)
+        card = self._access_card(user_id, name, username)
+        delivered = False
+        for admin_chat in self._admin_chats():
+            target = None if str(admin_chat) == str(self.chat_id) else admin_chat
+            delivered = self.send_text(card, reply_markup=markup, chat_id=target) or delivered
+        return delivered
 
     def _answer_callback(self, cq, text):
         try:
@@ -834,6 +899,7 @@ class TelegramService:
             "already": f"ℹ️ Доступ уже є: {role}",
             "admin": "ℹ️ Це адміністратор; роль змінюється лише в Mini App",
             "rejected": "✖️ Запит відхилено",
+            "stale": "ℹ️ Запит уже розглянуто або він застарів; змін не внесено",
         }[status]
         card = self._access_card(user_id, result["telegram_name"], result["username"])
         try:
@@ -848,7 +914,9 @@ class TelegramService:
 
         if status == "granted":
             self.send_text(
-                f"✅ Адміністратор надав вам доступ до Radio 345 (роль: {role}).",
+                f"✅ Адміністратор надав вам доступ до Radio 345 (роль: {role}).\n"
+                "Голосові повідомлення ефіру надходитимуть у цей чат.\n"
+                + self._mode_hint(user_id, result["role"]),
                 reply_markup=self._miniapp_markup(), chat_id=user_id,
             )
         elif status == "rejected":
@@ -923,8 +991,8 @@ class TelegramService:
 
                 if consecutive_errors:
                     self.log.info(
-                        "Связь с Telegram восстановлена "
-                        "после %s ошибок опроса",
+                        "Зв’язок із Telegram відновлено "
+                        "після %s помилок опитування",
                         consecutive_errors,
                     )
                     consecutive_errors = 0
@@ -1002,12 +1070,14 @@ class TelegramService:
                         if retries is not None:
                             retries.pop(update_id, None)
 
-            except (requests.RequestException, ValueError, KeyError) as e:
+            except (requests.RequestException, ValueError, KeyError, sqlite3.Error) as e:
+                # sqlite3.Error: offset не збережено. Повторна обробка того самого
+                # update безпечна — команди й рішення ідемпотентні.
                 consecutive_errors += 1
                 delay = listener_retry_delay(consecutive_errors)
 
                 self.log.warning(
-                    "Сбой связи в callback_listener: %s; "
+                    "Збій зв’язку в callback_listener: %s; "
                     "повтор через %s с (помилок поспіль: %s)",
                     e, delay, consecutive_errors,
                 )

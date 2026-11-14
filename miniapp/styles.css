@@ -174,6 +174,12 @@ h2 { font-size: 15px; letter-spacing: -.025em; margin: 3px 0 0; }
   box-shadow: 0 3px 16px #0006;
 }
 
+/* ---------- Стан сервісу ---------- */
+.service-gate { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 20px; text-align: center; }
+.service-gate .lead { max-width: 340px; }
+.service-gate-logo { width: 56px; height: 56px; border-radius: 16px; font-size: 18px; margin-bottom: 6px; }
+.connection-lost { position: sticky; top: 0; z-index: 20; padding: 8px 16px; background: #60502d; color: #f7e3c0; font-size: 12px; text-align: center; }
+
 /* ---------- Планшет і телефон: нижня навігація ---------- */
 @media (max-width: 860px) {
   .shell { padding: 14px 16px 88px; }

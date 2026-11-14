@@ -16,7 +16,6 @@ def make_service():
         db_path=":memory:",
         log=Mock(),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )
@@ -57,8 +56,8 @@ def test_listener_recovers_after_timeouts():
 
     assert delays == [5, 10]
     service.log.info.assert_called_once_with(
-        "Связь с Telegram восстановлена "
-        "после %s ошибок опроса",
+        "Зв’язок із Telegram відновлено "
+        "після %s помилок опитування",
         2,
     )
 
@@ -87,3 +86,35 @@ def test_listener_recovers_after_http_error():
 
     assert delays == [5]
     service.log.info.assert_called_once()
+
+
+def test_listener_survives_sqlite_error_when_saving_offset():
+    import sqlite3
+
+    service = make_service()
+    service._updates_offset = 10
+    handled = []
+    service.handle_update = handled.append
+    update = Mock(status_code=200)
+    update.json.return_value = {"result": [{"update_id": 10, "message": {}}]}
+    saved = []
+
+    def save(db_path, offset):
+        if not saved:
+            saved.append("failed")
+            raise sqlite3.OperationalError("database is locked")
+        saved.append(offset)
+
+    delays = []
+    with (
+        patch("services.telegram.requests.get", side_effect=[update, update, KeyboardInterrupt()]),
+        patch("services.telegram.save_telegram_offset", side_effect=save),
+        patch("services.telegram.time.sleep", side_effect=delays.append),
+    ):
+        with pytest.raises(KeyboardInterrupt):
+            service.callback_listener()
+
+    assert len(handled) == 2, "update оброблено повторно після збою SQLite"
+    assert saved == ["failed", 11]
+    assert service._updates_offset == 11
+    assert delays == [5]

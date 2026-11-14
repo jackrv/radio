@@ -372,3 +372,86 @@ test("admin can assign a friendly user name", async () => {
   await card.children[1].children[2].fire("click");
   assert.equal(calls.find(call => call.method === "PUT").body.display_name, "Оператор смены");
 });
+
+function gateFixture(fetch, { hasAuth = true } = {}) {
+  const { doc, get } = documentFixture();
+  const shell = new Element();
+  const base = doc.querySelector;
+  doc.querySelector = selector => selector === ".shell" ? shell : base(selector);
+  const timers = [];
+  const reload = { count: 0 };
+  const context = {
+    document: doc, fetch, AbortController, Error,
+    window: {
+      Telegram: hasAuth ? { WebApp: { initData: "signed-data" } } : null,
+      setTimeout: (callback, ms) => { if (ms !== 15000) timers.push(callback); return timers.length; },
+      clearTimeout: () => {},
+      location: { reload: () => { reload.count++; } }
+    }
+  };
+  vm.runInNewContext(source("client.js"), context);
+  vm.runInNewContext(source("service-gate.js"), context);
+  return { get, shell, timers, reload, client: context.window.Radio345 };
+}
+
+const offline = async () => { const error = new Error("Load failed"); error.name = "TypeError"; throw error; };
+const online = async () => ({ ok: true, json: async () => ({ user_id: 1, role: "viewer" }) });
+
+test("unavailable service shows only the gate, never the placeholder panel", async () => {
+  const { get, shell, timers } = gateFixture(offline);
+  await tick();
+  assert.equal(shell.hidden, true);
+  assert.equal(get("service-gate").hidden, false);
+  assert.match(get("service-gate-title").textContent, /недоступний/);
+  assert.equal(get("service-gate-retry").hidden, false);
+  assert.equal(timers.length, 1, "автоматична повторна перевірка");
+});
+
+test("panel opens directly when the service answers", async () => {
+  const { get, shell, reload } = gateFixture(online);
+  await tick();
+  assert.equal(shell.hidden, false);
+  assert.equal(get("service-gate").hidden, true);
+  assert.equal(reload.count, 0);
+});
+
+test("service coming back after an outage reloads into a clean panel", async () => {
+  let up = false;
+  const { timers, reload } = gateFixture((...args) => (up ? online : offline)(...args));
+  await tick();
+  up = true;
+  timers.shift()();
+  await tick();
+  assert.equal(reload.count, 1);
+});
+
+test("forbidden user sees access message without retry loop", async () => {
+  const { get, shell, timers } = gateFixture(async () => ({ ok: false, status: 403 }));
+  await tick();
+  assert.equal(shell.hidden, true);
+  assert.match(get("service-gate-text").textContent, /\/start/);
+  assert.equal(get("service-gate-retry").hidden, true);
+  assert.equal(timers.length, 0);
+});
+
+test("outside Telegram the gate explains how to open the panel", async () => {
+  let calls = 0;
+  const { get, shell } = gateFixture(async () => { calls++; }, { hasAuth: false });
+  await tick();
+  assert.equal(shell.hidden, true);
+  assert.match(get("service-gate-title").textContent, /Telegram/);
+  assert.equal(calls, 0);
+});
+
+test("connection loss during work shows a banner but keeps the panel", async () => {
+  let up = true;
+  const { get, shell, client } = gateFixture((...args) => (up ? online : offline)(...args));
+  await tick();
+  up = false;
+  await assert.rejects(client.request("/api/status"), error => error.unreachable === true);
+  assert.equal(get("connection-lost").hidden, false);
+  assert.equal(shell.hidden, false, "незбережений текст редактора лишається на екрані");
+  up = true;
+  await client.request("/api/status");
+  assert.equal(get("connection-lost").hidden, true);
+});

@@ -11,6 +11,7 @@ if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.ab
 import logging
 import sqlite3
 import time
+from datetime import datetime, timedelta
 from core.log_security import configure_logging
 from core.diagnostics import runtime as diagnostics
 import shutil
@@ -24,6 +25,7 @@ from core.cooldown import Cooldown
 from core.bounded_queue import DropOldestQueue
 from services.bot_state import BotState
 from services.receiver_status import (
+    another_receiver_running,
     receiver_heartbeat,
     ReceiverRuntimeState,
 )
@@ -39,6 +41,8 @@ from services.event_store import init_db as init_event_db
 from services.telegram import TelegramService
 from services.dictionary_loader import load_dictionaries as load_sqlite_dictionaries
 from services.dictionary_setup import ensure_dictionaries, interactive_console
+from services.user_notify_store import list_recipients
+from services.db_backup import start_backup_scheduler
 
 import config
 
@@ -89,7 +93,6 @@ telegram_service = TelegramService(
     db_path=DB_PATH,
     log=log,
     state_lock=bot_state.lock,
-    waiting_for_correction=bot_state.waiting_for_correction,
     get_notify_mode=bot_state.get_notify_mode,
     set_notify_mode=bot_state.set_notify_mode,
     apply_telegram_mode=bot_state.apply_telegram_mode,
@@ -147,15 +150,26 @@ def main():
         interactive=interactive_console(),
     ):
         raise SystemExit(2)
+    # Два приймачі на одному мікрофоні подвоюють події та повідомлення.
+    if another_receiver_running(DB_PATH):
+        log.error(
+            "Інший приймач Radio 345 уже працює. Зупиніть його й запустіть знову "
+            "(після аварійного завершення зачекайте 10 с)."
+        )
+        raise SystemExit(2)
     diagnostics.configure(config.BASE_DIR / "diagnostics.json")
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
     load_dictionaries()
     bot_state.enable_persistence(DB_PATH)
-    log.info(
-        "Режим Telegram відновлено: %s",
-        bot_state.get_notify_mode(),
-    )
+    recipients = list_recipients(DB_PATH)
+    if recipients:
+        log.info(
+            "Отримувачі сповіщень Telegram: %s",
+            ", ".join(f"{r['role']}={r['mode']}" for r in recipients),
+        )
+    else:
+        log.info("Режим Telegram робочого чату: %s", bot_state.get_notify_mode())
 
     last_pause_check = float("-inf")
     cached_pause = False
@@ -183,6 +197,18 @@ def main():
             cached_pause = True
 
         return cached_pause
+
+    def report_suspension(gap_s):
+        resumed = datetime.now()
+        stopped = resumed - timedelta(seconds=gap_s)
+        hours, minutes = divmod(max(1, round(gap_s / 60)), 60)
+        duration = f"{hours} год {minutes} хв" if hours else f"{minutes} хв"
+        telegram_service.notify_admin_async(
+            "⚠️ <b>Приймання ефіру було перерване</b>\n"
+            f"З {stopped:%d.%m %H:%M} до {resumed:%d.%m %H:%M} ({duration}).\n"
+            "Ймовірна причина: сон Mac (закрита кришка) або зупинка процесу.\n"
+            "Приймання відновлено автоматично."
+        )
 
     if not shutil.which("ffmpeg"):
         log.warning("Утиліту ffmpeg не знайдено в системі! Конвертація в OGG не працюватиме.")
@@ -212,10 +238,14 @@ def main():
         pause_checker=pause_requested,
         pause_gate=pause_gate,
         runtime_state=receiver_runtime,
+        on_suspension=report_suspension,
     )
+    # Щоденна перевірена копія бази в .local-backups/ (останні 7).
+    backup_stop = start_backup_scheduler(DB_PATH, config.BASE_DIR / ".local-backups", log=log)
     try:
         supervisor.run()
     finally:
+        backup_stop.set()
         telegram_service.shutdown(timeout=10.0)
         diagnostics.flush(force=True)
 

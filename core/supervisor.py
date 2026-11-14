@@ -69,6 +69,10 @@ class ApplicationSupervisor:
         pause_checker=None,
         pause_gate=None,
         runtime_state=None,
+        stall_timeout_s=10.0,
+        suspend_threshold_s=60.0,
+        wall_clock=None,
+        on_suspension=None,
     ):
         self.frames = frames
         self.segments = segments
@@ -93,6 +97,13 @@ class ApplicationSupervisor:
         self.pause_checker = pause_checker
         self.pause_gate = pause_gate
         self.runtime_state = runtime_state
+        # Відкритий потік без кадрів довше цього часу вважається зависшим.
+        self.stall_timeout_s = stall_timeout_s
+        # Розрив між ітераціями циклу довше цього — сон Mac або зупинка процесу.
+        self.suspend_threshold_s = suspend_threshold_s
+        self.wall_clock = wall_clock or time.time
+        # Сповіщення про розрив приймання (не повинне блокувати цикл аудіо).
+        self.on_suspension = on_suspension
 
     def run(self):
         """Запускает рабочие потоки и цикл обработки аудиокадров."""
@@ -131,6 +142,7 @@ class ApplicationSupervisor:
         audio_stack = ExitStack()
         paused = None
         retry_at = 0.0
+        last_frame_at = time.monotonic()
 
         def clear_queue(q):
             while True:
@@ -141,8 +153,26 @@ class ApplicationSupervisor:
                 else:
                     q.task_done()
 
+        def restart_stalled_stream():
+            """Закриває потік без кадрів; наступна ітерація відкриє його штатно."""
+            nonlocal paused, retry_at, last_frame_at
+
+            runtime.count("audio.stream_stalls")
+            self.log.error(
+                "Мікрофон не надсилає звук %d с; перевідкриваю аудіопотік",
+                round(self.stall_timeout_s),
+            )
+            audio_stack.close()
+            if self.pause_gate is not None:
+                self.pause_gate.set_paused(True)
+            if self.runtime_state is not None:
+                self.runtime_state.set("stopped")
+            paused = True
+            retry_at = 0.0
+            last_frame_at = time.monotonic()
+
         def transition(should_pause):
-            nonlocal paused, segmenter, retry_at
+            nonlocal paused, segmenter, retry_at, last_frame_at
 
             if paused is should_pause:
                 return
@@ -204,6 +234,7 @@ class ApplicationSupervisor:
                     return
 
                 retry_at = 0.0
+                last_frame_at = time.monotonic()
 
                 if self.pause_gate is not None:
                     self.pause_gate.set_paused(False)
@@ -239,7 +270,29 @@ class ApplicationSupervisor:
                     if telegram_thread is not None else None
                 )
                 telegram_restart_exhausted_logged = False
+                last_wall = self.wall_clock()
+                last_mono = time.monotonic()
                 while not stop_requested.is_set():
+                    # Сон Mac (наприклад, закрита кришка) зупиняє процес повністю.
+                    # Беремо більший із розривів: monotonic на macOS може не йти уві сні.
+                    now_wall, now_mono = self.wall_clock(), time.monotonic()
+                    gap = max(now_wall - last_wall, now_mono - last_mono)
+                    last_wall, last_mono = now_wall, now_mono
+                    if gap >= self.suspend_threshold_s:
+                        runtime.count("receiver.suspensions")
+                        runtime.observe("receiver.suspended", gap)
+                        self.log.warning(
+                            "Приймання не працювало ~%d хв (сон Mac або зупинка процесу); "
+                            "незавершену фразу скинуто",
+                            max(1, round(gap / 60)),
+                        )
+                        segmenter = new_segmenter()
+                        last_frame_at = now_mono
+                        if self.on_suspension is not None:
+                            try:
+                                self.on_suspension(gap)
+                            except Exception:
+                                self.log.exception("Не вдалося повідомити про розрив приймання")
                     if transcriber_thread.is_alive():
                         runtime.gauge("workers.transcriber_alive", True)
                         if (
@@ -336,8 +389,12 @@ class ApplicationSupervisor:
                     try:
                         frame = self.frames.get(timeout=1.0)
                     except queue.Empty:
+                        if time.monotonic() - last_frame_at >= self.stall_timeout_s:
+                            restart_stalled_stream()
                         monitor.check()
                         continue
+
+                    last_frame_at = time.monotonic()
 
                     segment = segmenter.process(frame)
 

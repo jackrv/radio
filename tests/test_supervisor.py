@@ -64,6 +64,9 @@ def make_supervisor(frames):
         stream_factory=FakeStream,
         segmenter_factory=FakeSegmenter,
         thread_factory=FakeThread,
+        # Ці тести «перемотують» monotonic; сторож мікрофона й сну перевіряються окремо.
+        stall_timeout_s=float("inf"),
+        suspend_threshold_s=float("inf"),
     )
 
     return supervisor, segments, log

@@ -47,10 +47,6 @@ def audit_database(path, *, verify_backup=False):
             checks["db_votes_without_event"] = db.execute("""SELECT COUNT(*) FROM word_correction_votes v
                 WHERE v.source_id LIKE 'db:%' AND NOT EXISTS
                 (SELECT 1 FROM radio_events e WHERE 'db:' || e.id=v.source_id)""").fetchone()[0]
-        if "telegram_pending_corrections" in tables and "radio_events" in tables:
-            checks["pending_without_event"] = db.execute("""SELECT COUNT(*) FROM telegram_pending_corrections p
-                WHERE p.event_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM radio_events e WHERE e.id=p.event_id)""").fetchone()[0]
-            counts["pending_corrections"] = db.execute("SELECT COUNT(*) FROM telegram_pending_corrections").fetchone()[0]
         if "telegram_recent_phrases" in tables:
             total, expired, future = db.execute("""SELECT COUNT(*),
                 COALESCE(SUM(created_at<=?),0), COALESCE(SUM(created_at>?),0)
@@ -194,7 +190,7 @@ def main():
     errors = (report["database"].get("error") or not checks.get("integrity_ok")
               or any(checks.get(key) for key in ("missing_required_tables", "foreign_key_violations", "confirmation_mismatches",
                       "votes_without_rule", "active_without_confirmations", "active_with_conflicting_votes",
-                      "db_votes_without_event", "pending_without_event")))
+                      "db_votes_without_event")))
     if args.verify_backup:
         errors = errors or not checks.get("backup_integrity_ok") or not checks.get("backup_counts_match")
     if args.network:

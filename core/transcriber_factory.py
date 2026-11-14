@@ -64,6 +64,7 @@ def build_transcriber(
         db_path=config.DB_PATH,
         log_callsigns_only=config.LOG_CALLSIGNS_ONLY,
         log=log,
+        select_recipients=telegram_service.recipients_for,
     )
 
     recognizer = WhisperRecognizer(

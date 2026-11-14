@@ -138,16 +138,18 @@ def test_bot_keyboard_opens_web_editor():
     service = TelegramService(
         bot_token="test", chat_id="123", sample_rate=16000,
         db_path=":memory:", log=Mock(), state_lock=threading.Lock(),
-        waiting_for_correction={}, get_notify_mode=lambda: "all",
+        get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )
     rows = json.loads(service.get_keyboard("db:97"))["inline_keyboard"]
     assert rows[1][0]["web_app"]["url"] == (
         "https://jackrv.github.io/radio/?fix_id=db%3A97"
     )
-    assert rows[2][0]["callback_data"] == "fix_db:97"
-    mem = json.loads(service.get_keyboard("mem:abc"))["inline_keyboard"]
-    assert mem[0][1]["callback_data"] == "fix_mem:abc"
+    assert len(rows) == 2
+    # Короткий застарілий mem: без редактора — лише видалення.
+    assert json.loads(service.get_keyboard("mem:abc"))["inline_keyboard"] == [
+        [{"text": "🗑 Видалити", "callback_data": "del"}]
+    ]
 
 
 def test_failed_word_vote_rolls_back_event_edit(client_and_db):

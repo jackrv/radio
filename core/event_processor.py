@@ -17,6 +17,7 @@ class EventProcessor:
         log_callsigns_only,
         log,
         rollback=None,
+        select_recipients=None,
     ):
         self.callsigns = callsigns
         self.commands = commands
@@ -31,6 +32,8 @@ class EventProcessor:
         self.log_callsigns_only = log_callsigns_only
         self.log = log
         self.rollback = rollback
+        # Особисті режими: функція(wants) -> отримувачі. Без неї — загальний режим.
+        self.select_recipients = select_recipients
 
     def process(self, text, pcm, raw_text=None):
         cs_found = self.callsigns.find(text)
@@ -72,7 +75,7 @@ class EventProcessor:
                 )
 
                 self.log.info(
-                    "  -> БД #%s | кому: %s | от: %s | команды: %s",
+                    "  -> БД #%s | кому: %s | від: %s | команди: %s",
                     event_id,
                     to_str or "-",
                     from_str or "-",
@@ -85,17 +88,22 @@ class EventProcessor:
                 if self.rollback is not None:
                     self.rollback(("db", cs_str, cmd_str))
 
-        with self.state_lock:
-            current_mode = self.get_notify_mode()
+        def wants(mode):
+            return (
+                mode == "all"
+                or (mode == "watch" and bool(watch_found))
+                or (mode == "commands" and bool(cmd_found or cs_found))
+            )
 
-        should_notify = False
-
-        if current_mode == "all":
-            should_notify = True
-        elif current_mode == "watch" and watch_found:
-            should_notify = True
-        elif current_mode == "commands" and (cmd_found or cs_found):
-            should_notify = True
+        recipients = None
+        if self.select_recipients is not None:
+            recipients = self.select_recipients(wants)
+            should_notify = bool(recipients)
+            current_mode = "особисті: %d" % len(recipients)
+        else:
+            with self.state_lock:
+                current_mode = self.get_notify_mode()
+            should_notify = wants(current_mode)
 
         if should_notify and self.fresh(("tg", text)):
             try:
@@ -117,6 +125,7 @@ class EventProcessor:
                     text,
                     pcm,
                     fix_id=fix_id,
+                    **({"recipients": recipients} if recipients is not None else {}),
                 )
             except Exception:
                 self.log.exception(

@@ -18,9 +18,6 @@ from services.telegram_phrase_store import (
 from services.miniapp_correction_editor import (
     CorrectionConflict, save_edit_draft,
 )
-from services.telegram_pending import (
-    save_pending_correction, apply_pending_correction,
-)
 from services.user_store import init_users_db, bootstrap_admin, create_user
 from tests.test_web_api import TOKEN, auth_header
 
@@ -41,7 +38,7 @@ def service(db):
     return TelegramService(
         bot_token="test", chat_id="123", sample_rate=16000,
         db_path=str(db), log=Mock(), state_lock=threading.Lock(),
-        waiting_for_correction={}, get_notify_mode=lambda: "all",
+        get_notify_mode=lambda: "all",
         set_notify_mode=lambda _: None,
     )
 
@@ -54,30 +51,24 @@ def new_phrase(db, text="Лира 68"):
     return s, fix_id
 
 
-def test_new_mem_keyboard_has_web_editor_and_chat_fallback(setup):
+def test_new_mem_keyboard_has_delete_and_web_editor_only(setup):
     db, _ = setup
     s, fix_id = new_phrase(db)
     rows = json.loads(s.get_keyboard(fix_id))["inline_keyboard"]
+    assert len(rows) == 2
+    assert rows[0][0]["callback_data"] == "del:" + fix_id
     assert rows[1][0]["web_app"]["url"].endswith(
         "?fix_id=" + fix_id.replace(":", "%3A")
     )
-    assert rows[2][0]["callback_data"] == "fix_" + fix_id
 
 
-def test_mem_phrase_survives_restart_and_chat_callback(setup):
-    db, _ = setup
+def test_mem_phrase_survives_restart(setup):
+    db, client = setup
     _, fix_id = new_phrase(db)
-    restarted = service(db)
-    assert restarted.resolve_phrase_by_fix_id(fix_id) == ("Лира 68", None)
-    with patch("services.telegram.requests.post"):
-        restarted.handle_update({
-            "update_id": 88,
-            "callback_query": {
-                "id": "cb", "data": "fix_" + fix_id,
-                "message": {"chat": {"id": 123}, "message_id": 14},
-            },
-        })
-    assert restarted.waiting_for_correction["123"]["raw_text"] == "Лира 68"
+    service(db)  # новий екземпляр після перезапуску
+    response = client.get("/api/corrections/draft", params={"fix_id": fix_id},
+                          headers=auth_header(1001))
+    assert response.json()["original_text"] == "Лира 68"
 
 
 def test_editor_prefills_memory_text(setup):
@@ -153,7 +144,6 @@ def test_expired_mem_phrase_is_not_available(setup):
     with sqlite3.connect(db) as conn:
         conn.execute("UPDATE telegram_recent_phrases SET created_at = ?",
                      (int(time.time()) - RETENTION_SECONDS - 1,))
-    assert s.resolve_phrase_by_fix_id(fix_id) == (None, None)
     assert client.get("/api/corrections/draft", params={"fix_id": fix_id},
                       headers=auth_header(1001)).status_code == 404
 
@@ -174,20 +164,6 @@ def test_recent_phrase_limit_prunes_oldest(setup):
     assert count == 2
 
 
-def test_chat_correction_updates_mem_editor_draft(setup):
-    db, client = setup
-    _, fix_id = new_phrase(db)
-    save_pending_correction(db, "123", {
-        "raw_text": "Лира 68", "event_id": None,
-        "source_id": fix_id,
-    })
-    applied = apply_pending_correction(db, "123", "Ліра 68", 10)
-    assert applied is not None
-    response = client.get("/api/corrections/draft", params={"fix_id": fix_id},
-                          headers=auth_header(1001))
-    assert response.json()["current_text"] == "Ліра 68"
-
-
 def test_word_feedback_failure_rolls_back_mem_edit(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
@@ -204,7 +180,7 @@ def test_word_feedback_failure_rolls_back_mem_edit(setup):
     assert load_phrase(db, fix_id[4:])["current_text"] == "Лира 68"
 
 
-def test_successive_edits_replace_votes_across_chat_and_editor(setup):
+def test_successive_edits_replace_votes(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
     for expected, corrected in [("Лира 68", "Ліра 68"), ("Ліра 68", "Ліро 68")]:
@@ -213,30 +189,14 @@ def test_successive_edits_replace_votes_across_chat_and_editor(setup):
             json={"fix_id": fix_id, "expected_text": expected,
                   "corrected_text": corrected},
         ).status_code == 200
-    save_pending_correction(db, "123", {
-        "raw_text": "Лира 68", "event_id": None, "source_id": fix_id,
-    })
-    assert apply_pending_correction(db, "123", "Ліра 68", 20) is not None
-    # A replay neither adds votes nor changes the phrase.
-    assert apply_pending_correction(db, "123", "Ліро 68", 20) is None
     with sqlite3.connect(db) as conn:
         assert conn.execute(
             "SELECT source_id, original, corrected FROM word_correction_votes"
-        ).fetchall() == [(fix_id, "лира", "ліра")]
+        ).fetchall() == [(fix_id, "лира", "ліро")]
         assert conn.execute(
             "SELECT SUM(confirmations) FROM word_corrections"
         ).fetchone()[0] == 1
-    assert load_phrase(db, fix_id[4:])["current_text"] == "Ліра 68"
-
-
-def test_chat_without_update_id_keeps_editor_in_sync(setup):
-    from tests.test_telegram_word_learning import correct_message
-
-    db, _ = setup
-    s, fix_id = new_phrase(db)
-    s.send_text = Mock()
-    correct_message(s, fix_id, "Ліра 68")
-    assert load_phrase(db, fix_id[4:])["current_text"] == "Ліра 68"
+    assert load_phrase(db, fix_id[4:])["current_text"] == "Ліро 68"
 
 
 def test_expiry_boundary_and_edits_do_not_extend_lifetime(setup):
@@ -291,12 +251,9 @@ def test_parallel_edits_have_one_winner(setup):
         ).fetchone()[0] == 1
 
 
-def test_phrase_update_failure_rolls_back_votes_and_chat_offset(setup):
+def test_phrase_update_failure_rolls_back_votes(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
-    save_pending_correction(db, "123", {
-        "raw_text": "Лира 68", "event_id": None, "source_id": fix_id,
-    })
     with sqlite3.connect(db) as conn:
         conn.execute("""
             CREATE TRIGGER fail_phrase_update
@@ -308,34 +265,20 @@ def test_phrase_update_failure_rolls_back_votes_and_chat_offset(setup):
         json={"fix_id": fix_id, "expected_text": "Лира 68",
               "corrected_text": "Ліра 68"},
     ).status_code == 503
-    with pytest.raises(sqlite3.Error):
-        apply_pending_correction(db, "123", "Ліра 68", 20)
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM word_correction_votes").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM word_corrections").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM telegram_pending_corrections").fetchone()[0] == 1
     assert load_phrase(db, fix_id[4:])["current_text"] == "Лира 68"
 
 
-def test_sqlite_registration_failure_falls_back_to_chat_with_ttl(setup):
+def test_sqlite_registration_failure_leaves_only_delete_button(setup):
     db, _ = setup
     s = service(db)
     with patch("services.telegram.register_phrase", side_effect=sqlite3.OperationalError("test")):
-        with patch("services.telegram.time.time", return_value=100000):
-            fix_id = s.register_phrase_for_fix("Лира 68", None)
-            assert s.resolve_phrase_by_fix_id(fix_id) == ("Лира 68", None)
-            rows = json.loads(s.get_keyboard(fix_id))["inline_keyboard"]
-            assert rows[0][1]["callback_data"] == "fix_" + fix_id
-        with patch("services.telegram.time.time", return_value=186400):
-            assert s.resolve_phrase_by_fix_id(fix_id) == (None, None)
-
-
-def test_legacy_short_button_can_still_resolve_memory_phrase(setup):
-    db, _ = setup
-    s = service(db)
-    with s._phrases_lock:
-        s.recent_phrases["abcd1234"] = "Лира 68"
-    assert s.resolve_phrase_by_fix_id("mem:abcd1234") == ("Лира 68", None)
+        fix_id = s.register_phrase_for_fix("Лира 68", None)
+    assert fix_id is None
+    rows = json.loads(s.get_keyboard(fix_id))["inline_keyboard"]
+    assert rows == [[{"text": "🗑 Видалити", "callback_data": "del"}]]
 
 
 def test_mem_api_requires_authentication(setup):
@@ -361,23 +304,6 @@ def test_parallel_registration_respects_limit(setup):
         assert conn.execute(
             "SELECT COUNT(*) FROM telegram_recent_phrases"
         ).fetchone()[0] == 2
-
-
-def test_pending_chat_survives_phrase_expiration(setup):
-    db, _ = setup
-    _, fix_id = new_phrase(db)
-    save_pending_correction(db, "123", {
-        "raw_text": "Лира 68", "event_id": None, "source_id": fix_id,
-    })
-    with sqlite3.connect(db) as conn:
-        conn.execute("UPDATE telegram_recent_phrases SET created_at = 0")
-    assert load_phrase(db, fix_id[4:]) is None
-    assert apply_pending_correction(db, "123", "Ліра 68", 20) is not None
-    assert load_phrase(db, fix_id[4:]) is None
-    with sqlite3.connect(db) as conn:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM word_correction_votes"
-        ).fetchone()[0] == 1
 
 
 def test_sqlite_read_failure_returns_503(setup):

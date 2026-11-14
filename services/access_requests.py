@@ -88,8 +88,9 @@ def resolve_request(db_path, actor_id, user_id, role, now=None):
     """Рішення адміністратора: ``role`` — viewer/editor або None для відмови.
 
     Повертає словник зі ``status``: ``granted``, ``rejected``, ``already``
-    (доступ із цією роллю вже є) або ``admin`` (користувач — адміністратор;
-    змінювати його тут не можна).
+    (доступ із цією роллю вже є), ``admin`` (користувач — адміністратор;
+    змінювати його тут не можна) або ``stale`` (заявки, що очікує рішення,
+    немає: стара кнопка не повинна скасувати пізніше відключення).
     """
     _valid_id(user_id)
     if role is not None and role not in GRANTABLE_ROLES:
@@ -102,10 +103,10 @@ def resolve_request(db_path, actor_id, user_id, role, now=None):
         ensure_profiles(db)
         _require_permission(db, actor_id, "users.manage")
         request = db.execute(
-            "SELECT telegram_name, username FROM telegram_access_requests WHERE user_id=?",
+            "SELECT telegram_name, username, status FROM telegram_access_requests WHERE user_id=?",
             (user_id,),
         ).fetchone()
-        name, username = request or ("", "")
+        name, username, request_status = request or ("", "", None)
         result = {"user_id": user_id, "telegram_name": name, "username": username, "role": role}
         user = db.execute(
             "SELECT role, enabled FROM telegram_users WHERE user_id=?", (user_id,),
@@ -115,18 +116,20 @@ def resolve_request(db_path, actor_id, user_id, role, now=None):
             db.execute("DELETE FROM telegram_access_requests WHERE user_id=?", (user_id,))
             return {**result, "status": "admin", "role": "admin"}
 
+        if user and user[1] == 1 and (role is None or user[0] == role):
+            if request_status == "pending":
+                db.execute("DELETE FROM telegram_access_requests WHERE user_id=?", (user_id,))
+            return {**result, "status": "already", "role": user[0]}
+
+        if request_status != "pending":
+            return {**result, "status": "stale"}
+
         if role is None:
-            if user and user[1] == 1:
-                return {**result, "status": "already", "role": user[0]}
             db.execute(
                 "UPDATE telegram_access_requests SET status='rejected', requested_at=? WHERE user_id=?",
                 (now, user_id),
             )
             return {**result, "status": "rejected"}
-
-        if user == (role, 1):
-            db.execute("DELETE FROM telegram_access_requests WHERE user_id=?", (user_id,))
-            return {**result, "status": "already"}
 
         db.execute("""INSERT INTO telegram_users (user_id, role, enabled) VALUES (?, ?, 1)
             ON CONFLICT(user_id) DO UPDATE SET role=excluded.role, enabled=1
@@ -138,3 +141,14 @@ def resolve_request(db_path, actor_id, user_id, role, now=None):
             """, (user_id, name, username))
         db.execute("DELETE FROM telegram_access_requests WHERE user_id=?", (user_id,))
         return {**result, "status": "granted"}
+
+
+def mark_undelivered(db_path, user_id):
+    """Карточку заявки не доставлено: наступний /start надішле її знову."""
+    with get_db(db_path) as db:
+        ensure_table(db)
+        db.execute(
+            "UPDATE telegram_access_requests SET requested_at = 0 "
+            "WHERE user_id = ? AND status = 'pending'",
+            (user_id,),
+        )

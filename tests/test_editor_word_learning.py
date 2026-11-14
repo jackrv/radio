@@ -1,9 +1,9 @@
 import logging
 import threading
-from unittest.mock import patch
 
 import pytest
 
+from services.miniapp_correction_editor import load_edit_draft, save_edit_draft
 from services.telegram import TelegramService
 from services.event_store import init_db
 from services.sqlite_connection import get_db
@@ -21,7 +21,6 @@ def setup_service(tmp_path):
         db_path=str(path),
         log=logging.getLogger("test_word_learning"),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )
@@ -31,27 +30,10 @@ def setup_service(tmp_path):
 
 
 def correct_message(service, fix_id, text):
-    callback = {
-        "callback_query": {
-            "id": "test-callback",
-            "data": f"fix_{fix_id}",
-            "message": {
-                "message_id": 1,
-                "chat": {"id": 123},
-            },
-        }
-    }
-
-    message = {
-        "message": {
-            "chat": {"id": 123},
-            "text": text,
-        }
-    }
-
-    with patch("services.telegram.requests.post"):
-        service.handle_update(callback)
-        service.handle_update(message)
+    """Виправлення через редактор Mini App (той самий шлях збереження)."""
+    path = service.db_path
+    current = load_edit_draft(path, fix_id)["current_text"]
+    save_edit_draft(path, fix_id, current, text)
 
 
 def get_rules(path):

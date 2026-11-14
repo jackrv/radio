@@ -142,3 +142,15 @@ def receiver_heartbeat(db_path, log=None, interval=2.0, state_provider=None):
             mark_stopped(db_path, instance_id)
         except sqlite3.Error:
             log.exception("Помилка збереження зупинки приймача")
+
+
+def another_receiver_running(db_path, *, now=None):
+    """Чи працює інший приймач (свіжий heartbeat «listening»/«paused»).
+
+    Після штатної зупинки стан «stopped», тож перезапуск не блокується.
+    Після аварії heartbeat застаріває за 10 с.
+    """
+    try:
+        return read_receiver_status(db_path, now=now) in ("listening", "paused")
+    except sqlite3.Error:
+        return False

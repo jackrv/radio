@@ -24,9 +24,10 @@ from services.receiver_control import (
     set_pause_minutes,
     PauseVersionConflict,
 )
-from services.notify_mode_store import (
-    load_notify_mode,
-    save_notify_mode,
+from services.user_notify_store import (
+    allowed_modes,
+    load_user_mode,
+    save_user_mode,
 )
 from api.management import management_router
 from services.user_profiles import remember_verified_profile
@@ -204,34 +205,34 @@ def create_app(db_path, bot_token):
 
     @app.get("/api/notifications/mode")
     def get_notification_mode(user=Depends(current_user)):
-        require_settings_permission(user, "settings.read")
-
+        """Особистий режим сповіщень поточного користувача."""
         try:
-            mode = load_notify_mode(db_path)
+            state = load_user_mode(db_path, user["user_id"])
         except sqlite3.Error:
-            raise HTTPException(
-                status_code=503,
-                detail="Налаштування недоступні",
-            ) from None
-
-        return {"mode": mode}
+            raise HTTPException(status_code=503, detail="Налаштування недоступні") from None
+        if state is None:
+            raise HTTPException(status_code=403, detail="Доступ заборонено")
+        role, mode = state
+        return {"mode": mode, "allowed": allowed_modes(role)}
 
     @app.put("/api/notifications/mode")
     def update_notification_mode(
         payload: NotificationModeUpdate,
         user=Depends(current_user),
     ):
-        require_settings_permission(user, "settings.write")
-
         try:
-            save_notify_mode(db_path, payload.mode)
+            save_user_mode(db_path, user["user_id"], payload.mode)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        except LookupError:
+            raise HTTPException(status_code=403, detail="Доступ заборонено") from None
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
                 detail="Не вдалося зберегти налаштування",
             ) from None
 
-        return {"mode": payload.mode}
+        return {"mode": payload.mode, "allowed": allowed_modes(user["role"])}
 
     @app.get("/api/receiver/control")
     def get_receiver_control(user=Depends(current_user)):

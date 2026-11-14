@@ -40,13 +40,26 @@ def remember_message(db_path, fix_id, message):
         """, (fix_id, str(chat_id), msg_id, file_id if isinstance(file_id, str) else None))
 
 
+def remember_voice(db_path, fix_id, file_id):
+    """Лише file_id голосового з чату іншого користувача: аудіо для редактора.
+
+    Розташування повідомлення (чат і message_id) зберігається тільки для
+    робочого чату, тож видалення в чужому чаті не приховує фразу.
+    """
+    if not isinstance(fix_id, str) or not FIX_RE.fullmatch(fix_id) or not isinstance(file_id, str):
+        return
+    with get_db(db_path) as db:
+        ensure_table(db)
+        db.execute("""INSERT INTO telegram_phrase_messages (fix_id, voice_file_id) VALUES (?, ?)
+            ON CONFLICT(fix_id) DO UPDATE SET
+            voice_file_id=COALESCE(telegram_phrase_messages.voice_file_id, excluded.voice_file_id)
+        """, (fix_id, file_id))
+
+
 def callback_fix_id(db_path, data, message):
     candidates = [data[4:]] if data.startswith("del:") else []
     for row in (message.get("reply_markup") or {}).get("inline_keyboard", []):
         for button in row:
-            value = button.get("callback_data", "")
-            if value.startswith("fix_"):
-                candidates.append(value[4:])
             url = (button.get("web_app") or {}).get("url", "")
             candidates.extend(parse_qs(urlsplit(url).query).get("fix_id", []))
     for candidate in candidates:

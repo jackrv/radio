@@ -77,7 +77,10 @@ class Transcriber:
 
         if audio.size == 0 or rms < self.min_rms:
             runtime.count("asr.low_rms")
+            # Рівні відкинутих і прийнятих сегментів: чи не ріже MIN_RMS реальне мовлення.
+            runtime.observe("asr.low_rms_level", rms)
             return
+        runtime.observe("asr.accepted_rms_level", rms)
 
         if self.debug_audio and self.debug_audio_count < 12:
             try:

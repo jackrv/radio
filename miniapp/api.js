@@ -64,7 +64,7 @@
       connection("API підключено", true);
       showReceiver(data.receiver);
     } catch (error) {
-      connection("Помилка соединения");
+      connection("Помилка з’єднання");
       receiver.textContent = "Немає з’єднання";
       hero.textContent = "● API недоступний";
       description.textContent = error.message;

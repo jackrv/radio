@@ -12,7 +12,6 @@ def make_service():
         db_path=":memory:",
         log=logging.getLogger("test_telegram_outbox"),
         state_lock=threading.Lock(),
-        waiting_for_correction={},
         get_notify_mode=lambda: "all",
         set_notify_mode=lambda mode: None,
     )

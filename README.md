@@ -274,7 +274,7 @@ node --test tests/miniapp.test.cjs
 журнали та доступність мережі. Робочі метрики після перезапуску записуються у
 `diagnostics.json`. [Опис і обмеження](DIAGNOSTICS.md).
 
-GitHub Actions (`.github/workflows/tests.yml`) запускає Python-тести на `macos-14`
+GitHub Actions (`.github/workflows/tests.yml`) запускає Python-тести на `macos-latest`
 (Apple Silicon, без моделей і мікрофона) та JavaScript-перевірки Mini App.
 
 `RADIO_DEBUG_AUDIO=1 .venv/bin/python radio.py` вмикає обмежений запис зразків у

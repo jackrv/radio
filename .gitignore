@@ -11,6 +11,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.wishlist
 # SQLite
 *.db
 *.db-*
@@ -43,3 +44,4 @@ diagnostics-report.json
 .local-backups/
 .local-notification-sounds/
 .radio345.lock
+.radio345-launcher/

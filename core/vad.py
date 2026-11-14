@@ -32,11 +32,21 @@ class VADSegmenter:
         self.silence = 0
         self.speech_frames = 0
         self.in_speech = False
+        self._speech_end_at = None
+        self._speech_end_unix_s = None
+        self._speech_source = "legacy"
+        self.completed_speech_end_at = None
+        self.completed_speech_end_unix_s = None
+        self.completed_speech_source = "legacy"
 
     def process(self, frame: bytes):
         """Принимает один аудиокадр; возвращает готовый PCM-сегмент или None."""
 
         is_speech = self.vad.is_speech(frame, self.sample_rate)
+        if is_speech:
+            self._speech_end_at = getattr(frame, "captured_at", None)
+            self._speech_end_unix_s = getattr(frame, "captured_unix_s", None)
+            self._speech_source = getattr(frame, "capture_source", "legacy")
 
         if not self.in_speech:
             self.preroll.append(frame)
@@ -65,6 +75,9 @@ class VADSegmenter:
 
             if speech_ms >= self.min_speech_ms:
                 segment = b"".join(self.voiced)
+                self.completed_speech_end_at = self._speech_end_at
+                self.completed_speech_end_unix_s = self._speech_end_unix_s
+                self.completed_speech_source = self._speech_source
             else:
                 # Видно, скільки коротких фрагментів відсіяно порогом MIN_SPEECH_MS.
                 runtime.count("vad.short_discarded")
@@ -75,6 +88,9 @@ class VADSegmenter:
             self.silence = 0
             self.speech_frames = 0
             self.preroll.clear()
+            self._speech_end_at = None
+            self._speech_end_unix_s = None
+            self._speech_source = "legacy"
 
             return segment
 

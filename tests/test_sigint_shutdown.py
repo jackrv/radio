@@ -31,3 +31,13 @@ def test_first_sigint_requests_stop_and_second_interrupts():
 
     # После выхода восстанавливается исходный обработчик.
     assert signal.getsignal(signal.SIGINT) is original
+
+
+@pytest.mark.parametrize("signo", [signal.SIGTERM, signal.SIGHUP])
+def test_term_and_hup_request_graceful_receiver_stop_and_restore_handlers(signo):
+    original = signal.getsignal(signo)
+    with ignore_repeated_sigint() as stop_requested:
+        signal.raise_signal(signo)
+        signal.raise_signal(signo)
+        assert stop_requested.is_set()
+    assert signal.getsignal(signo) == original

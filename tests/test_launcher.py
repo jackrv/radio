@@ -64,7 +64,7 @@ def mocked_services(tmp_path, monkeypatch):
     created = []
     stopped = []
 
-    def process(name, command):
+    def process(name, command, **kwargs):
         item = Mock(name=name)
         item.name = name
         item.process.poll.return_value = None
@@ -101,6 +101,22 @@ def test_busy_port_starts_nothing(mocked_services, monkeypatch):
     monkeypatch.setattr(launcher, "port_busy", lambda _: True)
     assert launcher.main() == 2
     assert created == stopped == []
+
+
+def test_existing_receiver_lock_prevents_starting_api_and_ngrok(mocked_services, tmp_path):
+    import os
+    from core.instance_lock import acquire_instance_lock
+
+    created, stopped, _ = mocked_services
+    path = tmp_path / ".radio345.lock"
+    lock = acquire_instance_lock(path)
+    try:
+        inode = path.stat().st_ino
+        assert launcher.main() == 2
+        assert created == stopped == []
+        assert path.stat().st_ino == inode
+    finally:
+        os.close(lock)
 
 
 def test_stop_continues_if_one_service_cannot_stop(mocked_services, monkeypatch):

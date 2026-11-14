@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Запуск Radio 345: FastAPI, ngrok, приёмник и необязательный Mini App preview.
-
-Положите этот файл в корень репозитория рядом с radio.py.
+"""Запуск Radio 345: FastAPI, ngrok, приймач і необов’язковий Mini App preview.
 
     python start_radio345.py
     python start_radio345.py --local-miniapp
     python start_radio345.py --publish-pages
     python start_radio345.py --ngrok-url https://YOUR_DEV_DOMAIN.ngrok-free.app
+    python start_radio345.py --status
+    python start_radio345.py --stop
 
-Ctrl+C останавливает только процессы, запущенные этим экземпляром.
+Ctrl+C, SIGTERM і SIGHUP зупиняють лише служби цього запуску.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from urllib.parse import urlsplit
 from project_python import select_python
 from services.admin_setup import ensure_admin
 from services.dictionary_setup import ensure_dictionaries, interactive_console
+from services.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_stop
 
 ROOT = Path(__file__).resolve().parent
 API_PORT = 8765
@@ -39,7 +40,11 @@ MINIAPP_PORT = 8080
 
 
 def output(message: str) -> None:
-    print(f"[launcher] {message}", flush=True)
+    try:
+        print(f"[launcher] {message}", flush=True)
+    except (OSError, ValueError):
+        # Закриття PTY у VS Code не повинне перервати зупинку служб.
+        pass
 
 
 def launcher_setting(name: str, default: str = "") -> str:
@@ -238,10 +243,12 @@ def api_reachable() -> bool:
 
 
 class ManagedProcess:
-    def __init__(self, name: str, command: list[str]):
+    def __init__(self, name: str, command: list[str], *, session=None):
         self.name = name
+        self.session = session
+        guarded, fds = session.command(name, command) if session is not None else (command, ())
         self.process = subprocess.Popen(
-            command,
+            guarded,
             cwd=ROOT,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -249,21 +256,36 @@ class ManagedProcess:
             text=True,
             errors="replace",
             bufsize=1,
-            start_new_session=True,  # отдельная группа: Ctrl+C не убьёт детей внезапно
+            start_new_session=True,  # власна група контролера та його служби
+            pass_fds=fds,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
+        if session is not None:
+            session.register(name, self.process)
         self.reader = threading.Thread(target=self._read_output, daemon=True)
         self.reader.start()
-        output(f"Запущено {name} (PID {self.process.pid})")
+        output(f"Запущено {name} (PID контролера {self.process.pid})")
 
     def _read_output(self) -> None:
         if self.process.stdout is None:
             return
-        for line in self.process.stdout:
-            print(f"[{self.name}] {line}", end="", flush=True)
+        writable = True
+        try:
+            for line in self.process.stdout:
+                if writable:
+                    try:
+                        print(f"[{self.name}] {line}", end="", flush=True)
+                    except (OSError, ValueError):
+                        writable = False
+        except (OSError, ValueError):
+            pass
 
     def stop(self, graceful_seconds: float = 5.0) -> None:
         proc = self.process
+        if getattr(self, "session", None) is not None:
+            self.session.wait_process(proc, self.name)
+            output(f"Зупинено {self.name}")
+            return
         if proc.poll() is not None:
             return
         signo = signal.SIGINT if self.name == "radio" else signal.SIGTERM
@@ -331,13 +353,55 @@ def main() -> int:
         "--ngrok-url", default=launcher_setting("RADIO345_NGROK_URL"),
         help="постійний HTTPS-домен ngrok (або RADIO345_NGROK_URL в .env)",
     )
+    control = parser.add_mutually_exclusive_group()
+    control.add_argument("--status", action="store_true", help="показати керований запуск, порти та блокування приймача")
+    control.add_argument("--stop", action="store_true", help="зупинити лише власний керований запуск")
     args = parser.parse_args()
+
+    try:
+        if args.status:
+            show_status()
+            return 0
+        if args.stop:
+            if request_stop(ROOT):
+                output("Керований запуск зупинено")
+                return 0
+            show_status()
+            output("Немає керованого запуску. Сторонні та старі некеровані процеси не завершувались")
+            return 2
+        names = ["api", "ngrok"] + (["miniapp"] if args.local_miniapp else []) + ["radio"]
+        with LauncherSession(ROOT, names, log=output) as session:
+            return run_services(args, session)
+    except KeyboardInterrupt:
+        output("Завершення запускателя запитано")
+        return 0
+    except (OSError, RuntimeError) as exc:
+        output(str(exc))
+        return 1
+
+
+def show_status():
+    state = managed_status(ROOT)
+    output("Керований запуск: " + (state["state"] if state["managed"] else "немає"))
+    if state["managed"]:
+        output(f"PID запускателя: {state['launcher_pid']}; контролери: {state['controllers']}")
+        if not state["launcher_reachable"]:
+            output("Запускатель недоступний; контролери автоматично завершують служби")
+    for port, name in ((API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok")):
+        output(f"{name}: TCP {port} — {'зайнятий' if port_busy(port) else 'вільний'}")
+    output("Блокування приймача: " + ("утримується" if lock_held(ROOT / ".radio345.lock") else "вільне"))
+
+
+def run_services(args, session):
 
     if not (ROOT / "radio.py").is_file() or not (ROOT / "api/local_server.py").is_file():
         output("Помилка: покладіть start_radio345.py у корінь репозиторію поруч із radio.py")
         return 2
     if not (ROOT / ".env").is_file():
         output("Помилка: не знайдено .env (Telegram-токен має залишатися локальним)")
+        return 2
+    if lock_held(ROOT / ".radio345.lock"):
+        output("Інший приймач уже працює; нові служби не запущено. Перевірте --status")
         return 2
     py = get_python()
     db_path = ROOT / "events.db"
@@ -379,7 +443,7 @@ def main() -> int:
     output(f"Python: {py}")
     processes: list[ManagedProcess] = []
     try:
-        api = ManagedProcess("api", [py, "-u", "-m", "api.local_server"])
+        api = ManagedProcess("api", [py, "-u", "-m", "api.local_server"], session=session)
         processes.append(api)
         wait_for_api(api)
 
@@ -387,7 +451,7 @@ def main() -> int:
         if desired_ngrok_url:
             ngrok_command.extend(["--url", desired_ngrok_url])
         ngrok_command.append("--log=stdout")
-        tunnel = ManagedProcess("ngrok", ngrok_command)
+        tunnel = ManagedProcess("ngrok", ngrok_command, session=session)
         processes.append(tunnel)
         actual_url = wait_for_ngrok(tunnel)
         expected_url = read_expected_api_url()
@@ -427,12 +491,12 @@ def main() -> int:
                 "miniapp", [
                     py, "-u", "-m", "http.server", str(MINIAPP_PORT),
                     "--bind", "127.0.0.1", "--directory", str(ROOT / "miniapp"),
-                ]
+                ], session=session,
             )
             processes.append(preview)
             output("Локальний перегляд Mini App: http://127.0.0.1:8080")
 
-        radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")])
+        radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session)
         processes.append(radio)
         output("Усі запитані процеси запущено. Ctrl+C — зупинити їх разом.")
         while True:
@@ -443,24 +507,24 @@ def main() -> int:
                     return 1
             time.sleep(0.5)
     except KeyboardInterrupt:
-        output("Отримано Ctrl+C. Зупиняю служби...")
+        output("Отримано запит завершення (Ctrl+C/SIGTERM/SIGHUP). Зупиняю служби...")
         return 0
     except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
         output(f"Не вдалося запустити Radio 345: {exc}")
         return 1
     finally:
+        session.begin_shutdown()
         # Сначала даём radio закрыть очередь Telegram, пока сеть ещё доступна.
         # Repeated Ctrl+C must not leave the remaining services running.
         previous_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
         try:
             for item in reversed(processes):
                 try:
-                    item.stop(graceful_seconds=18.0 if item.name == "radio" else 5.0)
+                    item.stop(graceful_seconds=30.0 if item.name == "radio" else 5.0)
                 except OSError:
                     output(f"Не вдалося зупинити {item.name}; перевірте процес вручну")
         finally:
             signal.signal(signal.SIGINT, previous_handler)
-        output("Зупинку завершено")
 
 
 if __name__ == "__main__":

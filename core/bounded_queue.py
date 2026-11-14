@@ -10,6 +10,12 @@ class DropOldestQueue(queue.Queue):
 
         super().__init__(maxsize=maxsize)
         self._dropped = 0
+        self._high_watermark = 0
+
+    @property
+    def high_watermark(self) -> int:
+        with self.mutex:
+            return self._high_watermark
 
     @property
     def dropped(self) -> int:
@@ -34,5 +40,6 @@ class DropOldestQueue(queue.Queue):
                     self.all_tasks_done.notify_all()
 
             self._put(item)
+            self._high_watermark = max(self._high_watermark, self._qsize())
             self.unfinished_tasks += 1
             self.not_empty.notify()

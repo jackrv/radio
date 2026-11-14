@@ -19,6 +19,7 @@ import shutil
 from core.transcriber_factory import build_transcriber
 
 from core.audio import apply_gain
+from core.segment_timing import capture_frame
 from core.supervisor import ApplicationSupervisor
 from core.pause_gate import PauseGate
 from core.cooldown import Cooldown
@@ -99,7 +100,7 @@ telegram_service = TelegramService(
 def on_audio(indata, frame_count, time_info, status):
     if status:
         log.warning("Стан аудіопотоку: %s", status)
-    frames.put(apply_gain(indata, GAIN))
+    frames.put(capture_frame(apply_gain(indata, GAIN), frame_count, SR, time_info))
 
 
 

@@ -64,6 +64,10 @@ class Transcriber:
         return bool(key) and key in self.blacklist
 
     def process_segment(self, pcm, generation=None):
+        with runtime.asr_segment(pcm, self.sample_rate, self.segments):
+            self._process_segment(pcm, generation)
+
+    def _process_segment(self, pcm, generation=None):
         runtime.count("asr.segments")
         def is_current():
             return (
@@ -73,6 +77,7 @@ class Transcriber:
 
         if not is_current():
             runtime.count("asr.stale_generation")
+            runtime.asr_status("stale")
             return
 
         audio, rms = prepare_audio(
@@ -83,6 +88,7 @@ class Transcriber:
             self.log.info("rms=%.4f", rms)
 
         if audio.size == 0 or rms < self.min_rms:
+            runtime.asr_status("low_rms")
             runtime.count("asr.low_rms")
             # Рівні відкинутих і прийнятих сегментів: чи не ріже MIN_RMS реальне мовлення.
             runtime.observe("asr.low_rms_level", rms)
@@ -114,6 +120,7 @@ class Transcriber:
                 self.log.exception("Помилка фільтра сповіщень; сегмент передано Whisper")
             else:
                 if isolated_notification:
+                    runtime.asr_status("notification")
                     runtime.count("asr.notification_filtered")
                     self.log.info("Відкинуто окремий звук сповіщення: збіг із локальним зразком")
                     return
@@ -125,6 +132,7 @@ class Transcriber:
             raw_text = self.recognizer.extract_text(result)
         except Exception:
             self._whisper_failed = True
+            runtime.asr_status("whisper_error")
             runtime.count("asr.whisper_error")
             self.log.exception(
                 "Помилка розпізнавання Whisper; сегмент пропущено"
@@ -132,49 +140,59 @@ class Transcriber:
             return
 
         if not is_current():
+            runtime.asr_status("stale")
             return
 
         duration = len(pcm) / (2 * self.sample_rate)
 
         if not raw_text:
+            runtime.asr_status("empty_text")
             runtime.count("asr.empty_text")
             return
         if looks_like_garbage(raw_text, duration):
+            runtime.asr_status("garbage")
             runtime.count("asr.garbage_filtered")
             return
         if self._is_blacklisted(raw_text):
+            runtime.asr_status("blacklist")
             runtime.count("asr.blacklist_filtered")
             return
 
         if not is_current():
+            runtime.asr_status("stale")
             return
 
         self.log.info("Розпізнано (початкове): %s", raw_text)
 
+        fallback = False
         try:
             with runtime.timed("asr.correction_pipeline"):
                 text = self.process_text(raw_text)
         except Exception:
+            fallback = True
             runtime.count("asr.correction_error")
             self.log.exception(
                 "Помилка корекції тексту; використовується початковий текст Whisper"
             )
             text = raw_text
         if not is_current():
+            runtime.asr_status("stale")
             return
+        runtime.asr_text_ready(fallback=fallback)
 
         try:
-            if self.pause_gate is None:
-                self.event_processor.process(
-                    text, pcm, raw_text=raw_text
-                )
-            else:
-                self.pause_gate.run_if_current(
-                    generation,
-                    lambda: self.event_processor.process(
+            with runtime.timed("asr.event_processing"):
+                if self.pause_gate is None:
+                    self.event_processor.process(
                         text, pcm, raw_text=raw_text
-                    ),
-                )
+                    )
+                else:
+                    self.pause_gate.run_if_current(
+                        generation,
+                        lambda: self.event_processor.process(
+                            text, pcm, raw_text=raw_text
+                        ),
+                    )
         except Exception:
             runtime.count("asr.event_error")
             self.log.exception(
@@ -201,6 +219,7 @@ class Transcriber:
             self.health.reset()
         while True:
             item = self.segments.get()
+            runtime.count("asr.dequeued")
 
             if self.pause_gate is None:
                 self._tracked(item)
@@ -209,6 +228,9 @@ class Transcriber:
             generation, pcm = item
 
             if not self.pause_gate.is_current(generation):
+                with runtime.asr_segment(pcm, self.sample_rate, self.segments):
+                    runtime.asr_status("stale")
+                runtime.count("asr.stale_generation")
                 continue
 
             self._tracked(pcm, generation=generation)

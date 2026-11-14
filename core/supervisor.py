@@ -10,6 +10,7 @@ from core.vad import VADSegmenter
 from core.queue_monitor import QueueDropMonitor
 from core.restart_policy import RestartPolicy
 from core.diagnostics import runtime
+from core.segment_timing import stamp_segment
 
 
 @contextmanager
@@ -22,25 +23,30 @@ def ignore_repeated_sigint():
         yield stop_requested
         return
 
-    previous_handler = signal.getsignal(signal.SIGINT)
+    previous_handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
     interrupt_count = 0
 
     def on_sigint(signum, frame):
         nonlocal interrupt_count
+        if signum != signal.SIGINT:
+            stop_requested.set()
+            return
         interrupt_count += 1
 
         if interrupt_count == 1:
             stop_requested.set()
         else:
-            signal.signal(signal.SIGINT, previous_handler)
+            signal.signal(signal.SIGINT, previous_handlers[signal.SIGINT])
             raise KeyboardInterrupt
 
-    signal.signal(signal.SIGINT, on_sigint)
+    for signo in previous_handlers:
+        signal.signal(signo, on_sigint)
 
     try:
         yield stop_requested
     finally:
-        signal.signal(signal.SIGINT, previous_handler)
+        for signo, handler in previous_handlers.items():
+            signal.signal(signo, handler)
 
 
 class ApplicationSupervisor:
@@ -187,6 +193,8 @@ class ApplicationSupervisor:
                     break
                 else:
                     q.task_done()
+                    if q is self.segments:
+                        runtime.count("asr.queue_cleared")
 
         def restart_stalled_stream():
             """Закриває потік без кадрів; наступна ітерація відкриє його штатно."""
@@ -437,13 +445,17 @@ class ApplicationSupervisor:
 
                     if segment is not None:
                         if self.pause_gate is None:
-                            self.segments.put(segment)
+                            self.segments.put(stamp_segment(segment, frame, segmenter))
+                            runtime.count("asr.enqueued")
+                            runtime.observe_asr_queue(self.segments)
                         else:
                             generation = self.pause_gate.tag()
                             if generation is not None:
                                 self.segments.put(
-                                    (generation, segment)
+                                    (generation, stamp_segment(segment, frame, segmenter))
                                 )
+                                runtime.count("asr.enqueued")
+                                runtime.observe_asr_queue(self.segments)
 
                     monitor.check()
 

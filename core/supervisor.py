@@ -13,26 +13,31 @@ from core.restart_policy import RestartPolicy
 
 @contextmanager
 def ignore_repeated_sigint():
-    """Первый Ctrl+C останавливает работу, повторные не мешают закрытию."""
+    """Первый Ctrl+C — штатная остановка, второй — прерывание."""
+
+    stop_requested = threading.Event()
 
     if threading.current_thread() is not threading.main_thread():
-        yield
+        yield stop_requested
         return
 
     previous_handler = signal.getsignal(signal.SIGINT)
-    interrupted = False
+    interrupt_count = 0
 
     def on_sigint(signum, frame):
-        nonlocal interrupted
+        nonlocal interrupt_count
+        interrupt_count += 1
 
-        if not interrupted:
-            interrupted = True
+        if interrupt_count == 1:
+            stop_requested.set()
+        else:
+            signal.signal(signal.SIGINT, previous_handler)
             raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, on_sigint)
 
     try:
-        yield
+        yield stop_requested
     finally:
         signal.signal(signal.SIGINT, previous_handler)
 
@@ -213,7 +218,7 @@ class ApplicationSupervisor:
                         "▶️ Приём возобновлён: микрофон открыт"
                     )
 
-        with ignore_repeated_sigint(), self.heartbeat_context():
+        with ignore_repeated_sigint() as stop_requested, self.heartbeat_context():
             try:
                 requested_pause = (
                     bool(self.pause_checker())
@@ -233,7 +238,7 @@ class ApplicationSupervisor:
                     if telegram_thread is not None else None
                 )
                 telegram_restart_exhausted_logged = False
-                while True:
+                while not stop_requested.is_set():
                     if transcriber_thread.is_alive():
                         if (
                             restart_policy.attempts > 0
@@ -340,6 +345,9 @@ class ApplicationSupervisor:
                                 )
 
                     monitor.check()
+
+                if stop_requested.is_set():
+                    self.log.info("Остановлено пользователем.")
 
             except KeyboardInterrupt:
                 self.log.info("Остановлено пользователем.")

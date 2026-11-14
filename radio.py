@@ -26,6 +26,7 @@ from services.receiver_status import (
     ReceiverRuntimeState,
 )
 from services.receiver_control import read_pause_state
+from services.miniapp_management import apply_startup_settings
 from dotenv import load_dotenv
 
 
@@ -45,11 +46,7 @@ from config import (
     SR,
     FRAME_MS,
     FRAME_LEN,
-    SILENCE_END_MS,
-    MIN_SPEECH_MS,
-    MAX_SEGMENT_S,
     PREROLL_MS,
-    VAD_LEVEL,
 )
 
 
@@ -142,6 +139,7 @@ def load_dictionaries():
 
 def main():
     init_event_db(DB_PATH)
+    apply_startup_settings(DB_PATH, config)
     load_dictionaries()
     bot_state.enable_persistence(DB_PATH)
     log.info(
@@ -190,11 +188,11 @@ def main():
         sample_rate=SR,
         frame_ms=FRAME_MS,
         frame_len=FRAME_LEN,
-        vad_level=VAD_LEVEL,
+        vad_level=config.VAD_LEVEL,
         preroll_ms=PREROLL_MS,
-        silence_end_ms=SILENCE_END_MS,
-        min_speech_ms=MIN_SPEECH_MS,
-        max_segment_s=MAX_SEGMENT_S,
+        silence_end_ms=config.SILENCE_END_MS,
+        min_speech_ms=config.MIN_SPEECH_MS,
+        max_segment_s=config.MAX_SEGMENT_S,
         log=log,
         heartbeat_context=lambda: receiver_heartbeat(
             DB_PATH,

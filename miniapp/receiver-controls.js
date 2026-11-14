@@ -1,9 +1,6 @@
 "use strict";
 
 (() => {
-  const API = document.querySelector(
-    'meta[name="radio345-api"]'
-  ).content;
 
   const telegram = window.Telegram?.WebApp;
   const button = document.getElementById("receiver-pause-button");
@@ -21,51 +18,12 @@
   let conflictPending = false;
 
   async function request(method, path, payload) {
-    if (!telegram?.initData) {
-      throw new Error("Откройте панель через Telegram.");
-    }
-
-    const headers = {
-      Authorization: `tma ${telegram.initData}`,
-      "ngrok-skip-browser-warning": "true"
-    };
-
-    if (payload !== undefined) {
-      headers["Content-Type"] = "application/json";
-    }
-
-    const response = await fetch(`${API}${path}`, {
-      method,
-      headers,
-      body: payload === undefined
-        ? undefined
-        : JSON.stringify(payload),
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer"
-    });
-
-    if (response.status === 401) {
-      throw new Error("Авторизация истекла. Открой панель заново.");
-    }
-
-    if (response.status === 403) {
-      throw new Error("Недостаточно прав.");
-    }
-
-    if (response.status === 409) {
-      const error = new Error(
-        "Состояние уже изменено в другой вкладке."
-      );
-      error.conflict = true;
+    try {
+      return await window.Radio345.request(path, method, payload);
+    } catch (error) {
+      error.conflict = error.status === 409;
       throw error;
     }
-
-    if (!response.ok) {
-      throw new Error(`Ошибка API: HTTP ${response.status}`);
-    }
-
-    return response.json();
   }
 
   function setControl(data) {
@@ -242,7 +200,7 @@
     }
 
     try {
-      const user = await request("GET", "/api/me");
+      const user = await window.Radio345.user();
       isAdmin = user.role === "admin";
 
       await refresh();

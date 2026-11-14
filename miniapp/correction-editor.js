@@ -1,7 +1,6 @@
 "use strict";
 
 (() => {
-  const API = document.querySelector('meta[name="radio345-api"]').content;
   const telegram = window.Telegram?.WebApp;
   const fixId = new URLSearchParams(window.location.search).get("fix_id");
 
@@ -39,47 +38,19 @@
   });
 
   async function request(method, body = null) {
-    if (!telegram?.initData) {
-      throw new Error("Открой редактор через Telegram-бота.");
-    }
     const path = "/api/corrections/draft" + (
       method === "GET" ? `?fix_id=${encodeURIComponent(fixId)}` : ""
     );
-    const response = await fetch(API + path, {
-      method,
-      headers: {
-        "Authorization": `tma ${telegram.initData}`,
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true"
-      },
-      body: body === null ? undefined : JSON.stringify(body),
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer"
-    });
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Авторизация истекла. Закрой и заново открой редактор.");
+    try {
+      return await window.Radio345.request(path, method, body === null ? undefined : body);
+    } catch (error) {
+      if (error.status === 404) {
+        throw new Error(fixId?.startsWith("mem:")
+          ? "Фраза недоступна: прошло 24 часа или она вытеснена из 200 последних."
+          : "Событие не найдено. Возможно, оно удалено.");
       }
-      if (response.status === 403) {
-        throw new Error("Нет прав на исправление текста.");
-      }
-      if (response.status === 404) {
-        throw new Error(
-          fixId?.startsWith("mem:")
-            ? "Фраза недоступна: прошло 24 часа или она вытеснена из 200 последних."
-            : "Событие не найдено. Возможно, оно удалено."
-        );
-      }
-      if (response.status === 409) {
-        throw new Error("Текст изменился. Открой редактор заново.");
-      }
-      if (response.status === 503) {
-        throw new Error("База временно недоступна. Повтори попытку позже.");
-      }
-      throw new Error(`Ошибка сохранения: HTTP ${response.status}`);
+      throw error;
     }
-    return response.json();
   }
 
   function openEditor() {
@@ -130,7 +101,10 @@
         }, 500);
       } else {
         feedback.textContent =
-          "✅ Исправление сохранено в SQLite. Можно закрыть окно.";
+          "✅ Исправление сохранено. Можно закрыть окно или продолжить правку.";
+        edited.disabled = false;
+        save.disabled = false;
+        restore.disabled = false;
       }
     } catch (error) {
       feedback.textContent = error.message;
@@ -158,6 +132,7 @@
       restore.disabled = false;
       feedback.textContent = "Текст уже подставлен. Исправь ошибку и сохрани.";
       edited.focus();
+      edited.scrollIntoView({ block: "center", behavior: "smooth" });
     } catch (error) {
       feedback.textContent = error.message;
     }

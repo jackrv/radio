@@ -7,13 +7,15 @@
   <meta name="description" content="Radio 345 — панель управления распознаванием эфира">
   <title>Radio 345 — управление</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=6">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="./app.js" defer></script>
-  <script src="./api.js" defer></script>
-  <script src="./notifications.js" defer></script>
-  <script src="./receiver-controls.js" defer></script>
-  <script src="./correction-editor.js?v=4" defer></script>
+  <script src="./app.js?v=6" defer></script>
+  <script src="./client.js?v=1" defer></script>
+  <script src="./api.js?v=6" defer></script>
+  <script src="./notifications.js?v=6" defer></script>
+  <script src="./receiver-controls.js?v=6" defer></script>
+  <script src="./correction-editor.js?v=5" defer></script>
+  <script src="./management.js?v=1" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -21,7 +23,7 @@
       <div class="brand"><div class="logo" aria-hidden="true"><span class="logo-pulse"></span><span>345</span></div>
         <div><div class="brand-overline">СИСТЕМА МОНИТОРИНГА</div><div class="brand-title">RADIO <strong>345</strong></div></div>
       </div>
-      <div class="topbar-right"><span class="build-label">ПАНЕЛЬ / v0.1</span><span class="tag tag-muted" id="connection-pill"><span class="status-dot"></span>API не подключён</span></div>
+      <div class="topbar-right"><span class="build-label">ПАНЕЛЬ / v1.0</span><span class="tag tag-muted" id="connection-pill"><span class="status-dot"></span>API не подключён</span></div>
     </header>
 
     <div class="layout">
@@ -31,12 +33,12 @@
         <button type="button" class="nav-link" data-view-target="dictionaries"><span class="nav-icon" aria-hidden="true">▤</span><span>Словари</span></button>
         <button type="button" class="nav-link" data-view-target="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Настройки</span></button>
         <button type="button" class="nav-link" data-view-target="users"><span class="nav-icon" aria-hidden="true">♙</span><span>Люди</span></button>
-        <div class="navigation-foot">Локальный интерфейс · предпросмотр</div>
+        <div class="navigation-foot">Защищённый доступ через Telegram</div>
       </nav>
 
       <main id="main">
         <section class="view active" id="view-home" aria-labelledby="home-title">
-          <div class="section-heading"><div><div class="eyebrow">ОБЗОР СИСТЕМЫ</div><h1 id="home-title">Центр управления</h1><p class="lead">Приём, распознавание и уведомления — в одном месте.</p></div><span class="tag tag-outline">ДЕМО ИНТЕРФЕЙС</span></div>
+          <div class="section-heading"><div><div class="eyebrow">ОБЗОР СИСТЕМЫ</div><h1 id="home-title">Центр управления</h1><p class="lead">Приём, распознавание и уведомления — в одном месте.</p></div><span class="tag tag-outline">РАБОЧАЯ ПАНЕЛЬ</span></div>
 
           <div class="hero">
             <div class="hero-top"><div class="eyebrow hero-eyebrow">СОСТОЯНИЕ ПРИЁМНИКА</div><span class="hero-live"><span class="status-dot"></span>Нет соединения</span></div>
@@ -45,10 +47,12 @@
           </div>
 
           <div class="metrics">
-            <article class="metric"><span class="metric-name">WHISPER</span><div class="metric-value">— <span class="mini-indicator"></span></div><span class="metric-detail">Распознавание</span></article>
-            <article class="metric"><span class="metric-name">QWEN</span><div class="metric-value">— <span class="mini-indicator"></span></div><span class="metric-detail">Коррекция текста</span></article>
-            <article class="metric"><span class="metric-name">TELEGRAM</span><div class="metric-value">— <span class="mini-indicator"></span></div><span class="metric-detail">Доставка сообщений</span></article>
+            <article class="metric"><span class="metric-name">СОБЫТИЯ</span><div class="metric-value" id="events-count">—</div><span class="metric-detail">В журнале SQLite</span></article>
+            <article class="metric"><span class="metric-name">ЗАМЕНЫ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail">Активные словесные правила</span></article>
+            <article class="metric"><span class="metric-name">СЛОВАРИ</span><div class="metric-value" id="dictionary-count">—</div><span class="metric-detail">Включённые строки</span></article>
           </div>
+          <button id="overview-refresh" class="outline-button" type="button">Обновить сводку</button>
+          <p class="subtle-note" id="overview-feedback" role="status">Ожидаем данные журнала.</p>
 
           <div class="two-column">
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</div><h2>Управление эфиром</h2></div><span class="section-icon" aria-hidden="true">◉</span></div>
@@ -72,13 +76,21 @@
             </article>
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">УВЕДОМЛЕНИЯ</div><h2>Режим отправки</h2></div><span class="section-icon" aria-hidden="true">◷</span></div>
               <div class="notice-box"><div class="notice-dot"></div><div><strong id="notification-mode-label">Загрузка...</strong><span id="notification-mode-detail">Получаем режим уведомлений</span></div></div>
-              <button class="text-link" type="button" data-view-target="settings">Посмотреть будущие настройки <span>↗</span></button>
+              <button class="text-link" type="button" data-view-target="settings">Настроить уведомления <span>↗</span></button>
             </article>
           </div>
         </section>
 
         <section class="view" id="view-corrections" aria-labelledby="corrections-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">ОБУЧЕНИЕ МОДЕЛИ</div><h1 id="corrections-title">Исправления</h1><p class="lead">Исправь фразу, не копируя текст вручную.</p></div><span class="tag tag-outline">ПРОТОТИП</span></div>
+          <div class="section-heading"><div><div class="eyebrow">ПРОВЕРКА РАСПОЗНАВАНИЯ</div><h1 id="corrections-title">Исправления</h1><p class="lead">Исправь фразу, не копируя текст вручную.</p></div><span class="tag tag-outline">SQLITE</span></div>
+          <article class="panel wide-panel margin-bottom">
+            <h2>Журнал фраз</h2>
+            <form id="phrases-search" class="toolbar"><label class="visually-hidden" for="phrases-query">Поиск фраз</label><input id="phrases-query" maxlength="200" placeholder="Найти текст"><button type="submit" class="outline-button">Найти / обновить</button></form>
+            <p class="subtle-note">События SQLite и временные фразы (до 24 часов, максимум 200). Для редактирования нужна роль редактора или администратора.</p>
+            <div id="phrases-list" class="stack"></div>
+            <div class="toolbar"><button id="phrases-prev" class="outline-button" type="button">Назад</button><button id="phrases-next" class="outline-button" type="button">Далее</button></div>
+            <p id="phrases-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
+          </article>
           <article class="panel wide-panel"><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
             <label for="original-text" class="form-label">Исходный текст</label><div class="source-text" id="original-text">Открой редактор кнопкой под сообщением Telegram.</div>
             <label for="corrected-text" class="form-label">Исправленный текст</label>
@@ -94,17 +106,26 @@
         </section>
 
         <section class="view" id="view-dictionaries" aria-labelledby="dictionaries-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">БАЗА ЗНАНИЙ</div><h1 id="dictionaries-title">Словари</h1><p class="lead">Управление позывными, командами и списком наблюдения.</p></div><span class="tag tag-outline">ПРОТОТИП</span></div>
-          <div class="stack">
-            <article class="item-card"><span class="item-icon">◎</span><div><h2>Позывные</h2><p>Названия, номера, альтернативные написания</p></div><span class="chevron">→</span></article>
-            <article class="item-card"><span class="item-icon">⌘</span><div><h2>Команды</h2><p>Обнаружение команд и ключевых фраз</p></div><span class="chevron">→</span></article>
-            <article class="item-card"><span class="item-icon">⊙</span><div><h2>Список наблюдения</h2><p>Какие события требуют особого внимания</p></div><span class="chevron">→</span></article>
-            <article class="item-card"><span class="item-icon">↻</span><div><h2>Обученные замены</h2><p>Подтверждённые исправления отдельных слов</p></div><span class="chevron">→</span></article>
-          </div><p class="subtle-note margin-top">Разделы пока доступны для просмотра макета. Данные SQLite здесь не загружаются.</p>
+          <div class="section-heading"><div><div class="eyebrow">БАЗА ЗНАНИЙ</div><h1 id="dictionaries-title">Словари</h1><p class="lead">Управление позывными, командами и списком наблюдения.</p></div><span class="tag tag-outline">SQLITE</span></div>
+          <article class="panel wide-panel">
+            <label class="form-label" for="dictionary-kind">Раздел словаря</label>
+            <select id="dictionary-kind"><option value="callsigns">Позывные и номера</option><option value="commands">Команды</option><option value="telegram">Список наблюдения</option><option value="rules">Обученные замены</option></select>
+            <div class="toolbar"><button id="dictionary-refresh" class="outline-button" type="button">Обновить</button><button id="dictionary-add" class="outline-button" type="button" disabled>Добавить строку</button></div>
+            <p class="subtle-note">Формат: «ліра: 68 69», «ліпка: 300-310», «вовк: *» или отдельное слово. Изменения словарей применятся после перезапуска приёмника.</p>
+            <div id="dictionary-entries" class="stack"></div>
+            <button id="dictionary-save" class="primary-button margin-top" type="button" disabled>Сохранить словарь</button>
+            <p id="dictionary-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
+            <div id="rules-panel" hidden>
+              <form id="rules-search" class="toolbar"><label class="visually-hidden" for="rules-query">Поиск замен</label><input id="rules-query" maxlength="200" placeholder="Найти слово"><button class="outline-button" type="submit">Найти</button></form>
+              <p class="subtle-note">Подтверждения приходят из исправлений фраз. Включение правила сохраняет проверки безопасности и порог подтверждений.</p>
+              <div id="rules-list" class="stack"></div>
+              <div class="toolbar"><button id="rules-prev" class="outline-button" type="button">Назад</button><button id="rules-next" class="outline-button" type="button">Далее</button></div>
+            </div>
+          </article>
         </section>
 
         <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">КОНФИГУРАЦИЯ</div><h1 id="settings-title">Настройки</h1><p class="lead">Впоследствии изменения будут сохраняться через API.</p></div><span class="tag tag-outline">ТОЛЬКО ПРОСМОТР</span></div>
+          <div class="section-heading"><div><div class="eyebrow">КОНФИГУРАЦИЯ</div><h1 id="settings-title">Настройки</h1><p class="lead">Уведомления применяются сразу. Распознавание — после перезапуска.</p></div><span class="tag tag-outline">НАСТРОЙКИ ПРИЁМНИКА</span></div>
           <article class="panel wide-panel"><div class="settings-row">
               <div><h2>Режим уведомлений</h2><p>Изменения сохраняются в SQLite</p></div>
               <span class="pending" id="settings-mode-value">Загрузка...</span>
@@ -117,16 +138,39 @@
               <label class="notify-option"><input type="radio" name="notify-mode" value="off"> 🔕 Полная тишина</label>
             </fieldset>
             <p id="notify-mode-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
-            <div class="settings-row"><div><h2>Коррекция Qwen</h2><p>Включение и отключение модели</p></div><span class="pending">Не загружено</span></div>
-            <div class="settings-row"><div><h2>Чувствительность VAD</h2><p>Уровень определения речи</p></div><span class="pending">Не загружено</span></div>
-            <div class="settings-row"><div><h2>Длительность фразы</h2><p>Настройки сегментации аудио</p></div><span class="pending">Не загружено</span></div>
+            <button id="recognition-refresh" class="outline-button margin-top" type="button">Загрузить сохранённые настройки</button>
+            <form id="recognition-form">
+              <fieldset id="recognition-fields" disabled class="recognition-fields">
+                <legend>Распознавание</legend>
+                <p class="subtle-note" id="recognition-models"></p>
+                <label class="settings-row">Коррекция Qwen <input type="checkbox" id="setting-llm"></label>
+                <label class="settings-row">Уровень VAD (0 — мягкий, 3 — строгий)<select id="setting-vad"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
+                <label class="settings-row">Тишина до конца фразы, мс<input id="setting-silence" type="number" min="150" max="3000" required></label>
+                <label class="settings-row">Минимальная речь, мс<input id="setting-speech" type="number" min="90" max="3000" required></label>
+                <label class="settings-row">Максимальная фраза, с<input id="setting-segment" type="number" min="3" max="60" required></label>
+                <p class="subtle-note">Эти значения применятся после перезапуска приёмника. Изменение чувствительности может повлиять на короткие сообщения.</p>
+                <button class="primary-button margin-top" type="submit">Сохранить настройки распознавания</button>
+              </fieldset>
+              <p id="recognition-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
+            </form>
           </article>
         </section>
 
         <section class="view" id="view-users" aria-labelledby="users-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">КОНТРОЛЬ ДОСТУПА</div><h1 id="users-title">Пользователи</h1><p class="lead">Администратор, редактор и наблюдатель.</p></div><span class="tag tag-outline">ПРОТОТИП</span></div>
-          <article class="panel wide-panel"><div class="panel-header"><div><div class="eyebrow">БЕЗОПАСНОСТЬ</div><h2>Доступ к панели</h2></div><span class="section-icon">♙</span></div><p class="card-copy">Список пользователей будет отображаться после проверки Telegram initData сервером Radio 345. Сейчас никакие личные данные не загружаются.</p>
-            <div class="role"><span>Наблюдатель</span><small>Просмотр</small></div><div class="role"><span>Редактор</span><small>Исправления, словари</small></div><div class="role"><span>Администратор</span><small>Полное управление</small></div>
+          <div class="section-heading"><div><div class="eyebrow">КОНТРОЛЬ ДОСТУПА</div><h1 id="users-title">Пользователи</h1><p class="lead">Администратор, редактор и наблюдатель.</p></div><span class="tag tag-outline">SQLITE</span></div>
+          <article class="panel wide-panel">
+            <div class="toolbar"><h2>Доступ к панели</h2><button id="users-refresh" class="outline-button" type="button">Обновить</button></div>
+            <p class="subtle-note">Наблюдатель читает журнал и словари. Редактор исправляет фразы и словари. Администратор управляет настройками и доступом. Telegram ID можно узнать в разделе «Главная» у нужного пользователя.</p>
+            <div id="users-list" class="stack"></div>
+            <form id="user-add-form" class="margin-top">
+              <fieldset id="user-add-fields" disabled class="recognition-fields">
+                <legend>Добавить пользователя</legend>
+                <label class="form-label" for="new-user-id">Telegram ID</label><input id="new-user-id" inputmode="numeric" pattern="[1-9][0-9]{0,18}" required>
+                <label class="form-label" for="new-user-role">Роль</label><select id="new-user-role"><option value="viewer">Наблюдатель</option><option value="editor">Редактор</option><option value="admin">Администратор</option></select>
+                <button class="primary-button margin-top" type="submit">Предоставить доступ</button>
+              </fieldset>
+            </form>
+            <p id="users-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
           </article>
         </section>
 

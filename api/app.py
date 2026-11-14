@@ -28,6 +28,7 @@ from services.notify_mode_store import (
     load_notify_mode,
     save_notify_mode,
 )
+from api.management import management_router
 
 
 
@@ -68,6 +69,12 @@ def create_app(db_path, bot_token):
         allow_headers=["Authorization", "ngrok-skip-browser-warning"],
         max_age=300,
     )
+
+    @app.middleware("http")
+    async def prevent_private_data_caching(request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     def current_user(request: Request):
         auth = request.headers.get("authorization", "")
@@ -259,4 +266,5 @@ def create_app(db_path, bot_token):
                 detail="Не удалось сохранить команду",
             ) from None
 
+    app.include_router(management_router(db_path, current_user, require_settings_permission))
     return app

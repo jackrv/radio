@@ -1,7 +1,6 @@
 "use strict";
 
 (() => {
-  const API = document.querySelector('meta[name="radio345-api"]').content;
   const telegram = window.Telegram?.WebApp;
 
   const pill = document.getElementById("connection-pill");
@@ -45,31 +44,12 @@
   }
 
   async function getJSON(path) {
-    const response = await fetch(`${API}${path}`, {
-      method: "GET",
-      headers: {
-        Authorization: `tma ${telegram.initData}`,
-        "ngrok-skip-browser-warning": "true"
-      },
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer"
-    });
-
-    if (response.status === 401) {
-      expired = true;
-      throw new Error("Авторизация истекла. Открой панель заново.");
+    try {
+      return await window.Radio345.request(path);
+    } catch (error) {
+      if (error.status === 401) expired = true;
+      throw error;
     }
-
-    if (response.status === 403) {
-      throw new Error("Нет доступа к Radio 345.");
-    }
-
-    if (!response.ok) {
-      throw new Error(`Ошибка API: HTTP ${response.status}`);
-    }
-
-    return response.json();
   }
 
   async function refreshStatus() {
@@ -105,7 +85,7 @@
     connection("Авторизация...");
 
     try {
-      const me = await getJSON("/api/me");
+      const me = await window.Radio345.user();
 
       const roles = {
         admin: "Администратор",

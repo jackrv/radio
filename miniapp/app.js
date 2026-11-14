@@ -17,6 +17,7 @@ function showView(name) {
     else button.removeAttribute("aria-current");
   }
   window.scrollTo({ top: 0, behavior: "instant" });
+  document.dispatchEvent(new CustomEvent("radio345:view", { detail: name }));
 }
 
 for (const button of document.querySelectorAll("[data-view-target]")) {

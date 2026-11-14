@@ -1,9 +1,6 @@
 "use strict";
 
 (() => {
-  const API = document.querySelector(
-    'meta[name="radio345-api"]'
-  ).content;
 
   const telegram = window.Telegram?.WebApp;
   const fieldset = document.getElementById("notify-mode-fieldset");
@@ -61,41 +58,7 @@
   }
 
   async function request(method, path, data) {
-    if (!telegram?.initData) {
-      throw new Error("Откройте панель через Telegram.");
-    }
-
-    const headers = {
-      Authorization: `tma ${telegram.initData}`,
-      "ngrok-skip-browser-warning": "true"
-    };
-
-    if (data !== undefined) {
-      headers["Content-Type"] = "application/json";
-    }
-
-    const response = await fetch(`${API}${path}`, {
-      method,
-      headers,
-      body: data === undefined ? undefined : JSON.stringify(data),
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer"
-    });
-
-    if (response.status === 401) {
-      throw new Error("Авторизация истекла. Откройте панель заново.");
-    }
-
-    if (response.status === 403) {
-      throw new Error("Недостаточно прав.");
-    }
-
-    if (!response.ok) {
-      throw new Error(`Ошибка сервера: HTTP ${response.status}`);
-    }
-
-    return response.json();
+    return window.Radio345.request(path, method, data);
   }
 
   function applyMode(mode) {
@@ -191,7 +154,7 @@
     }
 
     try {
-      const user = await request("GET", "/api/me");
+      const user = await window.Radio345.user();
       isAdmin = user.role === "admin";
 
       if (!isAdmin) {

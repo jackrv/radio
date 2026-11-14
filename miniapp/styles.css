@@ -369,3 +369,16 @@ h2 { font-size: 15px; margin-top: 3px; }
   .dictionary-row input:not([type]) { flex-basis: calc(100% - 40px); width: 0; }
   .dictionary-row button { margin-left: 28px; }
 }
+
+.keyboard-done {
+  position: fixed; z-index: 30; right: max(12px, env(safe-area-inset-right));
+  min-height: 42px; padding: 10px 15px; border-radius: 10px;
+  border: 1px solid #658451; background: #b8ef86; color: #172414;
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 3px 16px #0006;
+}
+.dictionary-row-new { background: #253b31; border-radius: 8px; }
+input, textarea { scroll-margin-block: 64px; }
+@media (max-width: 860px) {
+  .text-entry-active .navigation { display: none; }
+}

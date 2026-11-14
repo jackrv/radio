@@ -142,7 +142,7 @@
   let dictionaryBusy = false;
   let dirty = false;
   let selectedKind = "callsigns";
-  function renderDictionary() {
+  function renderDictionary(focusIndex = null) {
     const list = $("dictionary-entries");
     list.replaceChildren();
     dictionary.entries.forEach((entry, index) => {
@@ -158,6 +158,11 @@
       const remove = button("Удалить", () => { dictionary.entries.splice(index, 1); dirty = true; renderDictionary(); });
       remove.disabled = !canEdit() || dictionaryBusy;
       row.append(enabled, text, remove); list.append(row);
+      if (index === focusIndex) {
+        row.classList.add("dictionary-row-new");
+        text.focus({ preventScroll: true });
+        text.scrollIntoView({ block: "center", behavior: "instant" });
+      }
     });
     if (!dictionary.entries.length) list.append(node("p", "Словарь пуст. Добавь первую строку.", "subtle-note"));
   }
@@ -198,7 +203,10 @@
   });
   $("dictionary-add").addEventListener("click", () => {
     if (!dictionary || dictionaryBusy || !canEdit()) return;
-    dictionary.entries.push({ raw_line: "", enabled: true }); dirty = true; renderDictionary();
+    dictionary.entries.push({ raw_line: "", enabled: true });
+    dirty = true;
+    renderDictionary(dictionary.entries.length - 1);
+    message("dictionary-feedback", "Новая строка добавлена. Введи значение и сохрани словарь.");
   });
   $("dictionary-save").addEventListener("click", async () => {
     if (!dictionary || dictionaryBusy || !canEdit()) return;

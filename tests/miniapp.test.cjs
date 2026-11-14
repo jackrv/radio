@@ -17,7 +17,12 @@ class Element {
     this.style = {};
     this.isConnected = true;
     this.scrollHeight = 100;
-    this.classList = { toggle() {} };
+    const classes = new Set();
+    this.classList = {
+      add: value => classes.add(value), remove: value => classes.delete(value),
+      contains: value => classes.has(value),
+      toggle: (value, active) => active ? classes.add(value) : classes.delete(value)
+    };
   }
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = items; }
@@ -259,6 +264,75 @@ test("editor can save twice without auto-close using the latest expected text", 
   assert.equal(writes.length, 2);
   assert.equal(writes[1].expected_text, "Ліра 68");
   assert.equal(isClosed(), false);
+});
+
+test("adding a dictionary row focuses and reveals the new final row", async () => {
+  const { get, view } = await managementFixture("editor");
+  await view("dictionaries");
+  await get("dictionary-add").fire("click");
+  const row = get("dictionary-entries").children.at(-1);
+  assert.equal(row.children[1].value, "");
+  assert.equal(row.children[1].focused, true);
+  assert.equal(row.children[1].scrolled.block, "center");
+  assert.equal(row.classList.contains("dictionary-row-new"), true);
+  assert.match(get("dictionary-feedback").textContent, /Новая строка добавлена/);
+});
+
+function keyboardFixture(nativeMethod) {
+  const { doc, get } = documentFixture();
+  doc.documentElement = new Element();
+  const viewport = new Element();
+  viewport.height = 400;
+  viewport.offsetTop = 10;
+  const window = new Element();
+  Object.assign(window, { innerHeight: 800, visualViewport: viewport,
+    requestAnimationFrame: callback => callback(), Telegram: { WebApp: { hideKeyboard: nativeMethod } } });
+  const field = new Element("input");
+  field.value = "Несохранённая строка";
+  field.matches = () => true;
+  field.blur = () => { doc.activeElement = null; field.blurred = true; };
+  doc.activeElement = field;
+  vm.runInNewContext(source("keyboard.js"), { window, document: doc });
+  doc.dispatchEvent({ type: "focusin", target: field });
+  return { doc, field, viewport, done: get("keyboard-done") };
+}
+
+test("keyboard button uses the visible viewport and native Telegram dismissal", async () => {
+  let hidden = 0;
+  const { done, field, doc, viewport } = keyboardFixture(() => hidden++);
+  assert.equal(done.hidden, false);
+  assert.equal(done.style.top, "354px");
+  viewport.height = 300;
+  await viewport.fire("resize");
+  assert.equal(done.style.top, "254px");
+  await done.fire("click");
+  assert.equal(hidden, 1);
+  assert.equal(field.blurred, true);
+  assert.equal(field.value, "Несохранённая строка");
+  assert.equal(done.hidden, true);
+  assert.equal(doc.documentElement.classList.contains("text-entry-active"), false);
+});
+
+test("keyboard dismissal works with older Telegram clients without hideKeyboard", async () => {
+  const { done, field } = keyboardFixture(undefined);
+  await done.fire("click");
+  assert.equal(field.blurred, true);
+  assert.equal(done.hidden, true);
+});
+
+test("a rejected native hideKeyboard call still blurs the field", async () => {
+  const { done, field } = keyboardFixture(() => { throw new Error("unsupported"); });
+  await done.fire("click");
+  assert.equal(field.blurred, true);
+  assert.equal(done.hidden, true);
+});
+
+test("background taps dismiss keyboard while taps on controls do not", async () => {
+  const { doc, field } = keyboardFixture();
+  doc.dispatchEvent({ type: "pointerdown", target: { closest: () => ({}) } });
+  assert.equal(field.blurred, undefined);
+  doc.dispatchEvent({ type: "pointerdown", target: { closest: () => null } });
+  assert.equal(field.blurred, true);
 });
 
 test("editor still closes Telegram after a successful save when requested", async () => {

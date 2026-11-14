@@ -41,6 +41,7 @@ jobs:
           cp miniapp/correction-editor.js _site/
           cp miniapp/client.js _site/
           cp miniapp/management.js _site/
+          cp miniapp/keyboard.js _site/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

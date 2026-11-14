@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from config import DB_PATH
 from services.sqlite_connection import get_db
 from services.word_store import init_word_db, save_word_feedback
@@ -117,10 +118,16 @@ def save_correction(
     db_path=DB_PATH,
     *,
     source_id: str | None = None,
+    db=None,
 ):
     """Сохраняет обучение и согласованно обновляет событие."""
 
-    with get_db(db_path) as db:
+    manager = (
+        get_db(db_path) if db is None
+        else nullcontext(db)
+    )
+
+    with manager as db:
         fields = None
 
         if event_id is not None:

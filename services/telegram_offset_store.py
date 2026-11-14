@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 """Позиция обработки Telegram getUpdates между перезапусками."""
 
 from services.sqlite_connection import get_db
@@ -24,11 +25,16 @@ def load_telegram_offset(db_path):
     return int(row[0]) if row else None
 
 
-def save_telegram_offset(db_path, next_offset):
+def save_telegram_offset(db_path, next_offset, *, db=None):
     if type(next_offset) is not int or next_offset < 0:
         raise ValueError("Некорректный Telegram offset")
 
-    with get_db(db_path) as db:
+    manager = (
+        get_db(db_path) if db is None
+        else nullcontext(db)
+    )
+
+    with manager as db:
         _ensure_table(db)
 
         db.execute("""

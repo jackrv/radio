@@ -11,6 +11,12 @@ import requests
 import collections
 
 from services.event_store import resolve_event_text, save_correction
+from services.telegram_pending import (
+    save_pending_correction,
+    load_pending_correction,
+    cancel_pending_correction,
+    apply_pending_correction,
+)
 from services.telegram_retry import retry_delay, listener_retry_delay
 from services.telegram_offset_store import (
     load_telegram_offset,
@@ -317,7 +323,13 @@ class TelegramService:
                 )
 
             elif data == "cancel_fix":
-                # Сначала отменяем режим, независимо от состояния сети.
+                # Сначала очищаем сохранённое ожидание.
+                if type(upd.get("update_id")) is int:
+                    cancel_pending_correction(
+                        self.db_path, chat_id
+                    )
+
+                # Затем очищаем оперативную память.
                 with self.state_lock:
                     self.waiting_for_correction.pop(chat_id, None)
 
@@ -366,14 +378,21 @@ class TelegramService:
                     )
                     return
 
+                pending = {
+                    "event_id": ev_id,
+                    "raw_text": orig_text,
+                    "source_id": (
+                        fix_id if ev_id is None else None
+                    ),
+                }
+
+                if type(upd.get("update_id")) is int:
+                    save_pending_correction(
+                        self.db_path, chat_id, pending
+                    )
+
                 with self.state_lock:
-                    self.waiting_for_correction[chat_id] = {
-                        "event_id": ev_id,
-                        "raw_text": orig_text,
-                        "source_id": (
-                            fix_id if ev_id is None else None
-                        ),
-                    }
+                    self.waiting_for_correction[chat_id] = pending
 
                 requests.post(
                     f"{self.api}/answerCallbackQuery",
@@ -481,6 +500,14 @@ class TelegramService:
         with self.state_lock:
             pending = self.waiting_for_correction.get(chat_id)
 
+        if (
+            pending is None
+            and type(upd.get("update_id")) is int
+        ):
+            pending = load_pending_correction(
+                self.db_path, chat_id
+            )
+
         if pending:
             orig_text = pending["raw_text"]
             ev_id = pending["event_id"]
@@ -489,13 +516,33 @@ class TelegramService:
             if pending.get("source_id") is not None:
                 options["source_id"] = pending["source_id"]
 
-            save_correction(
-                orig_text,
-                corrected_text,
-                ev_id,
-                self.db_path,
-                **options,
-            )
+            if type(upd.get("update_id")) is int:
+                stored = apply_pending_correction(
+                    self.db_path,
+                    chat_id,
+                    corrected_text,
+                    upd["update_id"],
+                )
+
+                if stored is None:
+                    with self.state_lock:
+                        self.waiting_for_correction.pop(
+                            chat_id, None
+                        )
+                    return
+
+                orig_text = stored["raw_text"]
+            else:
+                # Совместимость со старыми прямыми вызовами
+                # handle_update без Telegram update_id.
+                save_correction(
+                    orig_text,
+                    corrected_text,
+                    ev_id,
+                    self.db_path,
+                    **options,
+                )
+
             # Удаляем ожидание только после успешного сохранения.
             with self.state_lock:
                 if self.waiting_for_correction.get(chat_id) is pending:

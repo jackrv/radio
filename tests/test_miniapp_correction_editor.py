@@ -38,6 +38,7 @@ def test_editor_get_prefilled_phrase(client_and_db):
         "fix_id": f"db:{eid}",
         "original_text": "Ліра 68, прийом",
         "current_text": "Ліра 68, прийом",
+        "has_audio": False,
     }
 
 

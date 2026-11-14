@@ -281,3 +281,91 @@ input:focus-visible, select:focus-visible { outline: 2px solid var(--lime); outl
 audio { display: block; width: 100%; margin-top: 12px; }
 #correction-editor-panel { margin-bottom: 20px; }
 button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Compact panel: a single page scroll, smaller chrome, readable touch controls. */
+:root { --radius: 12px; }
+html { overflow-x: clip; scrollbar-width: thin; }
+.shell { max-width: 1240px; padding: 16px 22px 24px; }
+.topbar { padding-bottom: 14px; gap: 12px; }
+.logo { width: 36px; height: 36px; border-radius: 10px; font-size: 13px; }
+.brand { gap: 10px; }
+.brand-title { font-size: 17px; }
+.brand-overline { font-size: 8px; }
+.layout { grid-template-columns: 164px minmax(0, 1fr); gap: 22px; padding-top: 20px; }
+.nav-link { padding: 10px 11px; gap: 9px; font-size: 13px; }
+.section-heading { margin-bottom: 14px; gap: 10px; }
+h1 { font-size: 26px; margin: 5px 0; }
+h2 { font-size: 15px; margin-top: 3px; }
+.lead { font-size: 12px; }
+.eyebrow { font-size: 9px; }
+.tag, .tag-outline { padding: 5px 8px; font-size: 10px; }
+.hero { border-radius: 13px; padding: 15px 18px 0; }
+.hero-main { padding: 18px 0; gap: 14px; }
+.hero-icon { height: 44px; width: 44px; border-radius: 12px; font-size: 40px; }
+.hero-status { font-size: 28px; }
+.hero-caption { font-size: 12px; }
+.hero-footer { padding: 10px 0; }
+.metrics { gap: 9px; margin: 10px 0; }
+.metric { padding: 11px 13px; border-radius: 10px; }
+.metric-value { font-size: 21px; margin-top: 5px; }
+.metric-detail { font-size: 10px; }
+.panel { padding: 16px; }
+.wide-panel { max-width: none; }
+.panel-header { margin-bottom: 12px; }
+.action-row { padding: 11px 0; }
+.action-icon { height: 30px; width: 30px; font-size: 18px; }
+.notice-box { padding: 12px; }
+.stack { gap: 0; }
+.data-card { padding: 11px 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.data-card:last-child { border-bottom: 0; }
+.data-card p { margin: 5px 0; }
+.phrase-text { font-size: 13px; line-height: 1.5; }
+.toolbar { gap: 8px; margin: 10px 0; }
+.form-label { font-size: 12px; margin: 12px 0 6px; }
+.source-text { padding: 10px 12px; font-size: 13px; }
+.primary-button { padding: 11px 12px; border-radius: 9px; }
+.outline-button { padding: 8px 10px; }
+.settings-row { padding: 12px 0; font-size: 13px; }
+.settings-row h2 { font-size: 13px; }
+.notify-option { padding: 10px; }
+.notify-feedback { min-height: 0; margin: 8px 0 10px; }
+.notify-feedback:empty, .subtle-note:empty { display: none; }
+.recognition-fields { margin-top: 16px; }
+.receiver-pause-controls { padding: 10px; gap: 8px; }
+.auto-close-option { font-size: 12px; margin-bottom: 12px; }
+.footer { margin-top: 20px; font-size: 9px; }
+.margin-top { margin-top: 12px; }
+.user-name-input { width: 100%; margin-top: 4px; }
+.original-details { margin-top: 12px; font-size: 12px; color: var(--muted); }
+.original-details summary { cursor: pointer; padding: 5px 0; }
+.editor-audio-section { margin-top: 12px; }
+.editor-footer { margin: 8px 0 12px; }
+#corrected-text { min-height: 80px; overflow-y: hidden; resize: none; padding: 10px 12px; font-size: 16px; }
+@media (max-width: 860px) {
+  .shell { padding: 14px 16px 88px; }
+  .layout { display: block; padding-top: 18px; }
+  .navigation { padding-top: 6px; }
+  .nav-link { padding: 7px 3px; font-size: 10px; gap: 3px; }
+  .two-column { grid-template-columns: 1fr; gap: 10px; }
+}
+@media (max-width: 560px) {
+  .shell { padding: 12px 12px 88px; }
+  .topbar { padding-bottom: 12px; }
+  .section-heading { flex-direction: row; align-items: center; }
+  .section-heading > .tag { display: none; }
+  h1 { font-size: 24px; }
+  .hero { padding: 12px 14px 0; }
+  .hero-status { font-size: 25px; }
+  .hero-main { padding: 15px 0; }
+  .hero-icon { height: 38px; width: 38px; font-size: 35px; }
+  .metric { padding: 10px; }
+  .metric-value { font-size: 20px; }
+  .panel { padding: 13px; }
+  .notify-mode-options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  input:not([type="checkbox"]):not([type="radio"]), select { font-size: 16px; padding: 8px; }
+  .outline-button, .mini-button { min-height: 36px; }
+  .toolbar .outline-button { flex-shrink: 0; }
+  .dictionary-row { flex-wrap: wrap; }
+  .dictionary-row input:not([type]) { flex-basis: calc(100% - 40px); width: 0; }
+  .dictionary-row button { margin-left: 28px; }
+}

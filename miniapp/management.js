@@ -9,6 +9,7 @@
   const roles = { viewer: "Наблюдатель", editor: "Редактор", admin: "Администратор" };
   const states = { active: "Активно", pending: "Ожидает подтверждений / проверка конфликтов", disabled: "Отключено" };
   const loaded = new Set();
+  const PAGE_SIZE = 10;
   const audioUrls = new Set();
   function releaseAudio() {
     for (const url of audioUrls) URL.revokeObjectURL(url);
@@ -56,14 +57,14 @@
       $(prefix + "-prev").disabled = $(prefix + "-next").disabled = true;
       message(prefix === "rules" ? "dictionary-feedback" : "phrases-feedback", "Загрузка...");
       try {
-        const data = await request(`${path}?q=${encodeURIComponent(query)}&offset=${offset}&limit=20`);
+        const data = await request(`${path}?q=${encodeURIComponent(query)}&offset=${offset}&limit=${PAGE_SIZE}`);
         if (prefix === "phrases") releaseAudio();
         $(prefix + "-list").replaceChildren();
         for (const item of data.items) $(prefix + "-list").append(render(item));
         if (!data.items.length) $(prefix + "-list").append(node("p", "Записей нет.", "subtle-note"));
         $(prefix + "-prev").disabled = offset === 0;
         $(prefix + "-next").disabled = !data.has_more;
-        message(prefix === "rules" ? "dictionary-feedback" : "phrases-feedback", `Страница ${offset / 20 + 1}`);
+        message(prefix === "rules" ? "dictionary-feedback" : "phrases-feedback", `Страница ${offset / PAGE_SIZE + 1}`);
       } catch (error) {
         $(prefix + "-list").replaceChildren();
         message(prefix === "rules" ? "dictionary-feedback" : "phrases-feedback", error.message, true);
@@ -74,8 +75,8 @@
       if (busy) return;
       offset = 0; query = $(prefix + "-query").value.trim(); load();
     });
-    $(prefix + "-prev").addEventListener("click", () => { if (!busy) { offset = Math.max(0, offset - 20); load(); } });
-    $(prefix + "-next").addEventListener("click", () => { if (!busy) { offset += 20; load(); } });
+    $(prefix + "-prev").addEventListener("click", () => { if (!busy) { offset = Math.max(0, offset - PAGE_SIZE); load(); } });
+    $(prefix + "-next").addEventListener("click", () => { if (!busy) { offset += PAGE_SIZE; load(); } });
     return load;
   }
 
@@ -267,7 +268,7 @@
       $("users-list").replaceChildren();
       for (const item of data.items) {
         const card = node("article", undefined, "data-card");
-        card.append(node("h2", `Telegram ${item.user_id}`));
+        card.append(node("h2", item.name || `Telegram ${item.user_id}`));
         const row = node("div", undefined, "toolbar");
         const role = node("select");
         role.setAttribute("aria-label", `Роль ${item.user_id}`);
@@ -278,9 +279,17 @@
         label.append(enabled, node("span", "Доступ включён"));
         const save = button("Сохранить", async () => {
           if (usersBusy || !window.confirm(`Изменить доступ пользователя ${item.user_id}?`)) return;
-          await saveUser(item.user_id, { role: role.value, enabled: enabled.checked, expected_version: item.version });
+          await saveUser(item.user_id, { role: role.value, enabled: enabled.checked, expected_version: item.version, display_name: nameInput.value });
         });
         row.append(role, label, save); card.append(row); $("users-list").append(card);
+        card.append(node("p", [item.username ? `@${item.username}` : "", item.telegram_name || "", `ID ${item.user_id}`].filter(Boolean).join(" · "), "subtle-note"));
+        const nameInput = node("input");
+        nameInput.value = item.display_name || "";
+        nameInput.maxLength = 80;
+        nameInput.placeholder = "Своё название (пусто — имя Telegram)";
+        nameInput.setAttribute("aria-label", `Название пользователя ${item.user_id}`);
+        nameInput.className = "user-name-input";
+        card.append(nameInput);
       }
       $("user-add-fields").disabled = false;
       message("users-feedback", "Последнего активного администратора отключить нельзя.");
@@ -293,6 +302,7 @@
     try {
       await request(`/api/users/${id}`, "PUT", payload);
       $("new-user-id").value = "";
+      $("new-user-name").value = "";
       if (String(me.user_id) === id && (payload.role !== "admin" || !payload.enabled)) {
         $("users-list").replaceChildren();
         message("users-feedback", "Твой доступ изменён. Закрой и заново открой панель.");
@@ -300,7 +310,7 @@
         return;
       }
       await users();
-      message("users-feedback", "Доступ сохранён.");
+      message("users-feedback", "Пользователь сохранён.");
     } catch (error) { message("users-feedback", error.message, true); }
     finally { usersBusy = false; $("user-add-fields").disabled = !isAdmin(); }
   }
@@ -309,7 +319,7 @@
     const id = $("new-user-id").value.trim();
     if (!/^[1-9][0-9]{0,18}$/.test(id)) return;
     if (!window.confirm(`Предоставить доступ Telegram ID ${id}?`)) return;
-    saveUser(id, { role: $("new-user-role").value, enabled: true, expected_version: null });
+    saveUser(id, { role: $("new-user-role").value, enabled: true, expected_version: null, display_name: $("new-user-name").value });
   });
   $("users-refresh").addEventListener("click", () => { if (!usersBusy) users(); });
 

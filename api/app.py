@@ -29,6 +29,7 @@ from services.notify_mode_store import (
     save_notify_mode,
 )
 from api.management import management_router
+from services.user_profiles import remember_verified_profile
 
 
 
@@ -92,11 +93,13 @@ def create_app(db_path, bot_token):
             )
 
         try:
-            user_id = verify_init_data(
+            verified_user = verify_init_data(
                 init_data,
                 bot_token,
                 max_age=3600,
+                return_user=True,
             )
+            user_id = verified_user["id"]
         except TelegramAuthError:
             raise HTTPException(
                 status_code=401,
@@ -109,6 +112,7 @@ def create_app(db_path, bot_token):
                 user_id,
                 "status.read",
             )
+            remember_verified_profile(db_path, verified_user)
         except PermissionError:
             raise HTTPException(
                 status_code=403,

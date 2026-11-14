@@ -13,6 +13,7 @@ from services.user_store import _require_permission, _valid_id
 from services.word_store import refresh_word_rule_statuses
 from services.telegram_phrase_store import ensure_table, RETENTION_SECONDS
 from services.telegram_media_store import ensure_table as ensure_media_table
+from services.user_profiles import ensure_table as ensure_profiles, clean_name
 
 
 class ManagementConflict(Exception):
@@ -163,21 +164,31 @@ def toggle_rule(db_path, actor_id, rule_id, disabled, expected_version):
 def list_users(db_path, actor_id):
     with get_db(db_path) as db:
         _require_permission(db, actor_id, "users.manage")
-        rows = db.execute("SELECT user_id, role, enabled FROM telegram_users ORDER BY user_id").fetchall()
+        ensure_profiles(db)
+        rows = db.execute("""SELECT u.user_id, u.role, u.enabled, COALESCE(p.display_name,''),
+            COALESCE(p.telegram_name,''), COALESCE(p.username,'') FROM telegram_users u
+            LEFT JOIN telegram_user_profiles p ON p.user_id=u.user_id ORDER BY u.user_id""").fetchall()
     return {"items": [{"user_id": str(uid), "role": role, "enabled": bool(enabled),
-                       "version": version((uid, role, enabled))} for uid, role, enabled in rows]}
+                       "display_name": custom, "telegram_name": name, "username": username,
+                       "name": custom or name or ("@" + username if username else f"Telegram {uid}"),
+                       "version": version((uid, role, enabled, custom))}
+                      for uid, role, enabled, custom, name, username in rows]}
 
 
-def write_user(db_path, actor_id, user_id, role, enabled, expected_version):
+def write_user(db_path, actor_id, user_id, role, enabled, expected_version, display_name=None):
     _valid_id(user_id)
     if role not in ("admin", "editor", "viewer"):
         raise ValueError("Неизвестная роль")
+    if display_name is not None:
+        display_name = clean_name(display_name)
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")
         _require_permission(db, actor_id, "users.manage")
+        ensure_profiles(db)
         row = db.execute("SELECT user_id, role, enabled FROM telegram_users WHERE user_id = ?",
                          (user_id,)).fetchone()
-        if (version(row) if row else None) != expected_version:
+        profile = db.execute("SELECT display_name FROM telegram_user_profiles WHERE user_id=?", (user_id,)).fetchone()
+        if (version((*row, profile[0] if profile else "")) if row else None) != expected_version:
             raise ManagementConflict("Пользователь изменился. Обнови список.")
         if row and row[1:] == ("admin", 1) and (role != "admin" or not enabled):
             admins = db.execute("SELECT COUNT(*) FROM telegram_users WHERE role='admin' AND enabled=1").fetchone()[0]
@@ -187,6 +198,9 @@ def write_user(db_path, actor_id, user_id, role, enabled, expected_version):
             INSERT INTO telegram_users (user_id, role, enabled) VALUES (?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET role=excluded.role, enabled=excluded.enabled
         """, (user_id, role, int(enabled)))
+        if display_name is not None:
+            db.execute("""INSERT INTO telegram_user_profiles (user_id,display_name) VALUES (?,?)
+                ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name""", (user_id, display_name))
     return {"saved": True}
 
 

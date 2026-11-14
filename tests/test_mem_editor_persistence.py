@@ -92,6 +92,7 @@ def test_editor_prefills_memory_text(setup):
         "fix_id": fix_id,
         "original_text": "Лира 68",
         "current_text": "Лира 68",
+        "has_audio": False,
     }
 
 

@@ -16,6 +16,7 @@ class Element {
     this.textContent = "";
     this.style = {};
     this.isConnected = true;
+    this.scrollHeight = 100;
     this.classList = { toggle() {} };
   }
   append(...items) { this.children.push(...items); }
@@ -219,7 +220,7 @@ test("settings form sends typed values and expected revision", async () => {
   assert.match(get("recognition-feedback").textContent, /Перезапусти/);
 });
 
-async function correctionFixture(autoClose) {
+async function correctionFixture(autoClose, hasAudio = false) {
   const { doc, get } = documentFixture();
   get("close-after-save").checked = autoClose;
   const writes = [];
@@ -228,14 +229,16 @@ async function correctionFixture(autoClose) {
     Telegram: { WebApp: { close: () => { closed = true; } } },
     location: { search: "?fix_id=mem:" + "a".repeat(32) },
     setTimeout: callback => callback(),
+    addEventListener() {},
     Radio345: { request: async (url, method, body) => {
-      if (method === "GET") return { original_text: "Лира 68", current_text: "Лира 68" };
+      if (url.startsWith("/api/phrases/audio")) return new Blob(["OggSfake"]);
+      if (method === "GET") return { original_text: "Лира 68", current_text: "Лира 68", has_audio: hasAudio };
       writes.push(body);
       return { saved: true, corrected_text: body.corrected_text };
     } }
   };
   vm.runInNewContext(source("correction-editor.js"), {
-    window, document: doc, URLSearchParams,
+    window, document: doc, URLSearchParams, URL,
     localStorage: { getItem: () => null, setItem() {} }
   });
   await tick();
@@ -263,4 +266,35 @@ test("editor still closes Telegram after a successful save when requested", asyn
   get("corrected-text").value = "Ліра 68";
   await get("save-correction-button").fire("click");
   assert.equal(isClosed(), true);
+});
+
+test("editor has its own player and preserves it after text is corrected", async () => {
+  const { get } = await correctionFixture(false, true);
+  assert.equal(get("phrases-panel").hidden, true);
+  assert.equal(get("correction-editor-panel").hidden, false);
+  assert.equal(get("editor-audio-load").disabled, false);
+  await get("editor-audio-load").fire("click");
+  assert.equal(get("editor-audio").hidden, false);
+  assert.match(get("editor-audio").src, /^blob:/);
+  const src = get("editor-audio").src;
+  get("corrected-text").value = "Ліра 68";
+  await get("save-correction-button").fire("click");
+  assert.equal(get("editor-audio").src, src);
+  assert.equal(get("corrected-text").style.height, "100px");
+  URL.revokeObjectURL(src);
+});
+
+test("editor explains when an old phrase has no linked audio", async () => {
+  const { get } = await correctionFixture(false, false);
+  assert.equal(get("editor-audio-load").disabled, true);
+  assert.match(get("editor-audio-feedback").textContent, /не привязано/);
+});
+
+test("admin can assign a friendly user name", async () => {
+  const { get, view, calls } = await managementFixture();
+  await view("users");
+  const card = get("users-list").children[0];
+  card.children.at(-1).value = "Оператор смены";
+  await card.children[1].children[2].fire("click");
+  assert.equal(calls.find(call => call.method === "PUT").body.display_name, "Оператор смены");
 });

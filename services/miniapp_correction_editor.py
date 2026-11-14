@@ -5,7 +5,7 @@ import re
 from services.event_store import save_correction
 from services.sqlite_connection import get_db
 from services.telegram_phrase_store import load_phrase, update_phrase_text
-from services.telegram_media_store import is_hidden
+from services.telegram_media_store import is_hidden, has_audio
 
 
 class CorrectionConflict(Exception):
@@ -27,7 +27,7 @@ def load_edit_draft(db_path, fix_id: str):
         phrase = load_phrase(db_path, fix_id[4:])
         if phrase is None:
             raise LookupError("Фраза не найдена или устарела")
-        return {"fix_id": fix_id, **phrase}
+        return {"fix_id": fix_id, **phrase, "has_audio": has_audio(db_path, fix_id)}
 
     event_id = event_id_from_fix_id(fix_id)
     with get_db(db_path) as db:
@@ -44,6 +44,7 @@ def load_edit_draft(db_path, fix_id: str):
         "fix_id": fix_id,
         "original_text": row[0],
         "current_text": row[1],
+        "has_audio": has_audio(db_path, fix_id),
     }
 
 

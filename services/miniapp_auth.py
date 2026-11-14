@@ -18,7 +18,8 @@ def verify_init_data(
     *,
     max_age: int = 3600,
     now: int | None = None,
-) -> int:
+    return_user: bool = False,
+) -> int | dict:
     """Проверяет initData и возвращает Telegram user.id."""
 
     if (
@@ -133,4 +134,4 @@ def verify_init_data(
             "Некорректный Telegram user.id"
         )
 
-    return user_id
+    return user if return_user else user_id

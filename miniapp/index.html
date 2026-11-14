@@ -7,15 +7,15 @@
   <meta name="description" content="Radio 345 — панель управления распознаванием эфира">
   <title>Radio 345 — управление</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css?v=7">
+  <link rel="stylesheet" href="./styles.css?v=8">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="./app.js?v=6" defer></script>
+  <script src="./app.js?v=7" defer></script>
   <script src="./client.js?v=2" defer></script>
   <script src="./api.js?v=6" defer></script>
   <script src="./notifications.js?v=6" defer></script>
   <script src="./receiver-controls.js?v=6" defer></script>
-  <script src="./correction-editor.js?v=6" defer></script>
-  <script src="./management.js?v=2" defer></script>
+  <script src="./correction-editor.js?v=7" defer></script>
+  <script src="./management.js?v=3" defer></script>
 </head>
 <body>
   <div class="shell">
@@ -91,10 +91,16 @@
             <div class="toolbar"><button id="phrases-prev" class="outline-button" type="button">Назад</button><button id="phrases-next" class="outline-button" type="button">Далее</button></div>
             <p id="phrases-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
           </article>
-          <article class="panel wide-panel" id="correction-editor-panel"><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
-            <label for="original-text" class="form-label">Исходный текст</label><div class="source-text" id="original-text">Открой редактор кнопкой под сообщением Telegram.</div>
+          <article class="panel wide-panel" id="correction-editor-panel" hidden><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
+            <button id="editor-back" class="text-link" type="button">← К журналу фраз</button>
+            <div class="editor-audio-section">
+              <button id="editor-audio-load" class="outline-button" type="button" disabled>▶ Прослушать исходную запись</button>
+              <audio id="editor-audio" controls preload="none" hidden></audio>
+              <p id="editor-audio-feedback" class="subtle-note" role="status" aria-live="polite"></p>
+            </div>
+            <details class="original-details"><summary>Исходный текст распознавания</summary><div class="source-text" id="original-text">Выбери фразу в журнале.</div></details>
             <label for="corrected-text" class="form-label">Исправленный текст</label>
-            <textarea id="corrected-text" rows="4" spellcheck="false" disabled></textarea>
+            <textarea id="corrected-text" rows="3" spellcheck="false" disabled></textarea>
             <div class="editor-footer"><span class="subtle-note">Текст подставляется из SQLite.</span><button class="outline-button" id="restore-example" type="button" disabled>Вернуть текст</button></div>
             <label class="auto-close-option" for="close-after-save">
               <input id="close-after-save" type="checkbox" checked>
@@ -166,6 +172,7 @@
               <fieldset id="user-add-fields" disabled class="recognition-fields">
                 <legend>Добавить пользователя</legend>
                 <label class="form-label" for="new-user-id">Telegram ID</label><input id="new-user-id" inputmode="numeric" pattern="[1-9][0-9]{0,18}" required>
+                <label class="form-label" for="new-user-name">Название пользователя</label><input id="new-user-name" maxlength="80" placeholder="Например, Оператор смены">
                 <label class="form-label" for="new-user-role">Роль</label><select id="new-user-role"><option value="viewer">Наблюдатель</option><option value="editor">Редактор</option><option value="admin">Администратор</option></select>
                 <button class="primary-button margin-top" type="submit">Предоставить доступ</button>
               </fieldset>

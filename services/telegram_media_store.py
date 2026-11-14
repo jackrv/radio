@@ -83,3 +83,11 @@ def audio_file_id(db_path, fix_id):
     if not row or not row[0]:
         raise LookupError("Аудиозапись недоступна")
     return row[0]
+
+
+def has_audio(db_path, fix_id):
+    try:
+        audio_file_id(db_path, fix_id)
+        return True
+    except LookupError:
+        return False

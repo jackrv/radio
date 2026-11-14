@@ -32,6 +32,7 @@ class UserUpdate(BaseModel):
     role: Literal["admin", "editor", "viewer"]
     enabled: bool = Field(strict=True)
     expected_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    display_name: str | None = Field(default=None, max_length=80)
 
 
 class RecognitionValues(BaseModel):
@@ -121,7 +122,7 @@ def management_router(db_path, current_user, check_permission, bot_token):
     @router.put("/users/{user_id}")
     def update_user(user_id: int, payload: UserUpdate, user=Depends(current_user)):
         return call(user, "users.manage", store.write_user, user["user_id"], user_id,
-                    payload.role, payload.enabled, payload.expected_version)
+                    payload.role, payload.enabled, payload.expected_version, payload.display_name)
 
     @router.get("/recognition/settings")
     def settings(user=Depends(current_user)):

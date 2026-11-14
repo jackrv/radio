@@ -36,3 +36,6 @@ if (webApp) {
 
 document.getElementById("platform-label").textContent =
   webApp?.initData ? "Telegram Mini App · API ожидается" : "Локальный предпросмотр · без авторизации";
+
+const initialView = new URLSearchParams(window.location.search).get("view");
+if (initialView) showView(initialView);

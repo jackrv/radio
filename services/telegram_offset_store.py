@@ -27,7 +27,7 @@ def load_telegram_offset(db_path):
 
 def save_telegram_offset(db_path, next_offset, *, db=None):
     if type(next_offset) is not int or next_offset < 0:
-        raise ValueError("Некорректный Telegram offset")
+        raise ValueError("Некоректний Telegram offset")
 
     manager = (
         get_db(db_path) if db is None

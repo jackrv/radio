@@ -125,7 +125,7 @@ def test_supervisor_closes_audio_stream_on_keyboard_interrupt():
 
     supervisor.run()
 
-    log.info.assert_called_once_with("Остановлено пользователем.")
+    log.info.assert_called_once_with("Зупинено користувачем.")
 
 
 def test_monitor_checks_when_audio_queue_empty():
@@ -202,9 +202,9 @@ def test_detects_dead_transcriber_thread_once():
     ):
         supervisor.run()
 
-    # Ошибка должна фиксироваться только один раз.
+    # Помилка должна фиксироваться только один раз.
     log.error.assert_called_once_with(
-        "Поток распознавания неожиданно завершился"
+        "Потік розпізнавання несподівано завершився"
     )
 
 
@@ -239,7 +239,7 @@ def test_detects_dead_telegram_thread_once():
         supervisor.run()
 
     log.error.assert_called_once_with(
-        "Поток Telegram неожиданно завершился"
+        "Потік Telegram несподівано завершився"
     )
 
 
@@ -297,7 +297,7 @@ def test_transcriber_restarts_after_delay(monkeypatch):
     )
 
     log.error.assert_called_once_with(
-        "Поток распознавания неожиданно завершился"
+        "Потік розпізнавання несподівано завершився"
     )
 
 
@@ -352,7 +352,7 @@ def test_whisper_restart_limit(monkeypatch):
         lambda self: False,
     ):
         from pytest import raises
-        with raises(RuntimeError, match="Исчерпаны попытки перезапуска Whisper"):
+        with raises(RuntimeError, match="Вичерпано спроби перезапуску Whisper"):
             supervisor.run()
 
     # Один первоначальный поток + три перезапуска.
@@ -369,14 +369,14 @@ def test_whisper_restart_limit(monkeypatch):
 
     # После исчерпания лимита только одно предупреждение.
     log.critical.assert_called_once_with(
-        "Исчерпаны попытки перезапуска Whisper"
+        "Вичерпано спроби перезапуску Whisper"
     )
 
     # Успешно инициированы ровно три перезапуска.
     restart_logs = [
         call for call in log.info.call_args_list
         if call.args
-        and call.args[0] == "Поток Whisper перезапущен, попытка %d"
+        and call.args[0] == "Потік Whisper перезапущено, спроба %d"
     ]
 
     assert [call.args[1] for call in restart_logs] == [1, 2, 3]
@@ -452,16 +452,16 @@ def test_whisper_restart_start_failure(monkeypatch):
     assert FakeThread.instances[2].started
 
     log.exception.assert_called_once_with(
-        "Ошибка перезапуска Whisper"
+        "Помилка перезапуску Whisper"
     )
 
     log.error.assert_called_once_with(
-        "Поток распознавания неожиданно завершился"
+        "Потік розпізнавання несподівано завершився"
     )
 
     # Следующая попытка после ошибки была успешной.
     assert any(
-        call.args == ("Поток Whisper перезапущен, попытка %d", 2)
+        call.args == ("Потік Whisper перезапущено, спроба %d", 2)
         for call in log.info.call_args_list
     )
 
@@ -525,7 +525,7 @@ def test_whisper_restart_counter_resets_after_30_minutes(monkeypatch):
         call
         for call in log.info.call_args_list
         if call.args
-        and call.args[0] == "Поток Whisper перезапущен, попытка %d"
+        and call.args[0] == "Потік Whisper перезапущено, спроба %d"
     ]
 
     # После 30 минут стабильной работы отсчёт начинается заново.
@@ -597,7 +597,7 @@ def test_telegram_restarts_after_delay(monkeypatch):
     )
 
     log.error.assert_called_once_with(
-        "Поток Telegram неожиданно завершился"
+        "Потік Telegram несподівано завершився"
     )
 
     log.critical.assert_not_called()
@@ -681,7 +681,7 @@ def test_telegram_restart_limit(monkeypatch):
     assert log.error.call_count == 4
 
     log.critical.assert_called_once_with(
-        "Исчерпаны попытки перезапуска Telegram"
+        "Вичерпано спроби перезапуску Telegram"
     )
 
     # Ровно три попытки восстановления.
@@ -689,7 +689,7 @@ def test_telegram_restart_limit(monkeypatch):
         call
         for call in log.info.call_args_list
         if call.args
-        and call.args[0] == "Поток Telegram перезапущен, попытка %d"
+        and call.args[0] == "Потік Telegram перезапущено, спроба %d"
     ]
 
     assert [call.args[1] for call in restart_logs] == [1, 2, 3]
@@ -779,17 +779,17 @@ def test_telegram_restart_start_failure(monkeypatch):
 
     # Проверяем регистрацию ошибки.
     log.exception.assert_called_once_with(
-        "Ошибка перезапуска Telegram"
+        "Помилка перезапуску Telegram"
     )
 
     log.error.assert_called_once_with(
-        "Поток Telegram неожиданно завершился"
+        "Потік Telegram несподівано завершився"
     )
 
     # Вторая попытка успешно запустила Telegram.
     assert any(
         call.args == (
-            "Поток Telegram перезапущен, попытка %d",
+            "Потік Telegram перезапущено, спроба %d",
             2,
         )
         for call in log.info.call_args_list
@@ -863,7 +863,7 @@ def test_telegram_restart_counter_resets_after_30_minutes(monkeypatch):
         call
         for call in log.info.call_args_list
         if call.args
-        and call.args[0] == "Поток Telegram перезапущен, попытка %d"
+        and call.args[0] == "Потік Telegram перезапущено, спроба %d"
     ]
 
     # После 30 минут счётчик начинается с первой попытки.

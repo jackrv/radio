@@ -81,7 +81,7 @@ def audio_file_id(db_path, fix_id):
         ensure_table(db)
         row = db.execute("SELECT voice_file_id FROM telegram_phrase_messages WHERE fix_id=? AND state='visible'", (fix_id,)).fetchone()
     if not row or not row[0]:
-        raise LookupError("Аудиозапись недоступна")
+        raise LookupError("Аудіозапис недоступний")
     return row[0]
 
 

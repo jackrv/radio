@@ -34,7 +34,7 @@ def test_warmup_uses_silence_and_model_settings():
         "path_or_hf_repo": "test-model",
         "language": "ru",
     }
-    log.info.assert_called_once_with("Загружаю Whisper (%s)...", "test-model")
+    log.info.assert_called_once_with("Завантажую Whisper (%s)...", "test-model")
 
 
 def test_transcribe_preserves_original_parameters():

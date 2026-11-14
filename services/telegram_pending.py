@@ -77,7 +77,7 @@ def apply_pending_correction(
     """
 
     if type(update_id) is not int or update_id < 0:
-        raise ValueError("Некорректный update_id")
+        raise ValueError("Некоректний update_id")
 
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")

@@ -45,7 +45,7 @@ class RecognitionValues(BaseModel):
     @model_validator(mode="after")
     def valid_duration(self):
         if self.MIN_SPEECH_MS >= self.MAX_SEGMENT_S * 1000:
-            raise ValueError("Минимальная речь должна быть короче максимального сегмента")
+            raise ValueError("Мінімальна тривалість мовлення має бути меншою за максимальний сегмент")
         return self
 
 
@@ -64,13 +64,13 @@ def management_router(db_path, current_user, check_permission, bot_token):
         except store.ManagementConflict as exc:
             raise HTTPException(409, str(exc)) from None
         except PermissionError:
-            raise HTTPException(403, "Недостаточно прав") from None
+            raise HTTPException(403, "Недостатньо прав") from None
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         except sqlite3.Error:
-            raise HTTPException(503, "База временно недоступна. Повтори попытку позже.") from None
+            raise HTTPException(503, "База тимчасово недоступна. Повтори спробу пізніше.") from None
 
     @router.get("/overview")
     def overview(user=Depends(current_user)):
@@ -95,7 +95,7 @@ def management_router(db_path, current_user, check_permission, bot_token):
         try:
             content = download_voice(bot_token, file_id)
         except AudioUnavailable:
-            raise HTTPException(502, "Не удалось получить аудио из Telegram") from None
+            raise HTTPException(502, "Не вдалося отримати аудіо з Telegram") from None
         return Response(content, media_type="audio/ogg", headers={"Cache-Control": "no-store"})
 
     @router.put("/dictionaries/{kind}")

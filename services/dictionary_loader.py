@@ -21,8 +21,8 @@ def load_dictionaries(db_path, log):
 
     if not callsigns.names:
         message = (
-            "Словарь позывных пуст. Запуск Radio 345 остановлен. "
-            "Проверьте dictionary_entries в SQLite "
+            "Словник позивних порожній. Запуск Radio 345 зупинено. "
+            "Перевірте dictionary_entries у SQLite "
             "(dictionary_type='callsigns', enabled=1)."
         )
         log.error(message)
@@ -30,12 +30,12 @@ def load_dictionaries(db_path, log):
 
     if not commands.names:
         log.warning(
-            "Словарь команд пуст: обнаружение команд недоступно"
+            "Словник команд порожній: виявлення команд недоступне"
         )
 
     if not watch.names:
         log.warning(
-            "Словарь Telegram пуст: вачлист недоступен"
+            "Словник Telegram порожній: список спостереження недоступний"
         )
 
     prompt = ", ".join(
@@ -43,7 +43,7 @@ def load_dictionaries(db_path, log):
     )
 
     log.info(
-        "Словари загружены из SQLite: позывные=%d, команды=%d, Telegram=%d",
+        "Словники завантажено зі SQLite: позивні=%d, команди=%d, Telegram=%d",
         len(callsigns.names),
         len(commands.names),
         len(watch.names),

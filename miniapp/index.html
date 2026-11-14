@@ -1,73 +1,73 @@
 <!doctype html>
-<html lang="ru">
+<html lang="uk">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e1824">
-  <meta name="description" content="Radio 345 — панель управления распознаванием эфира">
-  <title>Radio 345 — управление</title>
+  <meta name="description" content="Radio 345 — панель керування розпізнаванням ефіру">
+  <title>Radio 345 — керування</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css?v=9">
+  <link rel="stylesheet" href="./styles.css?v=10">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="./app.js?v=7" defer></script>
-  <script src="./keyboard.js?v=1" defer></script>
-  <script src="./client.js?v=2" defer></script>
-  <script src="./api.js?v=6" defer></script>
-  <script src="./notifications.js?v=6" defer></script>
-  <script src="./receiver-controls.js?v=6" defer></script>
-  <script src="./correction-editor.js?v=7" defer></script>
-  <script src="./management.js?v=4" defer></script>
+  <script src="./app.js?v=10" defer></script>
+  <script src="./keyboard.js?v=10" defer></script>
+  <script src="./client.js?v=10" defer></script>
+  <script src="./api.js?v=10" defer></script>
+  <script src="./notifications.js?v=10" defer></script>
+  <script src="./receiver-controls.js?v=10" defer></script>
+  <script src="./correction-editor.js?v=10" defer></script>
+  <script src="./management.js?v=10" defer></script>
 </head>
 <body>
-  <button id="keyboard-done" class="keyboard-done" type="button" hidden>⌨ Скрыть клавиатуру</button>
+  <button id="keyboard-done" class="keyboard-done" type="button" hidden>⌨ Сховати клавіатуру</button>
   <div class="shell">
     <header class="topbar">
       <div class="brand"><div class="logo" aria-hidden="true"><span class="logo-pulse"></span><span>345</span></div>
-        <div><div class="brand-overline">СИСТЕМА МОНИТОРИНГА</div><div class="brand-title">RADIO <strong>345</strong></div></div>
+        <div><div class="brand-overline">СИСТЕМА МОНІТОРИНГУ</div><div class="brand-title">RADIO <strong>345</strong></div></div>
       </div>
-      <div class="topbar-right"><span class="build-label">ПАНЕЛЬ / v1.0</span><span class="tag tag-muted" id="connection-pill"><span class="status-dot"></span>API не подключён</span></div>
+      <div class="topbar-right"><span class="build-label">ПАНЕЛЬ / v1.0</span><span class="tag tag-muted" id="connection-pill"><span class="status-dot"></span>API не підключено</span></div>
     </header>
 
     <div class="layout">
-      <nav class="navigation" aria-label="Разделы панели">
-        <button type="button" class="nav-link active" data-view-target="home" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span>Главная</span></button>
-        <button type="button" class="nav-link" data-view-target="corrections"><span class="nav-icon" aria-hidden="true">✎</span><span>Исправления</span></button>
-        <button type="button" class="nav-link" data-view-target="dictionaries"><span class="nav-icon" aria-hidden="true">▤</span><span>Словари</span></button>
-        <button type="button" class="nav-link" data-view-target="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Настройки</span></button>
+      <nav class="navigation" aria-label="Розділи панелі">
+        <button type="button" class="nav-link active" data-view-target="home" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span>Головна</span></button>
+        <button type="button" class="nav-link" data-view-target="corrections"><span class="nav-icon" aria-hidden="true">✎</span><span>Виправлення</span></button>
+        <button type="button" class="nav-link" data-view-target="dictionaries"><span class="nav-icon" aria-hidden="true">▤</span><span>Словники</span></button>
+        <button type="button" class="nav-link" data-view-target="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Налаштування</span></button>
         <button type="button" class="nav-link" data-view-target="users"><span class="nav-icon" aria-hidden="true">♙</span><span>Люди</span></button>
-        <div class="navigation-foot">Защищённый доступ через Telegram</div>
+        <div class="navigation-foot">Захищений доступ через Telegram</div>
       </nav>
 
       <main id="main">
         <section class="view active" id="view-home" aria-labelledby="home-title">
-          <div class="section-heading"><div><div class="eyebrow">ОБЗОР СИСТЕМЫ</div><h1 id="home-title">Центр управления</h1><p class="lead">Приём, распознавание и уведомления — в одном месте.</p></div><span class="tag tag-outline">РАБОЧАЯ ПАНЕЛЬ</span></div>
+          <div class="section-heading"><div><div class="eyebrow">ОГЛЯД СИСТЕМИ</div><h1 id="home-title">Центр керування</h1><p class="lead">Приймання, розпізнавання та сповіщення — в одному місці.</p></div><span class="tag tag-outline">РОБОЧА ПАНЕЛЬ</span></div>
 
           <div class="hero">
-            <div class="hero-top"><div class="eyebrow hero-eyebrow">СОСТОЯНИЕ ПРИЁМНИКА</div><span class="hero-live"><span class="status-dot"></span>Нет соединения</span></div>
-            <div class="hero-main"><div class="hero-icon" aria-hidden="true">⌁</div><div><div class="hero-status" id="receiver-status">Неизвестно</div><div class="hero-caption">Ожидаем подключение защищённого API</div></div></div>
-            <div class="hero-footer"><span>Источник: Radio 345 / MacBook Air</span><span>Обновлено: <strong id="status-updated">—</strong></span></div>
+            <div class="hero-top"><div class="eyebrow hero-eyebrow">СТАН ПРИЙМАЧА</div><span class="hero-live"><span class="status-dot"></span>Немає з’єднання</span></div>
+            <div class="hero-main"><div class="hero-icon" aria-hidden="true">⌁</div><div><div class="hero-status" id="receiver-status">Невідомо</div><div class="hero-caption">Очікуємо підключення захищеного API</div></div></div>
+            <div class="hero-footer"><span>Джерело: Radio 345 / MacBook Air</span><span>Оновлено: <strong id="status-updated">—</strong></span></div>
           </div>
 
           <div class="metrics">
-            <article class="metric"><span class="metric-name">СОБЫТИЯ</span><div class="metric-value" id="events-count">—</div><span class="metric-detail">В журнале SQLite</span></article>
-            <article class="metric"><span class="metric-name">ЗАМЕНЫ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail">Активные словесные правила</span></article>
-            <article class="metric"><span class="metric-name">СЛОВАРИ</span><div class="metric-value" id="dictionary-count">—</div><span class="metric-detail">Включённые строки</span></article>
+            <article class="metric"><span class="metric-name">ПОДІЇ</span><div class="metric-value" id="events-count">—</div><span class="metric-detail">У журналі SQLite</span></article>
+            <article class="metric"><span class="metric-name">ЗАМІНИ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail">Активні словесні правила</span></article>
+            <article class="metric"><span class="metric-name">СЛОВНИКИ</span><div class="metric-value" id="dictionary-count">—</div><span class="metric-detail">Увімкнені рядки</span></article>
           </div>
-          <button id="overview-refresh" class="outline-button" type="button">Обновить сводку</button>
-          <p class="subtle-note" id="overview-feedback" role="status">Ожидаем данные журнала.</p>
+          <button id="overview-refresh" class="outline-button" type="button">Оновити зведення</button>
+          <p class="subtle-note" id="overview-feedback" role="status">Очікуємо дані журналу.</p>
 
           <div class="two-column">
-            <article class="panel"><div class="panel-header"><div><div class="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</div><h2>Управление эфиром</h2></div><span class="section-icon" aria-hidden="true">◉</span></div>
-              <div class="action-row"><div class="action-icon">◌</div><div><div class="action-title">Полная тишина</div><div class="action-description">Отключить уведомления, не прерывая приём</div></div><button class="mini-button" id="silence-toggle" type="button" disabled>Загрузка...</button></div>
-              <div class="action-row"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослушивания</div><div class="action-description">Остановить аудиопоток на заданное время</div></div><button class="mini-button" id="receiver-pause-button"
-                type="button" disabled>Загрузка...</button></div>
+            <article class="panel"><div class="panel-header"><div><div class="eyebrow">ШВИДКІ ДІЇ</div><h2>Керування ефіром</h2></div><span class="section-icon" aria-hidden="true">◉</span></div>
+              <div class="action-row"><div class="action-icon">◌</div><div><div class="action-title">Повна тиша</div><div class="action-description">Вимкнути сповіщення без зупинки приймання</div></div><button class="mini-button" id="silence-toggle" type="button" disabled>Завантаження...</button></div>
+              <div class="action-row"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослуховування</div><div class="action-description">Зупинити аудіопотік на заданий час</div></div><button class="mini-button" id="receiver-pause-button"
+                type="button" disabled>Завантаження...</button></div>
               <div class="receiver-pause-controls">
-                <label for="receiver-pause-minutes">Длительность паузы</label>
+                <label for="receiver-pause-minutes">Тривалість паузи</label>
                 <select id="receiver-pause-minutes" disabled>
-                  <option value="5">5 минут</option>
-                  <option value="15" selected>15 минут</option>
-                  <option value="30">30 минут</option>
-                  <option value="60">60 минут</option>
+                  <option value="5">5 хвилин</option>
+                  <option value="15" selected>15 хвилин</option>
+                  <option value="30">30 хвилин</option>
+                  <option value="60">60 хвилин</option>
                 </select>
                 <div id="receiver-pause-remaining"
                      class="receiver-pause-remaining">—</div>
@@ -76,88 +76,88 @@
                    aria-live="polite"></p>
               </div>
             </article>
-            <article class="panel"><div class="panel-header"><div><div class="eyebrow">УВЕДОМЛЕНИЯ</div><h2>Режим отправки</h2></div><span class="section-icon" aria-hidden="true">◷</span></div>
-              <div class="notice-box"><div class="notice-dot"></div><div><strong id="notification-mode-label">Загрузка...</strong><span id="notification-mode-detail">Получаем режим уведомлений</span></div></div>
-              <button class="text-link" type="button" data-view-target="settings">Настроить уведомления <span>↗</span></button>
+            <article class="panel"><div class="panel-header"><div><div class="eyebrow">СПОВІЩЕННЯ</div><h2>Режим надсилання</h2></div><span class="section-icon" aria-hidden="true">◷</span></div>
+              <div class="notice-box"><div class="notice-dot"></div><div><strong id="notification-mode-label">Завантаження...</strong><span id="notification-mode-detail">Отримуємо режим сповіщень</span></div></div>
+              <button class="text-link" type="button" data-view-target="settings">Налаштувати сповіщення <span>↗</span></button>
             </article>
           </div>
         </section>
 
         <section class="view" id="view-corrections" aria-labelledby="corrections-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">ПРОВЕРКА РАСПОЗНАВАНИЯ</div><h1 id="corrections-title">Исправления</h1><p class="lead">Исправь фразу, не копируя текст вручную.</p></div><span class="tag tag-outline">SQLITE</span></div>
+          <div class="section-heading"><div><div class="eyebrow">ПЕРЕВІРКА РОЗПІЗНАВАННЯ</div><h1 id="corrections-title">Виправлення</h1><p class="lead">Виправ фразу без ручного копіювання тексту.</p></div><span class="tag tag-outline">SQLITE</span></div>
           <article class="panel wide-panel margin-bottom" id="phrases-panel">
             <h2>Журнал фраз</h2>
-            <form id="phrases-search" class="toolbar"><label class="visually-hidden" for="phrases-query">Поиск фраз</label><input id="phrases-query" maxlength="200" placeholder="Найти текст"><button type="submit" class="outline-button">Найти / обновить</button></form>
-            <p class="subtle-note">События SQLite и временные фразы (до 24 часов, максимум 200). Для редактирования нужна роль редактора или администратора.</p>
+            <form id="phrases-search" class="toolbar"><label class="visually-hidden" for="phrases-query">Пошук фраз</label><input id="phrases-query" maxlength="200" placeholder="Знайти текст"><button type="submit" class="outline-button">Знайти / оновити</button></form>
+            <p class="subtle-note">Події SQLite й тимчасові фрази (до 24 годин, максимум 200). Для редагування потрібна роль редактора або адміністратора.</p>
             <div id="phrases-list" class="stack"></div>
-            <div class="toolbar"><button id="phrases-prev" class="outline-button" type="button">Назад</button><button id="phrases-next" class="outline-button" type="button">Далее</button></div>
+            <div class="toolbar"><button id="phrases-prev" class="outline-button" type="button">Назад</button><button id="phrases-next" class="outline-button" type="button">Далі</button></div>
             <p id="phrases-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
           </article>
-          <article class="panel wide-panel" id="correction-editor-panel" hidden><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор распознавания</h2></div><span class="section-icon">✎</span></div>
-            <button id="editor-back" class="text-link" type="button">← К журналу фраз</button>
+          <article class="panel wide-panel" id="correction-editor-panel" hidden><div class="panel-header"><div><div class="eyebrow">РЕДАКТОР RADIO 345</div><h2>Редактор розпізнавання</h2></div><span class="section-icon">✎</span></div>
+            <button id="editor-back" class="text-link" type="button">← До журналу фраз</button>
             <div class="editor-audio-section">
-              <button id="editor-audio-load" class="outline-button" type="button" disabled>▶ Прослушать исходную запись</button>
+              <button id="editor-audio-load" class="outline-button" type="button" disabled>▶ Прослухати початковий запис</button>
               <audio id="editor-audio" controls preload="none" hidden></audio>
               <p id="editor-audio-feedback" class="subtle-note" role="status" aria-live="polite"></p>
             </div>
-            <details class="original-details"><summary>Исходный текст распознавания</summary><div class="source-text" id="original-text">Выбери фразу в журнале.</div></details>
-            <label for="corrected-text" class="form-label">Исправленный текст</label>
+            <details class="original-details"><summary>Початковий текст розпізнавання</summary><div class="source-text" id="original-text">Вибери фразу в журналі.</div></details>
+            <label for="corrected-text" class="form-label">Виправлений текст</label>
             <textarea id="corrected-text" rows="3" spellcheck="false" disabled></textarea>
-            <div class="editor-footer"><span class="subtle-note">Текст подставляется из SQLite.</span><button class="outline-button" id="restore-example" type="button" disabled>Вернуть текст</button></div>
+            <div class="editor-footer"><span class="subtle-note">Текст підставляється зі SQLite.</span><button class="outline-button" id="restore-example" type="button" disabled>Повернути текст</button></div>
             <label class="auto-close-option" for="close-after-save">
               <input id="close-after-save" type="checkbox" checked>
-              <span>Закрывать приложение после сохранения</span>
+              <span>Закривати застосунок після збереження</span>
             </label>
-            <button class="primary-button" id="save-correction-button" type="button" disabled>Сохранить исправление</button>
-            <p class="notify-feedback" id="correction-feedback" role="status" aria-live="polite">Для редактирования выбери сообщение в Telegram.</p>
+            <button class="primary-button" id="save-correction-button" type="button" disabled>Зберегти виправлення</button>
+            <p class="notify-feedback" id="correction-feedback" role="status" aria-live="polite">Для редагування вибери повідомлення в Telegram.</p>
           </article>
         </section>
 
         <section class="view" id="view-dictionaries" aria-labelledby="dictionaries-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">БАЗА ЗНАНИЙ</div><h1 id="dictionaries-title">Словари</h1><p class="lead">Управление позывными, командами и списком наблюдения.</p></div><span class="tag tag-outline">SQLITE</span></div>
+          <div class="section-heading"><div><div class="eyebrow">БАЗА ЗНАНЬ</div><h1 id="dictionaries-title">Словники</h1><p class="lead">Керування позивними, командами й списком спостереження.</p></div><span class="tag tag-outline">SQLITE</span></div>
           <article class="panel wide-panel">
-            <label class="form-label" for="dictionary-kind">Раздел словаря</label>
-            <select id="dictionary-kind"><option value="callsigns">Позывные и номера</option><option value="commands">Команды</option><option value="telegram">Список наблюдения</option><option value="rules">Обученные замены</option></select>
-            <div class="toolbar"><button id="dictionary-refresh" class="outline-button" type="button">Обновить</button><button id="dictionary-add" class="outline-button" type="button" disabled>Добавить строку</button></div>
-            <p class="subtle-note">Формат: «ліра: 68 69», «ліпка: 300-310», «вовк: *» или отдельное слово. Изменения словарей применятся после перезапуска приёмника.</p>
+            <label class="form-label" for="dictionary-kind">Розділ словника</label>
+            <select id="dictionary-kind"><option value="callsigns">Позивні та номери</option><option value="commands">Команди</option><option value="telegram">Список спостереження</option><option value="rules">Навчені заміни</option></select>
+            <div class="toolbar"><button id="dictionary-refresh" class="outline-button" type="button">Оновити</button><button id="dictionary-add" class="outline-button" type="button" disabled>Додати рядок</button></div>
+            <p class="subtle-note">Формат: «ліра: 68 69», «ліпка: 300-310», «вовк: *» або окреме слово. Зміни словників застосуються після перезапуску приймача.</p>
             <div id="dictionary-entries" class="stack"></div>
-            <button id="dictionary-save" class="primary-button margin-top" type="button" disabled>Сохранить словарь</button>
+            <button id="dictionary-save" class="primary-button margin-top" type="button" disabled>Зберегти словник</button>
             <p id="dictionary-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
             <div id="rules-panel" hidden>
-              <form id="rules-search" class="toolbar"><label class="visually-hidden" for="rules-query">Поиск замен</label><input id="rules-query" maxlength="200" placeholder="Найти слово"><button class="outline-button" type="submit">Найти</button></form>
-              <p class="subtle-note">Подтверждения приходят из исправлений фраз. Включение правила сохраняет проверки безопасности и порог подтверждений.</p>
+              <form id="rules-search" class="toolbar"><label class="visually-hidden" for="rules-query">Пошук замін</label><input id="rules-query" maxlength="200" placeholder="Знайти слово"><button class="outline-button" type="submit">Знайти</button></form>
+              <p class="subtle-note">Підтвердження надходять із виправлень фраз. Увімкнення правила зберігає перевірки безпеки й поріг підтверджень.</p>
               <div id="rules-list" class="stack"></div>
-              <div class="toolbar"><button id="rules-prev" class="outline-button" type="button">Назад</button><button id="rules-next" class="outline-button" type="button">Далее</button></div>
+              <div class="toolbar"><button id="rules-prev" class="outline-button" type="button">Назад</button><button id="rules-next" class="outline-button" type="button">Далі</button></div>
             </div>
           </article>
         </section>
 
         <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">КОНФИГУРАЦИЯ</div><h1 id="settings-title">Настройки</h1><p class="lead">Уведомления применяются сразу. Распознавание — после перезапуска.</p></div><span class="tag tag-outline">НАСТРОЙКИ ПРИЁМНИКА</span></div>
+          <div class="section-heading"><div><div class="eyebrow">КОНФІГУРАЦІЯ</div><h1 id="settings-title">Налаштування</h1><p class="lead">Сповіщення застосовуються одразу. Розпізнавання — після перезапуску.</p></div><span class="tag tag-outline">НАЛАШТУВАННЯ ПРИЙМАЧА</span></div>
           <article class="panel wide-panel"><div class="settings-row">
-              <div><h2>Режим уведомлений</h2><p>Изменения сохраняются в SQLite</p></div>
-              <span class="pending" id="settings-mode-value">Загрузка...</span>
+              <div><h2>Режим сповіщень</h2><p>Зміни зберігаються у SQLite</p></div>
+              <span class="pending" id="settings-mode-value">Завантаження...</span>
             </div>
             <fieldset class="notify-mode-options" id="notify-mode-fieldset" disabled>
-              <legend class="visually-hidden">Выберите режим уведомлений</legend>
-              <label class="notify-option"><input type="radio" name="notify-mode" value="all"> 📢 Все сообщения</label>
+              <legend class="visually-hidden">Виберіть режим сповіщень</legend>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="all"> 📢 Усі повідомлення</label>
               <label class="notify-option"><input type="radio" name="notify-mode" value="watch"> 👀 Наблюдение</label>
-              <label class="notify-option"><input type="radio" name="notify-mode" value="commands"> ⚡ Команды</label>
-              <label class="notify-option"><input type="radio" name="notify-mode" value="off"> 🔕 Полная тишина</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="commands"> ⚡ Команди</label>
+              <label class="notify-option"><input type="radio" name="notify-mode" value="off"> 🔕 Повна тиша</label>
             </fieldset>
             <p id="notify-mode-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
-            <button id="recognition-refresh" class="outline-button margin-top" type="button">Загрузить сохранённые настройки</button>
+            <button id="recognition-refresh" class="outline-button margin-top" type="button">Завантажити збережені налаштування</button>
             <form id="recognition-form">
               <fieldset id="recognition-fields" disabled class="recognition-fields">
-                <legend>Распознавание</legend>
+                <legend>Розпізнавання</legend>
                 <p class="subtle-note" id="recognition-models"></p>
-                <label class="settings-row">Коррекция Qwen <input type="checkbox" id="setting-llm"></label>
-                <label class="settings-row">Уровень VAD (0 — мягкий, 3 — строгий)<select id="setting-vad"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
-                <label class="settings-row">Тишина до конца фразы, мс<input id="setting-silence" type="number" min="150" max="3000" required></label>
-                <label class="settings-row">Минимальная речь, мс<input id="setting-speech" type="number" min="90" max="3000" required></label>
-                <label class="settings-row">Максимальная фраза, с<input id="setting-segment" type="number" min="3" max="60" required></label>
-                <p class="subtle-note">Эти значения применятся после перезапуска приёмника. Изменение чувствительности может повлиять на короткие сообщения.</p>
-                <button class="primary-button margin-top" type="submit">Сохранить настройки распознавания</button>
+                <label class="settings-row">Корекція Qwen <input type="checkbox" id="setting-llm"></label>
+                <label class="settings-row">Рівень VAD (0 — м’який, 3 — суворий)<select id="setting-vad"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
+                <label class="settings-row">Тиша до кінця фрази, мс<input id="setting-silence" type="number" min="150" max="3000" required></label>
+                <label class="settings-row">Мінімальне мовлення, мс<input id="setting-speech" type="number" min="90" max="3000" required></label>
+                <label class="settings-row">Максимальна фраза, с<input id="setting-segment" type="number" min="3" max="60" required></label>
+                <p class="subtle-note">Ці значення застосуються після перезапуску приймача. Зміна чутливості може вплинути на короткі повідомлення.</p>
+                <button class="primary-button margin-top" type="submit">Зберегти налаштування розпізнавання</button>
               </fieldset>
               <p id="recognition-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
             </form>
@@ -165,25 +165,25 @@
         </section>
 
         <section class="view" id="view-users" aria-labelledby="users-title" hidden>
-          <div class="section-heading"><div><div class="eyebrow">КОНТРОЛЬ ДОСТУПА</div><h1 id="users-title">Пользователи</h1><p class="lead">Администратор, редактор и наблюдатель.</p></div><span class="tag tag-outline">SQLITE</span></div>
+          <div class="section-heading"><div><div class="eyebrow">КОНТРОЛЬ ДОСТУПУ</div><h1 id="users-title">Користувачі</h1><p class="lead">Адміністратор, редактор і спостерігач.</p></div><span class="tag tag-outline">SQLITE</span></div>
           <article class="panel wide-panel">
-            <div class="toolbar"><h2>Доступ к панели</h2><button id="users-refresh" class="outline-button" type="button">Обновить</button></div>
-            <p class="subtle-note">Наблюдатель читает журнал и словари. Редактор исправляет фразы и словари. Администратор управляет настройками и доступом. Telegram ID можно узнать в разделе «Главная» у нужного пользователя.</p>
+            <div class="toolbar"><h2>Доступ до панелі</h2><button id="users-refresh" class="outline-button" type="button">Оновити</button></div>
+            <p class="subtle-note">Спостерігач читає журнал і словники. Редактор виправляє фрази й словники. Адміністратор керує налаштуваннями та доступом. Telegram ID можна дізнатися в розділі «Головна» потрібного користувача.</p>
             <div id="users-list" class="stack"></div>
             <form id="user-add-form" class="margin-top">
               <fieldset id="user-add-fields" disabled class="recognition-fields">
-                <legend>Добавить пользователя</legend>
+                <legend>Додати користувача</legend>
                 <label class="form-label" for="new-user-id">Telegram ID</label><input id="new-user-id" inputmode="numeric" pattern="[1-9][0-9]{0,18}" required>
-                <label class="form-label" for="new-user-name">Название пользователя</label><input id="new-user-name" maxlength="80" placeholder="Например, Оператор смены">
-                <label class="form-label" for="new-user-role">Роль</label><select id="new-user-role"><option value="viewer">Наблюдатель</option><option value="editor">Редактор</option><option value="admin">Администратор</option></select>
-                <button class="primary-button margin-top" type="submit">Предоставить доступ</button>
+                <label class="form-label" for="new-user-name">Назва користувача</label><input id="new-user-name" maxlength="80" placeholder="Наприклад, Оператор зміни">
+                <label class="form-label" for="new-user-role">Роль</label><select id="new-user-role"><option value="viewer">Спостерігач</option><option value="editor">Редактор</option><option value="admin">Адміністратор</option></select>
+                <button class="primary-button margin-top" type="submit">Надати доступ</button>
               </fieldset>
             </form>
             <p id="users-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
           </article>
         </section>
 
-        <footer class="footer"><span>RADIO 345 · SECURE CONTROL</span><span id="platform-label">Локальный предпросмотр</span></footer>
+        <footer class="footer"><span>RADIO 345 · SECURE CONTROL</span><span id="platform-label">Локальний перегляд</span></footer>
       </main>
     </div>
   </div>

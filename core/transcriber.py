@@ -4,6 +4,7 @@ from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
 from core.analyzer import looks_like_garbage
 from callsigns import normalize
+from core.diagnostics import runtime
 
 
 class Transcriber:
@@ -56,6 +57,7 @@ class Transcriber:
         return bool(key) and key in self.blacklist
 
     def process_segment(self, pcm, generation=None):
+        runtime.count("asr.segments")
         def is_current():
             return (
                 self.pause_gate is None
@@ -63,6 +65,7 @@ class Transcriber:
             )
 
         if not is_current():
+            runtime.count("asr.stale_generation")
             return
 
         audio, rms = prepare_audio(
@@ -73,6 +76,7 @@ class Transcriber:
             self.log.info("rms=%.4f", rms)
 
         if audio.size == 0 or rms < self.min_rms:
+            runtime.count("asr.low_rms")
             return
 
         if self.debug_audio and self.debug_audio_count < 12:
@@ -83,7 +87,7 @@ class Transcriber:
                 )
             except Exception:
                 self.debug_audio = False
-                self.log.exception('Ошибка сохранения диагностического аудио')
+                self.log.exception('Помилка збереження діагностичного аудіо')
             else:
                 self.debug_audio_count += 1
                 self.log.info(
@@ -92,11 +96,13 @@ class Transcriber:
                 )
 
         try:
-            result = self.recognizer.transcribe(audio)
+            with runtime.timed("asr.whisper"):
+                result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
         except Exception:
+            runtime.count("asr.whisper_error")
             self.log.exception(
-                "Ошибка распознавания Whisper; сегмент пропущен"
+                "Помилка розпізнавання Whisper; сегмент пропущено"
             )
             return
 
@@ -105,23 +111,28 @@ class Transcriber:
 
         duration = len(pcm) / (2 * self.sample_rate)
 
-        if (
-            not raw_text
-            or looks_like_garbage(raw_text, duration)
-            or self._is_blacklisted(raw_text)
-        ):
+        if not raw_text:
+            runtime.count("asr.empty_text")
+            return
+        if looks_like_garbage(raw_text, duration):
+            runtime.count("asr.garbage_filtered")
+            return
+        if self._is_blacklisted(raw_text):
+            runtime.count("asr.blacklist_filtered")
             return
 
         if not is_current():
             return
 
-        self.log.info("Распознано (сырое): %s", raw_text)
+        self.log.info("Розпізнано (початкове): %s", raw_text)
 
         try:
-            text = self.process_text(raw_text)
+            with runtime.timed("asr.correction_pipeline"):
+                text = self.process_text(raw_text)
         except Exception:
+            runtime.count("asr.correction_error")
             self.log.exception(
-                "Ошибка коррекции текста; используется исходный текст Whisper"
+                "Помилка корекції тексту; використовується початковий текст Whisper"
             )
             text = raw_text
         if not is_current():
@@ -140,8 +151,9 @@ class Transcriber:
                     ),
                 )
         except Exception:
+            runtime.count("asr.event_error")
             self.log.exception(
-                "Ошибка обработки события; продолжаем прослушивание эфира"
+                "Помилка обробки події; продовжуємо прослуховування ефіру"
             )
 
     def run(self):

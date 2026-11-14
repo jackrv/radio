@@ -14,10 +14,10 @@
   );
 
   const names = {
-    all: "Все сообщения",
-    watch: "Список наблюдения",
-    commands: "Команды и позывные",
-    off: "Полная тишина"
+    all: "Усі повідомлення",
+    watch: "Список спостереження",
+    commands: "Команди й позивні",
+    off: "Повна тиша"
   };
 
   let currentMode = null;
@@ -32,20 +32,20 @@
   }
 
   function render() {
-    const name = names[currentMode] || "Неизвестно";
+    const name = names[currentMode] || "Невідомо";
 
     label.textContent = name;
     settingsValue.textContent = name;
 
     detail.textContent = currentMode === "off"
-      ? "Автоматические уведомления отключены. Приём продолжается."
+      ? "Автоматичні сповіщення вимкнено. Приймання триває."
       : currentMode
-        ? "Режим применяется к новым уведомлениям."
-        : "Нет данных от API.";
+        ? "Режим застосовується до нових сповіщень."
+        : "Немає даних від API.";
 
     toggle.textContent = currentMode === "off"
-      ? "Включить"
-      : "Выключить";
+      ? "Увімкнути"
+      : "Вимкнути";
 
     const disabled = !isAdmin || busy || !currentMode;
 
@@ -63,7 +63,7 @@
 
   function applyMode(mode) {
     if (!(mode in names)) {
-      throw new Error("Сервер вернул неизвестный режим.");
+      throw new Error("Сервер повернув невідомий режим.");
     }
 
     currentMode = mode;
@@ -96,7 +96,7 @@
       message("");
     } catch (error) {
       if (expectedGeneration === generation && !busy) {
-        message(`Не удалось обновить режим: ${error.message}`, true);
+        message(`Не вдалося оновити режим: ${error.message}`, true);
       }
     }
   }
@@ -113,7 +113,7 @@
     generation++;
     busy = true;
     render();
-    message("Сохраняем настройку...");
+    message("Зберігаємо налаштування...");
 
     try {
       const result = await request(
@@ -123,9 +123,9 @@
       );
 
       applyMode(result.mode);
-      message("Настройка сохранена.");
+      message("Налаштування збережено.");
     } catch (error) {
-      message(`Ошибка сохранения: ${error.message}`, true);
+      message(`Помилка збереження: ${error.message}`, true);
     } finally {
       busy = false;
       render();
@@ -149,7 +149,7 @@
     render();
 
     if (!telegram?.initData) {
-      message("Откройте панель через Telegram.");
+      message("Відкрийте панель через Telegram.");
       return;
     }
 
@@ -158,11 +158,11 @@
       isAdmin = user.role === "admin";
 
       if (!isAdmin) {
-        label.textContent = "Доступ администратора";
+        label.textContent = "Доступ адміністратора";
         detail.textContent =
-          "Изменение уведомлений доступно только администратору.";
-        settingsValue.textContent = "Нет доступа";
-        message("Управление доступно только администратору.");
+          "Зміна сповіщень доступна лише адміністратору.";
+        settingsValue.textContent = "Немає доступу";
+        message("Керування доступне лише адміністратору.");
         return;
       }
 
@@ -176,7 +176,7 @@
         }
       });
     } catch (error) {
-      label.textContent = "Ошибка подключения";
+      label.textContent = "Помилка підключення";
       detail.textContent = error.message;
       settingsValue.textContent = "Недоступно";
       message(error.message, true);

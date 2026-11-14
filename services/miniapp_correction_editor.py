@@ -16,17 +16,17 @@ def event_id_from_fix_id(fix_id: str) -> int:
     if not isinstance(fix_id, str) or not re.fullmatch(
         r"db:[1-9][0-9]{0,17}", fix_id
     ):
-        raise ValueError("Недопустимый идентификатор исправления")
+        raise ValueError("Неприпустимий ідентифікатор виправлення")
     return int(fix_id[3:])
 
 
 def load_edit_draft(db_path, fix_id: str):
     if is_hidden(db_path, fix_id):
-        raise LookupError("Сообщение удалено")
+        raise LookupError("Повідомлення видалено")
     if fix_id.startswith("mem:"):
         phrase = load_phrase(db_path, fix_id[4:])
         if phrase is None:
-            raise LookupError("Фраза не найдена или устарела")
+            raise LookupError("Фразу не знайдено або вона застаріла")
         return {"fix_id": fix_id, **phrase, "has_audio": has_audio(db_path, fix_id)}
 
     event_id = event_id_from_fix_id(fix_id)
@@ -38,7 +38,7 @@ def load_edit_draft(db_path, fix_id: str):
         ).fetchone()
 
     if row is None:
-        raise LookupError("Событие не найдено")
+        raise LookupError("Подію не знайдено")
 
     return {
         "fix_id": fix_id,
@@ -54,17 +54,17 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
     event_id = None if memory_token is not None else event_id_from_fix_id(fix_id)
     corrected = corrected_text.strip()
     if not corrected or len(corrected) > 5000:
-        raise ValueError("Исправленный текст должен быть непустым")
+        raise ValueError("Виправлений текст має бути непорожнім")
 
     with get_db(db_path) as db:
         # Serializes edits with other SQLite writers; protects against lost updates.
         db.execute("BEGIN IMMEDIATE")
         if is_hidden(db_path, fix_id, db=db):
-            raise LookupError("Сообщение удалено")
+            raise LookupError("Повідомлення видалено")
         if memory_token is not None:
             phrase = load_phrase(db_path, memory_token, db=db)
             if phrase is None:
-                raise LookupError("Фраза не найдена или устарела")
+                raise LookupError("Фразу не знайдено або вона застаріла")
             original = phrase["original_text"]
             current = phrase["current_text"]
         else:
@@ -74,11 +74,11 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
                 (event_id,),
             ).fetchone()
             if row is None:
-                raise LookupError("Событие не найдено")
+                raise LookupError("Подію не знайдено")
             original, current = row
 
         if current != expected_text:
-            raise CorrectionConflict("Текст изменился в другой сессии")
+            raise CorrectionConflict("Текст змінився в іншому сеансі")
 
         # One transaction: word feedback + current text + rollback on errors.
         save_correction(

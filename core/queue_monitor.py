@@ -1,4 +1,5 @@
 import time
+from core.diagnostics import runtime
 
 
 class QueueDropMonitor:
@@ -13,7 +14,7 @@ class QueueDropMonitor:
         clock=None,
     ):
         if interval_s <= 0:
-            raise ValueError("interval_s должен быть положительным")
+            raise ValueError("interval_s має бути додатним")
 
         self.frames = frames
         self.segments = segments
@@ -33,6 +34,11 @@ class QueueDropMonitor:
 
         frames_total = getattr(self.frames, "dropped", 0)
         segments_total = getattr(self.segments, "dropped", 0)
+        runtime.gauge("audio.frames_dropped", frames_total)
+        runtime.gauge("audio.segments_dropped", segments_total)
+        for name, queue in (("frames", self.frames), ("segments", self.segments)):
+            if hasattr(queue, "qsize"):
+                runtime.gauge(f"audio.{name}_queue", queue.qsize())
 
         frames_lost = max(0, frames_total - self.last_frames)
         segments_lost = max(0, segments_total - self.last_segments)
@@ -43,8 +49,8 @@ class QueueDropMonitor:
 
         if frames_lost or segments_lost:
             self.log.warning(
-                "Потери аудио: кадров=%d, сегментов=%d "
-                "(всего кадров=%d, сегментов=%d)",
+                "Втрати аудіо: кадрів=%d, сегментів=%d "
+                "(усього кадрів=%d, сегментів=%d)",
                 frames_lost,
                 segments_lost,
                 frames_total,

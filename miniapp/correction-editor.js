@@ -50,8 +50,8 @@
     } catch (error) {
       if (error.status === 404) {
         throw new Error(fixId?.startsWith("mem:")
-          ? "Фраза недоступна: прошло 24 часа или она вытеснена из 200 последних."
-          : "Событие не найдено. Возможно, оно удалено.");
+          ? "Фраза недоступна: минуло 24 години або її витіснено з 200 останніх."
+          : "Подію не знайдено. Можливо, її видалено.");
       }
       throw error;
     }
@@ -90,7 +90,7 @@
   audioButton.addEventListener("click", async () => {
     if (!draft || audioButton.disabled) return;
     audioButton.disabled = true;
-    audioFeedback.textContent = "Загружаем аудио из Telegram...";
+    audioFeedback.textContent = "Завантажуємо аудіо з Telegram...";
     try {
       const blob = await window.Radio345.request(`/api/phrases/audio?fix_id=${encodeURIComponent(fixId)}`, "GET", undefined, "blob");
       if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -98,7 +98,7 @@
       player.src = audioUrl;
       player.hidden = false;
       audioButton.hidden = true;
-      audioFeedback.textContent = "Нажми ▶ на плеере. Это исходная запись, текстовые правки её не изменяют.";
+      audioFeedback.textContent = "Натисни ▶ на плеєрі. Це початковий запис, текстові зміни його не змінюють.";
       fitText();
     } catch (error) {
       audioFeedback.textContent = error.message;
@@ -106,7 +106,7 @@
     }
   });
   player.addEventListener("error", () => {
-    audioFeedback.textContent = "Не удалось воспроизвести OGG на этом устройстве. Исходное голосовое доступно в Telegram.";
+    audioFeedback.textContent = "Не вдалося відтворити OGG на цьому пристрої. Початкове голосове доступне в Telegram.";
     if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; }
     audioButton.disabled = false;
     audioButton.hidden = false;
@@ -124,13 +124,13 @@
     if (!draft || busy) return;
     const corrected = edited.value.trim();
     if (!corrected) {
-      feedback.textContent = "Текст исправления не может быть пустым.";
+      feedback.textContent = "Текст виправлення не може бути порожнім.";
       return;
     }
     busy = true;
     save.disabled = true;
     restore.disabled = true;
-    feedback.textContent = "Сохраняем исправление...";
+    feedback.textContent = "Зберігаємо виправлення...";
     try {
       const result = await request("PUT", {
         fix_id: fixId,
@@ -146,7 +146,7 @@
         typeof telegram?.close === "function"
       ) {
         feedback.textContent =
-          "✅ Исправление сохранено. Закрываем редактор...";
+          "✅ Виправлення збережено. Закриваємо редактор...";
 
         // Показываем подтверждение перед закрытием.
         window.setTimeout(() => {
@@ -154,12 +154,12 @@
             telegram.close();
           } catch (_) {
             feedback.textContent =
-              "✅ Исправление сохранено. Закрой окно вручную.";
+              "✅ Виправлення збережено. Закрий вікно вручну.";
           }
         }, 500);
       } else {
         feedback.textContent =
-          "✅ Исправление сохранено. Можно закрыть окно или продолжить правку.";
+          "✅ Виправлення збережено. Можна закрити вікно або продовжити виправлення.";
         edited.disabled = false;
         save.disabled = false;
         restore.disabled = false;
@@ -177,10 +177,10 @@
     if (!fixId) return; // Opened through the regular Mini App menu.
     openEditor();
     if (!/^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$/.test(fixId)) {
-      feedback.textContent = "Неизвестный идентификатор события.";
+      feedback.textContent = "Невідомий ідентифікатор події.";
       return;
     }
-    feedback.textContent = "Загружаем распознанную фразу...";
+    feedback.textContent = "Завантажуємо розпізнану фразу...";
     try {
       draft = await request("GET");
       original.textContent = draft.original_text;
@@ -189,11 +189,11 @@
       fitText();
       audioButton.disabled = !draft.has_audio;
       audioFeedback.textContent = draft.has_audio
-        ? "Прослушай исходное голосовое перед исправлением."
-        : "Для этой фразы аудио не привязано. Доступны записи новых голосовых, отправленных после обновления приёмника.";
+        ? "Прослухай початкове голосове перед виправленням."
+        : "Для цієї фрази аудіо не прив’язано. Доступні записи нових голосових, надісланих після оновлення приймача.";
       save.disabled = false;
       restore.disabled = false;
-      feedback.textContent = "Текст уже подставлен. Исправь ошибку и сохрани.";
+      feedback.textContent = "Текст уже підставлено. Виправ помилку та збережи.";
       // Do not open the mobile keyboard until the operator taps the field.
       // Avoid competing smooth scroll and keyboard viewport animations.
       edited.scrollIntoView({ block: "center", behavior: "instant" });

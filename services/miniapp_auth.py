@@ -28,7 +28,7 @@ def verify_init_data(
         or not (0 < len(init_data) <= 16384)
     ):
         raise TelegramAuthError(
-            "Некорректные данные авторизации"
+            "Некоректні дані авторизації"
         )
 
     try:
@@ -42,14 +42,14 @@ def verify_init_data(
         )
     except (ValueError, UnicodeError) as exc:
         raise TelegramAuthError(
-            "Некорректный формат initData"
+            "Некоректний формат initData"
         ) from exc
 
     fields = dict(pairs)
 
     if len(fields) != len(pairs):
         raise TelegramAuthError(
-            "Повторяющиеся поля initData"
+            "Повторювані поля initData"
         )
 
     given_hash = fields.pop("hash", "")
@@ -58,7 +58,7 @@ def verify_init_data(
         r"[0-9a-fA-F]{64}", given_hash
     ):
         raise TelegramAuthError(
-            "Отсутствует корректная подпись"
+            "Відсутній коректний підпис"
         )
 
     check_string = "\n".join(
@@ -82,7 +82,7 @@ def verify_init_data(
         expected, given_hash.lower()
     ):
         raise TelegramAuthError(
-            "Неверная подпись Telegram"
+            "Неправильний підпис Telegram"
         )
 
     auth_value = fields.get("auth_date", "")
@@ -91,12 +91,12 @@ def verify_init_data(
         r"[0-9]{1,20}", auth_value
     ):
         raise TelegramAuthError(
-            "Отсутствует auth_date"
+            "Відсутня auth_date"
         )
 
     if max_age <= 0:
         raise ValueError(
-            "max_age должен быть положительным"
+            "max_age має бути додатним"
         )
 
     current_time = (
@@ -112,15 +112,15 @@ def verify_init_data(
         or current_time - issued_at > max_age
     ):
         raise TelegramAuthError(
-            "Срок действия initData истёк "
-            "или дата неверна"
+            "Строк дії initData минув "
+            "або дата неправильна"
         )
 
     try:
         user = json.loads(fields["user"])
     except (KeyError, ValueError, TypeError) as exc:
         raise TelegramAuthError(
-            "Отсутствует корректный пользователь"
+            "Відсутній коректний користувач"
         ) from exc
 
     user_id = (
@@ -131,7 +131,7 @@ def verify_init_data(
 
     if type(user_id) is not int or user_id <= 0:
         raise TelegramAuthError(
-            "Некорректный Telegram user.id"
+            "Некоректний Telegram user.id"
         )
 
     return user if return_user else user_id

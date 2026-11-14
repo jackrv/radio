@@ -133,7 +133,7 @@ def test_qwen_error_falls_back_to_whisper_text():
         "Qwen temporary error"
     )
 
-    # Ошибка коррекции не должна останавливать обработку.
+    # Помилка коррекции не должна останавливать обработку.
     worker.process_segment(pcm)
 
     # Сохраняем исходный результат Whisper.
@@ -141,7 +141,7 @@ def test_qwen_error_falls_back_to_whisper_text():
         "Липка 700", pcm, raw_text="Липка 700"
     )
 
-    # Ошибка должна попасть в журнал.
+    # Помилка должна попасть в журнал.
     worker.log.exception.assert_called_once()
 
 

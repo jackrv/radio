@@ -16,7 +16,7 @@ from services.user_store import (
 def resolve_private_admin_id(bot_token, chat_id, *, http_get=None):
     if not bot_token or not str(chat_id).isdigit():
         raise ValueError(
-            "Нужны токен бота и ID личного Telegram-чата"
+            "Потрібні токен бота та ID особистого чату Telegram"
         )
 
     getter = http_get or requests.get
@@ -28,22 +28,22 @@ def resolve_private_admin_id(bot_token, chat_id, *, http_get=None):
             timeout=10,
         )
         if response.status_code != 200:
-            raise ValueError("Telegram не подтвердил чат")
+            raise ValueError("Telegram не підтвердив чат")
         payload = response.json()
     except (requests.RequestException, ValueError) as exc:
         raise RuntimeError(
-            "Не удалось проверить чат через Telegram"
+            "Не вдалося перевірити чат через Telegram"
         ) from None
 
     chat = payload.get("result") if payload.get("ok") else None
 
     if not isinstance(chat, dict):
-        raise RuntimeError("Telegram не вернул сведения о чате")
+        raise RuntimeError("Telegram не повернув відомості про чат")
 
     if chat.get("type") != "private":
         raise RuntimeError(
-            "Указан не личный чат. Автоматическая "
-            "регистрация администратора запрещена."
+            "Зазначено не особистий чат. Автоматичну "
+            "реєстрацію адміністратора заборонено."
         )
 
     user_id = chat.get("id")
@@ -53,7 +53,7 @@ def resolve_private_admin_id(bot_token, chat_id, *, http_get=None):
         or user_id <= 0
         or user_id != int(chat_id)
     ):
-        raise RuntimeError("Некорректный Telegram ID")
+        raise RuntimeError("Некоректний Telegram ID")
 
     return user_id
 
@@ -69,28 +69,28 @@ def main():
     db_path = Path(config.DB_PATH)
 
     if not db_path.is_file():
-        raise SystemExit("Рабочая SQLite не найдена")
+        raise SystemExit("Робочу SQLite не знайдено")
 
     print("========== RADIO 345 ==========")
     print("База:", db_path)
-    print("Telegram: личный чат подтверждён")
+    print("Telegram: особистий чат підтверджено")
     print("User ID:", user_id)
-    print("Предлагаемая роль: admin")
+    print("Запропонована роль: admin")
 
     answer = input(
-        "\nЭто твой личный аккаунт? "
-        "Для подтверждения введи ДА: "
+        "\nЦе ваш особистий обліковий запис? "
+        "Для підтвердження введіть ТАК: "
     ).strip().casefold()
 
-    if answer != "да":
-        raise SystemExit("Регистрация отменена")
+    if answer not in ("так", "да"):
+        raise SystemExit("Реєстрацію скасовано")
 
     init_users_db(db_path)
 
     if bootstrap_admin(db_path, user_id):
-        print("Первый администратор зарегистрирован.")
+        print("Першого адміністратора зареєстровано.")
     else:
-        print("Этот администратор уже зарегистрирован.")
+        print("Цього адміністратора вже зареєстровано.")
 
 
 if __name__ == "__main__":

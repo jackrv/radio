@@ -210,9 +210,9 @@ def test_fix_callback_shows_copy_text_button():
         if button.get("copy_text")
     )
 
-    assert copy_button["text"] == "📋 Скопировать текст"
+    assert copy_button["text"] == "📋 Скопіювати текст"
     assert copy_button["copy_text"]["text"] == original
-    assert "Отмена" in buttons[-1]["text"]
+    assert "Скасувати" in buttons[-1]["text"]
 
 
 def test_empty_message_keeps_pending_correction():

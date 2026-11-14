@@ -19,11 +19,11 @@ def main():
 
     if not token:
         raise SystemExit(
-            "TELEGRAM_BOT_TOKEN отсутствует в .env"
+            "TELEGRAM_BOT_TOKEN відсутній у .env"
         )
 
     if not db_path.is_file():
-        raise SystemExit("Рабочая SQLite не найдена")
+        raise SystemExit("Робочу SQLite не знайдено")
 
     with get_db(db_path) as db:
         row = db.execute("""
@@ -34,15 +34,15 @@ def main():
 
     if not row or row[0] == 0:
         raise SystemExit(
-            "Нет активного администратора. "
-            "Сначала выполни bootstrap_admin."
+            "Немає активного адміністратора. "
+            "Спочатку виконайте bootstrap_admin."
         )
 
     app = create_app(db_path, token)
 
     print("Radio 345 API")
     print("Адрес: http://127.0.0.1:8765")
-    print("Доступ: только локальный компьютер")
+    print("Доступ: лише локальний комп’ютер")
 
     uvicorn.run(
         app,

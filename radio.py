@@ -10,7 +10,7 @@ import logging
 import sqlite3
 import time
 from core.log_security import configure_logging
-import queue
+from core.diagnostics import runtime as diagnostics
 import shutil
 
 from core.transcriber_factory import build_transcriber
@@ -96,7 +96,7 @@ telegram_service = TelegramService(
 # ---------- Утилиты ----------
 def on_audio(indata, frame_count, time_info, status):
     if status:
-        log.warning("Статус аудиопотока: %s", status)
+        log.warning("Стан аудіопотоку: %s", status)
     frames.put(apply_gain(indata, GAIN))
 
 
@@ -122,10 +122,10 @@ def transcriber():
 
     if not (BOT_TOKEN and CHAT_ID):
         log.warning(
-            "Telegram выключен: не заданы TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в .env"
+            "Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN і TELEGRAM_CHAT_ID у .env"
         )
 
-    log.info("Слушаю эфир... (Ctrl+C для выхода)")
+    log.info("Слухаю ефір... (Ctrl+C для виходу)")
     worker.run()
 
 
@@ -138,12 +138,13 @@ def load_dictionaries():
 
 
 def main():
+    diagnostics.configure(config.BASE_DIR / "diagnostics.json")
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
     load_dictionaries()
     bot_state.enable_persistence(DB_PATH)
     log.info(
-        "Режим Telegram восстановлен: %s",
+        "Режим Telegram відновлено: %s",
         bot_state.get_notify_mode(),
     )
 
@@ -167,15 +168,15 @@ def main():
             )["pause_requested"]
         except sqlite3.Error:
             log.exception(
-                "Не удалось проверить команду паузы. "
-                "Приём временно приостанавливается."
+                "Не вдалося перевірити команду паузи. "
+                "Приймання тимчасово призупиняється."
             )
             cached_pause = True
 
         return cached_pause
 
     if not shutil.which("ffmpeg"):
-        log.warning("Утилита ffmpeg не найдена в системе! Конвертация в OGG работать не будет.")
+        log.warning("Утиліту ffmpeg не знайдено в системі! Конвертація в OGG не працюватиме.")
 
     supervisor = ApplicationSupervisor(
         frames=frames,
@@ -207,6 +208,7 @@ def main():
         supervisor.run()
     finally:
         telegram_service.shutdown(timeout=10.0)
+        diagnostics.flush(force=True)
 
 
 if __name__ == "__main__":

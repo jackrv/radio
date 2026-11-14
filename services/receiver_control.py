@@ -73,13 +73,13 @@ def set_pause_minutes(
     if type(minutes) is not int or not (
         0 <= minutes <= MAX_PAUSE_MINUTES
     ):
-        raise ValueError("Пауза должна быть от 0 до 240 минут")
+        raise ValueError("Пауза має бути від 0 до 240 хвилин")
 
     if expected_revision is not None and (
         type(expected_revision) is not int
         or expected_revision < 0
     ):
-        raise ValueError("Некорректная версия команды")
+        raise ValueError("Некоректна версія команди")
 
     now = time.time() if now is None else float(now)
 
@@ -101,7 +101,7 @@ def set_pause_minutes(
             and expected_revision != current
         ):
             raise PauseVersionConflict(
-                "Состояние приёмника изменилось"
+                "Стан приймача змінився"
             )
 
         if minutes == 0:

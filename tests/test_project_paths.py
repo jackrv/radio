@@ -133,7 +133,7 @@ def test_factory_uses_configured_db_for_word_corrections(
     )
 
     # Все аргументы указаны по именам.
-    # Ошибка с лишним Mock() теперь исключена.
+    # Помилка с лишним Mock() теперь исключена.
     factory.build_transcriber(
         config=settings,
         segments=Mock(),

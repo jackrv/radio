@@ -9,6 +9,7 @@ import sounddevice as sd
 from core.vad import VADSegmenter
 from core.queue_monitor import QueueDropMonitor
 from core.restart_policy import RestartPolicy
+from core.diagnostics import runtime
 
 
 @contextmanager
@@ -160,7 +161,7 @@ class ApplicationSupervisor:
                     self.runtime_state.set("paused")
 
                 paused = True
-                self.log.info("⏸ Приём приостановлен: микрофон закрыт")
+                self.log.info("⏸ Приймання призупинено: мікрофон закрито")
 
             else:
                 # После ошибки открытия не повторяем попытку
@@ -215,7 +216,7 @@ class ApplicationSupervisor:
 
                 if was_paused:
                     self.log.info(
-                        "▶️ Приём возобновлён: микрофон открыт"
+                        "▶️ Приймання відновлено: мікрофон відкрито"
                     )
 
         with ignore_repeated_sigint() as stop_requested, self.heartbeat_context():
@@ -240,6 +241,7 @@ class ApplicationSupervisor:
                 telegram_restart_exhausted_logged = False
                 while not stop_requested.is_set():
                     if transcriber_thread.is_alive():
+                        runtime.gauge("workers.transcriber_alive", True)
                         if (
                             restart_policy.attempts > 0
                             and restart_policy.clock() - transcriber_started_at >= 1800.0
@@ -247,11 +249,12 @@ class ApplicationSupervisor:
                             restart_policy.reset()
                             restart_exhausted_logged = False
                             self.log.info(
-                                "Счётчик перезапусков Whisper сброшен после 30 минут работы"
+                                "Лічильник перезапусків Whisper скинуто після 30 хвилин роботи"
                             )
                     else:
+                        runtime.gauge("workers.transcriber_alive", False)
                         if not transcriber_error_logged:
-                            self.log.error("Поток распознавания неожиданно завершился")
+                            self.log.error("Потік розпізнавання несподівано завершився")
                             transcriber_error_logged = True
 
                         if restart_policy.should_restart():
@@ -262,32 +265,35 @@ class ApplicationSupervisor:
                                 )
                                 new_thread.start()
                             except Exception:
-                                self.log.exception("Ошибка перезапуска Whisper")
+                                self.log.exception("Помилка перезапуску Whisper")
                             else:
                                 transcriber_thread = new_thread
+                                runtime.count("workers.transcriber_restarted")
                                 transcriber_started_at = restart_policy.clock()
                                 transcriber_error_logged = False
                                 self.log.info(
-                                    "Поток Whisper перезапущен, попытка %d",
+                                    "Потік Whisper перезапущено, спроба %d",
                                     restart_policy.attempts,
                                 )
 
                         elif restart_policy.exhausted and not restart_exhausted_logged:
-                            self.log.critical("Исчерпаны попытки перезапуска Whisper")
+                            self.log.critical("Вичерпано спроби перезапуску Whisper")
                             restart_exhausted_logged = True
-                            raise RuntimeError("Исчерпаны попытки перезапуска Whisper")
+                            raise RuntimeError("Вичерпано спроби перезапуску Whisper")
                     if telegram_thread is not None:
                         if telegram_thread.is_alive():
+                            runtime.gauge("workers.telegram_alive", True)
                             if (
                                 telegram_restart_policy.attempts > 0
                                 and telegram_restart_policy.clock() - telegram_started_at >= 1800.0
                             ):
                                 telegram_restart_policy.reset()
                                 telegram_restart_exhausted_logged = False
-                                self.log.info("Счётчик перезапусков Telegram сброшен после 30 минут работы")
+                                self.log.info("Лічильник перезапусків Telegram скинуто після 30 хвилин роботи")
                         else:
+                            runtime.gauge("workers.telegram_alive", False)
                             if not telegram_error_logged:
-                                self.log.error("Поток Telegram неожиданно завершился")
+                                self.log.error("Потік Telegram несподівано завершився")
                                 telegram_error_logged = True
 
                             if telegram_restart_policy.should_restart():
@@ -298,13 +304,14 @@ class ApplicationSupervisor:
                                     )
                                     new_telegram_thread.start()
                                 except Exception:
-                                    self.log.exception("Ошибка перезапуска Telegram")
+                                    self.log.exception("Помилка перезапуску Telegram")
                                 else:
                                     telegram_thread = new_telegram_thread
+                                    runtime.count("workers.telegram_restarted")
                                     telegram_started_at = telegram_restart_policy.clock()
                                     telegram_error_logged = False
                                     self.log.info(
-                                        "Поток Telegram перезапущен, попытка %d",
+                                        "Потік Telegram перезапущено, спроба %d",
                                         telegram_restart_policy.attempts,
                                     )
 
@@ -312,7 +319,7 @@ class ApplicationSupervisor:
                                 telegram_restart_policy.exhausted
                                 and not telegram_restart_exhausted_logged
                             ):
-                                self.log.critical("Исчерпаны попытки перезапуска Telegram")
+                                self.log.critical("Вичерпано спроби перезапуску Telegram")
                                 telegram_restart_exhausted_logged = True
                     requested_pause = (
                         bool(self.pause_checker())
@@ -347,10 +354,10 @@ class ApplicationSupervisor:
                     monitor.check()
 
                 if stop_requested.is_set():
-                    self.log.info("Остановлено пользователем.")
+                    self.log.info("Зупинено користувачем.")
 
             except KeyboardInterrupt:
-                self.log.info("Остановлено пользователем.")
+                self.log.info("Зупинено користувачем.")
             finally:
                 if self.pause_gate is not None:
                     self.pause_gate.set_paused(True)

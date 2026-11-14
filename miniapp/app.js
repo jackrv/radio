@@ -30,12 +30,12 @@ if (webApp) {
     webApp.ready();
     webApp.expand();
   } catch (_) {
-    // Локальный предпросмотр работает и без клиента Telegram.
+    // Локальний перегляд працює й без клієнта Telegram.
   }
 }
 
 document.getElementById("platform-label").textContent =
-  webApp?.initData ? "Telegram Mini App · API ожидается" : "Локальный предпросмотр · без авторизации";
+  webApp?.initData ? "Telegram Mini App · очікуємо API" : "Локальний перегляд · без авторизації";
 
 const initialView = new URLSearchParams(window.location.search).get("view");
 if (initialView) showView(initialView);

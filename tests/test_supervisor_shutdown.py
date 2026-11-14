@@ -46,4 +46,4 @@ def test_supervisor_stops_after_first_sigint():
     supervisor.run()
 
     supervisor.frames.get.assert_called_once()
-    log.info.assert_any_call("Остановлено пользователем.")
+    log.info.assert_any_call("Зупинено користувачем.")

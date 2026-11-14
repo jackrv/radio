@@ -89,7 +89,7 @@ def create_app(db_path, bot_token):
         ):
             raise HTTPException(
                 status_code=401,
-                detail="Требуется авторизация Telegram",
+                detail="Потрібна авторизація Telegram",
             )
 
         try:
@@ -103,7 +103,7 @@ def create_app(db_path, bot_token):
         except TelegramAuthError:
             raise HTTPException(
                 status_code=401,
-                detail="Недействительная авторизация Telegram",
+                detail="Недійсна авторизація Telegram",
             ) from None
 
         try:
@@ -116,12 +116,12 @@ def create_app(db_path, bot_token):
         except PermissionError:
             raise HTTPException(
                 status_code=403,
-                detail="Доступ запрещён",
+                detail="Доступ заборонено",
             ) from None
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="База пользователей недоступна",
+                detail="База користувачів недоступна",
             ) from None
 
         return {
@@ -140,7 +140,7 @@ def create_app(db_path, bot_token):
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="Состояние приёмника недоступно",
+                detail="Стан приймача недоступний",
             ) from None
 
         return {
@@ -156,12 +156,12 @@ def create_app(db_path, bot_token):
         except PermissionError:
             raise HTTPException(
                 status_code=403,
-                detail="Недостаточно прав",
+                detail="Недостатньо прав",
             ) from None
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="База пользователей недоступна",
+                detail="База користувачів недоступна",
             ) from None
 
     @app.get("/api/corrections/draft")
@@ -173,7 +173,7 @@ def create_app(db_path, bot_token):
         try:
             return load_edit_draft(db_path, fix_id)
         except LookupError:
-            raise HTTPException(status_code=404, detail="Событие не найдено") from None
+            raise HTTPException(status_code=404, detail="Подію не знайдено") from None
         except sqlite3.Error:
             raise HTTPException(status_code=503, detail="База недоступна") from None
 
@@ -193,12 +193,12 @@ def create_app(db_path, bot_token):
         except CorrectionConflict:
             raise HTTPException(
                 status_code=409,
-                detail="Текст уже изменён. Открой редактор заново.",
+                detail="Текст уже змінено. Відкрий редактор знову.",
             ) from None
         except LookupError:
-            raise HTTPException(status_code=404, detail="Событие не найдено") from None
+            raise HTTPException(status_code=404, detail="Подію не знайдено") from None
         except ValueError:
-            raise HTTPException(status_code=422, detail="Некорректный текст") from None
+            raise HTTPException(status_code=422, detail="Некоректний текст") from None
         except sqlite3.Error:
             raise HTTPException(status_code=503, detail="База недоступна") from None
 
@@ -211,7 +211,7 @@ def create_app(db_path, bot_token):
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="Настройки недоступны",
+                detail="Налаштування недоступні",
             ) from None
 
         return {"mode": mode}
@@ -228,7 +228,7 @@ def create_app(db_path, bot_token):
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="Не удалось сохранить настройки",
+                detail="Не вдалося зберегти налаштування",
             ) from None
 
         return {"mode": payload.mode}
@@ -240,7 +240,7 @@ def create_app(db_path, bot_token):
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="Управление приёмником недоступно",
+                detail="Керування приймачем недоступне",
             ) from None
 
     @app.put("/api/receiver/control")
@@ -260,14 +260,14 @@ def create_app(db_path, bot_token):
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Состояние приёмника изменилось. "
-                    "Обновите данные перед повторной командой."
+                    "Стан приймача змінився. "
+                    "Оновіть дані перед повторною командою."
                 ),
             ) from None
         except sqlite3.Error:
             raise HTTPException(
                 status_code=503,
-                detail="Не удалось сохранить команду",
+                detail="Не вдалося зберегти команду",
             ) from None
 
     app.include_router(management_router(db_path, current_user, require_settings_permission, bot_token))

@@ -24,23 +24,23 @@
     const paused = state === "paused";
 
     receiver.textContent = listening
-      ? "Слушает эфир"
-      : paused ? "Приём на паузе" : "Приём остановлен";
+      ? "Слухає ефір"
+      : paused ? "Приймання призупинено" : "Приймання зупинено";
 
     hero.textContent = listening
-      ? "● Приём активен"
-      : paused ? "● Микрофон закрыт" : "● Нет активного приёма";
+      ? "● Приймання активне"
+      : paused ? "● Мікрофон закрито" : "● Немає активного приймання";
 
     hero.style.background = listening
       ? "#36564e" : paused ? "#60502d" : "#33404e";
 
     description.textContent = listening
-      ? "Аудиопоток Radio 345 работает"
+      ? "Аудіопотік Radio 345 працює"
       : paused
-        ? "Приём приостановлен, ожидается возобновление"
-        : "Приёмник отключён или не отвечает";
+        ? "Приймання призупинено, очікуємо відновлення"
+        : "Приймач вимкнено або не відповідає";
 
-    updated.textContent = new Date().toLocaleTimeString("ru-RU");
+    updated.textContent = new Date().toLocaleTimeString("uk-UA");
   }
 
   async function getJSON(path) {
@@ -61,12 +61,12 @@
 
     try {
       const data = await getJSON("/api/status");
-      connection("API подключён", true);
+      connection("API підключено", true);
       showReceiver(data.receiver);
     } catch (error) {
-      connection("Ошибка соединения");
-      receiver.textContent = "Нет соединения";
-      hero.textContent = "● API недоступен";
+      connection("Помилка соединения");
+      receiver.textContent = "Немає з’єднання";
+      hero.textContent = "● API недоступний";
       description.textContent = error.message;
     } finally {
       busy = false;
@@ -75,22 +75,22 @@
 
   async function start() {
     if (!telegram?.initData) {
-      connection("Нет авторизации");
-      receiver.textContent = "Открой в Telegram";
+      connection("Немає авторизації");
+      receiver.textContent = "Відкрий у Telegram";
       description.textContent =
-        "Для подключения нужен запуск через кнопку бота.";
+        "Для підключення потрібен запуск через кнопку бота.";
       return;
     }
 
-    connection("Авторизация...");
+    connection("Авторизація...");
 
     try {
       const me = await window.Radio345.user();
 
       const roles = {
-        admin: "Администратор",
+        admin: "Адміністратор",
         editor: "Редактор",
-        viewer: "Наблюдатель"
+        viewer: "Спостерігач"
       };
 
       platform.textContent =
@@ -106,8 +106,8 @@
         }
       });
     } catch (error) {
-      connection("Доступ не подтверждён");
-      receiver.textContent = "Нет доступа";
+      connection("Доступ не підтверджено");
+      receiver.textContent = "Немає доступу";
       description.textContent = error.message;
     }
   }

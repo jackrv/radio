@@ -275,7 +275,7 @@ test("adding a dictionary row focuses and reveals the new final row", async () =
   assert.equal(row.children[1].focused, true);
   assert.equal(row.children[1].scrolled.block, "center");
   assert.equal(row.classList.contains("dictionary-row-new"), true);
-  assert.match(get("dictionary-feedback").textContent, /Новая строка добавлена/);
+  assert.match(get("dictionary-feedback").textContent, /Новий рядок додано/);
 });
 
 function keyboardFixture(nativeMethod) {
@@ -361,7 +361,7 @@ test("editor has its own player and preserves it after text is corrected", async
 test("editor explains when an old phrase has no linked audio", async () => {
   const { get } = await correctionFixture(false, false);
   assert.equal(get("editor-audio-load").disabled, true);
-  assert.match(get("editor-audio-feedback").textContent, /не привязано/);
+  assert.match(get("editor-audio-feedback").textContent, /не прив’язано/);
 });
 
 test("admin can assign a friendly user name", async () => {

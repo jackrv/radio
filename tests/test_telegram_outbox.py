@@ -110,5 +110,5 @@ def test_worker_survives_send_exception(caplog):
         service._outgoing_queue.join()
 
     assert len(attempts) == 2
-    assert "Ошибка фоновой отправки" in caplog.text
+    assert "Помилка фонового надсилання" in caplog.text
     assert service._outgoing_thread.is_alive()

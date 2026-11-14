@@ -68,7 +68,7 @@ def save_word_feedback(
     """
 
     if not isinstance(source_id, str) or not source_id.strip():
-        raise ValueError("Требуется идентификатор источника")
+        raise ValueError("Потрібен ідентифікатор джерела")
 
     changes = extract_word_changes(
         original_text, corrected_text
@@ -156,7 +156,7 @@ def load_active_word_rules(
         type(min_confirmations) is not int
         or min_confirmations < 1
     ):
-        raise ValueError("Некорректный порог подтверждений")
+        raise ValueError("Некоректний поріг підтверджень")
 
     with get_db(db_path) as db:
         rows = db.execute("""
@@ -194,7 +194,7 @@ def refresh_word_rule_statuses(
         type(min_confirmations) is not int
         or min_confirmations < 1
     ):
-        raise ValueError("Некорректный порог подтверждений")
+        raise ValueError("Некоректний поріг підтверджень")
 
     db.execute("""
         UPDATE word_corrections

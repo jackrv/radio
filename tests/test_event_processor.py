@@ -60,7 +60,7 @@ def test_all_mode_sends_notification():
         "Обычная фраза", None
     )
     telegram.notify.assert_called_once_with(
-        "Эфир", "", "", "Обычная фраза", b"pcm", fix_id="fix123"
+        "Ефір", "", "", "Обычная фраза", b"pcm", fix_id="fix123"
     )
     save_event.assert_not_called()
 
@@ -163,7 +163,7 @@ def test_sqlite_error_does_not_block_telegram():
         "SQLite database is locked"
     )
 
-    # Ошибка SQLite не должна прерывать обработку события.
+    # Помилка SQLite не должна прерывать обработку события.
     processor.process("Команда", b"pcm")
 
     save_event.assert_called_once()
@@ -175,10 +175,10 @@ def test_sqlite_error_does_not_block_telegram():
 
     # Telegram должен получить уведомление.
     telegram.notify.assert_called_once_with(
-        "Эфир", "", "", "Команда", b"pcm", fix_id="fix123"
+        "Ефір", "", "", "Команда", b"pcm", fix_id="fix123"
     )
 
-    # Ошибка SQLite должна попасть в журнал.
+    # Помилка SQLite должна попасть в журнал.
     log.exception.assert_called_once()
 
 
@@ -195,7 +195,7 @@ def test_telegram_error_does_not_affect_sqlite():
         "Telegram connection error"
     )
 
-    # Ошибка Telegram не должна выходить из EventProcessor.
+    # Помилка Telegram не должна выходить из EventProcessor.
     processor.process("Команда", b"pcm")
 
     # Запись в SQLite должна быть выполнена.
@@ -209,7 +209,7 @@ def test_telegram_error_does_not_affect_sqlite():
 
     telegram.notify.assert_called_once()
 
-    # Ошибка Telegram должна попасть в журнал.
+    # Помилка Telegram должна попасть в журнал.
     log.exception.assert_called_once()
 
 

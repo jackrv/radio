@@ -48,7 +48,7 @@ def test_token_hidden_in_traceback():
         logging.ERROR,
         __file__,
         1,
-        "Ошибка Telegram",
+        "Помилка Telegram",
         (),
         error_info,
     )

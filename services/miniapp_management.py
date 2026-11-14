@@ -35,7 +35,7 @@ def _dictionary(db, kind):
 
 def read_dictionary(db_path, kind):
     if kind not in DICTIONARY_FILES:
-        raise ValueError("Неизвестный словарь")
+        raise ValueError("Невідомий словник")
     with get_db(db_path) as db:
         return _dictionary(db, kind)
 
@@ -46,7 +46,7 @@ def validate_dictionary(entries, kind):
     for entry in entries:
         line = entry["raw_line"].strip()
         if not line or len(line) > 500 or any(ord(c) < 32 for c in line):
-            raise ValueError("Строка словаря должна содержать от 1 до 500 символов без переносов")
+            raise ValueError("Рядок словника має містити від 1 до 500 символів без перенесень")
         content = line.split("#", 1)[0].strip()
         if content:
             # The recognition parser supports one name with optional numeric groups.
@@ -55,41 +55,41 @@ def validate_dictionary(entries, kind):
                 parts = content.split()
                 head, tail = parts[0], " ".join(parts[1:])
             if not re.fullmatch(r"[^\W\d_]+(?:[’'ʼ-][^\W\d_]+)*", head.strip()):
-                raise ValueError("Название должно быть одним словом; номера указываются после него")
+                raise ValueError("Назва має бути одним словом; номери вказуються після неї")
             if colon and not tail.strip():
-                raise ValueError("После двоеточия укажи номера или *")
+                raise ValueError("Після двокрапки вкажи номери або *")
             if not colon and tail and not re.fullmatch(r"[0-9]{1,9}", tail):
-                raise ValueError("Для диапазонов и * используй двоеточие после названия")
+                raise ValueError("Для діапазонів і * використовуй двокрапку після назви")
             for number in re.split(r"[\s,;]+", tail.strip()):
                 if not number or number == "*":
                     continue
                 if not re.fullmatch(r"[0-9]{1,9}(?:-[0-9]{1,9})?", number):
-                    raise ValueError("Допустимы номера, диапазоны и *")
+                    raise ValueError("Допустимі номери, діапазони й *")
                 if "-" in number:
                     start, end = map(int, number.split("-"))
                     if not 0 <= end - start <= 10000:
-                        raise ValueError("Диапазон должен возрастать и содержать не более 10001 номера")
+                        raise ValueError("Діапазон має зростати й містити не більше 10001 номера")
                     expanded_numbers += end - start + 1
                 else:
                     expanded_numbers += 1
                 if expanded_numbers > 50000:
-                    raise ValueError("Словарь должен содержать не более 50000 номеров с учётом диапазонов")
+                    raise ValueError("Словник має містити не більше 50000 номерів з урахуванням діапазонів")
             if not colon and len(content.split()) > 2:
-                raise ValueError("Для нескольких номеров используй формат «позывной: 68 69»")
+                raise ValueError("Для кількох номерів використовуй формат «позивний: 68 69»")
         if entry["enabled"]:
             enabled.append(line)
     if kind == "callsigns" and not Callsigns.from_lines(enabled).names:
-        raise ValueError("Нельзя оставлять приёмник без включённых позывных")
+        raise ValueError("Не можна залишати приймач без увімкнених позивних")
 
 
 def write_dictionary(db_path, actor_id, kind, entries, expected_version):
     if kind not in DICTIONARY_FILES:
-        raise ValueError("Неизвестный словарь")
+        raise ValueError("Невідомий словник")
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")
         _require_permission(db, actor_id, "dictionaries.write")
         if _dictionary(db, kind)["version"] != expected_version:
-            raise ManagementConflict("Словарь изменился. Обнови его перед сохранением.")
+            raise ManagementConflict("Словник змінився. Онови його перед збереженням.")
         validate_dictionary(entries, kind)
         # No other table references these row IDs; the ordered dictionary is one unit.
         db.execute("DELETE FROM dictionary_entries WHERE dictionary_type = ?", (kind,))
@@ -151,9 +151,9 @@ def toggle_rule(db_path, actor_id, rule_id, disabled, expected_version):
             (rule_id,),
         ).fetchone()
         if row is None:
-            raise LookupError("Правило не найдено")
+            raise LookupError("Правило не знайдено")
         if version(row) != expected_version:
-            raise ManagementConflict("Правило изменилось. Обнови список.")
+            raise ManagementConflict("Правило змінилося. Онови список.")
         db.execute("UPDATE word_corrections SET status = ? WHERE id = ?",
                    ("disabled" if disabled else "pending", rule_id))
         # Re-enabling never bypasses confirmation or conflict checks.
@@ -178,7 +178,7 @@ def list_users(db_path, actor_id):
 def write_user(db_path, actor_id, user_id, role, enabled, expected_version, display_name=None):
     _valid_id(user_id)
     if role not in ("admin", "editor", "viewer"):
-        raise ValueError("Неизвестная роль")
+        raise ValueError("Невідома роль")
     if display_name is not None:
         display_name = clean_name(display_name)
     with get_db(db_path) as db:
@@ -189,11 +189,11 @@ def write_user(db_path, actor_id, user_id, role, enabled, expected_version, disp
                          (user_id,)).fetchone()
         profile = db.execute("SELECT display_name FROM telegram_user_profiles WHERE user_id=?", (user_id,)).fetchone()
         if (version((*row, profile[0] if profile else "")) if row else None) != expected_version:
-            raise ManagementConflict("Пользователь изменился. Обнови список.")
+            raise ManagementConflict("Користувач змінився. Онови список.")
         if row and row[1:] == ("admin", 1) and (role != "admin" or not enabled):
             admins = db.execute("SELECT COUNT(*) FROM telegram_users WHERE role='admin' AND enabled=1").fetchone()[0]
             if admins <= 1:
-                raise ValueError("Нельзя отключить или понизить последнего администратора")
+                raise ValueError("Не можна вимкнути або понизити останнього адміністратора")
         db.execute("""
             INSERT INTO telegram_users (user_id, role, enabled) VALUES (?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET role=excluded.role, enabled=excluded.enabled
@@ -230,7 +230,7 @@ def write_settings(db_path, actor_id, values, revision):
         db.execute("BEGIN IMMEDIATE")
         _require_permission(db, actor_id, "settings.write")
         if _settings(db)["revision"] != revision:
-            raise ManagementConflict("Настройки изменились. Обнови страницу.")
+            raise ManagementConflict("Налаштування змінилися. Онови сторінку.")
         db.execute("""INSERT INTO recognition_settings (id, values_json, revision) VALUES (1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET values_json=excluded.values_json, revision=excluded.revision
         """, (json.dumps(values), revision + 1))

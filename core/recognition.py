@@ -1,5 +1,6 @@
 import numpy as np
 import mlx_whisper
+from core.diagnostics import runtime
 
 
 class WhisperRecognizer:
@@ -15,12 +16,19 @@ class WhisperRecognizer:
 
     def warmup(self):
         """Прогревает модель на секунде тишины."""
-        self.log.info("Загружаю Whisper (%s)...", self.model_repo)
-        self.transcribe_fn(
-            np.zeros(self.sample_rate, dtype=np.float32),
-            path_or_hf_repo=self.model_repo,
-            language=self.language,
-        )
+        self.log.info("Завантажую Whisper (%s)...", self.model_repo)
+        runtime.gauge("models.whisper", "loading")
+        try:
+            with runtime.timed("asr.whisper_warmup"):
+                self.transcribe_fn(
+                    np.zeros(self.sample_rate, dtype=np.float32),
+                    path_or_hf_repo=self.model_repo,
+                    language=self.language,
+                )
+        except Exception:
+            runtime.gauge("models.whisper", "failed")
+            raise
+        runtime.gauge("models.whisper", "ready")
 
     def transcribe(self, audio):
         """Распознаёт аудио с исходными параметрами проекта."""

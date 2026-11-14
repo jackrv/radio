@@ -6,7 +6,7 @@ class DropOldestQueue(queue.Queue):
 
     def __init__(self, maxsize: int):
         if maxsize <= 0:
-            raise ValueError("maxsize должен быть больше нуля")
+            raise ValueError("maxsize має бути більшим за нуль")
 
         super().__init__(maxsize=maxsize)
         self._dropped = 0
@@ -20,7 +20,7 @@ class DropOldestQueue(queue.Queue):
     def put(self, item, block=True, timeout=None):
         """Добавляет элемент без ожидания свободного места."""
         if timeout is not None and timeout < 0:
-            raise ValueError("timeout не может быть отрицательным")
+            raise ValueError("timeout не може бути від’ємним")
 
         with self.not_full:
             if self._qsize() >= self.maxsize:

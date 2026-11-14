@@ -39,3 +39,7 @@ telegram.txt
 
 vosk-model-*/
 telegram_failed_updates.jsonl
+diagnostics.json
+diagnostics-report.json
+.radio-diagnostics-*
+.local-backups/

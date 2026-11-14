@@ -1,3 +1,6 @@
+from core.diagnostics import runtime
+
+
 def build_llm_corrector(
     use_llm,
     llm_repo,
@@ -6,14 +9,17 @@ def build_llm_corrector(
     log,
 ):
     if not use_llm:
+        runtime.gauge("models.qwen", "disabled")
         return None
 
     try:
         from mlx_lm import generate, load
 
-        log.info("Загружаю LLM для коррекции текста (%s)...", llm_repo)
+        log.info("Завантажую LLM для корекції тексту (%s)...", llm_repo)
 
-        llm_model, tokenizer = load(llm_repo)
+        runtime.gauge("models.qwen", "loading")
+        with runtime.timed("asr.qwen_load"):
+            llm_model, tokenizer = load(llm_repo)
         known_vocab = ", ".join(
             sorted(set(callsigns.names) | set(commands.names))
         )
@@ -57,15 +63,18 @@ def build_llm_corrector(
                 cleaned = response.strip().strip('"').strip("'")
                 return cleaned if cleaned else raw_text
             except Exception:
-                log.exception("Ошибка LLM-коррекции; использую исходный текст")
+                runtime.count("llm.generation_error")
+                log.exception("Помилка LLM-корекції; використовую початковий текст")
                 return raw_text
 
-        log.info("LLM успешно загружена.")
+        log.info("LLM успішно завантажено.")
+        runtime.gauge("models.qwen", "ready")
         return correct
 
     except Exception as e:
+        runtime.gauge("models.qwen", "failed")
         log.error(
-            "Не удалось загрузить LLM (%s), работаю без нее.",
+            "Не вдалося завантажити LLM (%s), працюю без неї.",
             e,
         )
         return None

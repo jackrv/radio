@@ -1,4 +1,4 @@
-"""Состояние приёмника между процессами Radio 345 и API."""
+"""Состояние приймача между процессами Radio 345 и API."""
 
 import logging
 import sqlite3
@@ -8,6 +8,7 @@ import uuid
 from contextlib import contextmanager
 
 from services.sqlite_connection import get_db
+from core.diagnostics import runtime
 
 
 
@@ -20,7 +21,7 @@ class ReceiverRuntimeState:
 
     def set(self, state):
         if state not in ("listening", "paused", "stopped"):
-            raise ValueError("Недопустимое состояние приёмника")
+            raise ValueError("Неприпустимий стан приймача")
         with self._lock:
             self._state = state
 
@@ -45,7 +46,7 @@ def record_heartbeat(db_path, instance_id, *, now=None, state="listening"):
     timestamp = time.time() if now is None else float(now)
 
     if state not in ("listening", "paused", "stopped"):
-        raise ValueError("Недопустимое состояние heartbeat")
+        raise ValueError("Неприпустимий стан heartbeat")
 
     with get_db(db_path) as db:
         db.execute("""
@@ -112,7 +113,7 @@ def receiver_heartbeat(db_path, log=None, interval=2.0, state_provider=None):
         init_receiver_db(db_path)
         record_heartbeat(db_path, instance_id, state=state_provider())
     except sqlite3.Error:
-        log.exception("Не удалось запустить монитор состояния")
+        log.exception("Не вдалося запустити монітор стану")
         yield
         return
 
@@ -120,8 +121,9 @@ def receiver_heartbeat(db_path, log=None, interval=2.0, state_provider=None):
         while not stop_event.wait(interval):
             try:
                 record_heartbeat(db_path, instance_id, state=state_provider())
+                runtime.flush()
             except sqlite3.Error:
-                log.exception("Ошибка обновления состояния приёмника")
+                log.exception("Помилка оновлення стану приймача")
 
     thread = threading.Thread(
         target=update,
@@ -139,4 +141,4 @@ def receiver_heartbeat(db_path, log=None, interval=2.0, state_provider=None):
         try:
             mark_stopped(db_path, instance_id)
         except sqlite3.Error:
-            log.exception("Ошибка сохранения остановки приёмника")
+            log.exception("Помилка збереження зупинки приймача")

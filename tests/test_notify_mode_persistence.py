@@ -76,7 +76,7 @@ def test_invalid_saved_mode_falls_back_to_all(
         restarted.enable_persistence(path)
 
     assert restarted.get_notify_mode() == "all"
-    assert "Недопустимый сохранённый режим" in caplog.text
+    assert "Неприпустимий збережений режим" in caplog.text
 
 
 def test_invalid_mode_rejected_without_db_change(tmp_path):

@@ -30,8 +30,8 @@ class BotState:
             )
         except sqlite3.Error:
             logging.getLogger("radio").exception(
-                "Не удалось прочитать режим уведомлений. "
-                "Автоматическая отправка временно отключена."
+                "Не вдалося прочитати режим сповіщень. "
+                "Автоматичне надсилання тимчасово вимкнено."
             )
             return "off"
 
@@ -51,7 +51,7 @@ class BotState:
 
         if mode not in VALID_MODES:
             raise ValueError(
-                f"Недопустимый режим уведомлений: {mode!r}"
+                f"Неприпустимий режим сповіщень: {mode!r}"
             )
 
         # При ошибке SQLite значение в памяти не меняется.

@@ -81,7 +81,7 @@ def read_expected_api_url() -> str | None:
 def valid_https_endpoint(url: str) -> str:
     """Validate an HTTPS endpoint before putting it in a public page."""
     if not isinstance(url, str):
-        raise ValueError("HTTPS URL должен быть строкой")
+        raise ValueError("HTTPS URL має бути рядком")
     parsed = urlsplit(url.strip())
     if (
         parsed.scheme != "https"
@@ -96,7 +96,7 @@ def valid_https_endpoint(url: str) -> str:
         or parsed.query or parsed.fragment
         or len(url) > 255
     ):
-        raise ValueError("Некорректный HTTPS URL ngrok")
+        raise ValueError("Некоректний HTTPS URL ngrok")
     return f"https://{parsed.hostname.lower()}"
 
 
@@ -110,7 +110,7 @@ def update_miniapp_api_url(actual_url: str) -> bool:
     )
     matches = list(pattern.finditer(html))
     if len(matches) != 1:
-        raise RuntimeError("В miniapp/index.html должен быть ровно один meta radio345-api")
+        raise RuntimeError("У miniapp/index.html має бути рівно один meta radio345-api")
     old_url = matches[0].group(2).rstrip("/")
     if old_url == actual_url:
         return False
@@ -129,7 +129,7 @@ def update_miniapp_api_url(actual_url: str) -> bool:
     finally:
         if temporary_name and os.path.exists(temporary_name):
             os.unlink(temporary_name)
-    output(f"Локальный Mini App API URL обновлён: {old_url} → {actual_url}")
+    output(f"Локальний URL API Mini App оновлено: {old_url} → {actual_url}")
     return True
 
 
@@ -143,27 +143,27 @@ def git(*args: str, timeout: int = 40) -> str:
     if run.returncode:
         # Never print full remote URLs/credentials that could appear in errors.
         raise RuntimeError(
-            f"Команда git {args[0]} завершилась с кодом {run.returncode}; "
-            "проверь git status и настройку доступа к origin вручную"
+            f"Команда git {args[0]} завершилася з кодом {run.returncode}; "
+            "перевірте git status і налаштування доступу до origin вручну"
         )
     return run.stdout.strip()
 
 
 def check_pages_publish_ready() -> None:
     if not shutil.which("git"):
-        raise RuntimeError("git не найден в PATH")
+        raise RuntimeError("git не знайдено в PATH")
     if Path(git("rev-parse", "--show-toplevel")).resolve() != ROOT:
-        raise RuntimeError("Запускатель должен находиться в корне git-репозитория")
+        raise RuntimeError("Засіб запуску має бути в корені git-репозиторію")
     branch = git("branch", "--show-current")
     if branch != "main":
-        raise RuntimeError(f"Автопубликация разрешена только из ветки main (сейчас {branch!r})")
+        raise RuntimeError(f"Автопублікацію дозволено лише з гілки main (зараз {branch!r})")
     # Do not publish unrelated tracked/staged work. An earlier launcher run may
     # already have changed just the API URL in index.html; that is safe to reuse.
     if git("diff", "--cached", "--name-only"):
-        raise RuntimeError("Есть staged-изменения; не публикую автоматически")
+        raise RuntimeError("Є staged-зміни; автоматичну публікацію скасовано")
     changed_paths = git("diff", "--name-only").splitlines()
     if changed_paths and changed_paths != ["miniapp/index.html"]:
-        raise RuntimeError("Есть изменения кроме Mini App URL; не публикую автоматически")
+        raise RuntimeError("Є зміни, крім URL Mini App; автоматичну публікацію скасовано")
     if changed_paths:
         from_head = git("show", "HEAD:miniapp/index.html")
         current = (ROOT / "miniapp" / "index.html").read_text(encoding="utf-8")
@@ -175,10 +175,10 @@ def check_pages_publish_ready() -> None:
             or len(meta_pattern.findall(current)) != 1
             or meta_pattern.sub(r"\1API_URL\3", from_head).rstrip("\n") != meta_pattern.sub(r"\1API_URL\3", current).rstrip("\n")
         ):
-            raise RuntimeError("index.html изменён не только в URL; не публикую автоматически")
+            raise RuntimeError("index.html змінено не лише в URL; автоматичну публікацію скасовано")
     git("fetch", "origin", "main", timeout=60)
     if git("rev-parse", "HEAD") != git("rev-parse", "refs/remotes/origin/main"):
-        raise RuntimeError("Локальная ветка и origin/main различаются; синхронизируй их вручную")
+        raise RuntimeError("Локальна гілка та origin/main відрізняються; синхронізуйте їх вручну")
 
 
 def publish_miniapp_url() -> None:
@@ -187,7 +187,7 @@ def publish_miniapp_url() -> None:
     # --only prevents accidental inclusion of other staged files.
     git("commit", "--only", "-m", "Radio 345: sync public API endpoint", "--", "miniapp/index.html")
     git("push", "origin", "main", timeout=90)
-    output("Новый URL отправлен в GitHub. GitHub Actions опубликует обновление Mini App")
+    output("Новий URL надіслано в GitHub. GitHub Actions опублікує оновлення Mini App")
 
 
 def wait_for_pages_url(expected_url: str, timeout_seconds: float = 90.0) -> bool:
@@ -253,7 +253,7 @@ class ManagedProcess:
         )
         self.reader = threading.Thread(target=self._read_output, daemon=True)
         self.reader.start()
-        output(f"Запущен {name} (PID {self.process.pid})")
+        output(f"Запущено {name} (PID {self.process.pid})")
 
     def _read_output(self) -> None:
         if self.process.stdout is None:
@@ -273,13 +273,13 @@ class ManagedProcess:
         try:
             proc.wait(timeout=graceful_seconds)
         except subprocess.TimeoutExpired:
-            output(f"{self.name} не завершился; завершаю принудительно")
+            output(f"{self.name} не завершився; завершую примусово")
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             proc.wait()
-        output(f"Остановлен {self.name}")
+        output(f"Зупинено {self.name}")
 
 
 def wait_for_api(api: ManagedProcess, deadline_seconds: float = 15.0) -> None:
@@ -287,13 +287,13 @@ def wait_for_api(api: ManagedProcess, deadline_seconds: float = 15.0) -> None:
     while time.monotonic() < deadline:
         if api.process.poll() is not None:
             raise RuntimeError(
-                f"FastAPI завершился с кодом {api.process.returncode}; см. лог [api]"
+                f"FastAPI завершився з кодом {api.process.returncode}; див. журнал [api]"
             )
         if api_reachable():
-            output("FastAPI отвечает на 127.0.0.1:8765 (401 без авторизации — норма)")
+            output("FastAPI відповідає на 127.0.0.1:8765 (401 без авторизації — норма)")
             return
         time.sleep(0.3)
-    raise RuntimeError("FastAPI не отвечает на порту 8765; см. лог [api]")
+    raise RuntimeError("FastAPI не відповідає на порту 8765; див. журнал [api]")
 
 
 def wait_for_ngrok(tunnel: ManagedProcess, deadline_seconds: float = 15.0) -> str | None:
@@ -301,7 +301,7 @@ def wait_for_ngrok(tunnel: ManagedProcess, deadline_seconds: float = 15.0) -> st
     while time.monotonic() < deadline:
         if tunnel.process.poll() is not None:
             raise RuntimeError(
-                f"ngrok завершился с кодом {tunnel.process.returncode}; см. лог [ngrok]"
+                f"ngrok завершився з кодом {tunnel.process.returncode}; див. журнал [ngrok]"
             )
         try:
             found = read_ngrok_https_url()
@@ -315,31 +315,31 @@ def wait_for_ngrok(tunnel: ManagedProcess, deadline_seconds: float = 15.0) -> st
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Radio 345: запуск и корректная остановка всех сервисов"
+        description="Radio 345: запуск і коректна зупинка всіх служб"
     )
     parser.add_argument(
         "--local-miniapp", action="store_true",
-        help="дополнительно запустить локальный просмотр Mini App на 127.0.0.1:8080",
+        help="додатково запустити локальний перегляд Mini App на 127.0.0.1:8080",
     )
     parser.add_argument(
         "--publish-pages", action="store_true",
         default=launcher_setting("RADIO345_AUTO_PUBLISH_PAGES") == "1",
-        help="обновить Mini App и сделать commit/push в main (или RADIO345_AUTO_PUBLISH_PAGES=1 в .env)",
+        help="оновити Mini App та зробити commit/push у main (або RADIO345_AUTO_PUBLISH_PAGES=1 у .env)",
     )
     parser.add_argument(
         "--ngrok-url", default=launcher_setting("RADIO345_NGROK_URL"),
-        help="постоянный HTTPS-домен ngrok (или RADIO345_NGROK_URL в .env)",
+        help="постійний HTTPS-домен ngrok (або RADIO345_NGROK_URL в .env)",
     )
     args = parser.parse_args()
 
     if not (ROOT / "radio.py").is_file() or not (ROOT / "api/local_server.py").is_file():
-        output("Ошибка: положи start_radio345.py в корень репозитория рядом с radio.py")
+        output("Помилка: покладіть start_radio345.py у корінь репозиторію поруч із radio.py")
         return 2
     if not (ROOT / ".env").is_file():
-        output("Ошибка: не найден .env (Telegram-токен должен оставаться локальным)")
+        output("Помилка: не знайдено .env (Telegram-токен має залишатися локальним)")
         return 2
     if not (ROOT / "events.db").is_file():
-        output("Ошибка: не найдена рабочая events.db; не создаю пустую базу")
+        output("Помилка: не знайдено робочу events.db; порожню базу не створено")
         return 2
     try:
         desired_ngrok_url = valid_https_endpoint(args.ngrok_url) if args.ngrok_url else None
@@ -348,7 +348,7 @@ def main() -> int:
         return 2
     ngrok_executable = shutil.which("ngrok")
     if not ngrok_executable:
-        output("Ошибка: ngrok не найден в PATH; проверь установку ngrok")
+        output("Помилка: ngrok не знайдено в PATH; перевірте встановлення ngrok")
         return 2
 
     ports = [(API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok")]
@@ -356,7 +356,7 @@ def main() -> int:
         ports.append((MINIAPP_PORT, "Mini App preview"))
     for port, name in ports:
         if port_busy(port):
-            output(f"Ошибка: порт {port} занят ({name}). Останови ранее запущенный сервис.")
+            output(f"Помилка: порт {port} зайнятий ({name}). Зупиніть раніше запущену службу.")
             return 2
 
     py = get_python()
@@ -376,11 +376,11 @@ def main() -> int:
         actual_url = wait_for_ngrok(tunnel)
         expected_url = read_expected_api_url()
         if not actual_url:
-            raise RuntimeError("ngrok не отдал HTTPS URL. Останавливаю запуск, чтобы не использовать неверный адрес")
+            raise RuntimeError("ngrok не повернув HTTPS URL. Запуск зупинено, щоб не використовувати неправильну адресу")
         actual_url = valid_https_endpoint(actual_url)
         output(f"HTTPS API ngrok: {actual_url}")
         if desired_ngrok_url and actual_url != desired_ngrok_url:
-            raise RuntimeError("ngrok открыл другой адрес вместо указанного постоянного домена")
+            raise RuntimeError("ngrok відкрив іншу адресу замість зазначеного постійного домену")
 
         # A previous run may already have changed local HTML while leaving
         # GitHub Pages untouched. Publish that single pending URL edit too.
@@ -393,18 +393,18 @@ def main() -> int:
         if expected_url != actual_url:
             update_miniapp_api_url(actual_url)
         else:
-            output("Адрес в локальном Mini App уже совпадает с ngrok")
+            output("Адреса в локальному Mini App вже збігається з ngrok")
 
         if args.publish_pages and (expected_url != actual_url or pending_local_url):
             publish_miniapp_url()
-            output("Проверяю публикацию GitHub Pages...")
+            output("Перевіряю публікацію GitHub Pages...")
             if wait_for_pages_url(actual_url):
-                output("✅ GitHub Pages использует актуальный адрес ngrok")
+                output("✅ GitHub Pages використовує актуальну адресу ngrok")
             else:
-                output("⚠️ Публикация ещё не подтверждена. Посмотри GitHub Actions")
+                output("⚠️ Публікацію ще не підтверджено. Перевірте GitHub Actions")
         elif expected_url != actual_url:
-            output("⚠️ Локальный URL обновлён, но GitHub Pages пока использует старый URL!")
-            output("  Перезапусти с --publish-pages или используй постоянный ngrok-домен")
+            output("⚠️ Локальний URL оновлено, але GitHub Pages поки використовує старий URL!")
+            output("  Перезапустіть з --publish-pages або використовуйте постійний домен ngrok")
 
         if args.local_miniapp:
             preview = ManagedProcess(
@@ -414,23 +414,23 @@ def main() -> int:
                 ]
             )
             processes.append(preview)
-            output("Локальный просмотр Mini App: http://127.0.0.1:8080")
+            output("Локальний перегляд Mini App: http://127.0.0.1:8080")
 
         radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")])
         processes.append(radio)
-        output("Все запрошенные процессы запущены. Ctrl+C — остановить их вместе.")
+        output("Усі запитані процеси запущено. Ctrl+C — зупинити їх разом.")
         while True:
             for item in processes:
                 exit_code = item.process.poll()
                 if exit_code is not None:
-                    output(f"⚠️ {item.name} завершился с кодом {exit_code}; останавливаю остальные")
+                    output(f"⚠️ {item.name} завершився з кодом {exit_code}; зупиняю решту")
                     return 1
             time.sleep(0.5)
     except KeyboardInterrupt:
-        output("Получен Ctrl+C. Останавливаю сервисы...")
+        output("Отримано Ctrl+C. Зупиняю служби...")
         return 0
     except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
-        output(f"Не удалось запустить Radio 345: {exc}")
+        output(f"Не вдалося запустити Radio 345: {exc}")
         return 1
     finally:
         # Сначала даём radio закрыть очередь Telegram, пока сеть ещё доступна.
@@ -441,10 +441,10 @@ def main() -> int:
                 try:
                     item.stop(graceful_seconds=18.0 if item.name == "radio" else 5.0)
                 except OSError:
-                    output(f"Не удалось остановить {item.name}; проверь процесс вручную")
+                    output(f"Не вдалося зупинити {item.name}; перевірте процес вручну")
         finally:
             signal.signal(signal.SIGINT, previous_handler)
-        output("Остановка завершена")
+        output("Зупинку завершено")
 
 
 if __name__ == "__main__":

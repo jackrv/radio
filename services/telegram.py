@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 import requests
 import collections
+from core.diagnostics import runtime, error_kind
 
 from services.event_store import resolve_event_text, save_correction
 from services.telegram_phrase_store import (
@@ -76,7 +77,7 @@ class TelegramService:
     def get_keyboard(self, fix_id=None):
         """Кнопки управления сообщением."""
         delete_data = f"del:{fix_id}" if fix_id and FIX_RE.fullmatch(fix_id) else "del"
-        row = [{"text": "🗑 Удалить", "callback_data": delete_data}]
+        row = [{"text": "🗑 Видалити", "callback_data": delete_data}]
         rows = [row]
         if fix_id is not None:
             if (
@@ -85,20 +86,20 @@ class TelegramService:
             ):
                 # Web App buttons are supported in private Telegram chats.
                 rows.append([{
-                    "text": "✏️ Исправить в редакторе",
+                    "text": "✏️ Виправити в редакторі",
                     "web_app": {
                         "url": "https://jackrv.github.io/radio/?fix_id="
                         + quote(fix_id, safe=""),
                     },
                 }])
                 rows.append([{
-                    "text": "💬 Исправить сообщением",
+                    "text": "💬 Виправити повідомленням",
                     "callback_data": f"fix_{fix_id}",
                 }])
             else:
                 # Legacy/in-memory fallback when persistent storage is unavailable.
                 row.append({
-                    "text": "✏️ Исправить",
+                    "text": "✏️ Виправити",
                     "callback_data": f"fix_{fix_id}",
                 })
         return json.dumps({"inline_keyboard": rows})
@@ -118,8 +119,7 @@ class TelegramService:
             data["reply_markup"] = reply_markup
 
         try:
-            r = requests.post(
-                f"{self.api}/sendMessage",
+            r = self._request("post", "sendMessage",
                 data=data,
                 timeout=15,
             )
@@ -135,7 +135,41 @@ class TelegramService:
                 except (TypeError, ValueError):
                     pass
         except requests.RequestException as e:
-            self.log.error("Telegram (текст) не отправлен: %s", e)
+            self.log.error("Telegram (текст) не надіслано: %s", e)
+
+    def _request(self, method, operation, **kwargs):
+        started = time.monotonic()
+        runtime.count(f"telegram.{operation}.attempts")
+        outcome = "interrupted"
+        try:
+            response = getattr(requests, method)(f"{self.api}/{operation}", **kwargs)
+            status = response.status_code
+            outcome = f"http_{status}" if type(status) is int else "unclassified"
+            runtime.count(f"telegram.{operation}.{outcome}")
+            if operation in ("sendVoice", "sendMessage") and status == 200:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    runtime.count(f"telegram.{operation}.invalid_json")
+                else:
+                    if isinstance(payload, dict) and type(payload.get("ok")) is bool:
+                        result = "api_confirmed" if payload["ok"] else "api_rejected"
+                        runtime.count(f"telegram.{operation}.{result}")
+                        runtime.count(f"telegram.{result}")
+            return response
+        except requests.RequestException as exc:
+            outcome = error_kind(exc)
+            runtime.count(f"telegram.{operation}.{outcome}")
+            if operation in ("sendVoice", "sendMessage"):
+                runtime.count("telegram.delivery_uncertain")
+            raise
+        finally:
+            elapsed = time.monotonic() - started
+            runtime.observe(f"telegram.{operation}", elapsed)
+            # No caption, user IDs, token, file IDs, URL or exception message.
+            logging.getLogger("radio.diagnostics").info(
+                "TG_DIAG operation=%s outcome=%s elapsed_s=%.3f", operation, outcome, elapsed,
+            )
 
     def _remember_sent(self, response, fix_id):
         if not fix_id:
@@ -146,7 +180,7 @@ class TelegramService:
                 remember_message(self.db_path, fix_id, payload.get("result"))
         except (sqlite3.Error, ValueError):
             # Do not retry an already sent message when local metadata fails.
-            self.log.warning("Не удалось сохранить связь сообщения Telegram с фразой")
+            self.log.warning("Не вдалося зберегти зв’язок повідомлення Telegram із фразою")
 
     def pcm_to_ogg(self, pcm: bytes) -> bytes:
         proc = subprocess.run(
@@ -178,10 +212,13 @@ class TelegramService:
         reply_markup = self.get_keyboard(fix_id)
 
         try:
-            ogg = self.pcm_to_ogg(pcm)
+            with runtime.timed("telegram.ogg_conversion"):
+                ogg = self.pcm_to_ogg(pcm)
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            runtime.count("telegram.conversion_failed")
+            runtime.count("telegram.text_fallback")
             self.log.warning(
-                "Конвертация в OGG не удалась (%s), отправляю текстом", e
+                "Конвертація в OGG не вдалася (%s), надсилаю текстом", e
             )
             if self._notifications_enabled():
                 self.send_text(caption, reply_markup, parse_mode=None)
@@ -194,8 +231,7 @@ class TelegramService:
                 return
 
             try:
-                r = requests.post(
-                    f"{self.api}/sendVoice",
+                r = self._request("post", "sendVoice",
                     data={
                         "chat_id": self.chat_id,
                         "caption": caption[:1000],
@@ -210,12 +246,14 @@ class TelegramService:
                 return
             except requests.RequestException as e:
                 self.log.warning(
-                    "Попытка %d/3 отправить голосовое не удалась: %s",
+                    "Спроба %d/3 надіслати голосове не вдалася: %s",
                     attempt, e,
                 )
                 if attempt == 3:
+                    runtime.count("telegram.voice_exhausted")
+                    runtime.count("telegram.text_fallback")
                     self.log.error(
-                        "Все попытки исчерпаны, отправляю резервным текстом"
+                        "Усі спроби вичерпано, надсилаю резервним текстом"
                     )
                     if self._notifications_enabled():
                         self.send_text(
@@ -238,7 +276,9 @@ class TelegramService:
                 return
 
             try:
-                item = self._outgoing_queue.get(timeout=0.2)
+                queued_at, item = self._outgoing_queue.get(timeout=0.2)
+                runtime.observe("telegram.queue_wait", time.monotonic() - queued_at)
+                runtime.gauge("telegram.queue_depth", self._outgoing_queue.qsize())
             except queue.Empty:
                 continue
 
@@ -246,12 +286,14 @@ class TelegramService:
                 if self._notifications_enabled():
                     self.send_voice(*item)
                 else:
+                    runtime.count("telegram.queue_discarded_off")
                     self.log.info(
-                        "Уведомление из очереди отброшено: режим OFF"
+                        "Сповіщення з черги відкинуто: режим OFF"
                     )
             except Exception:
+                runtime.count("telegram.worker_error")
                 self.log.exception(
-                    "Ошибка фоновой отправки Telegram"
+                    "Помилка фонового надсилання Telegram"
                 )
             finally:
                 self._outgoing_queue.task_done()
@@ -266,46 +308,54 @@ class TelegramService:
             thread.join(timeout=max(0.0, timeout))
 
         pending = self._outgoing_queue.unfinished_tasks
+        runtime.gauge("telegram.shutdown_pending", pending)
 
         if pending:
             self.log.warning(
-                "Telegram: завершение с %d неотправленными "
-                "или незавершёнными уведомлениями",
+                "Telegram: завершення з %d ненадісланими "
+                "або незавершеними сповіщеннями",
                 pending,
             )
             return False
 
-        self.log.info("Очередь Telegram обработана")
+        self.log.info("Чергу Telegram оброблено")
         return True
 
     def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None):
+        runtime.count("telegram.notify_requested")
         if not (self.bot_token and self.chat_id):
+            runtime.count("telegram.notify_unconfigured")
             return
 
         if not self._notifications_enabled():
+            runtime.count("telegram.notify_skipped_off")
             return
 
-        lines = [f"Событие: {watch_str}"]
+        lines = [f"Подія: {watch_str}"]
         if from_str or to_str:
-            lines.append(f"Кому: {to_str or '-'} | От: {from_str or '-'}")
+            lines.append(f"Кому: {to_str or '-'} | Від: {from_str or '-'}")
 
         caption = "\n".join(lines) + f"\n\n{text}"
 
         with self._outgoing_lock:
             if self._outgoing_stop.is_set():
+                runtime.count("telegram.notify_after_shutdown")
                 self.log.warning(
-                    "Telegram завершает работу: уведомление пропущено"
+                    "Telegram завершує роботу: сповіщення пропущено"
                 )
                 return
 
             try:
                 self._outgoing_queue.put_nowait(
-                    (pcm, caption, fix_id)
+                    (time.monotonic(), (pcm, caption, fix_id))
                 )
+                runtime.count("telegram.enqueued")
+                runtime.gauge("telegram.queue_depth", self._outgoing_queue.qsize())
             except queue.Full:
+                runtime.count("telegram.queue_overflow")
                 self.log.error(
                     "Очередь Telegram переполнена (32): "
-                    "новое уведомление пропущено"
+                    "новое сповіщення пропущено"
                 )
                 return
 
@@ -333,8 +383,8 @@ class TelegramService:
                 )
             except (sqlite3.Error, ValueError) as exc:
                 self.log.warning(
-                    "Не удалось сохранить временную фразу в SQLite: %s; "
-                    "используется исправление через чат", exc,
+                    "Не вдалося зберегти тимчасову фразу в SQLite: %s; "
+                    "використовується виправлення через чат", exc,
                 )
                 token = secrets.token_hex(8)
         else:
@@ -371,7 +421,7 @@ class TelegramService:
                         if phrase is not None else (None, None)
                     )
                 except sqlite3.Error as exc:
-                    self.log.warning("Не удалось прочитать фразу: %s", exc)
+                    self.log.warning("Не вдалося прочитати фразу: %s", exc)
                     return None, None
             with self._phrases_lock:
                 created_at = self._phrase_created_at.get(token)
@@ -418,7 +468,7 @@ class TelegramService:
                     f"{self.api}/answerCallbackQuery",
                     data={
                         "callback_query_id": cq["id"],
-                        "text": "Удалено" if success else "Ошибка",
+                        "text": "Видалено" if success else "Помилка",
                     },
                     timeout=15,
                 )
@@ -439,13 +489,13 @@ class TelegramService:
                         f"{self.api}/answerCallbackQuery",
                         data={
                             "callback_query_id": cq["id"],
-                            "text": "Исправление отменено",
+                            "text": "Виправлення скасовано",
                         },
                         timeout=15,
                     )
                 except requests.RequestException as e:
                     self.log.warning(
-                        "Не удалось подтвердить отмену: %s", e
+                        "Не вдалося підтвердити скасування: %s", e
                     )
 
                 if msg_id is not None:
@@ -460,7 +510,7 @@ class TelegramService:
                         )
                     except requests.RequestException as e:
                         self.log.warning(
-                            "Не удалось удалить сообщение отмены: %s",
+                            "Не вдалося видалити повідомлення скасування: %s",
                             e,
                         )
 
@@ -473,7 +523,7 @@ class TelegramService:
                         f"{self.api}/answerCallbackQuery",
                         data={
                             "callback_query_id": cq["id"],
-                            "text": "Фраза устарела",
+                            "text": "Фраза застаріла",
                         },
                         timeout=15,
                     )
@@ -499,7 +549,7 @@ class TelegramService:
                     f"{self.api}/answerCallbackQuery",
                     data={
                         "callback_query_id": cq["id"],
-                        "text": "Отправьте правильный текст",
+                        "text": "Надішліть правильний текст",
                     },
                     timeout=15,
                 )
@@ -509,12 +559,12 @@ class TelegramService:
                 keyboard = []
                 if len(orig_text) <= 256:
                     keyboard.append({
-                        "text": "📋 Скопировать текст",
+                        "text": "📋 Скопіювати текст",
                         "copy_text": {"text": orig_text},
                     })
 
                 keyboard.append({
-                    "text": "❌ Отмена",
+                    "text": "❌ Скасувати",
                     "callback_data": "cancel_fix",
                 })
 
@@ -524,16 +574,16 @@ class TelegramService:
                 )
 
                 copy_hint = (
-                    "Нажмите «Скопировать текст», затем вставьте его "
-                    "в строку ввода и отправьте."
+                    "Натисніть «Скопіювати текст», потім вставте його "
+                    "в поле введення та надішліть."
                     if len(orig_text) <= 256
-                    else "Скопируйте исходный текст из сообщения вручную, "
-                         "отредактируйте и отправьте."
+                    else "Скопіюйте початковий текст із повідомлення вручну, "
+                         "відредагуйте й надішліть."
                 )
 
                 self.send_text(
-                    f"✍️ <b>Режим исправления</b>\n"
-                    f"Исходный текст: <code>{safe_orig_text}</code>\n\n"
+                    f"✍️ <b>Режим виправлення</b>\n"
+                    f"Початковий текст: <code>{safe_orig_text}</code>\n\n"
                     f"{copy_hint}",
                     cancel_markup,
                 )
@@ -549,21 +599,24 @@ class TelegramService:
         text_msg = (msg.get("text") or "").strip().lower()
 
         modes = {
-            "/all": ("all", "📢 Режим уведомлений изменен: <b>ALL (Все фразы)</b>"),
-            "all": ("all", "📢 Режим уведомлений изменен: <b>ALL (Все фразы)</b>"),
-            "все": ("all", "📢 Режим уведомлений изменен: <b>ALL (Все фразы)</b>"),
-            "/watch": ("watch", "👀 Режим уведомлений изменен: <b>WATCH (Только вачлист)</b>"),
-            "watch": ("watch", "👀 Режим уведомлений изменен: <b>WATCH (Только вачлист)</b>"),
-            "вач": ("watch", "👀 Режим уведомлений изменен: <b>WATCH (Только вачлист)</b>"),
-            "/commands": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
-            "commands": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
-            "команды": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
-            "cmd": ("commands", "⚡️ Режим уведомлений изменен: <b>COMMANDS (Команды и позывные)</b>"),
-            "/off": ("off", "🔕 Автоматические уведомления отключены."),
-            "off": ("off", "🔕 Автоматические уведомления отключены."),
-            "/silent": ("off", "🔕 Автоматические уведомления отключены."),
-            "тихо": ("off", "🔕 Автоматические уведомления отключены."),
+            "/all": ("all", "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>"),
+            "all": ("all", "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>"),
+            "все": ("all", "📢 Режим сповіщень змінено: <b>ALL (Усі фрази)</b>"),
+            "/watch": ("watch", "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>"),
+            "watch": ("watch", "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>"),
+            "вач": ("watch", "👀 Режим сповіщень змінено: <b>WATCH (Лише список спостереження)</b>"),
+            "/commands": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
+            "commands": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
+            "команды": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
+            "cmd": ("commands", "⚡️ Режим сповіщень змінено: <b>COMMANDS (Команди й позивні)</b>"),
+            "/off": ("off", "🔕 Автоматичні сповіщення вимкнено."),
+            "off": ("off", "🔕 Автоматичні сповіщення вимкнено."),
+            "/silent": ("off", "🔕 Автоматичні сповіщення вимкнено."),
+            "тихо": ("off", "🔕 Автоматичні сповіщення вимкнено."),
         }
+
+        for alias, canonical in {"всі": "/all", "спостереження": "/watch", "команди": "/commands", "тиша": "/off"}.items():
+            modes[alias] = modes[canonical]
 
         if text_msg in modes:
             mode, response = modes[text_msg]
@@ -585,12 +638,12 @@ class TelegramService:
 
             if not applied:
                 self.log.info(
-                    "Повторная Telegram-команда %s пропущена",
+                    "Повторну Telegram-команду %s пропущено",
                     update_id,
                 )
                 return
 
-            self.log.info("Режим изменен на: %s", mode)
+            self.log.info("Режим змінено на: %s", mode)
             self.send_text(response)
             return
 
@@ -659,14 +712,14 @@ class TelegramService:
                     self.waiting_for_correction.pop(chat_id, None)
 
             self.log.info(
-                "Обучение сохранено: '%s' -> '%s'",
+                "Навчання збережено: '%s' -> '%s'",
                 orig_text,
                 corrected_text,
             )
 
             self.send_text(
-                f"✅ <b>Успешно обучено!</b>\n"
-                f"Было: <code>{html.escape(orig_text)}</code>\n"
+                f"✅ <b>Навчання успішно збережено!</b>\n"
+                f"Було: <code>{html.escape(orig_text)}</code>\n"
                 f"Стало: <code>{html.escape(corrected_text)}</code>"
             )
 
@@ -713,8 +766,7 @@ class TelegramService:
 
         while True:
             try:
-                r = requests.get(
-                    f"{self.api}/getUpdates",
+                r = self._request("get", "getUpdates",
                     params={
                         "timeout": 30,
                         "offset": self._updates_offset,
@@ -731,7 +783,7 @@ class TelegramService:
 
                     self.log.warning(
                         "Telegram getUpdates: HTTP %s; "
-                        "повтор через %s сек. (ошибок подряд: %s)",
+                        "повтор через %s с (помилок поспіль: %s)",
                         r.status_code, delay, consecutive_errors,
                     )
                     time.sleep(delay)
@@ -749,10 +801,10 @@ class TelegramService:
                     try:
                         update_id = upd["update_id"]
                         if type(update_id) is not int:
-                            raise TypeError("update_id должен быть целым числом")
+                            raise TypeError("update_id має бути цілим числом")
                     except (KeyError, TypeError):
                         self.log.exception(
-                            "Telegram прислал update без корректного update_id"
+                            "Telegram надіслав update без коректного update_id"
                         )
                         continue
 
@@ -762,12 +814,14 @@ class TelegramService:
                         self._updates_offset is not None
                         and update_id < self._updates_offset
                     ):
+                        runtime.count("telegram.duplicate_update_skipped")
                         continue
 
                     try:
                         self.handle_update(upd)
 
                     except Exception:
+                        runtime.count("telegram.update_processing_error")
                         retries = getattr(self, "_update_retries", None)
 
                         if retries is None:
@@ -778,7 +832,7 @@ class TelegramService:
                         retries[update_id] = attempts
 
                         self.log.exception(
-                            "Ошибка Telegram update_id=%s, попытка %s/3",
+                            "Помилка Telegram update_id=%s, спроба %s/3",
                             update_id,
                             attempts,
                         )
@@ -789,10 +843,12 @@ class TelegramService:
 
                         try:
                             self._quarantine_update(upd)
+                            runtime.count("telegram.update_quarantined")
                         except Exception:
+                            runtime.count("telegram.quarantine_write_failed")
                             self.log.exception(
-                                "Не удалось сохранить проблемный Telegram update. "
-                                "Offset не изменён."
+                                "Не вдалося зберегти проблемний Telegram update. "
+                                "Offset не змінено."
                             )
                             time.sleep(5)
                             break
@@ -801,9 +857,9 @@ class TelegramService:
                         retries.pop(update_id, None)
 
                         self.log.critical(
-                            "Telegram update_id=%s сохранён в "
+                            "Telegram update_id=%s збережено в "
                             "telegram_failed_updates.jsonl. "
-                            "Требуется ручная проверка.",
+                            "Потрібна ручна перевірка.",
                             update_id,
                         )
 
@@ -820,7 +876,7 @@ class TelegramService:
 
                 self.log.warning(
                     "Сбой связи в callback_listener: %s; "
-                    "повтор через %s сек. (ошибок подряд: %s)",
+                    "повтор через %s с (помилок поспіль: %s)",
                     e, delay, consecutive_errors,
                 )
                 time.sleep(delay)

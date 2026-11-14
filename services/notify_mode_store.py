@@ -37,8 +37,8 @@ def load_notify_mode(db_path):
 
     if mode not in VALID_MODES:
         logging.getLogger("radio").warning(
-            "Недопустимый сохранённый режим Telegram: %r. "
-            "Используется ALL.",
+            "Неприпустимий збережений режим Telegram: %r. "
+            "Використовується ALL.",
             mode,
         )
         return DEFAULT_MODE
@@ -49,7 +49,7 @@ def load_notify_mode(db_path):
 def save_notify_mode(db_path, mode):
     if mode not in VALID_MODES:
         raise ValueError(
-            f"Недопустимый режим Telegram: {mode!r}"
+            f"Неприпустимий режим Telegram: {mode!r}"
         )
 
     with get_db(db_path) as db:
@@ -80,10 +80,10 @@ def apply_telegram_notify_mode(db_path, update_id, mode):
     )
 
     if mode not in VALID_MODES:
-        raise ValueError("Недопустимый режим уведомлений")
+        raise ValueError("Неприпустимий режим сповіщень")
 
     if type(update_id) is not int or update_id < 0:
-        raise ValueError("Некорректный Telegram update_id")
+        raise ValueError("Некоректний Telegram update_id")
 
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")

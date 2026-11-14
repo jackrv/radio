@@ -79,7 +79,7 @@ def test_rollback_does_not_erase_new_registration(
 
     assert cooldown.fresh("команда") is True
 
-    # Ошибка SQLite: разрешаем повторную попытку.
+    # Помилка SQLite: разрешаем повторную попытку.
     cooldown.rollback("команда")
 
     now[0] = 101.0

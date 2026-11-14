@@ -51,7 +51,7 @@ class EventProcessor:
             and not cmd_found
             and not watch_found
         ):
-            self.log.info("Отброшен короткий ложный фрагмент: %s", text)
+            self.log.info("Відкинуто короткий хибний фрагмент: %s", text)
             return
 
         event_id = None
@@ -80,7 +80,7 @@ class EventProcessor:
                 )
             except Exception:
                 self.log.exception(
-                    "Ошибка сохранения события в SQLite"
+                    "Помилка збереження події в SQLite"
                 )
                 if self.rollback is not None:
                     self.rollback(("db", cs_str, cmd_str))
@@ -111,7 +111,7 @@ class EventProcessor:
                 )
 
                 self.telegram_service.notify(
-                    watch_str or "Эфир",
+                    watch_str or "Ефір",
                     to_str,
                     from_str,
                     text,
@@ -120,5 +120,5 @@ class EventProcessor:
                 )
             except Exception:
                 self.log.exception(
-                    "Ошибка отправки уведомления Telegram"
+                    "Помилка надсилання сповіщення Telegram"
                 )

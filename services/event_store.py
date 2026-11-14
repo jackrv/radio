@@ -44,6 +44,14 @@ def init_db(db_path=DB_PATH):
                     f"ALTER TABLE radio_events ADD COLUMN {col} TEXT"
                 )
 
+        # Keep IDs monotonic even after an intentional data reset: old Telegram
+        # db:<id> buttons must never address a newly recognized event.
+        db.execute("""CREATE TABLE IF NOT EXISTS radio_event_sequence (
+            id INTEGER PRIMARY KEY CHECK(id=1), next_id INTEGER NOT NULL
+        )""")
+        db.execute("""INSERT OR IGNORE INTO radio_event_sequence (id,next_id)
+            SELECT 1, COALESCE(MAX(id),0)+1 FROM radio_events""")
+
     init_word_db(db_path)
 
 
@@ -138,7 +146,7 @@ def save_correction(
 
             if event is None:
                 raise LookupError(
-                    f"Событие #{event_id} не найдено"
+                    f"Подія #{event_id} не знайдено"
                 )
 
             # Используем актуальные словари из той же SQLite.
@@ -208,7 +216,7 @@ def save_correction(
 
             if cursor.rowcount != 1:
                 raise LookupError(
-                    f"Не удалось обновить событие #{event_id}"
+                    f"Не вдалося оновити подію #{event_id}"
                 )
 
         # Для событий используем постоянный ID из SQLite,
@@ -240,12 +248,15 @@ def save_event(
     raw_text: str | None = None,
 ) -> int:
     with get_db(db_path) as db:
+        db.execute("""UPDATE radio_event_sequence SET next_id=MAX(next_id,
+            (SELECT COALESCE(MAX(id),0)+1 FROM radio_events))+1 WHERE id=1""")
+        event_id = db.execute("SELECT next_id-1 FROM radio_event_sequence WHERE id=1").fetchone()[0]
         cursor = db.execute(
             """
             INSERT INTO radio_events
-                (callsigns, commands, recipient, sender, text, raw_text)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (id, callsigns, commands, recipient, sender, text, raw_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (callsigns, commands, recipient, sender, text, raw_text),
+            (event_id, callsigns, commands, recipient, sender, text, raw_text),
         )
         return cursor.lastrowid

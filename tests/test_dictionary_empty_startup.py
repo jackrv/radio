@@ -28,7 +28,7 @@ def test_empty_database_stops_startup(tmp_path):
     path = prepare_database(tmp_path)
     log = Mock()
 
-    with pytest.raises(RuntimeError, match="Словарь позывных пуст"):
+    with pytest.raises(RuntimeError, match="Словник позивних порожній"):
         load_dictionaries(path, log)
 
     log.error.assert_called_once()
@@ -43,7 +43,7 @@ def test_comment_only_callsigns_are_empty(tmp_path):
         ],
     )
 
-    with pytest.raises(RuntimeError, match="Словарь позывных пуст"):
+    with pytest.raises(RuntimeError, match="Словник позивних порожній"):
         load_dictionaries(path, Mock())
 
 

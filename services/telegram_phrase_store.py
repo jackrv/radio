@@ -13,7 +13,7 @@ TOKEN_RE = re.compile(r"[0-9a-f]{32}\Z")
 
 def _check_token(token):
     if not isinstance(token, str) or not TOKEN_RE.fullmatch(token):
-        raise ValueError("Некорректный токен фразы")
+        raise ValueError("Некоректний токен фрази")
 
 
 def ensure_table(db):
@@ -30,9 +30,9 @@ def ensure_table(db):
 def register_phrase(db_path, token, text, *, max_phrases=200):
     _check_token(token)
     if not isinstance(text, str) or not text.strip() or len(text) > 5000:
-        raise ValueError("Некорректный текст фразы")
+        raise ValueError("Некоректний текст фрази")
     if type(max_phrases) is not int or not 1 <= max_phrases <= MAX_PHRASES:
-        raise ValueError("Некорректный лимит фраз")
+        raise ValueError("Некоректний ліміт фраз")
 
     now = int(time.time())
     with get_db(db_path) as db:
@@ -87,5 +87,5 @@ def update_phrase_text(db, token, corrected_text, *, allow_missing=False):
         WHERE token = ? AND created_at > ?
     """, (corrected_text, token, int(time.time()) - RETENTION_SECONDS))
     if cursor.rowcount != 1 and not allow_missing:
-        raise LookupError("Фраза не найдена или срок хранения истёк")
+        raise LookupError("Фразу не знайдено або строк зберігання минув")
     return cursor.rowcount == 1

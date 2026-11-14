@@ -43,7 +43,7 @@ def test_load_dictionaries(monkeypatch):
     assert len(prompt.split(", ")) == len(set(prompt.split(", ")))
 
     log.info.assert_called_once_with(
-        "Словари загружены из SQLite: позывные=%d, команды=%d, Telegram=%d",
+        "Словники завантажено зі SQLite: позивні=%d, команди=%d, Telegram=%d",
         len(callsigns.names),
         len(commands.names),
         len(watch.names),
@@ -63,7 +63,7 @@ def test_empty_dictionaries(monkeypatch):
     try:
         module.load_dictionaries("test.db", log)
     except RuntimeError as error:
-        assert "Словарь позывных пуст" in str(error)
+        assert "Словник позивних порожній" in str(error)
     else:
         raise AssertionError(
             "Пустой словарь позывных должен останавливать запуск"

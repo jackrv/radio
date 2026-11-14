@@ -39,7 +39,7 @@
     const paused = actualState === "paused";
 
     button.textContent = requested
-      ? "▶ Возобновить"
+      ? "▶ Відновити"
       : "⏸ Пауза";
 
     button.disabled = (
@@ -53,7 +53,7 @@
     select.disabled = !isAdmin || writing || requested || offline;
 
     if (!control) {
-      remaining.textContent = "Состояние загружается...";
+      remaining.textContent = "Стан завантажується...";
       return;
     }
 
@@ -67,19 +67,19 @@
       const rest = String(seconds % 60).padStart(2, "0");
 
       remaining.textContent =
-        `До возобновления: ${minutes}:${rest}`;
+        `До відновлення: ${minutes}:${rest}`;
 
       if (actualState === "listening") {
-        remaining.textContent += " · Ожидаем остановку микрофона";
+        remaining.textContent += " · Очікуємо зупинки мікрофона";
       } else if (offline) {
-        remaining.textContent += " · Приёмник не запущен";
+        remaining.textContent += " · Приймач не запущено";
       }
     } else if (paused) {
-      remaining.textContent = "Таймер завершён. Возобновляем приём...";
+      remaining.textContent = "Таймер завершено. Відновлюємо приймання...";
     } else if (offline) {
-      remaining.textContent = "Приёмник не запущен";
+      remaining.textContent = "Приймач не запущено";
     } else {
-      remaining.textContent = "Микрофон работает";
+      remaining.textContent = "Мікрофон працює";
     }
   }
 
@@ -111,7 +111,7 @@
       if (conflictPending) {
         conflictPending = false;
         feedback.textContent =
-          "Состояние обновлено. Проверьте его перед новой командой.";
+          "Стан оновлено. Перевірте його перед новою командою.";
         feedback.style.color = "#edb07b";
       }
     } catch (error) {
@@ -138,7 +138,7 @@
       expectedRevision < 0
     ) {
       feedback.textContent =
-        "Сервер не передал версию команды. Обновите API.";
+        "Сервер не передав версію команди. Оновіть API.";
       feedback.style.color = "#ff9b9b";
       return;
     }
@@ -148,8 +148,8 @@
     render();
 
     feedback.textContent = minutes === 0
-      ? "Отправляем команду возобновления..."
-      : "Отправляем команду паузы...";
+      ? "Надсилаємо команду відновлення..."
+      : "Надсилаємо команду паузи...";
     feedback.style.color = "#a3c0b2";
 
     try {
@@ -165,8 +165,8 @@
       setControl(result);
 
       feedback.textContent = minutes === 0
-        ? "Команда возобновления принята."
-        : "Команда паузы принята. Ожидаем микрофон.";
+        ? "Команду відновлення прийнято."
+        : "Команду паузи прийнято. Очікуємо мікрофон.";
 
     } catch (error) {
       if (error.conflict) {
@@ -177,11 +177,11 @@
         deadline = 0;
 
         feedback.textContent =
-          "Команда отклонена: состояние изменилось " +
-          "в другой вкладке. Обновляем данные...";
+          "Команду відхилено: стан змінився " +
+          "в іншій вкладці. Оновлюємо дані...";
         feedback.style.color = "#edb07b";
       } else {
-        feedback.textContent = `Ошибка: ${error.message}`;
+        feedback.textContent = `Помилка: ${error.message}`;
         feedback.style.color = "#ff9b9b";
       }
     } finally {
@@ -195,7 +195,7 @@
 
   async function start() {
     if (!telegram?.initData) {
-      feedback.textContent = "Откройте панель через Telegram.";
+      feedback.textContent = "Відкрийте панель через Telegram.";
       return;
     }
 
@@ -207,7 +207,7 @@
 
       if (!isAdmin) {
         feedback.textContent =
-          "Просмотр доступен. Управление — только администратору.";
+          "Перегляд доступний. Керування — лише адміністратору.";
       }
 
       window.setInterval(render, 1000);

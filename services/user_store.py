@@ -21,7 +21,7 @@ PERMISSIONS = {
 
 def _valid_id(user_id):
     if type(user_id) is not int or not (0 < user_id < 2**63):
-        raise ValueError("Некорректный Telegram user_id")
+        raise ValueError("Некоректний Telegram user_id")
     return user_id
 
 
@@ -56,7 +56,7 @@ def bootstrap_admin(db_path, user_id):
             "SELECT 1 FROM telegram_users LIMIT 1"
         ).fetchone():
             raise RuntimeError(
-                "Пользователи уже есть: bootstrap запрещён"
+                "Користувачі вже є: bootstrap заборонено"
             )
 
         db.execute(
@@ -72,7 +72,7 @@ def _require_permission(db, user_id, permission):
     _valid_id(user_id)
 
     if permission not in PERMISSIONS["admin"]:
-        raise ValueError("Неизвестное разрешение")
+        raise ValueError("Невідомий дозвіл")
 
     row = db.execute(
         "SELECT role, enabled FROM telegram_users WHERE user_id = ?",
@@ -84,7 +84,7 @@ def _require_permission(db, user_id, permission):
         or row[1] != 1
         or permission not in PERMISSIONS[row[0]]
     ):
-        raise PermissionError("Доступ запрещён")
+        raise PermissionError("Доступ заборонено")
 
     return row[0]
 
@@ -99,7 +99,7 @@ def create_user(db_path, actor_id, user_id, *, role="viewer"):
     _valid_id(user_id)
 
     if role not in ("viewer", "editor"):
-        raise ValueError("Роль недопустима для создания")
+        raise ValueError("Роль неприпустима для створення")
 
     with get_db(db_path) as db:
         _require_permission(db, actor_id, "users.manage")

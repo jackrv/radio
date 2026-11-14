@@ -91,7 +91,7 @@ def test_shutdown_timeout(caplog):
             result = service.shutdown(timeout=0.01)
 
         assert result is False
-        assert "незавершёнными" in caplog.text
+        assert "незавершеними" in caplog.text
 
     finally:
         release.set()
@@ -114,4 +114,4 @@ def test_shutdown_rejects_new_notifications(caplog):
     assert sent == []
     assert service._outgoing_queue.qsize() == 0
     assert service._outgoing_thread is None
-    assert "уведомление пропущено" in caplog.text
+    assert "сповіщення пропущено" in caplog.text

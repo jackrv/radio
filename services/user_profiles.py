@@ -12,7 +12,7 @@ def ensure_table(db):
 
 def clean_name(value, limit=80):
     if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 for c in value):
-        raise ValueError("Имя должно быть строкой до 80 символов без переносов")
+        raise ValueError("Ім’я має бути рядком до 80 символів без перенесень")
     return value.strip()
 
 

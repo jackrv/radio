@@ -28,6 +28,6 @@ def retry_delay(attempt: int, error) -> int:
 def listener_retry_delay(failures: int) -> int:
     """Задержка повторного опроса Telegram: 5..60 секунд."""
     if type(failures) is not int or failures < 1:
-        raise ValueError("failures должен быть положительным числом")
+        raise ValueError("failures має бути додатним числом")
 
     return min(5 * (2 ** min(failures - 1, 4)), 60)

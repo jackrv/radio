@@ -256,3 +256,27 @@ def test_recording_group_api_validation(setup,tmp_path):
         assert client.get('/api/recordings?group=short').json()['total']==1
         assert client.get('/api/recordings?group=invalid').status_code==422
         assert client.get('/api/recordings').json()['total']==2
+
+
+
+def test_room_label_and_multiple_messages_flag(tmp_path):
+    import sqlite3
+    from services.recordings import RecordingStore
+    root = tmp_path / "archive"
+    root.mkdir()
+    # Старий архів без нового стовпця: міграція лише додає його.
+    with sqlite3.connect(root / "index.sqlite3") as db:
+        db.execute("""CREATE TABLE recordings (id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL,
+            bytes INTEGER NOT NULL, data TEXT NOT NULL, reference TEXT, label TEXT, revision INTEGER NOT NULL DEFAULT 0,
+            reviewed_at REAL, reference_recipient TEXT, reference_sender TEXT)""")
+    store = RecordingStore(root)
+    speech = store.save(pcm() * 3, 16000, {"status": "ready", "final_text": "вишня"})
+    room = store.save(pcm(), 16000, {"status": "ready", "final_text": "дякую"})
+    assert store.review(speech, "вишня 210 прийом клен 300", "speech", 0, multiple_messages=True)["multiple_messages"] == 1
+    saved = store.review(room, "", "room", 0, reference_recipient="x", multiple_messages=True)
+    assert saved["reference_recipient"] == "" and saved["multiple_messages"] is None
+    summary = store.summary()
+    assert (summary["room"], summary["room_false_text"], summary["multiple_messages"], summary["speech_reviewed"]) == (1, 1, 1, 1)
+    assert summary["false_text"] == 0, "кімнатний шум не входить у хибний текст ефіру"
+    store.review(speech, "вишня 210", "speech", 1)
+    assert store.get(speech)["multiple_messages"] == 1, "без поля відмітка не стирається"

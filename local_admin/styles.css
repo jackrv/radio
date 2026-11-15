@@ -162,3 +162,16 @@ textarea.list-editor { width: 100%; min-height: 190px; resize: vertical; backgro
 
 [data-panel="recordings"] > .panel .toolbar { margin-bottom:4px; }
 .recording-details summary { padding:2px 0; }
+
+/* ---------- Швидка розмітка архіву ---------- */
+.segmented { display: flex; gap: 4px; flex-wrap: wrap; }
+.segmented button.on, .chip button.on { background: var(--lime); border-color: var(--lime); color: #172414; }
+#recordings .recording-card.active { border-color: var(--lime2); box-shadow: 0 0 0 1px var(--lime2) inset; }
+#recordings .recording-card.done { opacity: .72; }
+#recordings .recording-card.done.active { opacity: 1; }
+.recording-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.recording-chips:empty { display: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface2); font-size: 12px; }
+.chip button { padding: 1px 7px !important; font-size: 11px !important; border-radius: 99px !important; }
+kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface2); color: var(--text); }
+.keys { margin-top: 2px; }

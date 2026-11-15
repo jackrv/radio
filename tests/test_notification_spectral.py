@@ -183,3 +183,14 @@ def test_evaluation_skips_long_records_and_reads_archive_only(tmp_path):
     assert report["summary"]["status"] == "need_more"
     with store.connect() as db:
         assert db.execute("SELECT id, revision, label FROM recordings ORDER BY id").fetchall() == before, "оцінка лише читає"
+
+
+
+def test_room_noise_counts_as_harmless_to_drop(tmp_path):
+    from services.notification_samples import add_sample
+    samples = tmp_path / "samples"
+    add_sample(samples, wav(phone_sound()), confirmed_isolated=True)
+    store, ids = archive_with(tmp_path, [(segment(), "notification"), (segment(np.zeros(4000)), "room")])
+    assert notification_eval.label_counts(store) == {"notification": 1, "speech": 0, "noise": 1}
+    report = notification_eval.evaluate(store, samples, threshold=0.85, max_outside_s=0.2, max_extra=0.02)
+    assert {item["label"] for item in report["items"]} == {"notification", "room"}

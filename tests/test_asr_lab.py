@@ -120,3 +120,59 @@ def test_queue_is_stratified_deterministic_and_skips_reviewed_records():
     assert sizes == {"A": 5, "B": 15, "C": 10, "D": 20}
     assert f"{10:032x}" not in first["groups"][0]["ids"], "уже розмічене не потрапляє в чергу"
     assert not any(f"{200 + i:032x}" in first["groups"][3]["ids"] for i in range(30)), "клацання VAD не в черзі"
+
+
+def _tone_noise_tone(sr=16000):
+    t = np.arange(int(0.9 * sr)) / sr
+    tone = 0.3 * np.sin(2 * np.pi * 400 * t)
+    noise = np.random.default_rng(1).normal(0, 0.002, int(1.2 * sr))
+    silence = np.zeros(int(0.3 * sr))
+    audio = np.concatenate((silence, tone, noise, tone, silence))
+    return (audio * 32767).astype("<i2").tobytes()
+
+
+def test_speech_gate_closes_segment_on_noise_that_vad_calls_speech(monkeypatch):
+    from core.vad import VADSegmenter
+
+    class AlwaysSpeech:
+        def __init__(self, level):
+            pass
+
+        def is_speech(self, frame, sr):
+            return True  # як WebRTC VAD на шумі ефіру
+
+    monkeypatch.setattr("core.vad.webrtcvad.Vad", AlwaysSpeech)
+    loud = b"\x10\x27" * 480
+    quiet = b"\x01\x00" * 480
+    frames = [loud] * 25 + [quiet] * 30 + [loud] * 25 + [quiet] * 30
+    plain = VADSegmenter(16000, 30, 2, 500, 600, 500, 20)
+    gated = VADSegmenter(16000, 30, 2, 500, 600, 500, 20, speech_gate=lambda f: f is loud)
+    assert sum(plain.process(f) is not None for f in frames) == 0, "без умови шум тримає сегмент відкритим"
+    assert sum(gated.process(f) is not None for f in frames) == 2
+
+
+def test_lab_resegments_a_merged_record_into_parts(monkeypatch):
+    class AlwaysSpeech:
+        def __init__(self, level):
+            pass
+
+        def is_speech(self, frame, sr):
+            return True
+
+    monkeypatch.setattr("core.vad.webrtcvad.Vad", AlwaysSpeech)
+    lab = asr_lab.Lab.__new__(asr_lab.Lab)
+    lab.args = type("Args", (), {"gate_db": 12.0})()
+    pieces = lab.resegment(_tone_noise_tone())
+    assert len(pieces) == 2
+
+
+def test_room_noise_and_multiple_messages_are_reported_separately():
+    results = [result("speech", "вишня 210 прийом клен 300 прийом", "вишня 210 прийом", multiple_messages=1),
+               result("speech", "клен 300", "клен 300", multiple_messages=0),
+               result("room", "", "дякую за перегляд"),
+               result("noise", "", "")]
+    summary = asr_lab.summarize(results)
+    assert summary["room_records"] == 1 and summary["false_text_on_room_noise"] == 1
+    assert summary["non_speech_records"] == 1 and summary["false_text_on_non_speech"] == 0, "кімната не змішується з ефіром"
+    parts = asr_lab.breakdown(results)
+    assert parts["передач у записі: кілька"]["records"] == 1 and parts["передач у записі: одна"]["wer"] == 0

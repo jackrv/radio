@@ -37,6 +37,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / ".local-recordings"
 OUTPUT = ROOT / ".local-experiments"
 SPEECH, UNCLEAR, NON_SPEECH = ("speech",), ("unclear",), ("noise", "notification")
+# Шум приміщення (клавіатура тощо) — артефакт тестової установки: окремо від шуму ефіру.
+ROOM = ("room",)
 SPLIT_BLOCK_S = 20 * 60
 VARIANTS = ("whisper", "rules", "qwen", "pipeline")
 
@@ -153,6 +155,14 @@ def summarize(results):
     if non_speech:
         summary["false_text_on_non_speech"] = sum(bool((r.get("hypothesis") or "").strip()) for r in non_speech)
         summary["non_speech_records"] = len(non_speech)
+    room = [r for r in results if r.get("label") in ROOM]
+    if room:
+        summary["room_records"] = len(room)
+        summary["false_text_on_room_noise"] = sum(bool((r.get("hypothesis") or "").strip()) for r in room)
+    segments = [r["segments"] for r in results if isinstance(r.get("segments"), int)]
+    if segments:
+        summary["resegmented_records"] = len(segments)
+        summary["segments_per_record_mean"] = sum(segments) / len(segments)
     for role in ("recipient", "sender"):
         # Два входи: автоматична розшифровка (слух + логіка) і правильний текст (лише логіка ролей).
         for source, key in (("hypothesis", f"hypothesis_{role}"), ("reference_text", f"reference_{role}_parsed")):
@@ -177,9 +187,10 @@ def breakdown(results):
         if r.get("label") not in SPEECH or r.get("reference") is None:
             continue
         signal = r.get("signal") or {}
+        multi = {1: "кілька", 0: "одна"}.get(r.get("multiple_messages"), "не відмічено")
         for key in (("тривалість", bucket(signal.get("duration_s"), (2, 4, 8, 20), " с")),
                     ("гучність", bucket(signal.get("rms_dbfs"), (-38, -34, -30, -24), " dBFS")),
-                    ("статус", r.get("status"))):
+                    ("статус", r.get("status")), ("передач у записі", multi)):
             g = groups.setdefault(key, {"word_errors": 0, "reference_words": 0, "records": 0})
             g["word_errors"] += r["score"]["word_errors"]
             g["reference_words"] += r["score"]["reference_words"]
@@ -250,12 +261,44 @@ class Lab:
                 "whisper_options": {"temperature": [0.0, 0.2, 0.4], "condition_on_previous_text": False,
                                     "no_speech_threshold": 0.6, "logprob_threshold": -1.0,
                                     "compression_ratio_threshold": 2.4},
-                "seed": self.args.seed, "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only}
+                "seed": self.args.seed, "resegment": self.args.resegment, "gate_db": self.args.gate_db,
+                "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only}
 
     def apply_rules(self, text):
         from core.word_rule_engine import apply_verified_word_rules
         revised = apply_verified_word_rules(text, self.db_path, self.dictionaries)
         return revised, revised != text
+
+    def resegment(self, pcm):
+        """Повторне різання запису сегментатором VAD із додатковою умовою гучності.
+
+        Кадр вважається мовленням, лише якщо WebRTC VAD так вважає І він гучніший
+        за фон запису (10-й перцентиль кадрів) на --gate-db. Так пауза, заповнена
+        шумом ефіру, закриває сегмент через SILENCE_END_MS, як справжня тиша.
+        """
+        import config
+        from core.vad import VADSegmenter
+        frame = config.FRAME_LEN * 2
+        frames = [pcm[i:i + frame] for i in range(0, len(pcm) - frame + 1, frame)]
+        if not frames:
+            return [pcm]
+        levels = [20 * math.log10(math.sqrt(float(np.mean(np.frombuffer(f, "<i2").astype(np.float64) ** 2)) / 32768 ** 2) + 1e-12)
+                  for f in frames]
+        # Фон — за кадрами з реальним сигналом: цифрові нулі дали б −240 дБ.
+        audible = [v for v in levels if v > -100] or levels
+        floor = float(np.percentile(audible, 10))
+        level_of = dict(zip(map(id, frames), levels))
+        # Невідомі кадри (додана в кінці тиша) — не мовлення.
+        gate = lambda f: level_of.get(id(f), -240.0) > floor + self.args.gate_db
+        segmenter = VADSegmenter(config.SR, config.FRAME_MS, config.VAD_LEVEL, config.PREROLL_MS,
+                                 config.SILENCE_END_MS, config.MIN_SPEECH_MS, config.MAX_SEGMENT_S, speech_gate=gate)
+        pieces = []
+        silence = b"\0" * frame
+        for f in frames + [silence] * (config.SILENCE_END_MS // config.FRAME_MS + 1):
+            piece = segmenter.process(f)
+            if piece:
+                pieces.append(piece)
+        return pieces
 
     def process(self, pcm):
         from core.audio import prepare_audio
@@ -280,13 +323,28 @@ class Lab:
             mx.random.seed(self.args.seed)
         except ImportError:
             pass
-        whisper = self.recognizer.transcribe(audio)
+        if self.args.resegment == "energy":
+            pieces = self.resegment(pcm)
+            texts, segments_meta = [], []
+            for piece in pieces:
+                piece_audio, _ = prepare_audio(piece, 0.0, self.args.normalize == "on")
+                out = self.recognizer.transcribe(piece_audio)
+                texts.append(self.recognizer.extract_text(out))
+                segments_meta += [{k: s.get(k) for k in ("avg_logprob", "no_speech_prob", "compression_ratio",
+                                                         "temperature", "start", "end", "text")} for s in out.get("segments", [])]
+            raw = " ".join(t for t in texts if t).strip()
+            result["segments"] = len(pieces)
+            result["segment_durations_s"] = [round(len(piece) / (2 * self.sample_rate), 2) for piece in pieces]
+            result["segment_texts"] = texts
+            result["whisper_segments"] = segments_meta
+        else:
+            whisper = self.recognizer.transcribe(audio)
+            raw = self.recognizer.extract_text(whisper)
+            result["whisper_segments"] = [{k: s.get(k) for k in ("avg_logprob", "no_speech_prob", "compression_ratio",
+                                                                 "temperature", "start", "end", "text")}
+                                          for s in whisper.get("segments", [])]
         timing["whisper_s"] = time.perf_counter() - t
-        raw = self.recognizer.extract_text(whisper)
         result["raw_text"] = raw
-        result["whisper_segments"] = [{k: s.get(k) for k in ("avg_logprob", "no_speech_prob", "compression_ratio",
-                                                             "temperature", "start", "end", "text")}
-                                      for s in whisper.get("segments", [])]
         text, stage = raw, "whisper"
         if self.args.variant == "rules":
             text, _ = self.apply_rules(raw)
@@ -354,6 +412,7 @@ def run(args):
             item = {"id": record["id"], "created": record["created"], "split": record["split"],
                     "status": record["status"], "label": record["label"], "reference": record["reference"],
                     "reference_recipient": record["reference_recipient"], "reference_sender": record["reference_sender"],
+                    "multiple_messages": record.get("multiple_messages"),
                     "signal": record["data"].get("signal"), "original_raw_text": record["data"].get("raw_text"),
                     **output, "timing": timing}
             if record["reference"] is not None:
@@ -485,6 +544,9 @@ def main(argv=None):
     r.add_argument("--min-rms", type=float, default=None, help="поріг RMS (типово — без відсікання)")
     r.add_argument("--model", help="інша модель Whisper (типово — з config.py)")
     r.add_argument("--seed", type=int, default=345, help="зерно для випадкового відкату температури")
+    r.add_argument("--resegment", choices=("none", "energy"), default="none",
+                   help="energy — повторно різати запис VAD із умовою гучності над фоном")
+    r.add_argument("--gate-db", type=float, default=12.0, help="поріг над фоном для --resegment energy, дБ")
     rep = sub.add_parser("report")
     rep.add_argument("run_dir")
     c = sub.add_parser("compare")

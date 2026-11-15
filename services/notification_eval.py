@@ -23,7 +23,7 @@ from core.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher,
 SAMPLE_RATE = 16000
 POSITIVE = ("notification",)
 NEGATIVE = ("speech", "unclear")
-NEUTRAL = ("noise",)
+NEUTRAL = ("noise", "room")  # шум ефіру й кімнати: відкинути його не шкодить
 GRID = tuple(round(0.60 + 0.02 * step, 2) for step in range(20))
 MIN_NOTIFICATIONS = 3
 MIN_SPEECH = 10
@@ -31,10 +31,12 @@ MAX_ITEMS = 2000
 
 
 def _labelled(store, limit=MAX_ITEMS):
+    labels = (*POSITIVE, *NEGATIVE, *NEUTRAL)
+    marks = ", ".join("?" * len(labels))
     with store.connect() as db:
         return db.execute(
-            "SELECT id, created, label FROM recordings WHERE reference IS NOT NULL AND label IN (?, ?, ?, ?) "
-            "ORDER BY created DESC LIMIT ?", (*POSITIVE, *NEGATIVE, *NEUTRAL, limit)).fetchall()
+            f"SELECT id, created, label FROM recordings WHERE reference IS NOT NULL AND label IN ({marks}) "
+            "ORDER BY created DESC LIMIT ?", (*labels, limit)).fetchall()
 
 
 def label_counts(store):

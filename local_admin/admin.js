@@ -643,8 +643,9 @@
   }
 
   let recordingOffset = 0;
+  const reviewCards = [];
   async function recordings(reset = true) {
-    if (reset) { recordingOffset = 0; $("recordings").replaceChildren(); }
+    if (reset) { recordingOffset = 0; reviewCards.length = 0; $("recordings").replaceChildren(); }
     const [page, summary] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}` +
         ($("recording-queue").value ? `&queue=${$("recording-queue").value}` : "")),
@@ -664,7 +665,7 @@
     }
     if (!grouped) note("Записи відкрито без груп. Перезапустіть локальну адмінпанель і оновіть список, щоб відокремити короткі фрази. Приймач зупиняти не потрібно.");
     const quality = summary.quality;
-    $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі/сигналі: ${summary.false_text} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
+    $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі ефіру/сигналі: ${summary.false_text} · кімнатний шум: ${summary.room ?? 0} (з текстом: ${summary.room_false_text ?? 0}) · кілька передач у записі: ${summary.multiple_messages ?? 0} з ${summary.speech_reviewed ?? 0} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
     $("recording-summary").textContent = `Записів: ${page.total} · перевірено: ${summary.reviewed} · WER до / після: ${pct(quality.raw_text.wer)} / ${pct(quality.final_text.wer)}`;
     if (!page.total) $("recordings").append(el("p", "muted", (grouped ? groups.all : page.total) ? "У цій групі записів немає. Оберіть іншу групу або стан перевірки." : "Записів за цим фільтром ще немає. Нові з’являться після запуску оновленого приймача."));
     for (const item of page.items) {
@@ -691,14 +692,22 @@
         qualityLine.textContent = `WER до / після: ${pct(raw.wer)} / ${pct(final.wer)} · CER до / після: ${pct(raw.cer)} / ${pct(final.cer)} · числа до / після: ${yes(raw.number_match)} / ${yes(final.number_match)} · збіг ролей кому / від кого: ${row.role_quality?.recipient?.match == null ? "—" : yes(row.role_quality.recipient.match)} / ${row.role_quality?.sender?.match == null ? "—" : yes(row.role_quality.sender.match)}`;
       }
       showQuality(item); details.append(qualityLine);
-      const form = el("form"), label = el("select"), input = el("textarea");
-      for (const [value, title] of Object.entries({speech: "Мовлення", noise: "Шум / тиша", notification: "Звук сповіщення", unclear: "Неможливо розібрати"})) {
-        const option = el("option", "", title); option.value = value; label.append(option);
+      const form = el("form"), input = el("textarea");
+      // Тип запису — кнопками; «Шум» і «Сигнал» зберігаються одразу (без тексту й ролей).
+      const CATEGORIES = [["speech", "1 Мовлення"], ["noise", "2 Шум ефіру / тиша"], ["notification", "3 Сигнал"], ["unclear", "4 Нерозбірливо"], ["room", "5 Кімната / клавіатура"]];
+      const category = { value: item.label || "speech" };
+      const segmented = el("div", "segmented");
+      const categoryButtons = {};
+      for (const [value, title] of CATEGORIES) {
+        const button = el("button", "ghost", title); button.type = "button";
+        button.addEventListener("click", () => setCategory(value, true));
+        categoryButtons[value] = button; segmented.append(button);
       }
-      label.value = item.label || "speech";
       input.value = item.reference ?? (d.final_text || d.raw_text || "");
       input.rows = 2; input.maxLength = 2000; input.placeholder = "Введіть те, що справді чутно…";
       input.setAttribute("aria-label", "Еталонна розшифровка");
+      const splitRoles = text => (text || "").split(",").map(v => v.trim()).filter(Boolean);
+      const sameRole = (a, b) => a.toLocaleLowerCase("uk") === b.toLocaleLowerCase("uk");
       function roleField(title, reference) {
         const group = el("div", "recording-role"), mode = el("select"), value = el("input");
         group.append(el("span", "", title));
@@ -711,28 +720,90 @@
         value.placeholder = "Позивний і номер; декілька — через кому";
         value.setAttribute("aria-label", `${title}: позивний`);
         const update = () => { value.hidden = mode.value !== "value"; value.required = mode.value === "value"; };
-        mode.addEventListener("change", update); update(); group.append(mode, value);
+        mode.addEventListener("change", () => { update(); renderChips(); });
+        value.addEventListener("input", () => renderChips());
+        update(); group.append(mode, value);
         return {node: group, read: () => mode.value === "unknown" ? null : mode.value === "absent" ? "" : value.value,
-                absent: () => { mode.value = "absent"; update(); }};
+                absent: () => { mode.value = "absent"; update(); },
+                values: () => mode.value === "value" ? splitRoles(value.value) : [],
+                set: list => { value.value = list.join(", "); mode.value = list.length ? "value" : "unknown"; update(); }};
       }
       const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від кого", item.reference_sender);
-      label.addEventListener("change", () => {
-        if (["noise", "notification"].includes(label.value)) { input.value = ""; recipient.absent(); sender.absent(); }
-      });
+
+      // Позивні зі словника, знайдені в набраному тексті: оператор сам відмічає «Кому» / «Від».
+      const chips = el("div", "recording-chips");
+      let suggestions = [], suggestTimer = null;
+      function renderChips() {
+        chips.replaceChildren();
+        if (!suggestions.length) return;
+        chips.append(el("span", "muted small", "Позивні у фразі:"));
+        for (const name of suggestions) {
+          const chip = el("span", "chip");
+          chip.append(el("b", "", name));
+          for (const [field, title] of [[recipient, "Кому"], [sender, "Від"]]) {
+            const chosen = field.values().some(v => sameRole(v, name));
+            const toggle = el("button", chosen ? "ghost on" : "ghost", title); toggle.type = "button";
+            toggle.setAttribute("aria-pressed", String(chosen));
+            toggle.addEventListener("click", () => {
+              const list = field.values().filter(v => !sameRole(v, name));
+              field.set(chosen ? list : [...list, name]);
+              renderChips();
+            });
+            chip.append(toggle);
+          }
+          chips.append(chip);
+        }
+      }
+      function suggest() {
+        clearTimeout(suggestTimer);
+        suggestTimer = setTimeout(async () => {
+          if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) { suggestions = []; renderChips(); return; }
+          try { suggestions = (await request("/api/recordings/suggest-roles", "POST", { text: input.value })).callsigns || []; }
+          catch (_) { suggestions = []; }
+          renderChips();
+        }, 350);
+      }
+      input.addEventListener("input", suggest);
+
+      // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
+      const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
+      const multi = el("label", "check small"); multi.append(multiBox, el("span", "", " Кілька передач у записі"));
+      multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
       const textField = el("label", "recording-text");
       textField.append(el("span", "muted small", "Почутий текст"), input);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
       const actions = el("div", "recording-actions");
-      label.setAttribute("aria-label", "Тип запису"); actions.append(label, save);
-      form.append(textField, roles, actions);
-      form.addEventListener("submit", event => { event.preventDefault(); action(async () => {
-        const result = await request(`/api/recordings/${item.id}/review`, "PUT", {reference: input.value, label: label.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read()});
-        item.revision = result.revision; item.reference = result.reference;
-        showQuality(result);
-        save.textContent = "Оновити еталон"; note("Еталон збережено. Початкові тексти й правила не змінено. Оновіть список для перерахунку загальної оцінки.");
-        if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue();
-      }); });
+      segmented.setAttribute("aria-label", "Тип запису"); actions.append(segmented, save);
+      function setCategory(value, quick) {
+        category.value = value;
+        for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
+        const speechLike = ["speech", "unclear"].includes(value);
+        textField.hidden = !speechLike; roles.hidden = !speechLike; chips.hidden = !speechLike; multi.hidden = !speechLike;
+        if (!speechLike) { input.value = ""; recipient.absent(); sender.absent(); if (quick) submit(); }
+        else if (quick) suggest();
+      }
+      async function submit() {
+        await action(async () => {
+          const speechLike = ["speech", "unclear"].includes(category.value);
+          const result = await request(`/api/recordings/${item.id}/review`, "PUT", {reference: input.value, label: category.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read(), multiple_messages: speechLike ? multiBox.checked : null});
+          item.revision = result.revision; item.reference = result.reference; item.label = result.label;
+          showQuality(result);
+          controller.done = true;
+          card.className = "panel recording-card done";
+          save.textContent = "Оновити еталон"; note("Еталон збережено. Початкові тексти й правила не змінено.");
+          if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue();
+          if (typeof advanceReview === "function") advanceReview(controller);
+        });
+      }
+      form.append(textField, chips, roles, multi, actions);
+      form.addEventListener("submit", event => { event.preventDefault(); submit(); });
+      const controller = { card, audio, item, done: item.reference !== null, setCategory, submit,
+                           focusText: () => { if (!textField.hidden) input.focus(); }, suggest };
+      reviewCards.push(controller);
+      card.addEventListener("click", () => { if (typeof activateReview === "function") activateReview(controller, false); });
+      if (controller.done) card.className = "panel recording-card done";
+      setCategory(category.value, false);
       card.append(form);
       details.append(el("pre", "", JSON.stringify(d, null, 2)));
       card.append(details); $("recordings").append(card);
@@ -750,6 +821,65 @@
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));
 
   const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
+
+  // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
+  const REVIEW_PREFS = "radio345:review-prefs";
+  let reviewPrefs = { speed: "1", autoplay: true };
+  try { reviewPrefs = { ...reviewPrefs, ...JSON.parse(localStorage.getItem(REVIEW_PREFS) || "{}") }; } catch (_) { /* типово */ }
+  const savePrefs = () => { try { localStorage.setItem(REVIEW_PREFS, JSON.stringify(reviewPrefs)); } catch (_) { /* сесія */ } };
+  $("recording-speed").value = reviewPrefs.speed;
+  $("recording-autoplay").checked = reviewPrefs.autoplay;
+  $("recording-speed").addEventListener("change", () => {
+    reviewPrefs.speed = $("recording-speed").value; savePrefs();
+    for (const c of reviewCards) c.audio.playbackRate = Number(reviewPrefs.speed);
+  });
+  $("recording-autoplay").addEventListener("change", () => { reviewPrefs.autoplay = $("recording-autoplay").checked; savePrefs(); });
+  document.addEventListener("play", event => {
+    if (event.target instanceof HTMLMediaElement && event.target.closest('[data-panel="recordings"]'))
+      event.target.playbackRate = Number(reviewPrefs.speed);
+  }, true);
+
+  let activeReview = null;
+  function activateReview(controller, scroll = true) {
+    activeReview = controller;
+    for (const c of reviewCards) c.card.classList.toggle("active", c === controller);
+    if (scroll) controller.card.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  function stepReview(delta) {
+    if (!reviewCards.length) return;
+    const index = activeReview ? reviewCards.indexOf(activeReview) : -1;
+    const next = reviewCards[Math.max(0, Math.min(reviewCards.length - 1, index + delta))];
+    activateReview(next);
+  }
+  function advanceReview(controller) {
+    controller.audio.pause();
+    const start = reviewCards.indexOf(controller);
+    const next = reviewCards.slice(start + 1).find(c => !c.done);
+    if (!next) { note("Еталон збережено. На цій сторінці неперевірених записів більше немає — оновіть список або натисніть «Показати ще»."); return; }
+    activateReview(next);
+    if (reviewPrefs.autoplay) next.audio.play().catch(() => {});
+  }
+  document.addEventListener("keydown", event => {
+    if (view !== "recordings" || !reviewCards.length) return;
+    const typing = event.target.closest?.("textarea, input, select");
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault(); (activeReview || reviewCards[0]).submit(); return;
+    }
+    if (event.key === "Escape" && typing) { event.target.blur(); return; }
+    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!activeReview) activateReview(reviewCards[0], false);
+    const current = activeReview;
+    if (event.key === " ") {
+      event.preventDefault();
+      if (current.audio.paused) current.audio.play().catch(() => {}); else current.audio.pause();
+    } else if (["1", "2", "3", "4", "5"].includes(event.key)) {
+      current.setCategory(["speech", "noise", "notification", "unclear", "room"][Number(event.key) - 1], true);
+      if (["1", "4"].includes(event.key)) current.focusText();
+    } else if (event.key === "j" || event.key === "о" || event.key === "ArrowDown") { event.preventDefault(); stepReview(1); }
+    else if (event.key === "k" || event.key === "л" || event.key === "ArrowUp") { event.preventDefault(); stepReview(-1); }
+    else if (event.key === "r" || event.key === "к") { current.audio.currentTime = 0; current.audio.play().catch(() => {}); }
+    else if (event.key === "Enter") { event.preventDefault(); current.focusText(); }
+  });
 
   // ---------- Відтворення без луни в мікрофон приймача ----------
   // Звук із колонок Mac потрапляє в мікрофон: приймач розпізнав би його знову

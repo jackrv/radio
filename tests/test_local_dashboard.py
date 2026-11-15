@@ -327,3 +327,33 @@ def test_listening_hold_endpoint_requires_origin_and_bounds(local):
     assert client.put("/api/listening-hold",json={"seconds":0},headers={"Origin":ORIGIN}).status_code==200
     assert reception_request(path) is None
     assert client.put("/api/listening-hold",json={"seconds":500},headers={"Origin":ORIGIN}).status_code==422
+
+
+def test_callsign_suggestions_come_from_operator_text_without_role_guess(local):
+    client,path,_=local
+    import sqlite3
+    with sqlite3.connect(path) as db:
+        db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
+        db.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
+                       [(1,"вишня: 210 300"),(2,"клен: 300"),(3,"дуб")])
+    body={"text":"Вишня 210, Вишня 210, я Клен 300, дуб, прийом"}
+    assert client.post("/api/recordings/suggest-roles",json=body).status_code==403
+    result=client.post("/api/recordings/suggest-roles",json=body,headers={"Origin":ORIGIN}).json()
+    assert result=={"callsigns":["вишня 210","клен 300","дуб"]}, "без повторів і без підказки ролей"
+    assert client.post("/api/recordings/suggest-roles",json={"text":"шум"},headers={"Origin":ORIGIN}).json()=={"callsigns":[]}
+
+
+
+def test_review_accepts_room_label_and_multiple_messages(local):
+    client,path,tmp=local
+    from services.recordings import RecordingStore
+    store=RecordingStore(tmp/"recordings")
+    record=store.save(pcm(segment()),16000,{"status":"ready","final_text":"текст"})
+    url=f"/api/recordings/{record}/review"
+    bad=client.put(url,json={"reference":"щось","label":"room","expected_revision":0},headers={"Origin":ORIGIN})
+    assert bad.status_code==422
+    ok=client.put(url,json={"reference":"Вишня 210 прийом Клен 300","label":"speech","expected_revision":0,
+                            "multiple_messages":True},headers={"Origin":ORIGIN})
+    assert ok.status_code==200 and ok.json()["multiple_messages"]==1
+    room=client.put(url,json={"reference":"","label":"room","expected_revision":1},headers={"Origin":ORIGIN})
+    assert room.json()["label"]=="room" and room.json()["multiple_messages"] is None

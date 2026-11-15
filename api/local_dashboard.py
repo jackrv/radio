@@ -49,12 +49,17 @@ class RecordingReview(BaseModel):
     reference_recipient: str | None = Field(default=None, max_length=300)
     reference_sender: str | None = Field(default=None, max_length=300)
     reference: str = Field(max_length=2000)
-    label: str = Field(pattern=r"^(speech|noise|notification|unclear)$")
+    label: str = Field(pattern=r"^(speech|noise|notification|unclear|room)$")
     expected_revision: int = Field(ge=0)
+    multiple_messages: bool | None = None
 
 
 class SessionInput(BaseModel):
     token: str = Field(max_length=128)
+
+
+class RoleSuggestion(BaseModel):
+    text: str = Field(max_length=2000)
 
 
 class ListeningHold(BaseModel):
@@ -311,6 +316,37 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 groups.append({"key": key, "title": str(group.get("title", ""))[:200], "ids": ids})
         return {"created": data.get("created"), "groups": groups}
 
+    callsign_cache = {}
+
+    @app.post("/api/recordings/suggest-roles")
+    def suggest_roles(payload: RoleSuggestion, admin=Depends(actor)):
+        """Позивні зі словника, знайдені в тексті оператора, — для швидкого вибору «кому / від».
+
+        Ролі навмисно не пропонуються: інакше оцінка логіки «кому / від кого» на
+        правильному тексті перевіряла б саму себе.
+        """
+        from callsigns import Callsigns
+        from core.analyzer import fmt
+        from services.dictionary_loader import dictionary_fingerprint
+        from services.text_lists import sync_aliases
+        with get_db(db_path) as db:
+            sync_aliases(db)
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():
+                return {"callsigns": []}
+            key = dictionary_fingerprint(db)
+            if key not in callsign_cache:
+                lines = [line for (line,) in db.execute("SELECT raw_line FROM dictionary_entries "
+                         "WHERE enabled=1 AND dictionary_type='callsigns' ORDER BY line_number")]
+                callsign_cache.clear()
+                callsign_cache[key] = Callsigns.from_lines(lines)
+            callsigns = callsign_cache[key]
+        found = []
+        for item in callsigns.find(payload.text):
+            text = fmt([item])
+            if text not in found:
+                found.append(text)
+        return {"callsigns": found}
+
     @app.get("/api/recordings/queue")
     def recording_queue(admin=Depends(actor)):
         queue = review_queue()
@@ -357,11 +393,12 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     def recording_review(record_id: str, payload: RecordingReview, admin=Depends(actor)):
         if payload.label == "speech" and not payload.reference.strip():
             raise HTTPException(422, "Введіть почутий текст або позначте нерозбірливий запис")
-        if payload.label in ("noise", "notification") and payload.reference.strip():
+        if payload.label in ("noise", "notification", "room") and payload.reference.strip():
             raise HTTPException(422, "Для запису без мовлення залиште текст порожнім")
-        role_fields = {name: getattr(payload, name) for name in ("reference_recipient", "reference_sender")
+        role_fields = {name: getattr(payload, name) for name in ("reference_recipient", "reference_sender", "multiple_messages")
                        if name in payload.model_fields_set}
-        if payload.label in ("noise", "notification") and any(value and value.strip() for value in role_fields.values()):
+        if payload.label in ("noise", "notification", "room") and any(
+                isinstance(value, str) and value.strip() for value in role_fields.values()):
             raise HTTPException(422, "Для запису без мовлення позивні не вказуються")
         try:
             return recordings.review(record_id, payload.reference.strip(), payload.label, payload.expected_revision, **role_fields)

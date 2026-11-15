@@ -18,8 +18,12 @@ class VADSegmenter:
         min_speech_ms: int,
         max_segment_s: int,
         on_discard=None,
+        speech_gate=None,
     ):
         self.on_discard = on_discard
+        # Необов’язкова додаткова умова «кадр — мовлення» (наприклад, гучність над
+        # фоном ефіру). Типово вимкнено: поведінка приймача не змінюється.
+        self.speech_gate = speech_gate
         self.sample_rate = sample_rate
         self.frame_ms = frame_ms
         self.silence_end_ms = silence_end_ms
@@ -46,6 +50,8 @@ class VADSegmenter:
         """Принимает один аудиокадр; возвращает готовый PCM-сегмент или None."""
 
         is_speech = self.vad.is_speech(frame, self.sample_rate)
+        if is_speech and self.speech_gate is not None and not self.speech_gate(frame):
+            is_speech = False
         if is_speech:
             self._speech_end_at = getattr(frame, "captured_at", None)
             self._speech_end_unix_s = getattr(frame, "captured_unix_s", None)

@@ -17,6 +17,8 @@ import numpy as np
 
 _trace = ContextVar("recording_trace", default=None)
 UNSET = object()
+# Звук із кімнати (клавіатура, кроки) — не радіоефір: окремо від шуму ефіру в метриках.
+NON_SPEECH = ("noise", "notification", "room")
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -94,15 +96,17 @@ class RecordingStore:
             id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL,
             bytes INTEGER NOT NULL, data TEXT NOT NULL, reference TEXT,
             label TEXT, revision INTEGER NOT NULL DEFAULT 0, reviewed_at REAL,
-            reference_recipient TEXT, reference_sender TEXT)""")
+            reference_recipient TEXT, reference_sender TEXT, multiple_messages INTEGER)""")
         try:
+            # Адитивні міграції: старі записи й розмітка не змінюються.
+            added = {"reference_recipient": "TEXT", "reference_sender": "TEXT", "multiple_messages": "INTEGER"}
             columns = {row[1] for row in db.execute("PRAGMA table_info(recordings)")}
-            if not {"reference_recipient", "reference_sender"} <= columns:
+            if not set(added) <= columns:
                 db.execute("BEGIN IMMEDIATE")
                 columns = {row[1] for row in db.execute("PRAGMA table_info(recordings)")}
-                for name in ("reference_recipient", "reference_sender"):
+                for name, kind in added.items():
                     if name not in columns:
-                        db.execute(f"ALTER TABLE recordings ADD COLUMN {name} TEXT")
+                        db.execute(f"ALTER TABLE recordings ADD COLUMN {name} {kind}")
                 db.commit()
             yield db
             db.commit()
@@ -220,12 +224,18 @@ class RecordingStore:
             raise LookupError("Аудіо недоступне") from None
 
     def review(self, record_id, reference, label, revision, *,
-               reference_recipient=UNSET, reference_sender=UNSET):
+               reference_recipient=UNSET, reference_sender=UNSET, multiple_messages=UNSET):
         self.get(record_id)
         with self.connect() as db:
             fields, values = ["reference=?", "label=?", "revision=revision+1", "reviewed_at=?"], [reference, label, time.time()]
+            if label in NON_SPEECH:
+                multiple_messages = None
+            if multiple_messages is not UNSET:
+                # Кілька передач в одному записі (злиття сегментів VAD): None — не відмічено.
+                fields.append("multiple_messages=?")
+                values.append(None if multiple_messages is None else int(bool(multiple_messages)))
             for name, value in (("reference_recipient", reference_recipient), ("reference_sender", reference_sender)):
-                if label in ("noise", "notification"):
+                if label in NON_SPEECH:
                     value = ""
                 if value is not UNSET:
                     fields.append(f"{name}=?")
@@ -262,7 +272,12 @@ class RecordingStore:
                 "reviewed_protected": True,
                 "missed_speech": sum(r["label"] == "speech" and not r["data"].get("raw_text") for r in decoded),
                 "raw_false_text": sum(r["label"] in ("noise", "notification") and bool(r["data"].get("raw_text")) for r in decoded),
-                "false_text": sum(r["label"] in ("noise", "notification") and bool(r["data"].get("final_text")) for r in decoded)}
+                "false_text": sum(r["label"] in ("noise", "notification") and bool(r["data"].get("final_text")) for r in decoded),
+                # Кімнатний шум рахується окремо: на робочому прототипі його не буде.
+                "room": sum(r["label"] == "room" for r in decoded),
+                "room_false_text": sum(r["label"] == "room" and bool(r["data"].get("final_text")) for r in decoded),
+                "multiple_messages": sum(r.get("multiple_messages") == 1 for r in decoded),
+                "speech_reviewed": sum(r["label"] in ("speech", "unclear") for r in decoded)}
 
 
 class RecordingArchive:

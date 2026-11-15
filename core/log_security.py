@@ -66,6 +66,7 @@ def configure_logging(token):
 
     for handler in handlers:
         handler.setFormatter(formatter)
+    handlers[1].setFormatter(RedactingFormatter("%(message)s", None, token))
     handlers[0].setFormatter(RedactingFormatter(
         "%(asctime)s [%(levelname)s] %(name)s [%(threadName)s] %(message)s",
         "%Y-%m-%d %H:%M:%S", token,

@@ -18,7 +18,7 @@ import json
 import logging
 import atexit
 from logging.handlers import RotatingFileHandler
-from core.console import ConsoleDashboard
+from core.console import ConsoleDashboard, child_event
 from core.log_security import RedactingFormatter, archive_log_name
 import os
 from pathlib import Path
@@ -76,7 +76,8 @@ def close_console():
 def output(message: str) -> None:
     _launcher_log.info(message)
     if _console is not None:
-        _console.add(message)
+        level = logging.WARNING if "⚠" in message else logging.ERROR if message.startswith(("Помилка:", "Не вдалося")) else logging.INFO
+        _console.add(message, level)
         return
     try:
         print(f"[launcher] {message}", flush=True)
@@ -314,10 +315,12 @@ class ManagedProcess:
                     try:
                         _launcher_log.info("[%s] %s", self.name, line.rstrip())
                         if _console is not None:
-                            if self.name == "radio" or re.search(r"\b(error|warning|critical|fatal)\b", line, re.I):
-                                # Redact child output before placing it on the dashboard.
-                                record = _launcher_log.makeRecord(_launcher_log.name, logging.WARNING, "", 0, "[%s] %s", (self.name, line.rstrip()), None)
-                                _console.add(_launcher_log.handlers[0].format(record))
+                            event = child_event(self.name, line)
+                            if event is not None:
+                                message, level = event
+                                record = _launcher_log.makeRecord(_launcher_log.name, level, "", 0, message, (), None)
+                                formatter = RedactingFormatter("%(message)s", None, launcher_setting("TELEGRAM_BOT_TOKEN"))
+                                _console.add(formatter.format(record), level)
                         else:
                             print(f"[{self.name}] {line}", end="", flush=True)
                     except (OSError, ValueError):
@@ -501,6 +504,8 @@ def run_services(args, session):
             return 2
 
     start_console()
+    if not start_admin and port_busy(8766):
+        _console.set_admin_url("http://127.0.0.1:8766")
     output(f"Python: {py}")
     processes: list[ManagedProcess] = []
     try:
@@ -560,6 +565,7 @@ def run_services(args, session):
         if start_admin:
             admin = ManagedProcess("admin", [py,"-u","-m","api.local_dashboard"], session=session)
             processes.append(admin)
+            _console.set_admin_url("http://127.0.0.1:8766")
             output("Локальна панель: http://127.0.0.1:8766  (відкрити: .venv/bin/python -m api.local_dashboard --open)")
         radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session)
         processes.append(radio)
@@ -572,6 +578,7 @@ def run_services(args, session):
                     output(f"⚠️ Локальна панель завершилась (код {exit_code}); приймач працює далі. "
                            "Запустити знову: .venv/bin/python -m api.local_dashboard --open")
                     processes.remove(item)
+                    _console.set_admin_url(None)
                     break
                 if exit_code is not None:
                     output(f"⚠️ {item.name} завершився з кодом {exit_code}; зупиняю решту")

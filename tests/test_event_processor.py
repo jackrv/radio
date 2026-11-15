@@ -266,3 +266,28 @@ def test_sqlite_failure_allows_immediate_retry(monkeypatch):
     assert save_event.call_count == 2
     log.exception.assert_called_once()
     telegram.notify.assert_not_called()
+
+
+def test_bare_callsign_without_number_is_not_an_event():
+    from callsigns import Callsigns
+    callsigns = Callsigns.from_lines(["дуб", "вишня: 210"])
+    for text in ("Дуб", "дуб, дуб."):
+        processor, save_event, telegram, log = make_processor(callsigns=callsigns)
+        processor.process(text, b"pcm")
+        save_event.assert_not_called()
+        telegram.notify.assert_not_called()
+        assert "лише позивний без номера" in log.info.call_args[0][0]
+    # Будь-що, крім самого позивного, лишає подію.
+    for text in ("Дуб, прийом", "Вишня 210", "Дуб 5", "Дуб шість"):
+        processor, save_event, telegram, _ = make_processor(callsigns=callsigns)
+        processor.process(text, b"pcm")
+        assert save_event.called or telegram.notify.called, text
+
+
+def test_bare_callsign_with_command_or_watch_word_stays():
+    from callsigns import Callsigns
+    callsigns = Callsigns.from_lines(["дуб"])
+    commands = Callsigns.from_lines(["дуб"])
+    processor, save_event, _, _ = make_processor(callsigns=callsigns, commands=commands)
+    processor.process("Дуб", b"pcm")
+    save_event.assert_called_once()

@@ -1,4 +1,4 @@
-from core.analyzer import fmt, is_short_garbage, split_roles
+from core.analyzer import fmt, is_bare_callsign, is_short_garbage, split_roles
 
 
 class EventProcessor:
@@ -54,6 +54,11 @@ class EventProcessor:
             and not watch_found
         ):
             self.log.info("Відкинуто короткий хибний фрагмент: %s", text)
+            return
+
+        if not cmd_found and not watch_found and is_bare_callsign(text, cs_found, self.callsigns):
+            note(bare_callsign=True)
+            self.log.info("Відкинуто: лише позивний без номера, без команди й тексту: %s", text)
             return
 
         event_id = None

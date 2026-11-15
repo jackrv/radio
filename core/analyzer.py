@@ -39,6 +39,19 @@ def is_short_garbage(text: str, short_garbage: set[str]) -> bool:
     return normalize(text) in short_garbage
 
 
+def is_bare_callsign(text: str, cs_found, callsigns) -> bool:
+    """Лише позивні без номера й нічого більше: «Дуб», «дуб, дуб».
+
+    Позивний без номера в ефірі завжди йде з командою або текстом, тож саме слово —
+    це найчастіше вигадка Whisper (ім’я з підказки на звуку без мовлення).
+    """
+    if not cs_found or any(item[1] for item in cs_found):
+        return False
+    words = normalize(text).split()
+    return bool(words) and all(
+        not word.isdigit() and any(item[1] is None for item in callsigns.find(word)) for word in words)
+
+
 def split_roles(text: str, callsigns):
     """Разделяет найденные позывные на адресата и отправителя."""
     tokens = normalize(text).split()

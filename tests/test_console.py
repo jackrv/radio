@@ -35,8 +35,8 @@ def test_statistics_and_old_session():
     assert 'Пауза' in text
     assert 'Розпізнано: 6' in text
     assert '0 кадрів · 3 сегм.' in text
-    data['updated_at'] -= 60
-    assert 'немає актуальних даних' in console.lines(data)[0]
+    data['session_status'] = 'finished'
+    assert 'Зупинено' in console.lines(data)[0]
 
 
 def test_tty_keeps_bounded_events_and_refreshes_header():
@@ -50,7 +50,7 @@ def test_tty_keeps_bounded_events_and_refreshes_header():
     assert len(console.events) == 8
     frame = stream.getvalue()
     assert 'Radio 345' in frame
-    assert '\x1b[1;30;43m' in frame, 'жовта плашка очікування'
+    assert '\x1b[1;30;43m' in frame, 'жовта плашка запуску'
     assert 'Event 19' in frame
     assert 'Event 0\n' not in frame
     console.close()
@@ -273,3 +273,58 @@ def test_long_failure_is_wrapped_not_cut():
     rows, _ = _screen(console, 60, 16, {})
     text = " ".join(rows.values())
     assert "повторіть запуск." in text and "✖ ЗУПИНЕНО" in rows[1]
+
+
+
+def test_heartbeat_keeps_receiving_during_30_second_statistics_interval(monkeypatch):
+    now = time.time()
+    console = ConsoleDashboard(stream=io.StringIO(), receiver_provider=lambda: None)
+    console.started = now - 100
+    console.receiver_requested_at = now - 90
+    data = _live()
+    for age in (0, 14, 16, 29, 45, 90):
+        monkeypatch.setattr(time, "time", lambda: now + age)
+        data["_receiver"] = {"state":"listening", "updated_at":now + age}
+        assert "ПРИЙМАННЯ" in console._status(data)[0]
+    assert not console._fresh(data)
+    assert "статистика" in " ".join(console.lines(data))
+
+
+def test_state_transitions_and_stale_heartbeat(monkeypatch):
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now)
+    console = ConsoleDashboard(stream=io.StringIO(), receiver_provider=lambda: None)
+    console.started = now - 100
+    console.receiver_requested_at = None
+    old = {"_receiver":{"state":"listening","updated_at":now}}
+    assert "ЗАПУСК" in console._status(old)[0]  # Receiver not requested yet.
+    console.expect_receiver()
+    assert "ЗАПУСК" in console._status({"_receiver":{"state":"listening","updated_at":now-1}})[0]
+    for state, label in (("listening","ПРИЙМАННЯ"),("paused","ПАУЗА"),("stopped","ЗУПИНЕНО")):
+        assert label in console._status({"_receiver":{"state":state,"updated_at":now}})[0]
+    monkeypatch.setattr(time,"time",lambda:now+11)
+    assert "НЕМАЄ ЗВ’ЯЗКУ" in console._status(old)[0]
+    monkeypatch.setattr(time,"time",lambda:now+61)
+    assert "НЕМАЄ ЗВ’ЯЗКУ" in console._status({})[0]
+
+
+def test_diagnostic_failures_are_distinct_from_startup(monkeypatch):
+    console=ConsoleDashboard(stream=io.StringIO())
+    def missing(): raise FileNotFoundError()
+    def invalid(): raise ValueError('invalid JSON')
+    def denied(): raise PermissionError()
+    for provider, expected in ((missing,'ЗАПУСК'),(invalid,'ПОМИЛКА ДІАГНОСТИКИ'),(denied,'ПОМИЛКА ДІАГНОСТИКИ')):
+        console.provider=provider
+        assert expected in console._status(console._read_snapshot())[0]
+    console.receiver_provider=lambda: (_ for _ in ()).throw(OSError('busy'))
+    assert 'ПОМИЛКА ДІАГНОСТИКИ' in console._status(console._read_snapshot())[0]
+
+
+def test_statistics_remain_fresh_at_29_seconds_without_heartbeat(monkeypatch):
+    now=time.time()
+    console=ConsoleDashboard(stream=io.StringIO())
+    console.started=now-100
+    data=_live()
+    monkeypatch.setattr(time,'time',lambda:now+29)
+    assert console._fresh(data)
+    assert 'ПРИЙМАННЯ' in console._status(data)[0]

@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import math
 import sys
 import threading
 import time
@@ -12,12 +13,14 @@ from collections import deque
 
 
 class ConsoleDashboard(logging.Handler):
-    def __init__(self, provider=None, stream=None):
+    def __init__(self, provider=None, stream=None, receiver_provider=None):
         super().__init__()
         self.stream = stream or sys.stdout
-        self.provider = provider or (lambda: {})
+        self.provider = provider or (lambda: None)
         self.events = deque(maxlen=8)
         self.started = time.time()
+        self.receiver_provider = receiver_provider
+        self.receiver_requested_at = self.started
         self.stop_event = threading.Event()
         self.thread = None
         self.tty = self.stream.isatty()
@@ -50,6 +53,10 @@ class ConsoleDashboard(logging.Handler):
             self.admin_url = url
             if self.tty:
                 self.render()
+
+    def expect_receiver(self):
+        with self.lock:
+            self.receiver_requested_at = time.time()
 
     def set_problem(self, message):
         with self.lock:
@@ -116,22 +123,90 @@ class ConsoleDashboard(logging.Handler):
             return f"{seconds // 60} хв тому"
         return f"{seconds // 3600} год {seconds // 60 % 60} хв тому"
 
+    @staticmethod
+    def _timestamp(value):
+        return type(value) in (int, float) and math.isfinite(value)
+
     def _fresh(self, data):
         updated = data.get("updated_at", 0)
-        return (data.get("session_status") != "finished" and isinstance(updated, (int, float))
-                and updated >= self.started - 2 and time.time() - updated < 15)
+        # Statistics are published every 30 seconds; allow two missed writes.
+        return (data.get("session_status") != "finished" and self._timestamp(updated)
+                and updated >= self.started - 2 and -5 <= time.time() - updated < 75)
+
+    def _state_info(self, data):
+        if self.problem:
+            return "stopped", self.problem
+        now = time.time()
+        state = None
+        if self.receiver_provider is not None:
+            if self.receiver_requested_at is None:
+                return "starting", "Запускаються служби. Приймач ще не запущено."
+            if data.get("_heartbeat_error"):
+                return "diagnostics_error", "Не вдалося прочитати heartbeat приймача. Перевірте доступ до events.db."
+            heartbeat = data.get("_receiver") or {}
+            updated = heartbeat.get("updated_at")
+            current = self._timestamp(updated) and updated >= self.receiver_requested_at
+            if current and heartbeat.get("state") == "stopped":
+                return "stopped", "Приймач повідомив про зупинку. Докладно: radio.log."
+            if current and -5 <= now - updated <= 10:
+                state = heartbeat.get("state")
+            elif current:
+                return "lost", f"Немає зв’язку з приймачем: heartbeat не оновлюється {self._ago(now - updated)}. Перевірте radio.log."
+            elif now - self.receiver_requested_at < 60:
+                return "starting", "Приймач запускається. Очікуємо перший heartbeat."
+            else:
+                return "lost", "Приймач не надіслав heartbeat за 60 с. Перевірте radio.log."
+        if data.get("_diagnostics_error") in ("invalid", "unreadable"):
+            reason = "некоректний JSON / формат" if data["_diagnostics_error"] == "invalid" else "файл недоступний для читання"
+            return "diagnostics_error", f"Помилка читання diagnostics.json: {reason}. Перевірте файл і права доступу."
+        if state in ("listening", "paused"):
+            return state, ""
+        if data.get("session_status") == "finished":
+            return "stopped", "Сесію приймача завершено."
+        if self._fresh(data):
+            state = (data.get("gauges") or {}).get("receiver.state")
+            if state in ("listening", "paused", "stopped"):
+                return state, ""
+            return "starting", "Приймач ініціалізується; моделі та аудіопотік готуються."
+        if now - self.started < 60:
+            return "starting", "Першого актуального знімка приймача ще немає. Очікуємо запуск."
+        return "lost", "Немає актуальних даних приймача. Перевірте radio.log."
 
     def _status(self, data):
-        """(текст плашки, тон, права частина шапки)."""
+        code, _ = self._state_info(data)
+        label, tone = {
+            "starting": ("● ЗАПУСК", "warn"), "listening": ("● ПРИЙМАННЯ", "good"),
+            "paused": ("❚❚ ПАУЗА", "warn"), "lost": ("! НЕМАЄ ЗВ’ЯЗКУ", "bad"),
+            "diagnostics_error": ("! ПОМИЛКА ДІАГНОСТИКИ", "bad"), "stopped": ("■ ЗУПИНЕНО", "bad"),
+        }[code]
         if self.problem:
-            return "✖ ЗУПИНЕНО", "bad", ""
-        if not self._fresh(data):
-            return "● ОЧІКУВАННЯ", "warn", ""
-        state = (data.get("gauges") or {}).get("receiver.state")
-        label, tone = {"listening": ("● ПРИЙМАННЯ", "good"), "paused": ("❚❚ ПАУЗА", "warn"),
-                       "stopped": ("■ ЗУПИНЕНО", "bad")}.get(state, ("● ЗАПУСК", "warn"))
-        uptime = time.time() - data.get("started_at", self.started)
-        return label, tone, f"робота {self._clock(uptime)}"
+            label = "✖ ЗУПИНЕНО"
+        started = data.get("started_at")
+        right = f"робота {self._clock(time.time() - started)}" if code in ("listening", "paused") and self._timestamp(started) and started >= self.started - 2 else ""
+        # Standalone receiver snapshots can precede dashboard construction slightly.
+        if not right and code in ("listening", "paused") and self.receiver_provider is None and self._timestamp(started):
+            right = f"робота {self._clock(time.time() - started)}"
+        return label, tone, right
+
+    def _read_snapshot(self):
+        try:
+            data = self.provider()
+            if data is None:
+                data = {"_diagnostics_error": "missing"}
+            elif not isinstance(data, dict) or not self._timestamp(data.get("updated_at")) or not isinstance(data.get("gauges", {}), dict):
+                data = {"_diagnostics_error": "invalid"}
+        except FileNotFoundError:
+            data = {"_diagnostics_error": "missing"}
+        except (ValueError, TypeError):
+            data = {"_diagnostics_error": "invalid"}
+        except Exception:
+            data = {"_diagnostics_error": "unreadable"}
+        if self.receiver_provider is not None:
+            try:
+                data = dict(data, _receiver=self.receiver_provider())
+            except Exception:
+                data = dict(data, _heartbeat_error=True)
+        return data
 
     def _cells(self, data):
         """Показники: (підпис, значення, колір значення)."""
@@ -172,8 +247,11 @@ class ConsoleDashboard(logging.Handler):
         rows = [f"Radio 345  {label.split(' ', 1)[-1].capitalize()}" + (f"  {right}" if right else "")]
         if self.problem:
             return rows + [self.problem, "Докладно: launcher.log та radio.log"]
+        _, detail = self._state_info(data)
+        if detail:
+            return rows + [detail]
         if not self._fresh(data):
-            return [rows[0] + " — немає актуальних даних приймача", "Докладний журнал: radio.log"]
+            return rows + ["Heartbeat актуальний; статистика поки недоступна або застаріла."]
         return rows + [f"{name}: {value}" for name, value, _ in self._cells(data)]
 
     # ---------- Складання кадру ----------
@@ -242,9 +320,11 @@ class ConsoleDashboard(logging.Handler):
             for line in self._wrap(self.problem, inner - 1)[:4]:
                 rows.append(pad([(line, "1;" + self.BAD)]))
             rows.append(pad([("Докладно: launcher.log та radio.log", self.DIM)]))
+        elif self._state_info(data)[1]:
+            for line in self._wrap(self._state_info(data)[1], inner - 1)[:3]:
+                rows.append(pad([(line, self.BAD if tone == "bad" else self.TEXT)]))
         elif not self._fresh(data):
-            rows.append(pad([("Немає актуальних даних приймача. ", self.TEXT),
-                             ("Зачекайте запуску або перегляньте radio.log.", self.DIM)]))
+            rows.append(pad([("Heartbeat актуальний; статистика поки недоступна або застаріла.", self.DIM)]))
         else:
             cells = self._cells(data)
             columns_count = 2 if inner >= 60 else 1
@@ -294,12 +374,7 @@ class ConsoleDashboard(logging.Handler):
 
     def render(self):
         with self.lock:
-            try:
-                data = self.provider()
-            except Exception:
-                data = {}
-            if not isinstance(data, dict):
-                data = {}
+            data = self._read_snapshot()
             size = self.terminal_size()
             height = max(1, size.lines)
             frame = []

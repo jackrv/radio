@@ -59,7 +59,10 @@ def start_console():
     _launcher_log.setLevel(logging.INFO)
     def snapshot():
         return json.loads((ROOT / "diagnostics.json").read_text(encoding="utf-8"))
-    _console = ConsoleDashboard(provider=snapshot).start()
+    from services.receiver_status import read_console_heartbeat
+    _console = ConsoleDashboard(provider=snapshot, receiver_provider=lambda: read_console_heartbeat(ROOT / "events.db"))
+    _console.receiver_requested_at = None
+    _console.start()
     atexit.register(_console.close)
 
 
@@ -584,6 +587,7 @@ def run_services(args, session):
             processes.append(admin)
             _console.set_admin_url("http://127.0.0.1:8766")
             output("Локальна панель: http://127.0.0.1:8766  (відкрити: .venv/bin/python -m api.local_dashboard --open)")
+        _console.expect_receiver()
         radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session)
         processes.append(radio)
         output("Усі запитані процеси запущено. Ctrl+C — зупинити їх разом.")

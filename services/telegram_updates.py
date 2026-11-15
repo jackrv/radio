@@ -8,11 +8,27 @@ import time
 
 import requests
 
-from core.diagnostics import runtime
+from core.diagnostics import error_kind, runtime
 from services.telegram_sync import forget_delivery
 from services.telegram_media_store import callback_fix_id, deletion_intent, deletion_result
 from services.telegram_offset_store import load_telegram_offset, save_telegram_offset
 from services.telegram_retry import listener_retry_delay
+
+
+_NETWORK_ERRORS = (requests.ConnectionError, requests.Timeout)
+
+
+def _network_reason(error):
+    """Стабільний короткий опис без URL, токена чи тексту винятку."""
+    reasons = {
+        "connection_reset": "обрив з’єднання",
+        "ReadTimeout": "тайм-аут відповіді",
+        "ConnectTimeout": "тайм-аут з’єднання",
+        "Timeout": "тайм-аут",
+        "ConnectionError": "помилка з’єднання",
+    }
+    return reasons.get(error_kind(error),
+                       "помилка TLS" if isinstance(error, requests.exceptions.SSLError) else "помилка з’єднання")
 
 
 class UpdatesMixin:
@@ -66,23 +82,35 @@ class UpdatesMixin:
 
     def _hide_phrase(self, cq, chat_id, message, data):
         """Адміністратор: прибрати повідомлення й приховати фразу в журналі для всіх."""
-        fix_id = callback_fix_id(self.db_path, data, message)
-        if fix_id:
-            # Намір переживає аварію після того, як Telegram уже видалив повідомлення.
-            deletion_intent(self.db_path, fix_id)
-        d = requests.post(
-            f"{self.api}/deleteMessage",
-            data={"chat_id": chat_id, "message_id": message.get("message_id")},
-            timeout=15,
-        ).json()
-        success = d.get("ok") is True or d.get("description") == "Bad Request: message to delete not found"
-        if fix_id:
-            deletion_result(self.db_path, fix_id, success)
-        requests.post(
-            f"{self.api}/answerCallbackQuery",
-            data={"callback_query_id": cq["id"], "text": "Видалено" if success else "Помилка"},
-            timeout=15,
-        )
+        failure = None
+        try:
+            fix_id = callback_fix_id(self.db_path, data, message)
+            if fix_id:
+                # Намір переживає втрату відповіді після фактичного видалення.
+                deletion_intent(self.db_path, fix_id)
+            response = self._request(
+                "post", "deleteMessage",
+                data={"chat_id": chat_id, "message_id": message.get("message_id")},
+                timeout=15,
+            )
+            result = response.json()
+            if not isinstance(result, dict) or type(result.get("ok")) is not bool:
+                raise ValueError("Некоректна відповідь Telegram на видалення")
+            success = (result["ok"] is True
+                       or result.get("description") == "Bad Request: message to delete not found")
+            if fix_id:
+                deletion_result(self.db_path, fix_id, success)
+            runtime.count("telegram.admin_delete.confirmed" if success else "telegram.admin_delete.rejected")
+        except Exception as exc:
+            runtime.count("telegram.admin_delete.unconfirmed")
+            failure = exc
+        if failure is not None:
+            # Відповідаємо поза except, щоб окремий збій answerCallbackQuery не
+            # успадкував причину deleteMessage у мережевій діагностиці.
+            # Вихідну помилку передаємо наявним повторам; стан deleting збережено.
+            self._answer_callback(cq, "Помилка")
+            raise failure
+        self._answer_callback(cq, "Видалено" if success else "Помилка")
 
     # ---------- Long polling ----------
 
@@ -151,7 +179,7 @@ class UpdatesMixin:
 
                     try:
                         self.handle_update(upd)
-                    except Exception:
+                    except Exception as exc:
                         runtime.count("telegram.update_processing_error")
                         retries = getattr(self, "_update_retries", None)
                         if retries is None:
@@ -159,7 +187,12 @@ class UpdatesMixin:
                             self._update_retries = retries
                         attempts = retries.get(update_id, 0) + 1
                         retries[update_id] = attempts
-                        self.log.exception("Помилка Telegram update_id=%s, спроба %s/3", update_id, attempts)
+                        if isinstance(exc, _NETWORK_ERRORS):
+                            next_step = "повтор через 5 с" if attempts < 3 else "спроби вичерпано"
+                            self.log.warning("Telegram недоступний (%s); %s, спроба %s/3",
+                                             _network_reason(exc), next_step, attempts)
+                        else:
+                            self.log.exception("Помилка Telegram update_id=%s, спроба %s/3", update_id, attempts)
                         if attempts < 3:
                             time.sleep(5)
                             break
@@ -191,9 +224,11 @@ class UpdatesMixin:
                 # update безпечна — команди й рішення ідемпотентні.
                 consecutive_errors += 1
                 delay = listener_retry_delay(consecutive_errors)
-                self.log.warning(
+                log_failure = self.log.warning if isinstance(e, _NETWORK_ERRORS) else self.log.exception
+                log_failure(
                     "Збій зв’язку в callback_listener: %s; "
                     "повтор через %s с (помилок поспіль: %s)",
-                    e, delay, consecutive_errors,
+                    _network_reason(e) if isinstance(e, _NETWORK_ERRORS) else type(e).__name__,
+                    delay, consecutive_errors,
                 )
                 time.sleep(delay)

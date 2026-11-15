@@ -103,7 +103,10 @@ def test_sqlite_failure_prevents_remote_deletion(setup):
         with patch("requests.post") as post:
             with pytest.raises(sqlite3.Error):
                 service(db).handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}})
-    post.assert_not_called()
+    # Намір не записано: віддаленого deleteMessage немає, лише повідомлення про помилку кнопки.
+    post.assert_called_once()
+    assert post.call_args.args[0].endswith("/answerCallbackQuery")
+    assert post.call_args.kwargs["data"]["text"] == "Помилка"
 
 
 def test_failed_replay_does_not_unhide_confirmed_deletion(setup):

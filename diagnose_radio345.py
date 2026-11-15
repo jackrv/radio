@@ -95,7 +95,7 @@ LOG_PATTERNS = {
     "polling_errors": r"(?:Сбой связи|Збій зв’язку) в callback_listener|Telegram getUpdates: HTTP",
     "polling_recovered": r"(?:Связь с Telegram восстановлена|Зв’язок із Telegram відновлено)",
     "voice_attempt_failed": r"(?:Попытка \d/3 отправить голосовое не удалась|Спроба \d/3 надіслати голосове не вдалася)",
-    "connection_reset": r"ConnectionResetError|Connection reset by peer",
+    "connection_reset": r"ConnectionResetError|Connection reset by peer|outcome=connection_reset\b",
     "read_timeouts": r"Read timed out|ReadTimeout",
     "voice_exhausted": r"(?:Все попытки исчерпаны|Усі спроби вичерпано)",
     "text_send_failed": r"Telegram \(текст\) (?:не отправлен|не надіслано)",

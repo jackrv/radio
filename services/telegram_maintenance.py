@@ -27,9 +27,9 @@ class MaintenanceMixin:
         self._maintenance_stop = threading.Event()
         self._maintenance_thread = None
 
-    def send_status(self, text, reply_markup=None, parse_mode="HTML", *, chat_id, slot="status", ttl=86400):
+    def send_status(self, text, reply_markup=None, parse_mode="HTML", *, chat_id, slot="status", ttl=86400, fresh=False):
         # Keep send_text's bool contract and test/mocking boundary.
-        token = managed_key.set((slot, ttl))
+        token = managed_key.set((slot, ttl, fresh))
         try:
             with self._service_lock:
                 kwargs = {"chat_id": chat_id}
@@ -41,17 +41,24 @@ class MaintenanceMixin:
         finally:
             managed_key.reset(token)
 
-    def _managed_text(self, data, slot, ttl):
-        """Reuse a status card; fallback only when the old message is definitively gone."""
+    def _managed_text(self, data, slot, ttl, fresh=False):
+        """Повторне використання картки; явний /start завжди створює нову."""
         with get_db(self.db_path) as db:
             ensure_table(db)
             row = db.execute("SELECT message_id FROM telegram_service_messages WHERE chat_id=? AND slot=?",
                              (data["chat_id"],slot)).fetchone()
+        previous_message_id = row[0] if row else None
+        if fresh:
+            # Очищення історії клієнтом може не зробити старе повідомлення
+            # недоступним для editMessageText. Новий /start потребує sendMessage.
+            row = None
         if row:
             edit = {**data, "message_id": row[0]}
             edit.setdefault("reply_markup", '{"inline_keyboard":[]}')
             response = self._request("post", "editMessageText", data=edit, timeout=15)
             result = response.json()
+            if not isinstance(result, dict):
+                return False
             if result.get("ok") is True or str(result.get("description", "")).startswith("Bad Request: message is not modified"):
                 message_id = row[0]
             elif result.get("description") in ("Bad Request: message to edit not found", "Bad Request: message can't be edited"):
@@ -62,13 +69,24 @@ class MaintenanceMixin:
             response = self._request("post", "sendMessage", data=data, timeout=15)
             response.raise_for_status()
             result = response.json()
-            message_id = (result.get("result") or {}).get("message_id")
+            if not isinstance(result, dict) or not isinstance(result.get("result"), dict):
+                return False
+            message_id = result["result"].get("message_id")
             if result.get("ok") is not True or type(message_id) is not int:
                 return False
         with get_db(self.db_path) as db:
             db.execute("""INSERT INTO telegram_service_messages VALUES (?,?,?,?)
                 ON CONFLICT(chat_id,slot) DO UPDATE SET message_id=excluded.message_id,expires_at=excluded.expires_at""",
                        (data["chat_id"], slot, message_id, time.time()+ttl))
+        if previous_message_id is not None and previous_message_id != message_id:
+            # Спочатку підтвердження нового повідомлення та запис адреси в SQLite.
+            # Прибирання старої копії не повинно скасовувати успішну відповідь.
+            try:
+                self._request("post", "deleteMessage", data={
+                    "chat_id": data["chat_id"], "message_id": previous_message_id,
+                }, timeout=(5, 10))
+            except requests.RequestException:
+                self.log.warning("Не вдалося прибрати попередню службову картку Telegram")
         return True
 
     def clean_command(self, msg):

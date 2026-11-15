@@ -119,6 +119,15 @@
           <article class="panel"><h2>Моделі й потоки</h2><div id="workers"></div></article>
         </div>
         <article class="panel"><h2>Telegram</h2><div id="telegram"></div></article>
+        <article class="panel">
+          <div class="panel-head"><h2>Історія сесій діагностики</h2><button id="history-refresh" class="ghost">Оновити історію</button></div>
+          <p id="history-policy" class="muted small"></p>
+          <div class="toolbar"><label for="history-session">Сесія</label><select id="history-session" disabled></select><button id="history-download" disabled>Завантажити JSON</button></div>
+          <p id="history-summary" class="muted" role="status">Історія з’явиться після запуску оновленого приймача.</p>
+          <div class="table-wrap"><table id="history-metrics"></table></div>
+          <p class="muted small">Часові метрики — у секундах, RTF — відношення часу до тривалості аудіо. Середні й максимуми — за сесію; p95 і докладні сегменти — останні 128. Знімок без позначки завершення не підтверджує, що процес досі працює.</p>
+          <details><summary>Знімок вибраної сесії</summary><pre id="history-json"></pre></details>
+        </article>
         <article class="panel"><details><summary>Усі лічильники</summary><div class="table-wrap"><table id="counters"></table></div></details>
           <details><summary>Повна діагностика (JSON)</summary><pre id="diagnostics"></pre></details></article>
       </section>

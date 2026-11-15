@@ -48,3 +48,5 @@ diagnostics-report.json
 .radio345-launcher/
 
 .radio345-local-admin/
+
+.local-diagnostics/

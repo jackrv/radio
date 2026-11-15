@@ -152,7 +152,12 @@ def main():
     if _instance_lock is None:
         log.error("Інший приймач Radio 345 уже працює. Зупиніть його й запустіть знову.")
         raise SystemExit(2)
-    diagnostics.configure(config.BASE_DIR / "diagnostics.json")
+    diagnostics.configure(
+        config.BASE_DIR / "diagnostics.json",
+        retention_days=config.DIAGNOSTICS_HISTORY_DAYS,
+        max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
+        max_history_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
+    )
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
     load_dictionaries()
@@ -263,8 +268,10 @@ def main():
         supervisor.run()
     finally:
         backup_stop.set()
-        telegram_service.shutdown(timeout=10.0)
-        diagnostics.flush(force=True)
+        try:
+            telegram_service.shutdown(timeout=10.0)
+        finally:
+            diagnostics.finish()
 
 
 if __name__ == "__main__":

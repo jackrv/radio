@@ -33,6 +33,7 @@ from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
 from services.telegram_sync import sync_status
 from services.db_backup import auto_backups, create_backup
+from services.diagnostic_history import DiagnosticsHistory, history_directory
 from services.miniapp_correction_editor import load_edit_draft
 from services.telegram_audio import AudioUnavailable, download_voice
 from services.telegram_media_store import audio_file_id
@@ -175,6 +176,12 @@ def read_diagnostics(path):
     if path.stat().st_size > 2_000_000:
         raise ValueError("Файл діагностики завеликий")
     data = json.loads(path.read_text())
+    return diagnostics_view(data)
+
+
+def diagnostics_view(data):
+    if not isinstance(data, dict):
+        raise ValueError("Некоректний знімок діагностики")
     # Telemetry only; ignore any future unrelated root fields and arbitrary strings.
     def numbers(value):
         if value is None or type(value) is bool: return value
@@ -184,7 +191,12 @@ def read_diagnostics(path):
         if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","stale","error","whisper_error","discarded","adc","callback","s","ratio",
                      "ok","stuck","failing","loading","failed","disabled"): return value
         return None
-    return {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","counters","gauges","timings","asr_latency","notification_spectral") if k in data}}
+    result = {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","ended_at","counters","gauges","timings","asr_latency","notification_spectral") if k in data}}
+    if isinstance(data.get("session"), str) and re.fullmatch(r"[0-9a-f]{32}", data["session"]):
+        result["session"] = data["session"]
+    if data.get("session_status") in ("running", "finished"):
+        result["session_status"] = data["session_status"]
+    return result
 
 
 def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, eval_dir=None):
@@ -194,6 +206,11 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     samples_dir = Path(samples_dir or config.NOTIFICATION_SOUNDS_DIR)
     eval_dir = Path(eval_dir or config.NOTIFICATION_EVAL_DIR)
     diagnostics_path = Path(diagnostics_path or config.BASE_DIR/"diagnostics.json")
+    diagnostic_history = DiagnosticsHistory(
+        history_directory(diagnostics_path), retention_days=config.DIAGNOSTICS_HISTORY_DAYS,
+        max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
+        max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
+    )
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
     backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
     host = f"127.0.0.1:{port}"
@@ -407,6 +424,19 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     @app.get("/api/diagnostics")
     def diagnostics(admin=Depends(actor)): return read_diagnostics(diagnostics_path)
+
+    @app.get("/api/diagnostics/history")
+    def diagnostic_sessions(admin=Depends(actor)):
+        return diagnostic_history.list_sessions(limit=min(config.DIAGNOSTICS_HISTORY_MAX_SESSIONS, 1000))
+
+    @app.get("/api/diagnostics/history/{session_id}")
+    def diagnostic_session(session_id: str, admin=Depends(actor)):
+        try:
+            return diagnostics_view(diagnostic_history.load(session_id))
+        except FileNotFoundError:
+            raise HTTPException(404, "Сесію не знайдено або строк зберігання минув") from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.put("/api/settings")
     def settings(payload: SettingsUpdate, admin=Depends(actor)):

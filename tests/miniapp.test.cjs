@@ -279,14 +279,10 @@ test("adding a dictionary row focuses and reveals the new final row", async () =
 });
 
 function keyboardFixture(nativeMethod) {
-  const { doc, get } = documentFixture();
+  const { doc } = documentFixture();
   doc.documentElement = new Element();
-  const viewport = new Element();
-  viewport.height = 400;
-  viewport.offsetTop = 10;
   const window = new Element();
-  Object.assign(window, { innerHeight: 800, visualViewport: viewport,
-    requestAnimationFrame: callback => callback(), Telegram: { WebApp: { hideKeyboard: nativeMethod } } });
+  Object.assign(window, { requestAnimationFrame: callback => callback(), Telegram: { WebApp: { hideKeyboard: nativeMethod } } });
   const field = new Element("input");
   field.value = "Несохранённая строка";
   field.matches = () => true;
@@ -294,44 +290,42 @@ function keyboardFixture(nativeMethod) {
   doc.activeElement = field;
   vm.runInNewContext(source("keyboard.js"), { window, document: doc });
   doc.dispatchEvent({ type: "focusin", target: field });
-  return { doc, field, viewport, done: get("keyboard-done") };
+  return { doc, field };
 }
+const background = { type: "pointerdown", target: { closest: () => null } };
 
-test("keyboard button uses the visible viewport and native Telegram dismissal", async () => {
+test("there is no floating hide-keyboard button covering the interface", () => {
+  assert.doesNotMatch(source("index.html"), /keyboard-done|Сховати клавіатуру/);
+});
+
+test("background tap hides the keyboard with native Telegram dismissal and keeps text", async () => {
   let hidden = 0;
-  const { done, field, doc, viewport } = keyboardFixture(() => hidden++);
-  assert.equal(done.hidden, false);
-  assert.equal(done.style.top, "354px");
-  viewport.height = 300;
-  await viewport.fire("resize");
-  assert.equal(done.style.top, "254px");
-  await done.fire("click");
+  const { doc, field } = keyboardFixture(() => hidden++);
+  assert.equal(doc.documentElement.classList.contains("text-entry-active"), true);
+  doc.dispatchEvent(background);
   assert.equal(hidden, 1);
   assert.equal(field.blurred, true);
   assert.equal(field.value, "Несохранённая строка");
-  assert.equal(done.hidden, true);
   assert.equal(doc.documentElement.classList.contains("text-entry-active"), false);
 });
 
 test("keyboard dismissal works with older Telegram clients without hideKeyboard", async () => {
-  const { done, field } = keyboardFixture(undefined);
-  await done.fire("click");
+  const { doc, field } = keyboardFixture(undefined);
+  doc.dispatchEvent(background);
   assert.equal(field.blurred, true);
-  assert.equal(done.hidden, true);
 });
 
 test("a rejected native hideKeyboard call still blurs the field", async () => {
-  const { done, field } = keyboardFixture(() => { throw new Error("unsupported"); });
-  await done.fire("click");
+  const { doc, field } = keyboardFixture(() => { throw new Error("unsupported"); });
+  doc.dispatchEvent({ type: "keydown", key: "Escape" });
   assert.equal(field.blurred, true);
-  assert.equal(done.hidden, true);
 });
 
-test("background taps dismiss keyboard while taps on controls do not", async () => {
+test("taps on controls do not dismiss the keyboard", async () => {
   const { doc, field } = keyboardFixture();
   doc.dispatchEvent({ type: "pointerdown", target: { closest: () => ({}) } });
   assert.equal(field.blurred, undefined);
-  doc.dispatchEvent({ type: "pointerdown", target: { closest: () => null } });
+  doc.dispatchEvent(background);
   assert.equal(field.blurred, true);
 });
 

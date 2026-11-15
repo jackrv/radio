@@ -121,9 +121,10 @@ def receiver_heartbeat(db_path, log=None, interval=2.0, state_provider=None):
         while not stop_event.wait(interval):
             try:
                 record_heartbeat(db_path, instance_id, state=state_provider())
-                runtime.flush()
             except sqlite3.Error:
                 log.exception("Помилка оновлення стану приймача")
+            # Історія вимірювань не залежить від успішного запису heartbeat у SQLite.
+            runtime.flush()
 
     thread = threading.Thread(
         target=update,

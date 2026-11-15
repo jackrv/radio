@@ -25,7 +25,9 @@ class UpdatesMixin:
         if not msg:
             return
         # /start приймається від будь-кого: так нові користувачі просять доступ.
-        if self._handle_start(msg) or self._handle_user_mode_command(msg, upd.get("update_id")):
+        if self._handle_start(msg):
+            return
+        if self._handle_user_mode_command(msg, upd.get("update_id")):
             self.clean_command(msg)
 
     # ---------- Кнопки ----------

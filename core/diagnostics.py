@@ -1,18 +1,20 @@
 """Bounded, content-free runtime measurements. Never changes retry decisions."""
 
 import errno
-import json
 import logging
 import math
-import os
 from pathlib import Path
-import tempfile
 import threading
 import time
 import uuid
 from collections import Counter, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
+
+from services.diagnostic_history import (
+    DiagnosticsHistory, atomic_write, history_directory,
+    DEFAULT_RETENTION_DAYS, DEFAULT_MAX_SESSIONS, DEFAULT_MAX_BYTES,
+)
 
 _asr_span = ContextVar("radio345_asr_span", default=None)
 _ASR_STAGES = {
@@ -73,6 +75,9 @@ class RuntimeDiagnostics:
         self.timings = {}
         self.gauges = {}
         self.path = None
+        self.history = None
+        self._previous_pending = False
+        self._ended_at = None
         self.last_flush = float("-inf")
         self._clock = clock
         self._wall_clock = wall_clock
@@ -269,36 +274,58 @@ class RuntimeDiagnostics:
                                         "unit": "ratio" if name in ("rtf", "worker_rtf") else "s"}
             spectral = {"buckets": list(self._spectral_buckets),
                         "recent": [dict(row) for row in self._spectral_recent]}
-            return {"schema": 1, "session": self.session, "started_at": self.started_at,
+            lifecycle = {"session_status": "running"}
+            if self._ended_at is not None:
+                lifecycle = {"session_status": "finished", "ended_at": self._ended_at}
+            return {"schema": 1, "session": self.session, "started_at": self.started_at, **lifecycle,
                     "updated_at": time.time(), "counters": dict(self.counters),
                     "gauges": dict(self.gauges), "timings": timings, "asr_latency": asr,
                     "notification_spectral": spectral}
 
-    def configure(self, path):
+    def configure(self, path, *, history_dir=None, retention_days=DEFAULT_RETENTION_DAYS,
+                  max_sessions=DEFAULT_MAX_SESSIONS, max_history_bytes=DEFAULT_MAX_BYTES):
         self.path = Path(path)
+        self.history = DiagnosticsHistory(history_dir or history_directory(self.path),
+                                          retention_days=retention_days, max_sessions=max_sessions,
+                                          max_bytes=max_history_bytes)
+        self._previous_pending = True
         self.flush(force=True)
 
-    def flush(self, force=False):
-        if self.path is None or not self.flush_lock.acquire(blocking=False):
+    def finish(self):
+        """Фінальний знімок після завершення приймача й черги Telegram."""
+        with self.lock:
+            if self._ended_at is None:
+                self._ended_at = time.time()
+        # Не губимо завершення, якщо heartbeat саме записує попередній знімок.
+        self.flush(force=True, wait=True)
+
+    def flush(self, force=False, *, wait=False):
+        if self.path is None or not self.flush_lock.acquire(blocking=wait):
             return
-        temporary = None
+        log = logging.getLogger("radio.diagnostics")
         try:
             if not force and time.monotonic() - self.last_flush < 30:
                 return
-            with tempfile.NamedTemporaryFile("w", dir=self.path.parent, prefix=".radio-diagnostics-", delete=False) as file:
-                temporary = file.name
-                json.dump(self.snapshot(), file, ensure_ascii=False)
-            os.replace(temporary, self.path)
-            self.last_flush = time.monotonic()
-        except OSError:
-            # Telemetry must never stop audio or cause a duplicate Telegram send.
-            logging.getLogger("radio.diagnostics").warning("Не вдалося записати знімок діагностики")
-        finally:
-            if temporary:
+            previous_saved = True
+            if self._previous_pending:
                 try:
-                    os.unlink(temporary)
-                except OSError:
-                    pass
+                    self.history.preserve_latest(self.path, self.session)
+                    self._previous_pending = False
+                except (OSError, ValueError):
+                    previous_saved = False
+                    log.warning("Не вдалося зберегти попередню сесію; її останній знімок не замінено")
+            data = self.snapshot()
+            try:
+                self.history.save(data)
+            except (OSError, ValueError):
+                log.warning("Не вдалося оновити історію діагностики")
+            if previous_saved:
+                try:
+                    atomic_write(self.path, data)
+                except (OSError, ValueError):
+                    log.warning("Не вдалося записати знімок діагностики")
+            self.last_flush = time.monotonic()
+        finally:
             self.flush_lock.release()
 
 

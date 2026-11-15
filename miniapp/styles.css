@@ -166,13 +166,6 @@ h2 { font-size: 15px; letter-spacing: -.025em; margin: 3px 0 0; }
 .editor-audio-section { margin-top: 12px; }
 .auto-close-option { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; color: var(--text); font-size: 12px; cursor: pointer; }
 .auto-close-option input { width: 18px; height: 18px; accent-color: var(--lime); cursor: pointer; flex-shrink: 0; }
-.keyboard-done {
-  position: fixed; z-index: 30; right: max(12px, env(safe-area-inset-right));
-  min-height: 42px; padding: 10px 15px; border-radius: 10px;
-  border: 1px solid #658451; background: #b8ef86; color: #172414;
-  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
-  box-shadow: 0 3px 16px #0006;
-}
 
 /* ---------- Стан сервісу ---------- */
 .service-gate { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 20px; text-align: center; }

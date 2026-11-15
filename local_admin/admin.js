@@ -115,7 +115,7 @@
     drawLatency(d.asr_latency?.ready || {});
     drawHealth(c, g);
     if (view === "users") users();
-    if (view === "system") system();
+    if (view === "system") await system();
   }
 
   function drawEvents(series) {
@@ -562,7 +562,62 @@
     const table = $("counters"); table.replaceChildren();
     for (const [k, v] of Object.entries(c).sort()) { const r = el("tr"); r.append(el("td", "", k), el("td", "", num(v))); table.append(r); }
     $("diagnostics").textContent = JSON.stringify(d, null, 2);
+    await diagnosticHistory();
   }
+  // ---------- Історія сесій ----------
+  let selectedHistory = null;
+  async function showHistory() {
+    selectedHistory = null;
+    $("history-download").disabled = true;
+    $("history-metrics").replaceChildren();
+    $("history-json").textContent = "";
+    const session = $("history-session").value;
+    if (!session) { $("history-summary").textContent = "Збережених сесій поки немає."; return; }
+    $("history-summary").textContent = "Завантаження сесії…";
+    const snapshot = await request(`/api/diagnostics/history/${encodeURIComponent(session)}`);
+    if ($("history-session").value !== session) return;
+    selectedHistory = snapshot;
+    const status = snapshot.session_status === "finished" ? "завершена (є фінальний знімок)" : "завершення не підтверджено";
+    $("history-summary").textContent = `${stamp(snapshot.started_at)} · ${status} · останній знімок ${stamp(snapshot.updated_at)} · сегментів: ${num(snapshot.counters?.["asr.measured_segments"] || 0)}`;
+    const table = $("history-metrics"), head = el("tr");
+    for (const title of ["Метрика", "Середня", "p95 (128)", "Максимум", "Вимірювань"]) head.append(el("th", "", title));
+    table.append(head);
+    for (const [key, title] of Object.entries(LATENCY)) {
+      const metric = snapshot.asr_latency?.ready?.[key]; if (!metric) continue;
+      const row = el("tr");
+      for (const value of [title, fix(metric.mean, 3), fix(metric.recent_p95, 3), fix(metric.max, 3), num(metric.count)]) row.append(el("td", "", value));
+      table.append(row);
+    }
+    $("history-json").textContent = JSON.stringify(snapshot, null, 2);
+    $("history-download").disabled = false;
+  }
+  async function diagnosticHistory() {
+    const select = $("history-session");
+    select.disabled = true;
+    try {
+      const response = await request("/api/diagnostics/history");
+      const previous = select.value;
+      select.replaceChildren();
+      for (const item of response.items) {
+        const label = `${stamp(item.started_at)} · ${item.session.slice(0, 8)} · ${item.session_status === "finished" ? "завершена" : "останній знімок"} · ${num(item.measured_segments)} сегм.`;
+        const option = el("option", "", label); option.value = item.session; select.append(option);
+      }
+      if (response.items.some(item => item.session === previous)) select.value = previous;
+      $("history-policy").textContent = `До ${response.retention_days} днів, ${response.max_sessions} сесій та ${Math.round(response.max_bytes / 1048576)} МіБ. Оновлення приблизно кожні 30 с.`;
+      await showHistory();
+    } finally { select.disabled = select.options.length === 0; }
+  }
+  $("history-refresh").addEventListener("click", () => action(diagnosticHistory));
+  $("history-session").addEventListener("change", () => action(showHistory));
+  $("history-download").addEventListener("click", () => {
+    if (!selectedHistory) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(selectedHistory, null, 2)], {type:"application/json"}));
+    const anchor = document.createElement("a"); anchor.href = url;
+    anchor.download = `radio345-session-${selectedHistory.session}.json`;
+    document.body.append(anchor); anchor.click(); anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
   $("backup-now").addEventListener("click", () => action(async () => {
     const r = await request("/api/backups", "POST"); data.backups = r.items; await system(); note(`Копію створено: ${r.name}`);
   }));

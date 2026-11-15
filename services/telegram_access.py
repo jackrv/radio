@@ -33,36 +33,44 @@ class AccessMixin:
             return False
 
         user_chat = chat["id"]
+
+        def reply(text, **kwargs):
+            delivered = self.send_status(text, chat_id=user_chat, fresh=True, **kwargs)
+            if delivered:
+                self.clean_command(msg)
+            else:
+                # Не прибираємо /start, якщо відповідь не підтверджена.
+                self.log.warning("Відповідь на /start не підтверджена; команду залишено в чаті")
+            return delivered
+
         state, role = register_request(self.db_path, sender)
         if state == "member":
             extra = "\nЗапити на доступ нових користувачів надходитимуть сюди." if role == "admin" else ""
-            self.send_status(
+            reply(
                 f"✅ У вас є доступ до Radio 345 (роль: {ROLE_LABELS.get(role, role)}).\n"
                 + self._mode_hint(user_chat, role) + extra,
-                reply_markup=self._miniapp_markup(), chat_id=user_chat,
+                reply_markup=self._miniapp_markup(),
             )
         elif state == "new":
             if self._notify_access_request(sender):
-                self.send_status(
+                reply(
                     "📨 Запит на доступ надіслано адміністратору. "
                     "Щойно його розглянуть, ви отримаєте повідомлення.",
-                    chat_id=user_chat,
                 )
             else:
                 # Картку не доставлено: наступний /start надішле її знову, без доби очікування.
                 mark_undelivered(self.db_path, sender["id"])
                 state = "undelivered"
-                self.send_status(
+                reply(
                     "⚠️ Не вдалося передати запит адміністратору. Спробуйте /start трохи пізніше.",
-                    chat_id=user_chat,
                 )
         elif state == "pending":
-            self.send_status("⏳ Запит уже надіслано. Очікуйте рішення адміністратора.", chat_id=user_chat)
+            reply("⏳ Запит уже надіслано. Очікуйте рішення адміністратора.")
         elif state == "rejected":
-            self.send_status("Адміністратор поки не надав доступ.", chat_id=user_chat)
+            reply("Адміністратор поки не надав доступ.")
         else:
             self.log.warning("Забагато нерозглянутих запитів на доступ; новий запит не надіслано")
-            self.send_status("Зараз забагато запитів. Спробуйте пізніше.", chat_id=user_chat)
+            reply("Зараз забагато запитів. Спробуйте пізніше.")
         self.log.info("Запит доступу через /start: %s", state)
         return True
 

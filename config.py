@@ -13,6 +13,10 @@ DB_PATH = str(BASE_DIR / "events.db")
 DICTIONARIES_PATH = BASE_DIR / "dictionaries.txt"
 LOG_PATH = BASE_DIR / "radio.log"
 DEBUG_AUDIO_DIR = BASE_DIR / "debug_audio"
+# Приватні знімки кожної сесії: до 14 днів, 100 сесій і 50 МіБ.
+DIAGNOSTICS_HISTORY_DAYS = 14
+DIAGNOSTICS_HISTORY_MAX_SESSIONS = 100
+DIAGNOSTICS_HISTORY_MAX_BYTES = 50 * 1024 * 1024
 NOTIFICATION_SOUNDS_DIR = BASE_DIR / ".local-notification-sounds"
 FILTER_NOTIFICATION_SOUNDS = True
 # Спектральний фільтр сповіщень: "shadow" — лише оцінює кожен сегмент і показує

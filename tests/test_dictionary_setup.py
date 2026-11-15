@@ -169,6 +169,7 @@ def test_active_admin_detection(tmp_path):
 
 def test_launcher_stops_before_services_without_dictionaries(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
     (tmp_path / "api").mkdir()
     for name in ["radio.py", "api/local_server.py", ".env"]:
         (tmp_path / name).touch()
@@ -184,6 +185,7 @@ def test_launcher_stops_before_services_without_dictionaries(tmp_path, monkeypat
 
 def test_launcher_prompt_has_prefix(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
     (tmp_path / "api").mkdir()
     for name in ["radio.py", "api/local_server.py", ".env"]:
         (tmp_path / name).touch()

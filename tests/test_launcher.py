@@ -46,6 +46,8 @@ def test_update_html_requires_one_meta(tmp_path, monkeypatch):
 @pytest.fixture
 def mocked_services(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    # Робоча база береться з config.DB_PATH — у тестах лише тимчасова.
+    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
     (tmp_path / "api").mkdir()
     for name in ["radio.py", "api/local_server.py", ".env", "events.db"]:
         (tmp_path / name).touch()

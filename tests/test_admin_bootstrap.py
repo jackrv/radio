@@ -143,6 +143,7 @@ def test_telegram_error_is_reported(db_path):
 
 def test_launcher_stops_before_api_without_admin(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
     (tmp_path / "api").mkdir()
     for name in ["radio.py", "api/local_server.py", ".env"]:
         (tmp_path / name).touch()

@@ -18,6 +18,7 @@ import json
 import logging
 import atexit
 from logging.handlers import RotatingFileHandler
+import config
 from core.console import ConsoleDashboard, child_event
 from core.log_security import RedactingFormatter, archive_log_name
 import os
@@ -60,7 +61,7 @@ def start_console():
     def snapshot():
         return json.loads((ROOT / "diagnostics.json").read_text(encoding="utf-8"))
     from services.receiver_status import read_console_heartbeat
-    _console = ConsoleDashboard(provider=snapshot, receiver_provider=lambda: read_console_heartbeat(ROOT / "events.db"))
+    _console = ConsoleDashboard(provider=snapshot, receiver_provider=lambda: read_console_heartbeat(config.DB_PATH))
     _console.receiver_requested_at = None
     _console.start()
     atexit.register(_console.close)
@@ -484,7 +485,7 @@ def run_services(args, session):
         output("Інший приймач уже працює; нові служби не запущено. Перевірте --status")
         return 2
     py = get_python()
-    db_path = ROOT / "events.db"
+    db_path = Path(config.DB_PATH)
     if not ensure_dictionaries(
         db_path, ROOT / "dictionaries.txt", py,
         interactive=interactive_console(),

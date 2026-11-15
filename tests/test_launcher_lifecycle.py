@@ -187,6 +187,7 @@ def test_dead_controller_is_cleaned_using_its_own_live_completion_pipe(environme
 
 def test_status_without_environment_or_database_is_read_only(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
     monkeypatch.setattr(launcher, "port_busy", lambda _: False)
     monkeypatch.setattr(sys, "argv", ["start_radio345.py", "--status"])
     assert launcher.main() == 0

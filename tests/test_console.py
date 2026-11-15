@@ -2,6 +2,8 @@ import io
 import logging
 import time
 
+import pytest
+
 from core.console import ConsoleDashboard
 from core.log_security import RedactingFormatter
 
@@ -32,7 +34,7 @@ def test_statistics_and_old_session():
     text = '\n'.join(console.lines(data))
     assert 'Пауза' in text
     assert 'Розпізнано: 6' in text
-    assert '0 / 3' in text
+    assert '0 кадрів · 3 сегм.' in text
     data['updated_at'] -= 60
     assert 'немає актуальних даних' in console.lines(data)[0]
 
@@ -48,7 +50,7 @@ def test_tty_keeps_bounded_events_and_refreshes_header():
     assert len(console.events) == 8
     frame = stream.getvalue()
     assert 'Radio 345' in frame
-    assert '\x1b[33m' in frame
+    assert '\x1b[1;30;43m' in frame, 'жовта плашка очікування'
     assert 'Event 19' in frame
     assert 'Event 0\n' not in frame
     console.close()
@@ -147,14 +149,16 @@ def test_admin_link_stays_pinned_when_event_history_overflows(monkeypatch):
     console.set_admin_url(url)
     initial = stream.getvalue()
     assert f"\x1b]8;;{url}\x1b\\" in initial
-    assert f"Адмін-панель: {url}" in initial
+    assert "Адмін-панель:" in initial and url in initial
+    link_row = next(row for row in initial.split("\x1b[")[1:] if url in row and row[0].isdigit())
+    link_position = "\x1b[" + link_row.split("H", 1)[0] + "H"
     stream.seek(0)
     stream.truncate()
     for n in range(20):
         console.add(f"Event {n}")
     # A stable link row is neither erased nor rewritten, so selection survives.
     assert url not in stream.getvalue()
-    assert "\x1b[3;1H" not in stream.getvalue()
+    assert link_position not in stream.getvalue()
     assert all(url not in event for event in console.events)
     assert console.admin_url == url
     console.close()
@@ -187,7 +191,7 @@ def test_failure_is_pinned_despite_cleanup_event_overflow():
     for n in range(20):
         console.add(f'Stopping service {n}')
     lines = console.lines({})
-    assert 'зупинено' in lines[0]
+    assert 'зупинено' in lines[0].lower()
     assert 'ngrok' in lines[1]
 
 
@@ -209,3 +213,63 @@ def test_apple_terminal_uses_plain_url_and_native_open_hint(monkeypatch):
     assert "http://127.0.0.1:8766" not in stream.getvalue()
     assert "?1000h" not in text
     console.close()
+
+
+def _screen(console, columns, height, data):
+    import os
+    import re
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+    console.stream = Terminal()
+    console.tty = True
+    console.provider = lambda: data
+    console.terminal_size = lambda: os.terminal_size((columns, height))
+    console._painted_rows.clear()
+    console.render()
+    text = console.stream.getvalue()
+    rows = {int(m[1]): re.sub(r"\x1b\[[0-9;]*m|\x1b\]8;;[^\x1b]*\x1b\\", "", m[2])
+            for m in re.finditer(r"\x1b\[(\d+);1H(.*?)\x1b\[K", text, re.S)}
+    return rows, text
+
+
+def _live(**gauges):
+    now = time.time()
+    return {"started_at": now - 3725, "updated_at": now, "session_status": "running",
+            "gauges": {"receiver.state": "listening", "models.whisper": "ready", "models.qwen": "loading", **gauges},
+            "counters": {"asr.outcome.ready": 12},
+            "asr_latency": {"ready": {"total_latency_s": {"mean": 2.4, "recent_p95": 4.9}},
+                            "recent_segments": [{"text_ready_unix_s": now - 30}]}}
+
+
+@pytest.mark.parametrize("columns", [80, 54, 30])
+def test_layout_fits_window_and_pins_footer(columns):
+    console = ConsoleDashboard(stream=io.StringIO())
+    console.started = time.time() - 4000
+    console.admin_url = "http://127.0.0.1:8766"
+    for n in range(12):
+        console.add(f"Подія номер {n} з досить довгим поясненням, яке не вміщується у вузьке вікно", logging.WARNING)
+    rows, _ = _screen(console, columns, 20, _live())
+    assert all(console.width(text) <= columns - 1 for text in rows.values())
+    assert "Ctrl+C" in rows[20] or "radio.log" in rows[20], "підвал у нижньому рядку"
+    assert "робота 01:02:05" in rows[1] or columns < 50
+    text = "\n".join(rows.values())
+    assert "Розпізнано" in text and "12" in text
+    assert "завантаження" in text or columns < 60
+
+
+def test_values_use_colors_by_meaning():
+    console = ConsoleDashboard(stream=io.StringIO())
+    console.started = time.time() - 4000
+    _, text = _screen(console, 80, 24, _live(**{"audio.segments_dropped": 2}))
+    assert "\x1b[31m0 кадрів · 2 сегм." in text, "втрати — червоним"
+    assert "\x1b[1;30;42m ● ПРИЙМАННЯ " in text
+    assert "\x1b[33mзавантаження" in text
+
+
+def test_long_failure_is_wrapped_not_cut():
+    console = ConsoleDashboard(stream=io.StringIO())
+    console.problem = "ngrok: перевищено час підключення до сервера. Перевірте інтернет або VPN і повторіть запуск."
+    rows, _ = _screen(console, 60, 16, {})
+    text = " ".join(rows.values())
+    assert "повторіть запуск." in text and "✖ ЗУПИНЕНО" in rows[1]

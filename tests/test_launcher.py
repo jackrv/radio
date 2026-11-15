@@ -203,3 +203,34 @@ def test_crashed_local_admin_never_stops_reception(mocked_services,monkeypatch):
     monkeypatch.setattr(launcher.time,"sleep",sleep)
     assert launcher.main()==0, "падіння панелі не завершує запускатель з помилкою"
     assert "radio" in stopped and "admin" not in stopped
+
+
+def test_startup_failure_survives_terminal_screen_close(mocked_services, monkeypatch):
+    import io
+    from core.console import ConsoleDashboard
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+    stream=Terminal()
+    monkeypatch.setattr(sys,'stdout',stream)
+    def failed_tunnel(tunnel):
+        tunnel.last_error='ngrok: перевищено час підключення. Перевірте інтернет / VPN.'
+        return None
+    monkeypatch.setattr(launcher,'wait_for_ngrok',failed_tunnel)
+    assert launcher.main()==1
+    text=stream.getvalue()
+    restored=text.rindex('\x1b[?1049l')
+    assert 'ngrok: перевищено час підключення' in text[restored:]
+    assert 'launcher.log' in text[restored:]
+    assert 'VPN' in text[restored:]
+
+
+def test_terminal_error_summary_redacts_token(mocked_services,monkeypatch,capsys):
+    monkeypatch.setattr(launcher,'launcher_setting',lambda name,default='': 'SECRET' if name=='TELEGRAM_BOT_TOKEN' else default)
+    def failure(_):
+        raise RuntimeError('Telegram SECRET unavailable')
+    monkeypatch.setattr(launcher,'wait_for_api',failure)
+    assert launcher.main()==1
+    output=capsys.readouterr().out
+    assert 'SECRET' not in output
+    assert '[REDACTED]' in output

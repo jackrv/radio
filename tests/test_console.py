@@ -136,7 +136,8 @@ def test_size_uses_real_tty_over_environment(monkeypatch):
     assert console.terminal_size() == (42, 7)
 
 
-def test_admin_link_stays_pinned_when_event_history_overflows():
+def test_admin_link_stays_pinned_when_event_history_overflows(monkeypatch):
+    monkeypatch.delenv("TERM_PROGRAM", raising=False)
     class Terminal(io.StringIO):
         def isatty(self):
             return True
@@ -167,3 +168,44 @@ def test_unchanged_rows_are_not_repainted():
     stream.truncate()
     console.render()
     assert stream.getvalue() == ""
+
+
+def test_ngrok_timeout_dns_auth_are_user_events_and_ignore_background_updates():
+    from core.console import child_event
+    event = child_event('ngrok', 'lvl=eror msg="failed to reconnect session" err="dial tcp connect.ngrok-agent.com:443: i/o timeout"')
+    assert event[1] == logging.ERROR
+    assert 'час підключення' in event[0] and 'VPN' in event[0]
+    assert 'DNS' in child_event('ngrok', 'lvl=eror err="no such host"')[0]
+    assert 'авторизації' in child_event('ngrok', 'lvl=eror err="authentication failed ERR_NGROK_4018"')[0]
+    assert child_event('ngrok', 'lvl=warn msg="failed to check for update"') is None
+    assert child_event('ngrok', 'lvl=info msg=start pg=/api/tunnels') is None
+
+
+def test_failure_is_pinned_despite_cleanup_event_overflow():
+    console = ConsoleDashboard(stream=io.StringIO())
+    console.set_problem('ngrok: час підключення вичерпано')
+    for n in range(20):
+        console.add(f'Stopping service {n}')
+    lines = console.lines({})
+    assert 'зупинено' in lines[0]
+    assert 'ngrok' in lines[1]
+
+
+def test_apple_terminal_uses_plain_url_and_native_open_hint(monkeypatch):
+    monkeypatch.setenv("TERM_PROGRAM", "Apple_Terminal")
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+    stream = Terminal()
+    console = ConsoleDashboard(stream=stream)
+    console.set_admin_url("http://127.0.0.1:8766")
+    text = stream.getvalue()
+    assert "http://127.0.0.1:8766" in text
+    assert "⌘ + подвійний клік" in text
+    assert "\x1b]8;;" not in text
+    stream.seek(0)
+    stream.truncate()
+    console.add("New event")
+    assert "http://127.0.0.1:8766" not in stream.getvalue()
+    assert "?1000h" not in text
+    console.close()

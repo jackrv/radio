@@ -55,7 +55,7 @@
   async function action(callback) { if (busy) return; busy = true; try { await callback(); } catch (error) { note(error.message); } finally { busy = false; } }
 
   // ---------- Навігація ----------
-  const titles = { overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", texts: "Фільтри тексту", settings: "Налаштування", users: "Користувачі", system: "Система", roles: "Ролі" };
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", texts: "Фільтри тексту", settings: "Налаштування", users: "Користувачі", system: "Система", roles: "Ролі" };
   function show(name) {
     view = name;
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === name);
@@ -634,7 +634,106 @@
   }
   $("role").addEventListener("change", roles);
 
-  const loaders = { overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
+  let recordingOffset = 0;
+  async function recordings(reset = true) {
+    if (reset) { recordingOffset = 0; $("recordings").replaceChildren(); }
+    const [page, summary] = await Promise.all([
+      request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}`),
+      request("/api/recordings/summary")
+    ]);
+    const groups = page.groups;
+    const grouped = groups && ["all", "normal", "short"].every(key => typeof groups[key] === "number");
+    const groupSelect = $("recording-group");
+    groupSelect.disabled = !grouped;
+    groupSelect.title = grouped ? "" : "Перезапустіть локальну панель, щоб увімкнути групи";
+    if (!grouped) groupSelect.value = "all";
+    for (const option of groupSelect.options) {
+      const count = grouped ? groups[option.value] : option.value === "all" ? page.total : null;
+      option.textContent = `${{normal: "Основні", short: "Короткі (до 2 с / VAD)", all: "Усі разом"}[option.value]}${count == null ? "" : ` · ${count}`}`;
+    }
+    if (!grouped) note("Записи відкрито без груп. Перезапустіть локальну адмінпанель і оновіть список, щоб відокремити короткі фрази. Приймач зупиняти не потрібно.");
+    const quality = summary.quality;
+    $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі/сигналі: ${summary.false_text} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
+    $("recording-summary").textContent = `Записів: ${page.total} · перевірено: ${summary.reviewed} · WER до / після: ${pct(quality.raw_text.wer)} / ${pct(quality.final_text.wer)}`;
+    if (!page.total) $("recordings").append(el("p", "muted", (grouped ? groups.all : page.total) ? "У цій групі записів немає. Оберіть іншу групу або стан перевірки." : "Записів за цим фільтром ще немає. Нові з’являться після запуску оновленого приймача."));
+    for (const item of page.items) {
+      const d = item.data, signal = d.signal || {};
+      const card = el("article", "panel recording-card");
+      const header = el("div", "recording-header");
+      header.append(el("h3", "", `${new Date(item.created * 1000).toLocaleString("uk-UA")} · ${STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status)}`));
+      const audio = el("audio"); audio.controls = true; audio.preload = "none";
+      audio.src = `/api/recordings/${item.id}/audio`; header.append(audio); card.append(header);
+      const details = el("details", "recording-details");
+      details.append(el("summary", "", "Розбір і метрики"));
+      details.append(el("p", "muted small", `Тривалість: ${fix(signal.duration_s)} с · рівень: ${fix(signal.rms_dbfs, 1)} dBFS · кліпінг: ${pct(signal.clipping_ratio)} · Whisper: ${fix(d.whisper_s)} с · Qwen: ${fix(d.qwen_s)} с · черга: ${fix(d.queue_wait_s)} с`));
+      card.append(el("p", "recording-raw", `Whisper: ${d.raw_text || "Текст відсутній / розпізнавання не виконувалось"}`));
+      if (d.before_llm && d.before_llm !== d.raw_text) details.append(el("p", "", `До Qwen: ${d.before_llm}`));
+      if (d.llm_text !== undefined) details.append(el("p", "", `Пропозиція Qwen (${d.llm_accepted ? "прийнято" : "відхилено"}): ${d.llm_text}`));
+      details.append(el("p", "", `Вихід конвеєра: ${d.final_text || "Не передано далі"}`));
+      const predictedRole = key => d[key] === undefined ? "немає збереженої оцінки" : d[key] || "не визначено";
+      details.append(el("p", "muted small", `Розбір програми — кому: ${predictedRole("predicted_recipient")} · від кого: ${predictedRole("predicted_sender")}`));
+      const qualityLine = el("p", "muted small");
+      function showQuality(row) {
+        if (!row.quality) { qualityLine.textContent = "Ще не перевірено"; return; }
+        if (row.label !== "speech") { qualityLine.textContent = "Позначку збережено; до загального WER мовлення не входить."; return; }
+        const raw = row.quality.raw_text, final = row.quality.final_text;
+        qualityLine.textContent = `WER до / після: ${pct(raw.wer)} / ${pct(final.wer)} · CER до / після: ${pct(raw.cer)} / ${pct(final.cer)} · числа до / після: ${yes(raw.number_match)} / ${yes(final.number_match)} · збіг ролей кому / від кого: ${row.role_quality?.recipient?.match == null ? "—" : yes(row.role_quality.recipient.match)} / ${row.role_quality?.sender?.match == null ? "—" : yes(row.role_quality.sender.match)}`;
+      }
+      showQuality(item); details.append(qualityLine);
+      const form = el("form"), label = el("select"), input = el("textarea");
+      for (const [value, title] of Object.entries({speech: "Мовлення", noise: "Шум / тиша", notification: "Звук сповіщення", unclear: "Неможливо розібрати"})) {
+        const option = el("option", "", title); option.value = value; label.append(option);
+      }
+      label.value = item.label || "speech";
+      input.value = item.reference ?? (d.final_text || d.raw_text || "");
+      input.rows = 2; input.maxLength = 2000; input.placeholder = "Введіть те, що справді чутно…";
+      input.setAttribute("aria-label", "Еталонна розшифровка");
+      function roleField(title, reference) {
+        const group = el("div", "recording-role"), mode = el("select"), value = el("input");
+        group.append(el("span", "", title));
+        mode.setAttribute("aria-label", `${title}: стан перевірки`);
+        for (const [key, text] of Object.entries({unknown: "Невідомо / не перевірено", absent: "Не вказано у фразі", value: "Вказати позивний"})) {
+          const option = el("option", "", text); option.value = key; mode.append(option);
+        }
+        mode.value = reference == null ? "unknown" : reference === "" ? "absent" : "value";
+        value.type = "text"; value.maxLength = 300; value.value = reference || "";
+        value.placeholder = "Позивний і номер; декілька — через кому";
+        value.setAttribute("aria-label", `${title}: позивний`);
+        const update = () => { value.hidden = mode.value !== "value"; value.required = mode.value === "value"; };
+        mode.addEventListener("change", update); update(); group.append(mode, value);
+        return {node: group, read: () => mode.value === "unknown" ? null : mode.value === "absent" ? "" : value.value,
+                absent: () => { mode.value = "absent"; update(); }};
+      }
+      const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від кого", item.reference_sender);
+      label.addEventListener("change", () => {
+        if (["noise", "notification"].includes(label.value)) { input.value = ""; recipient.absent(); sender.absent(); }
+      });
+      const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
+      const textField = el("label", "recording-text");
+      textField.append(el("span", "muted small", "Почутий текст"), input);
+      const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
+      const actions = el("div", "recording-actions");
+      label.setAttribute("aria-label", "Тип запису"); actions.append(label, save);
+      form.append(textField, roles, actions);
+      form.addEventListener("submit", event => { event.preventDefault(); action(async () => {
+        const result = await request(`/api/recordings/${item.id}/review`, "PUT", {reference: input.value, label: label.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read()});
+        item.revision = result.revision; item.reference = result.reference;
+        showQuality(result);
+        save.textContent = "Оновити еталон"; note("Еталон збережено. Початкові тексти й правила не змінено. Оновіть список для перерахунку загальної оцінки.");
+      }); });
+      card.append(form);
+      details.append(el("pre", "", JSON.stringify(d, null, 2)));
+      card.append(details); $("recordings").append(card);
+    }
+    recordingOffset += page.items.length;
+    $("recording-more").hidden = recordingOffset >= page.total;
+  }
+  $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
+  $("recording-filter").addEventListener("change", () => action(() => recordings(true)));
+  $("recording-group").addEventListener("change", () => action(() => recordings(true)));
+  $("recording-more").addEventListener("click", () => action(() => recordings(false)));
+
+  const loaders = { recordings: () => recordings(true), overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
 
   // ---------- Автооновлення ----------
   function schedule() {

@@ -179,7 +179,7 @@ class RuntimeDiagnostics:
                 span["capture_source"] = source
         token = _asr_span.set((self, span))
         try:
-            yield
+            yield span
         except BaseException:
             span["status"] = "error"
             raise

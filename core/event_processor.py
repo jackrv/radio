@@ -44,6 +44,9 @@ class EventProcessor:
         to_str = fmt(to_found)
         from_str = fmt(from_found)
 
+        from services.recordings import note
+        note(predicted_recipient=to_str, predicted_sender=from_str, roles_parsed=True)
+
         if (
             is_short_garbage(text, self.short_garbage)
             and not cs_found

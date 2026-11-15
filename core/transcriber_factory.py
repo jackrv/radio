@@ -25,6 +25,7 @@ def build_transcriber(
     log,
     pause_gate=None,
     health=None,
+    recorder=None,
 ):
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
@@ -129,6 +130,7 @@ def build_transcriber(
         log=log,
         pause_gate=pause_gate,
         health=health,
+        recorder=recorder,
         notification_filter=notification_filter,
         spectral_matcher=spectral_matcher,
         spectral_mode=spectral_mode,

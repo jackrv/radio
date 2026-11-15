@@ -28,7 +28,9 @@ class Transcriber:
         spectral_matcher=None,
         spectral_mode="shadow",
         text_lists=None,
+        recorder=None,
     ):
+        self.recorder = recorder
         self.segments = segments
         # Стан прогресу для супервізора; None — без контролю (тести, старий код).
         self.health = health
@@ -75,8 +77,26 @@ class Transcriber:
         return bool(key) and key in keys
 
     def process_segment(self, pcm, generation=None):
-        with runtime.asr_segment(pcm, self.sample_rate, self.segments):
-            self._process_segment(pcm, generation)
+        from services.recordings import _trace
+        trace = {"predicted_recipient": "", "predicted_sender": "", "roles_parsed": False} if self.recorder is not None else None
+        token = _trace.set(trace)
+        span = {}
+        try:
+            with runtime.asr_segment(pcm, self.sample_rate, self.segments) as span:
+                self._process_segment(pcm, generation)
+        finally:
+            _trace.reset(token)
+            if trace is not None:
+                from core.diagnostics import _ASR_RECORD_FIELDS
+                trace.update({key: value for key, value in span.items() if key in _ASR_RECORD_FIELDS})
+                with runtime.lock:
+                    trace["runtime"] = {key: value for key, value in runtime.gauges.items()
+                                        if key in ("dictionaries.revision", "text_lists.revision", "runtime_settings.revision",
+                                                   "audio.frames_dropped", "audio.segments_dropped")}
+                trace["vad"] = getattr(pcm, "vad", None)
+                trace.update(session=runtime.session, min_rms=self.min_rms, normalize=self.normalize_audio,
+                             garbage_limits=dict(self.garbage_limits))
+                self.recorder.submit(pcm, self.sample_rate, trace)
 
     def _spectral_score(self, pcm):
         """Оцінка спектрального збігу. У режимі спостереження лише записується."""
@@ -122,6 +142,8 @@ class Transcriber:
             pcm, self.min_rms, self.normalize_audio
         )
 
+        from services.recordings import note
+        note(prepared_peak=float(abs(audio).max()) if audio.size else 0.0)
         if self.debug_rms:
             self.log.info("rms=%.4f", rms)
 
@@ -177,6 +199,10 @@ class Transcriber:
             with runtime.timed("asr.whisper"):
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
+            from services.recordings import note
+            note(raw_text=raw_text, whisper_segments=[{k: segment[k] for k in (
+                "start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "temperature") if k in segment}
+                for segment in (result.get("segments", []) if isinstance(result, dict) else [])])
         except Exception:
             self._whisper_failed = True
             runtime.asr_status("whisper_error")
@@ -225,6 +251,8 @@ class Transcriber:
         if not is_current():
             runtime.asr_status("stale")
             return
+        from services.recordings import note
+        note(final_text=text)
         runtime.asr_text_ready(fallback=fallback)
 
         try:

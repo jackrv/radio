@@ -13,6 +13,7 @@
     <div class="brand"><span class="logo">345</span><div><div class="overline">ЛОКАЛЬНА ПАНЕЛЬ</div><div class="title">RADIO <b>345</b></div></div></div>
     <nav id="nav">
       <button data-view="overview" class="active"><span>◎</span>Огляд</button>
+      <button data-view="recordings"><span>▶</span>Аудіоархів</button>
       <button data-view="phrases"><span>✎</span>Фрази</button>
       <button data-view="sounds"><span>🔔</span>Звуки</button>
       <button data-view="filter"><span>≋</span>Фільтр</button>
@@ -45,6 +46,20 @@
           <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
           <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
         </div>
+      </section>
+
+      <section data-panel="recordings" hidden>
+        <article class="panel"><h2>Перевірка розпізнавання</h2>
+
+          <div class="toolbar"><select id="recording-group" aria-label="Група записів"><option value="normal">Основні</option><option value="short">Короткі</option><option value="all">Усі разом</option></select><select id="recording-filter" aria-label="Стан перевірки"><option value="all">Усі записи</option><option value="pending">Без перевірки</option><option value="reviewed">Перевірені</option></select><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
+          <p id="recording-summary" class="muted small"></p>
+          <details class="small"><summary>Підказки та статистика</summary>
+            <p class="muted">Прослухайте запис і введіть почутий текст. Правка — окремий еталон, без зміни Telegram чи правил. «Короткі» — записи до 2 с включно та всі короткі відхилення VAD; вони зберігаються окремо від основного списку. У ролях розрізняйте «невідомо» і «не вказано у фразі». Перевірені записи захищені від очищення.</p>
+            <p id="recording-summary-details" class="muted"></p>
+          </details>
+        </article>
+        <div id="recordings" class="list"></div>
+        <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
       </section>
 
       <!-- Фрази -->

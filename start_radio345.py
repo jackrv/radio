@@ -73,17 +73,28 @@ def close_console():
         _launcher_log.removeHandler(handler)
 
 
+def safe_message(message):
+    formatter = RedactingFormatter("%(message)s", None, launcher_setting("TELEGRAM_BOT_TOKEN"))
+    return ConsoleDashboard.clean(formatter.format(logging.makeLogRecord({"msg": message, "args": ()})))
+
+
 def output(message: str) -> None:
-    _launcher_log.info(message)
+    message = safe_message(message)
+    level = logging.WARNING if "⚠" in message else logging.ERROR if message.startswith(("Помилка:", "Не вдалося")) else logging.INFO
+    if _launcher_log.handlers:
+        _launcher_log.log(level, message)
     if _console is not None:
-        level = logging.WARNING if "⚠" in message else logging.ERROR if message.startswith(("Помилка:", "Не вдалося")) else logging.INFO
         _console.add(message, level)
         return
     try:
         print(f"[launcher] {message}", flush=True)
     except (OSError, ValueError):
-        # Закриття PTY у VS Code не повинне перервати зупинку служб.
         pass
+
+
+def service_failure(item, fallback):
+    detail = getattr(item, "last_error", None)
+    return detail if isinstance(detail, str) and detail else fallback
 
 
 def launcher_setting(name: str, default: str = "") -> str:
@@ -284,6 +295,7 @@ def api_reachable() -> bool:
 class ManagedProcess:
     def __init__(self, name: str, command: list[str], *, session=None):
         self.name = name
+        self.last_error = None
         self.session = session
         guarded, fds = session.command(name, command) if session is not None else (command, ())
         self.process = subprocess.Popen(
@@ -314,9 +326,12 @@ class ManagedProcess:
                 if writable:
                     try:
                         _launcher_log.info("[%s] %s", self.name, line.rstrip())
+                        event = child_event(self.name, line)
+                        if event is not None and event[1] >= logging.ERROR:
+                            self.last_error = safe_message(event[0])
                         if _console is not None:
-                            event = child_event(self.name, line)
-                            if event is not None:
+                            if event is not None and event != getattr(self, "_last_console_event", None):
+                                self._last_console_event = event
                                 message, level = event
                                 record = _launcher_log.makeRecord(_launcher_log.name, level, "", 0, message, (), None)
                                 formatter = RedactingFormatter("%(message)s", None, launcher_setting("TELEGRAM_BOT_TOKEN"))
@@ -358,7 +373,7 @@ def wait_for_api(api: ManagedProcess, deadline_seconds: float = 15.0) -> None:
     while time.monotonic() < deadline:
         if api.process.poll() is not None:
             raise RuntimeError(
-                f"FastAPI завершився з кодом {api.process.returncode}; див. журнал [api]"
+                service_failure(api, f"FastAPI завершився з кодом {api.process.returncode}; докладно в launcher.log")
             )
         if api_reachable():
             output("FastAPI відповідає на 127.0.0.1:8765 (401 без авторизації — норма)")
@@ -372,7 +387,7 @@ def wait_for_ngrok(tunnel: ManagedProcess, deadline_seconds: float = 15.0) -> st
     while time.monotonic() < deadline:
         if tunnel.process.poll() is not None:
             raise RuntimeError(
-                f"ngrok завершився з кодом {tunnel.process.returncode}; див. журнал [ngrok]"
+                service_failure(tunnel, f"ngrok завершився з кодом {tunnel.process.returncode}; докладно в launcher.log")
             )
         try:
             found = read_ngrok_https_url()
@@ -508,6 +523,7 @@ def run_services(args, session):
         _console.set_admin_url("http://127.0.0.1:8766")
     output(f"Python: {py}")
     processes: list[ManagedProcess] = []
+    failure = None
     try:
         api = ManagedProcess("api", [py, "-u", "-m", "api.local_server"], session=session)
         processes.append(api)
@@ -519,10 +535,11 @@ def run_services(args, session):
         ngrok_command.append("--log=stdout")
         tunnel = ManagedProcess("ngrok", ngrok_command, session=session)
         processes.append(tunnel)
+        output("Підключаю ngrok: очікую HTTPS-адресу (до 15 с)…")
         actual_url = wait_for_ngrok(tunnel)
         expected_url = read_expected_api_url()
         if not actual_url:
-            raise RuntimeError("ngrok не повернув HTTPS URL. Запуск зупинено, щоб не використовувати неправильну адресу")
+            raise RuntimeError(service_failure(tunnel, "ngrok не повернув HTTPS-адресу за відведений час. Перевірте інтернет / VPN. Докладно в launcher.log."))
         actual_url = valid_https_endpoint(actual_url)
         output(f"HTTPS API ngrok: {actual_url}")
         if desired_ngrok_url and actual_url != desired_ngrok_url:
@@ -581,14 +598,20 @@ def run_services(args, session):
                     _console.set_admin_url(None)
                     break
                 if exit_code is not None:
-                    output(f"⚠️ {item.name} завершився з кодом {exit_code}; зупиняю решту")
+                    failure = safe_message(service_failure(item, f"{item.name} завершився з кодом {exit_code}; докладно в launcher.log / radio.log"))
+                    if _console is not None:
+                        _console.set_problem(failure)
+                    output(f"Помилка: {failure}")
                     return 1
             time.sleep(0.5)
     except KeyboardInterrupt:
         output("Отримано запит завершення (Ctrl+C/SIGTERM/SIGHUP). Зупиняю служби...")
         return 0
     except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
-        output(f"Не вдалося запустити Radio 345: {exc}")
+        failure = safe_message(str(exc))
+        if _console is not None:
+            _console.set_problem(failure)
+        output(f"Не вдалося запустити Radio 345: {failure}")
         return 1
     finally:
         session.begin_shutdown()
@@ -604,6 +627,10 @@ def run_services(args, session):
         finally:
             signal.signal(signal.SIGINT, previous_handler)
             close_console()
+            if failure:
+                # Print after leaving the alternate screen so the reason survives exit.
+                output(f"Не вдалося запустити / продовжити Radio 345: {failure}")
+                output("Подробиці: launcher.log та radio.log. Після усунення причини повторіть запуск.")
 
 
 if __name__ == "__main__":

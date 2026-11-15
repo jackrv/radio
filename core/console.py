@@ -23,7 +23,9 @@ class ConsoleDashboard(logging.Handler):
         self.tty = self.stream.isatty()
         self.screen_active = False
         self.event_levels = deque(maxlen=8)
+        self.native_mac_links = os.environ.get("TERM_PROGRAM") == "Apple_Terminal"
         self.admin_url = None
+        self.problem = None
         self._painted_rows = {}
         self._painted_size = None
 
@@ -46,6 +48,12 @@ class ConsoleDashboard(logging.Handler):
     def set_admin_url(self, url):
         with self.lock:
             self.admin_url = url
+            if self.tty:
+                self.render()
+
+    def set_problem(self, message):
+        with self.lock:
+            self.problem = self.clean(message)
             if self.tty:
                 self.render()
 
@@ -82,6 +90,9 @@ class ConsoleDashboard(logging.Handler):
                 pass
 
     def lines(self, data):
+        if self.problem:
+            return ["Radio 345 | Запуск / роботу зупинено", self.problem,
+                    "Докладно: launcher.log та radio.log"]
         gauges, counts = data.get("gauges", {}), data.get("counters", {})
         fresh = data.get("session_status") != "finished" and data.get("updated_at", 0) >= self.started - 2 and time.time() - data.get("updated_at", 0) < 15
         if not fresh:
@@ -124,12 +135,16 @@ class ConsoleDashboard(logging.Handler):
             if self.admin_url:
                 link_row = len(rows)
                 rows.append(f"Адмін-панель: {self.admin_url}")
+                if self.native_mac_links:
+                    rows.append("Відкрити URL: ⌘ + подвійний клік")
             rows += ["─" * min(size.columns - 1, 80), "Останні важливі події:"]
             colors = ["36"] * len(rows)
             if data.get("gauges", {}).get("receiver.state") == "listening":
                 colors[0] = "32"
             else:
                 colors[0] = "33"
+            if self.problem:
+                colors[0:2] = ["31", "31"]
             count = max(1, size.lines - len(rows) - 2)
             rows += list(self.events)[-count:]
             colors += ["31" if level >= logging.ERROR else "33" if level >= logging.WARNING else "37" for level in list(self.event_levels)[-count:]]
@@ -143,7 +158,7 @@ class ConsoleDashboard(logging.Handler):
                 text = rows[index] if index < len(rows) else ""
                 color = colors[index] if index < len(colors) else "0"
                 text = self.fit(text, max(0, size.columns - 1))
-                if index == link_row:
+                if index == link_row and not self.native_mac_links:
                     # Keep the literal URL for terminals with automatic URL detection;
                     # OSC 8 also makes it a link in terminals supporting hyperlinks.
                     text = f"\x1b]8;;{self.admin_url}\x1b\\\x1b[4m{text}\x1b]8;;\x1b\\"
@@ -184,6 +199,15 @@ def child_event(source, line):
         except (ValueError, KeyError, TypeError):
             pass
         return None
+    if source == "ngrok" and re.search(r"\blvl=(eror|error|crit)\b|ERR_NGROK_\d+", line):
+        lower = line.lower()
+        if any(word in lower for word in ("i/o timeout", "deadline exceeded", "timed out")):
+            return "ngrok: перевищено час підключення до сервера. Перевірте інтернет або VPN і повторіть запуск.", logging.ERROR
+        if any(word in lower for word in ("no such host", "name resolution")):
+            return "ngrok: не вдалося визначити адресу сервера (DNS). Перевірте мережу.", logging.ERROR
+        if any(word in lower for word in ("authtoken", "authentication", "err_ngrok_4018")):
+            return "ngrok: помилка авторизації. Перевірте налаштування ngrok; докладно в launcher.log.", logging.ERROR
+        return "ngrok: не вдалося встановити тунель. Причина та код помилки — у launcher.log.", logging.ERROR
     # Third-party progress bars, blank lines and traceback continuations are diagnostics.
     match = re.match(r"(?:INFO|WARNING|ERROR|CRITICAL):\s+(.+)", line.strip())
     if match and line.strip().startswith(("WARNING:", "ERROR:", "CRITICAL:")):

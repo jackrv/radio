@@ -81,7 +81,9 @@ class ApplicationSupervisor:
         on_suspension=None,
         recognition_health=None,
         on_recognition_problem=None,
+        on_vad_discard=None,
     ):
+        self.on_vad_discard = on_vad_discard
         self.frames = frames
         self.segments = segments
         self.on_audio = on_audio
@@ -164,7 +166,7 @@ class ApplicationSupervisor:
             telegram_thread.start()
 
         def new_segmenter():
-            return self.segmenter_factory(
+            segmenter = self.segmenter_factory(
                 sample_rate=self.sample_rate,
                 frame_ms=self.frame_ms,
                 vad_level=self.vad_level,
@@ -173,6 +175,9 @@ class ApplicationSupervisor:
                 min_speech_ms=self.min_speech_ms,
                 max_segment_s=self.max_segment_s,
             )
+            if self.on_vad_discard is not None:
+                segmenter.on_discard = self.on_vad_discard
+            return segmenter
 
         segmenter = new_segmenter()
 

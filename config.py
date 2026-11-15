@@ -73,3 +73,9 @@ SHORT_GARBAGE = {
     "мамам",
     "па па",
 }
+
+# Локальний перевірочний корпус: WAV + тексти + метрики, без Telegram.
+RECORD_AUDIO = True
+RECORDINGS_DIR = BASE_DIR / ".local-recordings"
+RECORDINGS_RETENTION_DAYS = 7
+RECORDINGS_MAX_BYTES = 1024 * 1024 * 1024

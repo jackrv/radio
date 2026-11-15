@@ -129,3 +129,36 @@ iframe { display: block; width: 100%; height: 760px; border: 1px solid var(--bor
 textarea.list-editor { width: 100%; min-height: 190px; resize: vertical; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
 .list-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .warn-list { margin: 6px 0 0; padding-left: 18px; color: var(--warn); font-size: 12px; }
+
+[data-panel="recordings"] audio, [data-panel="recordings"] textarea { width:100%; }
+[data-panel="recordings"] form { display:grid; gap:7px; margin-top:6px; }
+[data-panel="recordings"] pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:400px; overflow:auto; }
+
+
+/* Compact review cards: keep audio and annotation visible, diagnostics folded. */
+[data-panel="recordings"] > .panel { padding:10px 14px; margin-bottom:10px; }
+#recordings { gap:8px; }
+#recordings .recording-card { padding:10px 14px; margin:0; }
+.recording-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.recording-header h3 { font-size:13px; line-height:1.3; margin:0; font-weight:600; }
+[data-panel="recordings"] .recording-header audio { height:30px; width:260px; flex-shrink:0; max-width:45%; }
+.recording-raw { font-size:12px; color:var(--muted); margin:5px 0; overflow-wrap:anywhere; }
+.recording-text { display:grid; gap:2px; }
+[data-panel="recordings"] textarea, .recording-role input { font:inherit; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 8px; min-width:0; }
+[data-panel="recordings"] textarea { min-height:48px; resize:vertical; line-height:1.3; }
+.recording-roles { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.recording-role { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:4px 8px; font-size:12px; min-width:0; }
+.recording-role input { grid-column:1/-1; width:100%; }
+.recording-role select { min-width:0; width:100%; }
+.recording-card select, .recording-card button { padding:4px 8px; font-size:12px; border-radius:6px; }
+.recording-actions { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.recording-details { margin-top:5px; font-size:12px; }
+.recording-details summary { color:var(--muted); cursor:pointer; }
+@media (max-width:650px) {
+  .recording-header { flex-wrap:wrap; gap:5px; }
+  [data-panel="recordings"] .recording-header audio { width:100%; max-width:100%; }
+  .recording-roles { grid-template-columns:1fr; gap:6px; }
+}
+
+[data-panel="recordings"] > .panel .toolbar { margin-bottom:4px; }
+.recording-details summary { padding:2px 0; }

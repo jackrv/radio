@@ -48,7 +48,7 @@ class TimedSegment(bytes):
 
 
 def stamp_segment(pcm, frame, segmenter):
-    return TimedSegment(pcm, SegmentTiming(
+    segment = TimedSegment(pcm, SegmentTiming(
         enqueued_at=time.perf_counter(), enqueued_unix_s=time.time(),
         audio_end_at=getattr(frame, "captured_at", None),
         audio_end_unix_s=getattr(frame, "captured_unix_s", None),
@@ -56,3 +56,5 @@ def stamp_segment(pcm, frame, segmenter):
         speech_end_unix_s=getattr(segmenter, "completed_speech_end_unix_s", None),
         capture_source=getattr(segmenter, "completed_speech_source", getattr(frame, "capture_source", "legacy")),
     ))
+    segment.vad = getattr(segmenter, "completed_vad", None)
+    return segment

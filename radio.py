@@ -79,6 +79,7 @@ PROMPT = ""
 
 _instance_lock = None
 recognition_health = RecognitionHealth()
+recording_archive = None
 frames = DropOldestQueue(100)
 segments = DropOldestQueue(5)
 cooldown = Cooldown(COOLDOWN_S)
@@ -99,6 +100,7 @@ telegram_service = TelegramService(
 # ---------- Утилиты ----------
 def on_audio(indata, frame_count, time_info, status):
     if status:
+        diagnostics.count("audio.stream_status")
         log.warning("Стан аудіопотоку: %s", status)
     frames.put(capture_frame(apply_gain(indata, GAIN), frame_count, SR, time_info))
 
@@ -119,6 +121,7 @@ def transcriber():
         log=log,
         pause_gate=pause_gate,
         health=recognition_health,
+        recorder=recording_archive,
     )
 
     worker.recognizer.warmup()
@@ -160,6 +163,16 @@ def main():
     )
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
+    global recording_archive
+    if config.RECORD_AUDIO:
+        from services.recordings import RecordingStore, RecordingArchive
+        recording_archive = RecordingArchive(
+            RecordingStore(config.RECORDINGS_DIR, retention_days=config.RECORDINGS_RETENTION_DAYS,
+                           max_bytes=config.RECORDINGS_MAX_BYTES),
+            {key: getattr(config, key) for key in ("MODEL_REPO", "LLM_REPO", "USE_LLM", "LANGUAGE", "SR",
+             "GAIN", "MIN_RMS", "NORMALIZE", "VAD_LEVEL", "SILENCE_END_MS", "MIN_SPEECH_MS",
+             "MAX_SEGMENT_S", "PREROLL_MS", "SPECTRAL_NOTIFICATION_MODE")}, log)
+        log.info("Локальний архів аудіо увімкнено: %s", config.RECORDINGS_DIR)
     load_dictionaries()
     recipients = list_recipients(DB_PATH)
     if recipients:
@@ -261,6 +274,7 @@ def main():
         on_suspension=report_suspension,
         recognition_health=recognition_health,
         on_recognition_problem=report_recognition,
+        on_vad_discard=recording_archive.vad_short if recording_archive else None,
     )
     # Щоденна перевірена копія бази в .local-backups/ (останні 7).
     backup_stop = start_backup_scheduler(DB_PATH, config.BASE_DIR / ".local-backups", log=log)
@@ -271,6 +285,8 @@ def main():
         try:
             telegram_service.shutdown(timeout=10.0)
         finally:
+            if recording_archive is not None:
+                recording_archive.close()
             diagnostics.finish()
 
 

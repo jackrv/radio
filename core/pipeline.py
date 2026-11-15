@@ -1,5 +1,6 @@
 from core.llm_safety import is_conservative_llm_rewrite
 from core.diagnostics import runtime
+from services.recordings import note
 
 
 def build_text_pipeline(
@@ -14,6 +15,7 @@ def build_text_pipeline(
 
     def process_text(raw_text: str) -> str:
         text, learned = apply_learned_corrections(raw_text)
+        note(before_llm=text)
 
         if learned:
             runtime.count("learned.applied")
@@ -26,6 +28,7 @@ def build_text_pipeline(
             # Проверяем предложение Qwen ДО словарных замен.
             conservative = llm_guard(text, llm_text)
             dictionary_safe = conservative and correction_is_safe(text, llm_text, dictionaries)
+            note(llm_text=llm_text, llm_accepted=dictionary_safe, llm_conservative=conservative)
             if dictionary_safe:
                 runtime.count("llm.accepted")
                 if llm_text == text:
@@ -46,6 +49,7 @@ def build_text_pipeline(
                     text,
                 )
 
+        note(final_text=text)
         return text
 
     return process_text

@@ -45,6 +45,14 @@ ACCESS_DIR = config.BASE_DIR / ".radio345-local-admin"
 SESSION_DAYS = 30
 
 
+class RecordingReview(BaseModel):
+    reference_recipient: str | None = Field(default=None, max_length=300)
+    reference_sender: str | None = Field(default=None, max_length=300)
+    reference: str = Field(max_length=2000)
+    label: str = Field(pattern=r"^(speech|noise|notification|unclear)$")
+    expected_revision: int = Field(ge=0)
+
+
 class SessionInput(BaseModel):
     token: str = Field(max_length=128)
 
@@ -199,7 +207,7 @@ def diagnostics_view(data):
     return result
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, eval_dir=None):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, eval_dir=None, recordings_dir=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
@@ -211,6 +219,10 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
+    from services.recordings import RecordingStore
+    recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
+                                retention_days=config.RECORDINGS_RETENTION_DAYS,
+                                max_bytes=config.RECORDINGS_MAX_BYTES)
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
     backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
     host = f"127.0.0.1:{port}"
@@ -282,6 +294,47 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 "samples": len(list_samples(samples_dir)["items"]),
                 "models": {"whisper": config.MODEL_REPO, "qwen": config.LLM_REPO},
                 "diagnostics": read_diagnostics(diagnostics_path)}
+
+    @app.get("/api/recordings")
+    def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", admin=Depends(actor)):
+        if not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed") or group not in ("all", "normal", "short"):
+            raise HTTPException(422, "Некоректні параметри")
+        return recordings.listing(offset, limit, review, group)
+
+    @app.get("/api/recordings/summary")
+    def recording_summary(admin=Depends(actor)):
+        return recordings.summary()
+
+    @app.get("/api/recordings/export")
+    def recording_export(admin=Depends(actor)):
+        with recordings.connect() as db:
+            rows = db.execute("SELECT * FROM recordings ORDER BY created").fetchall()
+        return Response(json.dumps({"schema": 1, "items": [recordings.decode(row) for row in rows]}, ensure_ascii=False),
+                        media_type="application/json", headers={"Content-Disposition": 'attachment; filename="recordings.json"'})
+
+    @app.get("/api/recordings/{record_id}/audio")
+    def recording_audio(record_id: str, admin=Depends(actor)):
+        try:
+            return Response(recordings.audio(record_id), media_type="audio/wav")
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+    @app.put("/api/recordings/{record_id}/review")
+    def recording_review(record_id: str, payload: RecordingReview, admin=Depends(actor)):
+        if payload.label == "speech" and not payload.reference.strip():
+            raise HTTPException(422, "Введіть почутий текст або позначте нерозбірливий запис")
+        if payload.label in ("noise", "notification") and payload.reference.strip():
+            raise HTTPException(422, "Для запису без мовлення залиште текст порожнім")
+        role_fields = {name: getattr(payload, name) for name in ("reference_recipient", "reference_sender")
+                       if name in payload.model_fields_set}
+        if payload.label in ("noise", "notification") and any(value and value.strip() for value in role_fields.values()):
+            raise HTTPException(422, "Для запису без мовлення позивні не вказуються")
+        try:
+            return recordings.review(record_id, payload.reference.strip(), payload.label, payload.expected_revision, **role_fields)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
 
     @app.get("/api/phrases")
     def phrases(q: str = "", offset: int = 0, limit: int = 30, admin=Depends(actor)):
@@ -596,7 +649,7 @@ def main(argv=None):
     print("Відкрити: .venv/bin/python -m api.local_dashboard --open")
     if args.open:
         open_when_ready(url)
-    app = create_dashboard(config.DB_PATH,capability,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"))
+    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"))
     uvicorn.run(app,host="127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
     return 0
 

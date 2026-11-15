@@ -21,12 +21,11 @@ NOTIFICATION_SOUNDS_DIR = BASE_DIR / ".local-notification-sounds"
 FILTER_NOTIFICATION_SOUNDS = True
 # Спектральний фільтр сповіщень: "shadow" — лише оцінює кожен сегмент і показує
 # оцінки в локальній панелі, нічого не відкидає; "active" — відкидає кандидатів;
-# "off" — вимкнено. Поріг обирається в панелі за розміченими реальними записами.
+# "off" — вимкнено. Поріг обирається в панелі за розміченими записами «Аудіоархіву».
 SPECTRAL_NOTIFICATION_MODE = "shadow"
 SPECTRAL_NOTIFICATION_THRESHOLD = 0.85
 SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S = 0.2
 SPECTRAL_NOTIFICATION_MAX_EXTRA = 0.02
-NOTIFICATION_EVAL_DIR = BASE_DIR / ".local-notification-eval"
 # COOLDOWN_S, LOG_CALLSIGNS_ONLY і GARBAGE_* — початкові значення; змінюються в
 # локальній панелі («Налаштування → Обробка без перезапуску»).
 COOLDOWN_S = 3.0
@@ -79,3 +78,5 @@ RECORD_AUDIO = True
 RECORDINGS_DIR = BASE_DIR / ".local-recordings"
 RECORDINGS_RETENTION_DAYS = 7
 RECORDINGS_MAX_BYTES = 1024 * 1024 * 1024
+# Черга розмітки для оцінки розпізнавання (створює: python -m tools.asr_lab queue).
+REVIEW_QUEUE_PATH = BASE_DIR / ".local-experiments" / "review-queue.json"

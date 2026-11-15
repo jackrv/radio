@@ -51,10 +51,11 @@
       <section data-panel="recordings" hidden>
         <article class="panel"><h2>Перевірка розпізнавання</h2>
 
-          <div class="toolbar"><select id="recording-group" aria-label="Група записів"><option value="normal">Основні</option><option value="short">Короткі</option><option value="all">Усі разом</option></select><select id="recording-filter" aria-label="Стан перевірки"><option value="all">Усі записи</option><option value="pending">Без перевірки</option><option value="reviewed">Перевірені</option></select><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
+          <div class="toolbar"><select id="recording-queue" aria-label="Черга розмітки"><option value="">Без черги</option></select><select id="recording-group" aria-label="Група записів"><option value="normal">Основні</option><option value="short">Короткі</option><option value="all">Усі разом</option></select><select id="recording-filter" aria-label="Стан перевірки"><option value="all">Усі записи</option><option value="pending">Без перевірки</option><option value="reviewed">Перевірені</option></select><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
+          <p id="recording-queue-progress" class="muted small"></p>
           <p id="recording-summary" class="muted small"></p>
           <details class="small"><summary>Підказки та статистика</summary>
-            <p class="muted">Прослухайте запис і введіть почутий текст. Правка — окремий еталон, без зміни Telegram чи правил. «Короткі» — записи до 2 с включно та всі короткі відхилення VAD; вони зберігаються окремо від основного списку. У ролях розрізняйте «невідомо» і «не вказано у фразі». Перевірені записи захищені від очищення.</p>
+            <p class="muted">Прослухайте запис і введіть почутий текст. Правка — окремий еталон, без зміни Telegram чи правил. «Короткі» — записи до 2 с включно, короткі відхилення VAD, тихі записи та чорний список незалежно від тривалості; вони зберігаються окремо від основного списку. У ролях розрізняйте «невідомо» і «не вказано у фразі». Перевірені записи захищені від очищення.</p>
             <p id="recording-summary-details" class="muted"></p>
           </details>
         </article>
@@ -65,7 +66,7 @@
       <!-- Фрази -->
       <section data-panel="phrases" hidden>
         <div class="toolbar"><input id="phrase-query" type="search" placeholder="Пошук у фразах…"><button id="phrase-search">Знайти</button></div>
-        <p class="muted small">Позначки «🔔 Сповіщення» / «🗣 Мовлення» — перевірочний набір для розділу «Фільтр»; вони нічого не відкидають. «＋ До зразків» робить фрагмент еталоном фільтра (лише чистий звук без мовлення, діє після перезапуску приймача). Мітка «спектр» — оцінка цього сегмента спектральним фільтром.</p>
+        <p class="muted small">«＋ До зразків» робить фрагмент еталоном фільтра звуків сповіщень (лише чистий звук без мовлення, діє після перезапуску приймача). Мітка «спектр» — оцінка цього сегмента спектральним фільтром. Розмітка для перевірки фільтра — у «Аудіоархіві».</p>
         <div id="phrases" class="list"></div>
         <button id="phrase-more" class="ghost wide" hidden>Показати ще</button>
       </section>
@@ -92,7 +93,7 @@
             <ol class="steps">
               <li>Додайте 1–3 чисті зразки сповіщення («Звуки» або «＋ До зразків» у «Фразах») і перезапустіть приймач.</li>
               <li>Режим спостереження нічого не відкидає: кожен сегмент лише отримує оцінку, її видно тут і біля фраз.</li>
-              <li>У «Фразах» позначайте записи як <b>🔔 сповіщення</b> чи <b>🗣 мовлення</b>, насамперед ті, що мають високу оцінку.</li>
+              <li>У «Аудіоархіві» позначайте записи: <b>«Звук сповіщення»</b>, <b>«Мовлення»</b>, «Неможливо розібрати» чи «Шум / тиша». Там справжній звук приймача, зокрема відкинуті сегменти.</li>
               <li>«Оцінити розмітку» покаже, скільки сповіщень знайде кожен поріг і чи зачепить він мовлення.</li>
               <li>Щоб увімкнути: у <code>config.py</code> задайте <code>SPECTRAL_NOTIFICATION_MODE = "active"</code> і рекомендований поріг, потім перезапустіть приймач.</li>
             </ol></article>

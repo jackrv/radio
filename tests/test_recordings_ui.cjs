@@ -56,3 +56,15 @@ test('groups become usable after backend update without reopening page', async (
   assert.match(ui.$('recording-group').options[2].textContent, /3/);
   assert.equal(ui.$('recordings').children.length, 1);
 });
+
+test('queue filter adds the queue to the request and freezes ordinary groups', async () => {
+  const ui = harness({items:[item],total:1,groups:{all:3,normal:1,short:2}});
+  const urls = [];
+  ui.$('recording-queue').value = 'A';
+  const original = ui.$('recording-group');
+  await ui.load();
+  assert.equal(original.disabled, true, 'звичайні групи вимкнено під час черги');
+  ui.$('recording-queue').value = '';
+  await ui.load();
+  assert.equal(original.disabled, false);
+});

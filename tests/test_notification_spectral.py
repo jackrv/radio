@@ -132,44 +132,54 @@ def test_matcher_error_never_stops_recognition():
     recognizer.transcribe.assert_called_once()
 
 
-def test_evaluation_excludes_self_and_recommends_safe_threshold(tmp_path):
+def archive_with(tmp_path, clips):
+    """Аудіоархів із розміченими записами: [(pcm-масив, мітка або None)]."""
+    from services.recordings import RecordingStore
+    store = RecordingStore(tmp_path / "recordings")
+    ids = []
+    for audio, label in clips:
+        record = store.save(pcm(audio), SR, {"status": "ready"})
+        if label is not None:
+            store.review(record, "" if label in ("notification", "noise") else "текст", label, 0)
+        ids.append(record)
+    return store, ids
+
+
+def test_evaluation_uses_archive_labels_excludes_self_and_recommends_safe_threshold(tmp_path):
     from services.notification_samples import add_sample
-    samples, labels = tmp_path / "samples", tmp_path / "eval"
+    samples = tmp_path / "samples"
     add_sample(samples, wav(phone_sound()), confirmed_isolated=True)
     rng = np.random.default_rng(9)
-    for index in range(3):
-        noisy = segment(phone_sound() * (0.2 + index * 0.2)) + rng.normal(0, 0.0008, len(segment()))
-        notification_eval.set_label(labels, f"db:{index + 1}", "notification", wav(noisy))
-    notification_eval.set_label(labels, "db:50", "notification", wav(phone_sound()))  # той самий запис, що й зразок
-    for index in range(10):
-        clip = np.concatenate((np.zeros(4000), voice_like(1.0 + index * 0.1) * 0.2, np.zeros(6000)))
-        notification_eval.set_label(labels, f"db:{index + 100}", "speech", wav(clip))
-    assert notification_eval.label_counts(labels) == {"notification": 4, "speech": 10}
+    clips = [(segment(phone_sound() * (0.2 + i * 0.2)) + rng.normal(0, 0.0008, len(segment())), "notification") for i in range(3)]
+    clips.append((phone_sound(), "notification"))  # той самий звук, що й зразок
+    clips += [(np.concatenate((np.zeros(4000), voice_like(1.0 + i * 0.1) * 0.2, np.zeros(6000))), "speech" if i % 3 else "unclear")
+              for i in range(10)]
+    clips.append((segment(rng.normal(0, 0.05, 6000)), "noise"))
+    clips.append((segment(phone_sound()), None))  # не розмічено — не оцінюється
+    store, ids = archive_with(tmp_path, clips)
+    assert notification_eval.label_counts(store) == {"notification": 4, "speech": 10, "noise": 1}
 
-    report = notification_eval.evaluate(labels, samples, threshold=0.85, max_outside_s=0.2, max_extra=0.02)
-    by_fix = {item["fix_id"]: item for item in report["items"]}
-    assert by_fix["db:50"]["self_template"] is True and by_fix["db:50"]["score"] is None
-    assert by_fix["db:1"]["self_template"] is False and by_fix["db:1"]["candidate"]
+    report = notification_eval.evaluate(store, samples, threshold=0.85, max_outside_s=0.2, max_extra=0.02)
+    by_id = {item["record_id"]: item for item in report["items"]}
+    assert ids[-1] not in by_id, "нерозмічений запис не оцінюється"
+    assert by_id[ids[3]]["self_template"] is True and by_id[ids[3]]["score"] is None
+    assert by_id[ids[0]]["self_template"] is False and by_id[ids[0]]["candidate"]
     summary = report["summary"]
-    assert summary["status"] == "ok" and summary["notifications"] == 3 and summary["speech"] == 10
+    assert summary["status"] == "ok" and (summary["notifications"], summary["speech"], summary["noise"]) == (3, 10, 1)
     assert summary["recommended"]["speech_dropped"] == 0 and summary["recommended"]["notifications_found"] == 3
     assert 0.7 <= summary["recommended_threshold"] <= 0.9, "середина безпечного діапазону, а не його край"
 
 
-def test_labels_are_private_bounded_and_replaceable(tmp_path):
-    root = tmp_path / "eval"
-    notification_eval.set_label(root, "db:1", "speech", wav())
-    notification_eval.set_label(root, "db:1", "notification", wav())
-    assert notification_eval.read_labels(root) == {"db:1": "notification"}
-    assert len(list(root.glob("*.wav"))) == 1
-    assert oct(root.stat().st_mode & 0o777) == "0o700"
-    with pytest.raises(ValueError):
-        notification_eval.set_label(root, "../x", "speech", wav())
-    with pytest.raises(ValueError):
-        notification_eval.set_label(root, "db:2", "music", wav())
-    with pytest.raises(ValueError):
-        notification_eval.set_label(root, "db:2", "speech", b"not a wav")
-    notification_eval.remove_label(root, "db:1")
-    assert notification_eval.read_labels(root) == {} and not list(root.glob("*.wav"))
-    (root / "labels.json").write_text("{broken")
-    assert notification_eval.read_labels(root) == {}
+def test_evaluation_skips_long_records_and_reads_archive_only(tmp_path):
+    from services.notification_samples import add_sample
+    samples = tmp_path / "samples"
+    add_sample(samples, wav(phone_sound()), confirmed_isolated=True)
+    store, ids = archive_with(tmp_path, [(voice_like(11) * 0.2, "speech"), (segment(), "notification")])
+    with store.connect() as db:
+        before = db.execute("SELECT id, revision, label FROM recordings ORDER BY id").fetchall()
+    report = notification_eval.evaluate(store, samples, threshold=0.85, max_outside_s=0.2, max_extra=0.02)
+    by_id = {item["record_id"]: item for item in report["items"]}
+    assert by_id[ids[0]]["score"] is None and "10" in by_id[ids[0]]["error"]
+    assert report["summary"]["status"] == "need_more"
+    with store.connect() as db:
+        assert db.execute("SELECT id, revision, label FROM recordings ORDER BY id").fetchall() == before, "оцінка лише читає"

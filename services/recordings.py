@@ -167,19 +167,38 @@ class RecordingStore:
             }
         return result
 
-    def listing(self, offset=0, limit=25, review="all", group="all"):
+    def listing(self, offset=0, limit=25, review="all", group="all", ids=None):
         reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
-        # Include VAD rejects regardless of preroll/tail duration. Other short
-        # recordings use actual PCM duration, independently of transcription.
-        short = "(status='vad_short' OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
+        # Rejected short/quiet/blacklisted material belongs outside the main
+        # review list regardless of its audio duration.
+        short = "(status IN ('vad_short','low_rms','blacklist') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
         grouped = {"all": "1", "normal": f"NOT {short}", "short": short}[group]
+        params = ()
+        if ids is not None:
+            # Черга розмітки: фіксований перелік записів замість звичайних груп.
+            grouped, params = "id IN (SELECT value FROM json_each(?))", (json.dumps(sorted(ids)),)
         where = f"({reviewed}) AND ({grouped})"
         with self.connect() as db:
             db.execute("BEGIN")
             counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0) FROM recordings WHERE {reviewed}").fetchone()
             groups = {"all": counts[0], "short": counts[1], "normal": counts[0] - counts[1]}
-            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY created DESC,id DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
-        return {"items": [self.decode(row) for row in rows], "total": groups[group], "groups": groups, "short_max_seconds": 2}
+            total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
+            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY created DESC,id DESC LIMIT ? OFFSET ?",
+                              (*params, limit, offset)).fetchall()
+        return {"items": [self.decode(row) for row in rows], "total": total, "groups": groups, "short_max_seconds": 2}
+
+    def queue_progress(self, groups):
+        """Скільки записів кожної групи черги ще є в архіві та скільки вже перевірено."""
+        result = []
+        with self.connect() as db:
+            for group in groups:
+                ids = json.dumps(sorted(group["ids"]))
+                present, reviewed = db.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(reference IS NOT NULL),0) FROM recordings "
+                    "WHERE id IN (SELECT value FROM json_each(?))", (ids,)).fetchone()
+                result.append({"key": group["key"], "title": group["title"], "total": len(group["ids"]),
+                               "present": present, "reviewed": reviewed})
+        return result
 
     def get(self, record_id):
         if not ID.fullmatch(record_id):

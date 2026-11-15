@@ -175,7 +175,7 @@ def test_local_panel_reads_and_saves_lists(tmp_path):
     from api.local_dashboard import create_dashboard
     path = tmp_path / "panel.db"
     init_db(path); init_dictionary_db(path); init_users_db(path); bootstrap_admin(path, 1001)
-    app = create_dashboard(path, KEY, samples_dir=tmp_path / "s", diagnostics_path=tmp_path / "d.json", eval_dir=tmp_path / "e")
+    app = create_dashboard(path, KEY, samples_dir=tmp_path / "s", diagnostics_path=tmp_path / "d.json", recordings_dir=tmp_path / "r")
     with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 1)) as client:
         client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN})
         data = client.get("/api/text-lists").json()

@@ -1,193 +1,124 @@
-"""Розмітка реальних фрагментів («сповіщення» / «мовлення») і оцінка фільтрів на ній.
+"""Оцінка фільтрів звуків сповіщень на розмітці локального аудіоархіву.
 
-Записи лежать лише локально (каталог 0700, файли 0600) і ніколи не
-публікуються. Зразки фільтра — це еталон; розмітка — перевірочний набір.
-Запис, з якого зроблено зразок, не порівнюється сам із собою.
+Мітки ставляться в «Аудіоархіві» (services/recordings.py): там справжній PCM
+приймача, зокрема відкинуті сегменти, а не стиснені голосові Telegram.
+
+- «Звук сповіщення» — фільтр має знайти такий запис;
+- «Мовлення» й «Неможливо розібрати» — відкидати не можна (втрата мовлення);
+- «Шум / тиша» — показується окремо: відкинути шум не шкодить.
+
+Зразки фільтра — еталон; запис, з якого зроблено зразок, сам із собою не
+порівнюється. Оцінка лише читає архів і нічого в ньому не змінює.
 """
 
 import io
-import json
 import logging
-import os
-from pathlib import Path
-import re
-import secrets
-import time
 import wave
 
 import numpy as np
 
 from core.notification_filter import NotificationSoundFilter, _prepare_template, load_templates
 from core.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher, template_hash
-from services.notification_samples import _locked
 
 SAMPLE_RATE = 16000
-MAX_LABELS = 300
-LABELS = ("notification", "speech")
-FIX_ID = re.compile(r"(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})\Z")
-CLIP_NAME = re.compile(r"[0-9a-f]{32}\.wav\Z")
-INDEX = "labels.json"
+POSITIVE = ("notification",)
+NEGATIVE = ("speech", "unclear")
+NEUTRAL = ("noise",)
 GRID = tuple(round(0.60 + 0.02 * step, 2) for step in range(20))
 MIN_NOTIFICATIONS = 3
 MIN_SPEECH = 10
+MAX_ITEMS = 2000
 
 
-def _read_index(root):
-    path = Path(root) / INDEX
-    if not path.is_file() or path.is_symlink():
-        return {}
+def _labelled(store, limit=MAX_ITEMS):
+    with store.connect() as db:
+        return db.execute(
+            "SELECT id, created, label FROM recordings WHERE reference IS NOT NULL AND label IN (?, ?, ?, ?) "
+            "ORDER BY created DESC LIMIT ?", (*POSITIVE, *NEGATIVE, *NEUTRAL, limit)).fetchall()
+
+
+def label_counts(store):
+    """Скільки розмічених записів кожної групи є в архіві."""
+    counts = {"notification": 0, "speech": 0, "noise": 0}
     try:
-        data = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-    items = data.get("items") if isinstance(data, dict) else None
-    if not isinstance(items, dict):
-        return {}
-    return {key: value for key, value in items.items()
-            if FIX_ID.fullmatch(str(key)) and isinstance(value, dict)
-            and value.get("label") in LABELS and CLIP_NAME.fullmatch(str(value.get("file", "")))}
+        with store.connect() as db:
+            rows = db.execute("SELECT label, COUNT(*) FROM recordings WHERE reference IS NOT NULL GROUP BY label").fetchall()
+    except Exception:
+        return counts
+    for label, count in rows:
+        group = "notification" if label in POSITIVE else "speech" if label in NEGATIVE else "noise" if label in NEUTRAL else None
+        if group:
+            counts[group] += count
+    return counts
 
 
-def _write_index(root, items):
-    temporary = Path(root) / f".{INDEX}.{secrets.token_hex(4)}"
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        with os.fdopen(fd, "w") as output:
-            json.dump({"version": 1, "items": items}, output, ensure_ascii=False)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, Path(root) / INDEX)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
-def _pcm_from_wav(content):
-    try:
-        with wave.open(io.BytesIO(content), "rb") as audio:
-            if (audio.getnchannels() != 1 or audio.getsampwidth() != 2 or audio.getframerate() != SAMPLE_RATE
-                    or not 0 < audio.getnframes() <= MAX_SCORE_S * SAMPLE_RATE):
-                raise ValueError(f"Потрібен моно WAV PCM16, 16000 Гц, до {MAX_SCORE_S:g} секунд")
-            raw = audio.readframes(audio.getnframes())
-            if len(raw) != audio.getnframes() * 2:
-                raise ValueError("Неповний WAV")
-            return raw
-    except (wave.Error, EOFError) as exc:
-        raise ValueError("Непридатний WAV") from exc
-
-
-def read_labels(directory):
-    root = Path(directory)
-    if not root.is_dir() or root.is_symlink():
-        return {}
-    return {key: value["label"] for key, value in _read_index(root).items()}
-
-
-def label_counts(directory):
-    labels = list(read_labels(directory).values())
-    return {name: labels.count(name) for name in LABELS}
-
-
-def set_label(directory, fix_id, label, wav_content):
-    if not FIX_ID.fullmatch(fix_id or ""):
-        raise ValueError("Некоректний ідентифікатор фрази")
-    if label not in LABELS:
-        raise ValueError("Невідома позначка")
-    raw = _pcm_from_wav(wav_content)
-    with _locked(directory) as root:
-        items = _read_index(root)
-        previous = items.get(fix_id)
-        if previous is None and len(items) >= MAX_LABELS:
-            raise ValueError(f"Дозволено не більше {MAX_LABELS} позначок. Зніміть зайві.")
-        name = previous["file"] if previous else secrets.token_hex(16) + ".wav"
-        path = root / name
-        temporary = root / f".{name}.{secrets.token_hex(4)}"
-        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        try:
-            with os.fdopen(fd, "wb") as output, wave.open(output, "wb") as audio:
-                audio.setnchannels(1); audio.setsampwidth(2); audio.setframerate(SAMPLE_RATE)
-                audio.writeframes(raw)
-            os.replace(temporary, path)
-        except BaseException:
-            temporary.unlink(missing_ok=True)
-            raise
-        items[fix_id] = {"label": label, "file": name, "at": int(time.time())}
-        _write_index(root, items)
-    return {"fix_id": fix_id, "label": label, "duration_s": len(raw) / 2 / SAMPLE_RATE}
-
-
-def remove_label(directory, fix_id):
-    if not FIX_ID.fullmatch(fix_id or ""):
-        raise ValueError("Некоректний ідентифікатор фрази")
-    root = Path(directory)
-    if not root.is_dir():
-        return {"fix_id": fix_id, "label": None}
-    with _locked(root) as root:
-        items = _read_index(root)
-        previous = items.pop(fix_id, None)
-        if previous:
-            _write_index(root, items)
-            (root / previous["file"]).unlink(missing_ok=True)
-    return {"fix_id": fix_id, "label": None}
+def _pcm(content):
+    with wave.open(io.BytesIO(content), "rb") as audio:
+        if audio.getnchannels() != 1 or audio.getsampwidth() != 2 or audio.getframerate() != SAMPLE_RATE:
+            raise ValueError("Непідтримуваний формат запису")
+        raw = audio.readframes(audio.getnframes())
+    if not raw or len(raw) % 2:
+        raise ValueError("Порожній запис")
+    return raw
 
 
 def _summary(items, matcher):
-    notifications = [i for i in items if i["label"] == "notification" and i.get("score") is not None]
-    speech = [i for i in items if i["label"] == "speech" and i.get("score") is not None]
+    groups = {"notification": [i for i in items if i["label"] in POSITIVE and i.get("score") is not None],
+              "speech": [i for i in items if i["label"] in NEGATIVE and i.get("score") is not None],
+              "noise": [i for i in items if i["label"] in NEUTRAL and i.get("score") is not None]}
 
     def found(group, threshold):
         return sum(matcher.is_candidate(i["score"], i["outside_s"], i["extra_ratio"], threshold) for i in group)
 
-    table = [{"threshold": t, "notifications_found": found(notifications, t), "speech_dropped": found(speech, t)}
-             for t in GRID]
-    result = {"notifications": len(notifications), "speech": len(speech), "table": table,
-              "current_threshold": matcher.threshold, "recommended_threshold": None}
-    current = {"notifications_found": found(notifications, matcher.threshold),
-               "speech_dropped": found(speech, matcher.threshold)}
-    result["current"] = current
-    if len(notifications) < MIN_NOTIFICATIONS or len(speech) < MIN_SPEECH:
+    table = [{"threshold": t, "notifications_found": found(groups["notification"], t),
+              "speech_dropped": found(groups["speech"], t), "noise_dropped": found(groups["noise"], t)} for t in GRID]
+    result = {"notifications": len(groups["notification"]), "speech": len(groups["speech"]),
+              "noise": len(groups["noise"]), "table": table,
+              "current_threshold": matcher.threshold, "recommended_threshold": None,
+              "current": {"notifications_found": found(groups["notification"], matcher.threshold),
+                          "speech_dropped": found(groups["speech"], matcher.threshold),
+                          "noise_dropped": found(groups["noise"], matcher.threshold)}}
+    if result["notifications"] < MIN_NOTIFICATIONS or result["speech"] < MIN_SPEECH:
         result["status"] = "need_more"
         return result
     safe = [row for row in table if row["speech_dropped"] == 0]
-    if not safe:
+    best = max((row["notifications_found"] for row in safe), default=0)
+    if not safe or best == 0:
         result["status"] = "not_separable"
         return result
-    # Безпечний діапазон: від найнижчого порогу без хибних на мовленні до найвищого,
-    # що ще знаходить максимум сповіщень. Беремо середину — запас з обох боків.
-    best_found = max(row["notifications_found"] for row in safe)
-    if best_found == 0:
-        result["status"] = "not_separable"
-        return result
+    # Безпечний діапазон: від найнижчого порогу без жодного відкинутого мовлення
+    # до найвищого, що ще знаходить максимум сповіщень. Середина — запас з обох боків.
     low = GRID.index(safe[0]["threshold"])
-    high = max(GRID.index(row["threshold"]) for row in safe if row["notifications_found"] == best_found)
+    high = max(GRID.index(row["threshold"]) for row in safe if row["notifications_found"] == best)
     recommended = table[(low + high + 1) // 2]
-    result["status"] = "ok"
-    result["recommended_threshold"] = recommended["threshold"]
-    result["recommended"] = recommended
+    result.update(status="ok", recommended_threshold=recommended["threshold"], recommended=recommended)
     return result
 
 
-def evaluate(eval_dir, samples_dir, *, threshold, max_outside_s, max_extra, log=None):
-    """Оцінки обох фільтрів на всіх розмічених записах і рекомендований поріг."""
+def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=None):
+    """Оцінки обох фільтрів на розмічених записах архіву й рекомендований поріг."""
     log = log or logging.getLogger(__name__)
     templates = load_templates(samples_dir, SAMPLE_RATE, log)
     digests = [template_hash(t) for t in templates]
     matcher = SpectralNotificationMatcher(templates, SAMPLE_RATE, prepared=True, threshold=threshold,
                                           max_outside_s=max_outside_s, max_extra=max_extra)
     waveform = NotificationSoundFilter([], SAMPLE_RATE)
-    root = Path(eval_dir)
-    index = _read_index(root) if root.is_dir() and not root.is_symlink() else {}
     items = []
-    for fix_id, entry in sorted(index.items(), key=lambda pair: pair[1].get("at", 0), reverse=True):
-        item = {"fix_id": fix_id, "label": entry["label"], "at": entry.get("at")}
+    for row in _labelled(store):
+        item = {"record_id": row["id"], "created": row["created"], "label": row["label"]}
         try:
-            raw = _pcm_from_wav((root / entry["file"]).read_bytes())
-        except (OSError, ValueError):
-            item["error"] = "Запис недоступний"
+            raw = _pcm(store.audio(row["id"]))
+        except (LookupError, OSError, ValueError, wave.Error, EOFError):
+            item["error"] = "Аудіо недоступне"
             items.append(item)
             continue
         audio = np.frombuffer(raw, dtype="<i2").astype(np.float64) / 32768
         item["duration_s"] = round(len(audio) / SAMPLE_RATE, 2)
+        if len(audio) > MAX_SCORE_S * SAMPLE_RATE:
+            item["score"] = None
+            item["error"] = f"довший за {MAX_SCORE_S:g} с — фільтр такі не оцінює"
+            items.append(item)
+            continue
         try:
             own = template_hash(_prepare_template(audio, SAMPLE_RATE))
         except ValueError:

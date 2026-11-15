@@ -221,38 +221,17 @@
       badge.title = `Поза збігом: ${fix(sp.outside_s)} с · стороння енергія: ${pct(sp.extra_ratio)}`;
       meta.append(badge);
     }
-    const labelBadge = el("span", "badge", "");
-    meta.append(labelBadge);
     box.append(meta, el("div", "text", item.current_text));
     if (item.original_text && item.original_text !== item.current_text) box.append(el("div", "orig", `Whisper: ${item.original_text}`));
     const actions = el("div", "actions");
     if (item.has_audio) {
       const play = el("button", "ghost", "▶ Аудіо");
-      const notif = el("button", "ghost", "🔔 Сповіщення"), speech = el("button", "ghost", "🗣 Мовлення");
       const mark = el("button", "ghost", "＋ До зразків");
-      const paint = label => {
-        item.label = label;
-        notif.classList.toggle("on", label === "notification");
-        speech.classList.toggle("on", label === "speech");
-        labelBadge.hidden = !label;
-        labelBadge.className = `badge ${label === "notification" ? "notif" : "speech"}`;
-        labelBadge.textContent = label === "notification" ? "позначено: сповіщення" : "позначено: мовлення";
-      };
-      paint(item.label || null);
       play.addEventListener("click", () => action(async () => {
         const blob = await request(`/api/phrases/audio?fix_id=${encodeURIComponent(item.fix_id)}`);
         const audio = el("audio"); audio.controls = true; audio.src = URL.createObjectURL(blob);
         play.replaceWith(audio); audio.play().catch(() => {});
       }));
-      for (const [button, label] of [[notif, "notification"], [speech, "speech"]]) {
-        button.addEventListener("click", () => action(async () => {
-          const next = item.label === label ? null : label;
-          await request("/api/phrases/label", "PUT", { fix_id: item.fix_id, label: next });
-          paint(next);
-          loaded.delete("filter");
-          note(next ? "Позначку збережено. Перевірка — у розділі «Фільтр»." : "Позначку знято.");
-        }));
-      }
       mark.addEventListener("click", () => action(async () => {
         if (!confirm("Додати цей фрагмент до зразків звуків сповіщень?\n\nСпершу прослухайте його: у записі не має бути мовлення. Зразок — еталон фільтра; діє після перезапуску приймача.")) return;
         await request("/api/phrases/notification-sample", "PUT", { fix_id: item.fix_id, confirmed_isolated: true });
@@ -260,8 +239,8 @@
         loaded.delete("sounds"); loaded.delete("filter");
         note("Зразок додано. Набуде чинності після перезапуску приймача.");
       }));
-      actions.append(play, notif, speech, mark);
-    } else { labelBadge.hidden = true; actions.append(el("span", "muted small", "аудіо не збережено")); }
+      actions.append(play, mark);
+    } else actions.append(el("span", "muted small", "аудіо не збережено"));
     box.append(actions);
     return box;
   }
@@ -313,13 +292,13 @@
       card("Зразків", num(f.samples), f.waveform ? "хвильовий фільтр теж працює" : "хвильовий фільтр вимкнено", f.samples ? "ok" : "bad"),
       card("Оцінено сегментів", num(c["asr.spectral.scored"] || 0), age === null ? "немає знімка метрик" : `знімок ${ago(age)} тому`, "info"),
       card("Кандидатів", num(c["asr.spectral.candidate"] || 0), `із них розпізнано Whisper: ${num(recognised)}`, recognised ? "warn" : ""),
-      card("Розмічено", `${num(f.labels.notification)} / ${num(f.labels.speech)}`, "сповіщень / мовлення", f.labels.notification && f.labels.speech ? "ok" : "warn"),
+      card("Розмічено в архіві", `${num(f.labels.notification)} / ${num(f.labels.speech)}`, `сигналів / мовлення · шуму: ${num(f.labels.noise)}`, f.labels.notification && f.labels.speech ? "ok" : "warn"),
       card("Поріг", fix(sp.threshold), `поза збігом ≤ ${fix(sp.max_outside_s, 1)} с · стороннє ≤ ${pct(sp.max_extra)}`, ""),
     );
     drawHistogram(obs.buckets || [], sp.threshold);
     drawRecent((obs.recent || []).slice(-50).reverse());
     $("filter-labels").textContent = f.samples
-      ? `Розмічено: сповіщення — ${f.labels.notification}, мовлення — ${f.labels.speech}. Для рекомендації порогу потрібно щонайменше 3 і 10.`
+      ? `Мітки беруться з «Аудіоархіву»: звук сповіщення — ${f.labels.notification}, мовлення й нерозбірливе — ${f.labels.speech}, шум — ${f.labels.noise}. Для рекомендації порогу потрібно щонайменше 3 сигнали й 10 записів мовлення.`
       : "Спершу додайте хоча б один зразок звуку сповіщення.";
   }
 
@@ -375,31 +354,33 @@
     $("filter-summary").replaceChildren(box);
 
     const grid = el("table"), gh = el("tr");
-    for (const h of ["Поріг", `Сповіщень знайдено (з ${s.notifications})`, `Мовлення відкинуто (з ${s.speech})`]) gh.append(el("th", "", h));
+    for (const h of ["Поріг", `Сигналів знайдено (з ${s.notifications})`, `Мовлення відкинуто (з ${s.speech})`, `Шуму відкинуто (з ${s.noise})`]) gh.append(el("th", "", h));
     grid.append(gh);
     for (const t of s.table) {
       const row = el("tr");
       if (t.threshold === s.recommended_threshold) row.classList.add("pick");
       if (Math.abs(t.threshold - s.current_threshold) < 1e-9) row.classList.add("now");
-      row.append(el("td", "", fix(t.threshold)), el("td", "", num(t.notifications_found)), el("td", t.speech_dropped ? "alert" : "good", num(t.speech_dropped)));
+      row.append(el("td", "", fix(t.threshold)), el("td", "", num(t.notifications_found)), el("td", t.speech_dropped ? "alert" : "good", num(t.speech_dropped)), el("td", "", num(t.noise_dropped)));
       grid.append(row);
     }
     $("filter-table").replaceChildren(grid);
 
     const items = el("table"), ih = el("tr");
-    for (const h of ["Фраза", "Позначка", "Оцінка", "Поза", "Стороннє", "Спектр", "Хвиля"]) ih.append(el("th", "", h));
+    for (const h of ["Запис", "Позначка", "Оцінка", "Поза", "Стороннє", "Спектр", "Хвиля"]) ih.append(el("th", "", h));
     items.append(ih);
     for (const i of r.items) {
-      const row = el("tr"), name = el("td", "", i.fix_id.startsWith("db:") ? `подія ${i.fix_id.slice(3)}` : "тимчасова");
+      const row = el("tr"), name = el("td", "", `${stamp(i.created)}${i.duration_s ? ` · ${fix(i.duration_s, 1)} с` : ""}`);
       if (i.self_template) name.append(el("span", "muted small", " · зразок, себе не враховано"));
-      const wrong = i.score !== undefined && i.score !== null && (i.label === "speech" ? i.candidate : !i.candidate);
-      row.append(name, el("td", "", i.label === "notification" ? "🔔 сповіщення" : "🗣 мовлення"));
+      // Помилка: сигнал не знайдено або мовлення відкинуто; шум відкидати можна.
+      const scored = i.score !== undefined && i.score !== null;
+      const wrong = scored && (i.label === "notification" ? !i.candidate : i.label !== "noise" && i.candidate);
+      row.append(name, el("td", "", { notification: "🔔 сигнал", speech: "🗣 мовлення", unclear: "🗣 нерозбірливе", noise: "· шум" }[i.label] || i.label));
       if (i.error || i.score === null || i.score === undefined) row.append(el("td", "muted", i.error || "не оцінено"), el("td"), el("td"), el("td"), el("td"));
       else row.append(el("td", "", fix(i.score)), el("td", "", `${fix(i.outside_s)} с`), el("td", "", pct(i.extra_ratio)),
         el("td", wrong ? "alert" : "good", yes(i.candidate)), el("td", "", yes(i.waveform_match)));
       items.append(row);
     }
-    $("filter-items").replaceChildren(r.items.length ? items : el("p", "muted", "Розмічених записів ще немає. Позначайте фрази в розділі «Фрази»."));
+    $("filter-items").replaceChildren(r.items.length ? items : el("p", "muted", "Розмічених записів ще немає. Позначайте їх у розділі «Аудіоархів»."));
     note(`Оцінено записів: ${r.items.length}.`);
   }
   $("filter-eval").addEventListener("click", () => action(evaluation));
@@ -634,22 +615,52 @@
   }
   $("role").addEventListener("change", roles);
 
+  // ---------- Черга розмітки (python -m tools.asr_lab queue) ----------
+  async function loadQueue() {
+    const select = $("recording-queue"), chosen = select.value;
+    let queue;
+    try { queue = await request("/api/recordings/queue"); } catch (_) { queue = { available: false }; }
+    select.replaceChildren(el("option", "", "Без черги"));
+    select.firstChild.value = "";
+    if (!queue.available) {
+      select.disabled = true; select.title = queue.hint || "";
+      $("recording-queue-progress").textContent = "";
+      return;
+    }
+    select.disabled = false; select.title = "";
+    const groups = queue.groups || [];
+    const total = groups.reduce((a, g) => a + g.present, 0), reviewed = groups.reduce((a, g) => a + g.reviewed, 0);
+    const all = el("option", "", `Черга: усі групи · ${reviewed}/${total}`); all.value = "all"; select.append(all);
+    for (const g of groups) {
+      const option = el("option", "", `Черга ${g.key}: ${g.title} · ${g.reviewed}/${g.present}`);
+      option.value = g.key; select.append(option);
+    }
+    select.value = [...select.options].some(o => o.value === chosen) ? chosen : "";
+    const lost = groups.reduce((a, g) => a + (g.total - g.present), 0);
+    $("recording-queue-progress").textContent = `Черга розмітки: перевірено ${reviewed} з ${total}` +
+      (lost ? ` · ${lost} записів уже видалено за терміном зберігання` : "") +
+      ". Почніть із групи A; фільтр «Без перевірки» показує лише те, що лишилося.";
+  }
+
   let recordingOffset = 0;
   async function recordings(reset = true) {
     if (reset) { recordingOffset = 0; $("recordings").replaceChildren(); }
     const [page, summary] = await Promise.all([
-      request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}`),
+      request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}` +
+        ($("recording-queue").value ? `&queue=${$("recording-queue").value}` : "")),
       request("/api/recordings/summary")
     ]);
     const groups = page.groups;
     const grouped = groups && ["all", "normal", "short"].every(key => typeof groups[key] === "number");
     const groupSelect = $("recording-group");
-    groupSelect.disabled = !grouped;
+    // Черга — фіксований перелік записів; звичайні групи тоді не застосовуються.
+    const queued = Boolean($("recording-queue").value);
+    groupSelect.disabled = !grouped || queued;
     groupSelect.title = grouped ? "" : "Перезапустіть локальну панель, щоб увімкнути групи";
     if (!grouped) groupSelect.value = "all";
     for (const option of groupSelect.options) {
       const count = grouped ? groups[option.value] : option.value === "all" ? page.total : null;
-      option.textContent = `${{normal: "Основні", short: "Короткі (до 2 с / VAD)", all: "Усі разом"}[option.value]}${count == null ? "" : ` · ${count}`}`;
+      option.textContent = `${{normal: "Основні", short: "Короткі / відсіяні", all: "Усі разом"}[option.value]}${count == null ? "" : ` · ${count}`}`;
     }
     if (!grouped) note("Записи відкрито без груп. Перезапустіть локальну адмінпанель і оновіть список, щоб відокремити короткі фрази. Приймач зупиняти не потрібно.");
     const quality = summary.quality;
@@ -720,6 +731,7 @@
         item.revision = result.revision; item.reference = result.reference;
         showQuality(result);
         save.textContent = "Оновити еталон"; note("Еталон збережено. Початкові тексти й правила не змінено. Оновіть список для перерахунку загальної оцінки.");
+        if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue();
       }); });
       card.append(form);
       details.append(el("pre", "", JSON.stringify(d, null, 2)));
@@ -728,12 +740,16 @@
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
   }
-  $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
+  $("recording-refresh").addEventListener("click", () => action(async () => {
+    if (typeof loadQueue === "function") await loadQueue();
+    await recordings(true);
+  }));
   $("recording-filter").addEventListener("change", () => action(() => recordings(true)));
   $("recording-group").addEventListener("change", () => action(() => recordings(true)));
+  $("recording-queue").addEventListener("change", () => action(() => recordings(true)));
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));
 
-  const loaders = { recordings: () => recordings(true), overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
+  const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
 
   // ---------- Автооновлення ----------
   function schedule() {

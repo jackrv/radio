@@ -28,7 +28,7 @@ def wav(samples=None):
 @pytest.fixture
 def local(setup,tmp_path):
     _,path=setup
-    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",diagnostics_path=tmp_path/"diagnostics.json",eval_dir=tmp_path/"eval")
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",diagnostics_path=tmp_path/"diagnostics.json",recordings_dir=tmp_path/"recordings")
     with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",12345)) as client:
         assert client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN}).status_code==204
         yield client,path,tmp_path
@@ -239,46 +239,26 @@ def _phrase_with_voice(path, token, text):
     return fix
 
 
-def test_labels_from_phrases_feed_filter_evaluation(local):
+def test_archive_labels_feed_filter_evaluation(local):
     client,path,tmp=local
     import numpy as np
+    from services.recordings import RecordingStore
     from tests.test_notification_filter import phone_sound, voice_like
-    notification=_phrase_with_voice(path,"d"*32,"дзинь")
-    speech=_phrase_with_voice(path,"e"*32,"вишня")
     add_sample(tmp/"samples",wav(phone_sound()),confirmed_isolated=True)
-    clips={notification:wav(segment(phone_sound()*0.4)),
-           speech:wav(np.concatenate((np.zeros(4000),voice_like(1.5)*0.2,np.zeros(8000))))}
-    with patch("api.local_dashboard.download_voice",side_effect=lambda token,file_id:file_id.encode()):
-        for fix,label in ((notification,"notification"),(speech,"speech")):
-            with patch("services.notification_samples.ogg_to_wav",return_value=clips[fix]) as convert:
-                result=client.put("/api/phrases/label",json={"fix_id":fix,"label":label},headers={"Origin":ORIGIN})
-            assert result.status_code==200 and result.json()["label"]==label
-            assert convert.call_args.kwargs["max_seconds"]==10
-    assert client.put("/api/phrases/label",json={"fix_id":speech,"label":"bogus"},headers={"Origin":ORIGIN}).status_code==422
-    assert client.put("/api/phrases/label",json={"fix_id":speech,"label":"speech"}).status_code==403, "без Origin запис заборонено"
-    labels={i["fix_id"]:i["label"] for i in client.get("/api/phrases").json()["items"]}
-    assert labels[notification]=="notification" and labels[speech]=="speech"
+    store=RecordingStore(tmp/"recordings")
+    signal=store.save(pcm(segment(phone_sound()*0.4)),16000,{"status":"ready"})
+    speech=store.save(pcm(np.concatenate((np.zeros(4000),voice_like(1.5)*0.2,np.zeros(8000)))),16000,{"status":"ready"})
+    store.review(signal,"","notification",0)
+    store.review(speech,"вишня","speech",0)
     state=client.get("/api/notification-filter").json()
-    assert state["labels"]=={"notification":1,"speech":1} and state["samples"]==1
+    assert state["labels"]=={"notification":1,"speech":1,"noise":0} and state["samples"]==1
     assert state["spectral"]["mode"] in ("shadow","active","off")
     report=client.get("/api/notification-filter/evaluation").json()
-    by_fix={i["fix_id"]:i for i in report["items"]}
-    assert by_fix[notification]["candidate"] is True and by_fix[speech]["candidate"] is False
+    by_id={i["record_id"]:i for i in report["items"]}
+    assert by_id[signal]["candidate"] is True and by_id[speech]["candidate"] is False
     assert report["summary"]["status"]=="need_more"
-    removed=client.put("/api/phrases/label",json={"fix_id":speech,"label":None},headers={"Origin":ORIGIN})
-    assert removed.json()["label"] is None
-    assert client.get("/api/notification-filter").json()["labels"]=={"notification":1,"speech":0}
-    files=[p for p in (tmp/"eval").iterdir() if p.suffix==".wav"]
-    assert len(files)==1 and all(oct(p.stat().st_mode & 0o777)=="0o600" for p in files)
-
-
-def test_too_long_phrase_cannot_be_labelled(local):
-    client,path,_=local
-    fix=_phrase_with_voice(path,"f"*32,"довга")
-    with patch("api.local_dashboard.download_voice",return_value=b"OggS"), \
-         patch("services.notification_samples.ogg_to_wav",side_effect=ValueError("Зразок має тривати не більше 10 секунд")):
-        result=client.put("/api/phrases/label",json={"fix_id":fix,"label":"speech"},headers={"Origin":ORIGIN})
-    assert result.status_code==422 and "10 с" in result.json()["detail"]
+    # Окремої розмітки фраз більше немає: мітки — лише в аудіоархіві.
+    assert client.put("/api/phrases/label",json={"fix_id":"mem:"+"d"*32,"label":"speech"},headers={"Origin":ORIGIN}).status_code in (404,405)
 
 
 def test_spectral_observations_reach_filter_page_and_phrases(local):
@@ -311,3 +291,28 @@ def test_each_spectral_observation_labels_at_most_one_phrase():
     base=_utc_seconds("2026-11-15 10:00:01")
     attach_spectral(items,[{"text_ready_unix_s":base+0.4,"notification_score":0.9,"notification_candidate":True}])
     assert "spectral" not in items[0] and items[1]["spectral"]["score"]==0.9 and "spectral" not in items[2]
+
+
+def test_review_queue_filters_archive_and_reports_progress(setup, tmp_path):
+    _,path=setup
+    from services.recordings import RecordingStore
+    store=RecordingStore(tmp_path/"recordings")
+    ids=[store.save(pcm(segment()),16000,{"status":"ready"}) for _ in range(4)]
+    store.review(ids[0],"текст","speech",0)
+    queue_path=tmp_path/"queue.json"
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings",queue_path=queue_path)
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        assert client.get("/api/recordings/queue").json()["available"] is False
+        assert client.get("/api/recordings?queue=A").status_code==404
+        queue_path.write_text(json.dumps({"groups":[{"key":"A","title":"Whisper","ids":ids[:2]+["f"*32]},
+                                                    {"key":"B","title":"Тихі","ids":[ids[2]]}]}))
+        state=client.get("/api/recordings/queue").json()
+        assert state["groups"]==[{"key":"A","title":"Whisper","total":3,"present":2,"reviewed":1},
+                                 {"key":"B","title":"Тихі","total":1,"present":1,"reviewed":0}]
+        page=client.get("/api/recordings?queue=A&review=pending").json()
+        assert [i["id"] for i in page["items"]]==[ids[1]] and page["total"]==1
+        assert {i["id"] for i in client.get("/api/recordings?queue=all").json()["items"]}=={ids[0],ids[1],ids[2]}
+        assert len(client.get("/api/recordings").json()["items"])==4, "без черги — увесь архів"
+        assert client.get("/api/recordings?queue=Z").status_code==404
+        assert client.get("/api/recordings?queue=a;drop").status_code==422

@@ -230,15 +230,17 @@ def test_short_groups_partition_archive_before_pagination(tmp_path):
     boundary=store.save(pcm()*2,16000,{'status':'ready'})
     normal=store.save(pcm()*3,16000,{'status':'ready','raw_text':'прийом'})
     vad=store.save(pcm()*3,16000,{'status':'vad_short'})
+    quiet=store.save(pcm()*3,16000,{'status':'low_rms'})
+    blacklisted=store.save(pcm()*3,16000,{'status':'blacklist'})
     page=store.listing(group='short',limit=1)
-    assert page['groups']=={'all':4,'short':3,'normal':1}
-    assert page['total']==3 and len(page['items'])==1
-    assert {r['id'] for r in store.listing(group='short')['items']}=={short,boundary,vad}
+    assert page['groups']=={'all':6,'short':5,'normal':1}
+    assert page['total']==5 and len(page['items'])==1
+    assert {r['id'] for r in store.listing(group='short')['items']}=={short,boundary,vad,quiet,blacklisted}
     assert [r['id'] for r in store.listing(group='normal')['items']]==[normal]
     store.review(short,'коротка фраза','speech',0)
     assert store.listing(review='reviewed',group='short')['groups']=={'all':1,'short':1,'normal':0}
-    assert store.listing(review='pending',group='short')['total']==2
-    assert len(store.listing()['items'])==4  # No records were removed.
+    assert store.listing(review='pending',group='short')['total']==4
+    assert len(store.listing()['items'])==6  # No records were removed.
 
 
 def test_recording_group_api_validation(setup,tmp_path):

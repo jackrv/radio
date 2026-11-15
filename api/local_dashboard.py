@@ -72,11 +72,6 @@ class TextListUpdate(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
-class PhraseLabel(BaseModel):
-    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
-    label: str | None = Field(default=None, pattern=r"^(?:notification|speech)$")
-
-
 class PhraseSample(BaseModel):
     fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     confirmed_isolated: bool = Field(strict=True)
@@ -207,12 +202,11 @@ def diagnostics_view(data):
     return result
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, eval_dir=None, recordings_dir=None):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, queue_path=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
     samples_dir = Path(samples_dir or config.NOTIFICATION_SOUNDS_DIR)
-    eval_dir = Path(eval_dir or config.NOTIFICATION_EVAL_DIR)
     diagnostics_path = Path(diagnostics_path or config.BASE_DIR/"diagnostics.json")
     diagnostic_history = DiagnosticsHistory(
         history_directory(diagnostics_path), retention_days=config.DIAGNOSTICS_HISTORY_DAYS,
@@ -220,6 +214,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
     from services.recordings import RecordingStore
+    queue_path = Path(queue_path or getattr(config, "REVIEW_QUEUE_PATH", config.BASE_DIR / ".local-experiments" / "review-queue.json"))
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES)
@@ -295,11 +290,46 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 "models": {"whisper": config.MODEL_REPO, "qwen": config.LLM_REPO},
                 "diagnostics": read_diagnostics(diagnostics_path)}
 
+    def review_queue():
+        """Черга розмітки (лише читання); створює її `python -m tools.asr_lab queue`."""
+        path = Path(queue_path)
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > 2_000_000:
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        groups = []
+        for group in data.get("groups") or []:
+            ids = [i for i in group.get("ids") or [] if isinstance(i, str) and re.fullmatch(r"[0-9a-f]{32}", i)]
+            key = str(group.get("key", ""))
+            if re.fullmatch(r"[A-Z]", key):
+                groups.append({"key": key, "title": str(group.get("title", ""))[:200], "ids": ids})
+        return {"created": data.get("created"), "groups": groups}
+
+    @app.get("/api/recordings/queue")
+    def recording_queue(admin=Depends(actor)):
+        queue = review_queue()
+        if queue is None:
+            return {"available": False, "hint": "Черги ще немає. Створіть її: .venv/bin/python -m tools.asr_lab queue"}
+        return {"available": True, "created": queue["created"], "groups": recordings.queue_progress(queue["groups"])}
+
     @app.get("/api/recordings")
-    def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", admin=Depends(actor)):
-        if not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed") or group not in ("all", "normal", "short"):
+    def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
+                       admin=Depends(actor)):
+        if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
+                or group not in ("all", "normal", "short") or not re.fullmatch(r"(?:|all|[A-Z])", queue)):
             raise HTTPException(422, "Некоректні параметри")
-        return recordings.listing(offset, limit, review, group)
+        ids = None
+        if queue:
+            data = review_queue()
+            if data is None:
+                raise HTTPException(404, "Черги ще немає. Створіть її: .venv/bin/python -m tools.asr_lab queue")
+            chosen = [g for g in data["groups"] if queue == "all" or g["key"] == queue]
+            if not chosen:
+                raise HTTPException(404, "Такої групи в черзі немає")
+            ids = {i for g in chosen for i in g["ids"]}
+        return recordings.listing(offset, limit, review, group, ids=ids)
 
     @app.get("/api/recordings/summary")
     def recording_summary(admin=Depends(actor)):
@@ -341,9 +371,6 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         if len(q) > 200 or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100:
             raise HTTPException(422, "Некоректні параметри пошуку")
         page = store.list_phrases(db_path, q, offset, limit)
-        labels = notification_eval.read_labels(eval_dir)
-        for item in page["items"]:
-            item["label"] = labels.get(item["fix_id"])
         try:
             recent = (read_diagnostics(diagnostics_path).get("notification_spectral") or {}).get("recent")
         except ValueError:
@@ -380,23 +407,6 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 
-    @app.put("/api/phrases/label")
-    def phrase_label(payload: PhraseLabel, admin=Depends(actor)):
-        """Позначка для перевірочного набору; сам фільтр і зразки не змінюються."""
-        if payload.label is None:
-            return notification_eval.remove_label(eval_dir, payload.fix_id)
-        from services.notification_samples import ogg_to_wav
-        try:
-            clip = ogg_to_wav(phrase_audio(payload.fix_id), max_seconds=notification_eval.MAX_SCORE_S)
-            return notification_eval.set_label(eval_dir, payload.fix_id, payload.label, clip)
-        except (subprocess.SubprocessError, FileNotFoundError):
-            raise HTTPException(502, "Не вдалося перетворити аудіо") from None
-        except ValueError as exc:
-            message = str(exc)
-            if "не більше" in message and "секунд" in message:
-                message = "Фраза довша за 10 с: такі сегменти фільтр не оцінює, позначати не потрібно."
-            raise HTTPException(422, message) from None
-
     @app.get("/api/notification-filter")
     def notification_filter(admin=Depends(actor)):
         try:
@@ -406,7 +416,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         counters = diagnostics.get("counters") or {}
         return {"spectral": spectral_settings(), "waveform": bool(config.FILTER_NOTIFICATION_SOUNDS),
                 "samples": len(list_samples(samples_dir)["items"]),
-                "labels": notification_eval.label_counts(eval_dir),
+                # Мітки — з «Аудіоархіву»: справжній PCM приймача, зокрема відкинуті сегменти.
+                "labels": notification_eval.label_counts(recordings),
                 "updated_at": diagnostics.get("updated_at"), "started_at": diagnostics.get("started_at"),
                 "counters": {k: v for k, v in counters.items()
                              if k.startswith("asr.spectral.") or k in ("asr.notification_filtered", "asr.measured_segments", "asr.low_rms")},
@@ -415,7 +426,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     @app.get("/api/notification-filter/evaluation")
     def notification_evaluation(admin=Depends(actor)):
         limits = spectral_settings()
-        return notification_eval.evaluate(eval_dir, samples_dir, threshold=limits["threshold"],
+        return notification_eval.evaluate(recordings, samples_dir, threshold=limits["threshold"],
                                           max_outside_s=limits["max_outside_s"], max_extra=limits["max_extra"])
 
     @app.get("/api/runtime-settings")

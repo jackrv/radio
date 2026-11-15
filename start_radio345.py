@@ -371,7 +371,9 @@ def main() -> int:
             show_status()
             output("Немає керованого запуску. Сторонні та старі некеровані процеси не завершувались")
             return 2
-        names = ["api", "ngrok"] + (["admin"] if args.local_admin else []) + (["miniapp"] if args.local_miniapp else []) + ["radio"]
+        # Одне рішення для складу сесії й для запуску: інакше сесія не знає служби «admin».
+        args.start_admin = should_start_admin(args)
+        names = ["api", "ngrok"] + (["admin"] if args.start_admin else []) + (["miniapp"] if args.local_miniapp else []) + ["radio"]
         with LauncherSession(ROOT, names, log=output) as session:
             return run_services(args, session)
     except KeyboardInterrupt:
@@ -392,6 +394,16 @@ def show_status():
     for port, name in ((API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok"), (8766, "Локальна панель")):
         output(f"{name}: TCP {port} — {'зайнятий' if port_busy(port) else 'вільний'}")
     output("Блокування приймача: " + ("утримується" if lock_held(ROOT / ".radio345.lock") else "вільне"))
+
+
+def should_start_admin(args):
+    """Панель некритична: якщо порт уже зайнятий окремою панеллю, просто користуємось нею."""
+    if getattr(args, "no_local_admin", False):
+        return False
+    if port_busy(8766):
+        output("Локальна панель уже працює окремо на 127.0.0.1:8766 — використовую її")
+        return False
+    return True
 
 
 def run_services(args, session):
@@ -435,11 +447,7 @@ def run_services(args, session):
         return 2
 
     ports = [(API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok")]
-    # Панель некритична: якщо порт уже зайнятий окремо запущеною панеллю, просто користуємось нею.
-    start_admin = not getattr(args, "no_local_admin", False)
-    if start_admin and port_busy(8766):
-        output("Локальна панель уже працює окремо на 127.0.0.1:8766 — використовую її")
-        start_admin = False
+    start_admin = args.start_admin if hasattr(args, "start_admin") else should_start_admin(args)
     if args.local_miniapp:
         ports.append((MINIAPP_PORT, "Mini App preview"))
     for port, name in ports:

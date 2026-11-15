@@ -65,6 +65,10 @@ def mocked_services(tmp_path, monkeypatch):
     stopped = []
 
     def process(name, command, **kwargs):
+        # Як справжній LauncherSession.command(): процес має бути серед служб сесії.
+        session = kwargs.get("session")
+        if session is not None:
+            session.names.index(name)
         item = Mock(name=name)
         item.name = name
         item.process.poll.return_value = None

@@ -86,7 +86,7 @@ def test_network_delete_retries_keep_intent_and_log_without_traceback(deletion,m
     with caplog.at_level(logging.INFO):
         with pytest.raises(KeyboardInterrupt):
             service.callback_listener()
-    assert answers==["Помилка","Видалено"]
+    assert answers==["Немає зв’язку — повторюю","Видалено"]
     assert state(path,fix_id)=="deleted"
     assert delays==[5]
     assert [c.kwargs["params"]["offset"] for c in get.call_args_list]==[None,None,42]

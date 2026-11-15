@@ -108,7 +108,9 @@ class UpdatesMixin:
             # Відповідаємо поза except, щоб окремий збій answerCallbackQuery не
             # успадкував причину deleteMessage у мережевій діагностиці.
             # Вихідну помилку передаємо наявним повторам; стан deleting збережено.
-            self._answer_callback(cq, "Помилка")
+            # Збій мережі зазвичай минає: повтор через 5 с, тож чесно кажемо про це.
+            network = isinstance(failure, _NETWORK_ERRORS)
+            self._answer_callback(cq, "Немає зв’язку — повторюю" if network else "Помилка")
             raise failure
         self._answer_callback(cq, "Видалено" if success else "Помилка")
 

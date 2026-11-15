@@ -340,7 +340,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Radio 345: запуск і коректна зупинка всіх служб"
     )
-    parser.add_argument("--local-admin", action="store_true", help="локальна захищена адмінпанель на 127.0.0.1:8766")
+    parser.add_argument("--local-admin", action="store_true", help=argparse.SUPPRESS)  # сумісність: панель тепер типово увімкнена
+    parser.add_argument("--no-local-admin", action="store_true", help="не запускати локальну адмінпанель на 127.0.0.1:8766")
     parser.add_argument(
         "--local-miniapp", action="store_true",
         help="додатково запустити локальний перегляд Mini App на 127.0.0.1:8080",
@@ -434,8 +435,11 @@ def run_services(args, session):
         return 2
 
     ports = [(API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok")]
-    if getattr(args,"local_admin",False):
-        ports.append((8766,"Локальна панель"))
+    # Панель некритична: якщо порт уже зайнятий окремо запущеною панеллю, просто користуємось нею.
+    start_admin = not getattr(args, "no_local_admin", False)
+    if start_admin and port_busy(8766):
+        output("Локальна панель уже працює окремо на 127.0.0.1:8766 — використовую її")
+        start_admin = False
     if args.local_miniapp:
         ports.append((MINIAPP_PORT, "Mini App preview"))
     for port, name in ports:
@@ -499,15 +503,22 @@ def run_services(args, session):
             processes.append(preview)
             output("Локальний перегляд Mini App: http://127.0.0.1:8080")
 
-        if getattr(args,"local_admin",False):
+        if start_admin:
             admin = ManagedProcess("admin", [py,"-u","-m","api.local_dashboard"], session=session)
             processes.append(admin)
+            output("Локальна панель: http://127.0.0.1:8766  (відкрити: .venv/bin/python -m api.local_dashboard --open)")
         radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session)
         processes.append(radio)
         output("Усі запитані процеси запущено. Ctrl+C — зупинити їх разом.")
         while True:
             for item in processes:
                 exit_code = item.process.poll()
+                if exit_code is not None and item.name == "admin":
+                    # Падіння панелі не повинно зупиняти приймання ефіру.
+                    output(f"⚠️ Локальна панель завершилась (код {exit_code}); приймач працює далі. "
+                           "Запустити знову: .venv/bin/python -m api.local_dashboard --open")
+                    processes.remove(item)
+                    break
                 if exit_code is not None:
                     output(f"⚠️ {item.name} завершився з кодом {exit_code}; зупиняю решту")
                     return 1

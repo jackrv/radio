@@ -15,10 +15,10 @@ from services.sqlite_connection import get_db
 from services.user_store import init_users_db
 
 
-def write_sources(folder, callsigns="липка: 700\n"):
+def write_sources(folder, callsigns="вишня: 700\n"):
     path = folder / "dictionaries.txt"
     path.write_text(
-        f"[callsigns]\n{callsigns}\n[commands]\nприйом\n\n[telegram]\nлипка\n",
+        f"[callsigns]\n{callsigns}\n[commands]\nприйом\n\n[telegram]\nвишня\n",
         encoding="utf-8",
     )
     return path
@@ -63,7 +63,7 @@ def test_empty_database_imports_after_confirmation(tmp_path):
     ask.assert_called_once()
     assert dictionary_status(tmp_path / "events.db")["callsigns"] == (1, 1)
     assert not (tmp_path / "dictionaries.txt").exists(), "після імпорту словники живуть лише в базі"
-    assert "липка" not in "\n".join(messages), "вміст словників не виводиться"
+    assert "вишня" not in "\n".join(messages), "вміст словників не виводиться"
 
 
 def test_missing_database_is_created_only_after_confirmation(tmp_path):
@@ -120,7 +120,7 @@ def test_missing_source_is_reported(tmp_path):
 
 def test_broken_source_is_reported_without_prompt(tmp_path):
     init_db(tmp_path / "events.db")
-    (tmp_path / "dictionaries.txt").write_text("липка: 700\n", encoding="utf-8")
+    (tmp_path / "dictionaries.txt").write_text("вишня: 700\n", encoding="utf-8")
     ok, ask, messages = ensure(tmp_path)
     assert ok is False
     ask.assert_not_called()

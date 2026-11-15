@@ -42,7 +42,17 @@
       const data = await request("/api/overview");
       $("events-count").textContent = data.events;
       $("rules-count").textContent = data.corrections;
-      $("rules-detail").textContent = `Активних правил: ${data.active_rules} із ${data.total_rules}`;
+      $("rules-detail").textContent = "Фрази, виправлені оператором";
+      // Окремі показники: правки, кандидати, підтвердження, правила й автоматичні зміни Qwen.
+      const l = data.learning || {};
+      const auto = data.automatic || {};
+      $("learning-detail").textContent =
+        `Навчання: кандидатів ${l.candidates ?? 0}, підтверджень ${l.confirmations ?? 0}, ` +
+        `активних правил ${l.active_rules ?? 0}` + (l.awaiting_approval ? `, очікують дозволу ${l.awaiting_approval}` : "") + ". " +
+        (auto.available
+          ? `${auto.fresh ? "Поточний запуск приймача" : "Останній запуск приймача (зараз дані не оновлюються)"}: ` +
+            `Qwen змінив ${auto.qwen_changed} фраз, правила застосовано ${auto.rules_applied} раз.`
+          : "Автоматичні зміни Qwen: немає даних приймача.");
       $("dictionary-count").textContent = data.dictionary_entries;
       message("overview-feedback", `Остання подія: ${localDate(data.last_event_at)} · Твій Telegram ID: ${me.user_id}`);
     } catch (error) { message("overview-feedback", error.message, true); }
@@ -128,10 +138,17 @@
     return card;
   });
 
+  const ruleKinds = {
+    callsign: "Позивний: лише перед дозволеним номером",
+    word: "Звичайне слово: застосовується після дозволу",
+    blocked: "Не застосовується (суперечить словникам)",
+  };
   const rules = pagedList("rules", "/api/word-rules", item => {
     const card = node("article", undefined, "data-card");
     card.append(node("p", `${item.original} → ${item.corrected}`, "phrase-text"));
-    card.append(node("p", `${states[item.status]} · Підтверджень: ${item.confirmations}`, "subtle-note"));
+    const approval = item.kind === "word" ? (item.approved ? " · Дозволено оператором" : " · Очікує дозволу") : "";
+    card.append(node("p", `${states[item.status]} · Підтверджень: ${item.confirmations}${approval}`, "subtle-note"));
+    card.append(node("p", `${ruleKinds[item.kind] || item.kind}${item.applies ? " · застосовується" : ""}`, "subtle-note"));
     if (canEdit()) {
       const toggle = button(item.status === "disabled" ? "Увімкнути з перевіркою" : "Вимкнути", async () => {
         toggle.disabled = true;
@@ -142,6 +159,18 @@
         finally { toggle.disabled = false; }
       });
       card.append(toggle);
+      if (item.kind === "word") {
+        const approve = button(item.approved ? "Скасувати дозвіл" : "Дозволити застосування", async () => {
+          if (!item.approved && !window.confirm(`Замінювати «${item.original}» на «${item.corrected}» у всіх нових фразах?`)) return;
+          approve.disabled = true;
+          try {
+            await request(`/api/word-rules/${item.id}/approval`, "PUT", { approved: !item.approved, expected_version: item.version });
+            await rules();
+          } catch (error) { message("dictionary-feedback", error.message, true); }
+          finally { approve.disabled = false; }
+        });
+        card.append(approve);
+      }
     }
     return card;
   });
@@ -193,7 +222,7 @@
       dictionary = await request(`/api/dictionaries/${kind}`);
       dirty = false;
       renderDictionary();
-      message("dictionary-feedback", canEdit() ? "Зміни застосуються після перезапуску приймача." : "Режим перегляду. Для змін потрібна роль редактора.");
+      message("dictionary-feedback", canEdit() ? "Зміни діють без перезапуску: приймач підхопить їх за кілька секунд." : "Режим перегляду. Для змін потрібна роль редактора.");
     } catch (error) { message("dictionary-feedback", error.message, true); }
     finally {
       dictionaryBusy = false;
@@ -224,7 +253,7 @@
     try {
       dictionary = await request(`/api/dictionaries/${dictionary.kind}`, "PUT", { entries: dictionary.entries, expected_version: dictionary.version });
       dirty = false;
-      message("dictionary-feedback", "Збережено. Перезапусти приймач для застосування словника.");
+      message("dictionary-feedback", "Збережено. Приймач застосує словник за кілька секунд, без перезапуску.");
     } catch (error) { message("dictionary-feedback", error.message, true); }
     finally {
       dictionaryBusy = false;

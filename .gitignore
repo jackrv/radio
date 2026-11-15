@@ -43,6 +43,7 @@ diagnostics-report.json
 .radio-diagnostics-*
 .local-backups/
 .local-notification-sounds/
+.local-notification-eval/
 .radio345.lock
 .radio345-launcher/
 

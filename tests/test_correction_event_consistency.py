@@ -11,8 +11,8 @@ from services.event_store import (
 )
 
 
-ORIGINAL = "Ліпка 700, я Наган 110, прийом"
-CORRECTED = "Липка 700, я Наган 112, прийом"
+ORIGINAL = "Вішня 700, я Кобза 110, прийом"
+CORRECTED = "Вишня 700, я Кобза 112, прийом"
 
 
 @pytest.fixture
@@ -30,17 +30,17 @@ def event_db(tmp_path):
             VALUES (?, ?, ?)
             """,
             [
-                ("callsigns", 1, "липка: 700"),
-                ("callsigns", 2, "наган: 110 112"),
+                ("callsigns", 1, "вишня: 700"),
+                ("callsigns", 2, "кобза: 110 112"),
                 ("commands", 1, "прийом"),
             ],
         )
 
     event_id = save_event(
-        "липка 700, наган 110",
+        "вишня 700, кобза 110",
         "прийом",
-        "липка 700",
-        "наган 110",
+        "вишня 700",
+        "кобза 110",
         ORIGINAL,
         path,
         raw_text=ORIGINAL,
@@ -72,10 +72,10 @@ def test_correction_recalculates_all_fields(event_db):
 
     assert row == (
         CORRECTED,
-        "липка 700, наган 112",
+        "вишня 700, кобза 112",
         "прийом",
-        "липка 700",
-        "наган 112",
+        "вишня 700",
+        "кобза 112",
         ORIGINAL,
     )
 
@@ -119,8 +119,8 @@ def test_memory_only_training_still_works(tmp_path):
     init_db(path)
 
     save_correction(
-        "На ган 110",
-        "Наган 110",
+        "Кобзя 110",
+        "Кобза 110",
         db_path=path,
         source_id="mem:test-1",
     )

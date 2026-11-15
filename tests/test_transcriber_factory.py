@@ -1,7 +1,22 @@
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import config
+import pytest
+
+import config as project_config
 from core.transcriber_factory import build_transcriber
+
+config = None
+
+
+@pytest.fixture(autouse=True)
+def temporary_config(tmp_path):
+    """Копія налаштувань із тимчасовою базою: фабрика читає й створює таблиці."""
+    global config
+    values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
+    config = SimpleNamespace(**{**values, "DB_PATH": str(tmp_path / "events.db")})
+    yield
+    config = None
 
 
 def make_dependencies():
@@ -11,7 +26,7 @@ def make_dependencies():
         "callsigns": Mock(),
         "commands": Mock(),
         "watch": Mock(),
-        "prompt": "Липка, Наган, Буря",
+        "prompt": "Вишня, Кобза, Буря",
         "telegram_service": Mock(),
         "cooldown": Mock(),
         "log": Mock(),
@@ -36,13 +51,12 @@ def test_build_transcriber(
 
     assert worker is mock_transcriber.return_value
 
-    mock_llm.assert_called_once_with(
-        config.USE_LLM,
-        config.LLM_REPO,
-        deps["callsigns"],
-        deps["commands"],
-        deps["log"],
-    )
+    mock_llm.assert_called_once()
+    use_llm, repo, live_callsigns, live_commands, log = mock_llm.call_args.args
+    assert (use_llm, repo, log) == (config.USE_LLM, config.LLM_REPO, deps["log"])
+    # Живі словники: об’єкти-посередники над поточним знімком.
+    assert live_callsigns._current is deps["callsigns"]
+    assert live_commands._current is deps["commands"]
 
     mock_whisper.assert_called_once_with(
         model_repo=config.MODEL_REPO,
@@ -61,11 +75,12 @@ def test_build_transcriber(
     assert event_kwargs["select_recipients"] is deps["telegram_service"].recipients_for
 
     mock_pipeline.assert_called_once()
-    assert mock_pipeline.call_args.kwargs["dictionaries"] == (
+    assert tuple(d._current for d in mock_pipeline.call_args.kwargs["dictionaries"]) == (
         deps["callsigns"],
         deps["commands"],
         deps["watch"],
     )
+    assert event_kwargs["callsigns"] is mock_pipeline.call_args.kwargs["dictionaries"][0]
 
     mock_transcriber.assert_called_once()
     worker_kwargs = mock_transcriber.call_args.kwargs

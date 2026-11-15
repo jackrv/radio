@@ -20,12 +20,12 @@ def build_llm_corrector(
         runtime.gauge("models.qwen", "loading")
         with runtime.timed("asr.qwen_load"):
             llm_model, tokenizer = load(llm_repo)
-        known_vocab = ", ".join(
-            sorted(set(callsigns.names) | set(commands.names))
-        )
-
         def correct(raw_text: str) -> str:
             try:
+                # Щоразу з поточних словників: вони оновлюються без перезапуску.
+                known_vocab = ", ".join(
+                    sorted(set(callsigns.names) | set(commands.names))
+                )
                 prompt = (
                     "Ти помічник оператора радіоефіру. "
                     "Виправляй очевидні помилки автоматичного "

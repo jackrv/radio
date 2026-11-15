@@ -15,14 +15,14 @@ def test_transcriber_passes_original_text(monkeypatch):
     )
 
     recognizer = Mock()
-    recognizer.extract_text.return_value = "Ліпка 700, прийом"
+    recognizer.extract_text.return_value = "Вішня 700, прийом"
 
     processor = Mock()
 
     worker = Transcriber(
         segments=Mock(),
         recognizer=recognizer,
-        process_text=lambda _: "Липка 700, прийом",
+        process_text=lambda _: "Вишня 700, прийом",
         event_processor=processor,
         sample_rate=16000,
         min_rms=0.02,
@@ -39,9 +39,9 @@ def test_transcriber_passes_original_text(monkeypatch):
     worker.process_segment(pcm)
 
     processor.process.assert_called_once_with(
-        "Липка 700, прийом",
+        "Вишня 700, прийом",
         pcm,
-        raw_text="Ліпка 700, прийом",
+        raw_text="Вішня 700, прийом",
     )
 
 
@@ -88,9 +88,9 @@ def test_stores_original_and_corrected_text(tmp_path, monkeypatch):
     processor = make_processor(db_path)
 
     processor.process(
-        "Липка 700, прийом",
+        "Вишня 700, прийом",
         b"audio",
-        raw_text="Ліпка 700, прийом",
+        raw_text="Вішня 700, прийом",
     )
 
     with sqlite3.connect(db_path) as db:
@@ -99,7 +99,7 @@ def test_stores_original_and_corrected_text(tmp_path, monkeypatch):
         ).fetchall()
 
     assert rows == [
-        ("Липка 700, прийом", "Ліпка 700, прийом")
+        ("Вишня 700, прийом", "Вішня 700, прийом")
     ]
 
 
@@ -114,11 +114,11 @@ def test_legacy_call_without_raw_text(tmp_path, monkeypatch):
     init_db(str(db_path))
 
     processor = make_processor(db_path)
-    processor.process("Липка 700", b"audio")
+    processor.process("Вишня 700", b"audio")
 
     with sqlite3.connect(db_path) as db:
         rows = db.execute(
             "SELECT text, raw_text FROM radio_events"
         ).fetchall()
 
-    assert rows == [("Липка 700", None)]
+    assert rows == [("Вишня 700", None)]

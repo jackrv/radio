@@ -50,7 +50,7 @@ def test_comment_only_callsigns_are_empty(tmp_path):
 def test_optional_empty_dictionaries_warn(tmp_path):
     path = prepare_database(
         tmp_path,
-        [("callsigns", 1, "липка: 700")],
+        [("callsigns", 1, "вишня: 700")],
     )
 
     log = Mock()
@@ -59,10 +59,10 @@ def test_optional_empty_dictionaries_warn(tmp_path):
         path, log
     )
 
-    assert "липка" in callsigns.names
+    assert "вишня" in callsigns.names
     assert not commands.names
     assert not watch.names
-    assert "липка" in prompt
+    assert "вишня" in prompt
     assert log.warning.call_count == 2
 
 
@@ -70,7 +70,7 @@ def test_populated_dictionaries_load(tmp_path):
     path = prepare_database(
         tmp_path,
         [
-            ("callsigns", 1, "липка: 700"),
+            ("callsigns", 1, "вишня: 700"),
             ("commands", 1, "прийом"),
             ("telegram", 1, "гроза: 011"),
         ],
@@ -82,13 +82,13 @@ def test_populated_dictionaries_load(tmp_path):
         path, log
     )
 
-    assert "липка" in callsigns.names
+    assert "вишня" in callsigns.names
     assert "прийом" in commands.names
     assert "гроза" in watch.names
 
     assert all(
         name in prompt
-        for name in ("липка", "прийом", "гроза")
+        for name in ("вишня", "прийом", "гроза")
     )
 
     log.warning.assert_not_called()

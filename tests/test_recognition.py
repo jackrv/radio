@@ -103,9 +103,9 @@ def test_extract_text_without_confidence_fields():
 
     result = {
         "segments": [
-            {"text": "Ліра 68"},
+            {"text": "Віра 68"},
             {
-                "text": "Наган 110",
+                "text": "Кобза 110",
                 "no_speech_prob": 0.9,
             },
             {
@@ -116,7 +116,7 @@ def test_extract_text_without_confidence_fields():
     }
 
     assert WhisperRecognizer.extract_text(result) == (
-        "Ліра 68 Наган 110 Буря 011"
+        "Віра 68 Кобза 110 Буря 011"
     )
 
 
@@ -131,7 +131,7 @@ def test_extract_text_still_filters_unreliable_speech():
                 "avg_logprob": -1.2,
             },
             {
-                "text": "Липка 700",
+                "text": "Вишня 700",
                 "no_speech_prob": 0.1,
                 "avg_logprob": -0.2,
             },
@@ -139,5 +139,5 @@ def test_extract_text_still_filters_unreliable_speech():
     }
 
     assert WhisperRecognizer.extract_text(result) == (
-        "Липка 700"
+        "Вишня 700"
     )

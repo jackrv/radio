@@ -14,22 +14,22 @@ def test_llm_cannot_invent_command():
 
 def test_llm_cannot_invent_callsign():
     callsigns = Callsigns.from_lines([
-        "ліра: 68",
-        "липка: 700",
+        "віра: 68",
+        "вишня: 700",
     ])
 
     assert not correction_is_safe(
         "ЛЁР 68",
-        "Липка 68",
+        "Вишня 68",
         (callsigns,),
     )
 
 
 def test_known_callsign_can_be_normalized():
-    callsigns = Callsigns.from_lines(["ліра: 68"])
+    callsigns = Callsigns.from_lines(["віра: 68"])
 
     assert correction_is_safe(
-        "лира 68",
-        "Ліра 68",
+        "вира 68",
+        "Віра 68",
         (callsigns,),
     )

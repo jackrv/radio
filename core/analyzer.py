@@ -9,17 +9,29 @@ def fmt(items):
     )
 
 
-def looks_like_garbage(text: str, duration_s: float) -> bool:
-    """Отсекает длинные фрагменты с признаками мусорного распознавания."""
+GARBAGE_DEFAULTS = {
+    "min_words": 12,
+    "min_unique_ratio": 0.25,
+    "max_words_per_s": 5.0,
+    "extra_words": 3,
+}
+
+
+def looks_like_garbage(text: str, duration_s: float, *, min_words=12, min_unique_ratio=0.25,
+                       max_words_per_s=5.0, extra_words=3) -> bool:
+    """Отсекает длинные фрагменты с признаками мусорного распознавания.
+
+    Пороги редагуються в локальній панелі (runtime_settings) без перезапуску.
+    """
     tokens = normalize(text).split()
 
-    if len(tokens) < 12:
+    if len(tokens) < min_words:
         return False
 
-    if len(set(tokens)) / len(tokens) < 0.25:
+    if len(set(tokens)) / len(tokens) < min_unique_ratio:
         return True
 
-    return len(tokens) > duration_s * 5 + 3
+    return len(tokens) > duration_s * max_words_per_s + extra_words
 
 
 def is_short_garbage(text: str, short_garbage: set[str]) -> bool:

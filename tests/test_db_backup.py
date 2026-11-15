@@ -18,7 +18,7 @@ T0 = datetime(2026, 11, 15, 3, 0, tzinfo=timezone.utc)
 def live(tmp_path):
     path = tmp_path / "events.db"
     init_db(path)
-    save_event("", "", "", "", "Липка 700", path)
+    save_event("", "", "", "", "Вишня 700", path)
     return path
 
 
@@ -28,7 +28,7 @@ def test_backup_is_verified_private_and_complete(live, tmp_path):
     assert copy.stat().st_mode & 0o777 == 0o600
     with sqlite3.connect(copy) as db:
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert db.execute("SELECT text FROM radio_events").fetchall() == [("Липка 700",)]
+        assert db.execute("SELECT text FROM radio_events").fetchall() == [("Вишня 700",)]
     assert not list((tmp_path / "backups").glob(".*.tmp"))
 
 

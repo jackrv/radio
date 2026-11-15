@@ -20,8 +20,8 @@ def client_and_db(tmp_path):
     create_user(db, 1001, 2002, role="viewer")
     create_user(db, 1001, 3003, role="editor")
     eid = save_event(
-        "", "", "", "", "Ліра 68, прийом", db,
-        raw_text="Ліра 68, прийом",
+        "", "", "", "", "Віра 68, прийом", db,
+        raw_text="Віра 68, прийом",
     )
     with TestClient(create_app(db, TOKEN)) as client:
         yield client, db, eid
@@ -36,9 +36,9 @@ def test_editor_get_prefilled_phrase(client_and_db):
     assert response.status_code == 200
     assert response.json() == {
         "fix_id": f"db:{eid}",
-        "original_text": "Ліра 68, прийом",
-        "current_text": "Ліра 68, прийом",
-        "has_audio": False,
+        "original_text": "Віра 68, прийом",
+        "current_text": "Віра 68, прийом",
+        "has_audio": False,        "learning": None,
     }
 
 
@@ -48,8 +48,8 @@ def test_editor_saves_text_and_word_vote(client_and_db):
         "/api/corrections/draft", headers=auth_header(3003),
         json={
             "fix_id": f"db:{eid}",
-            "expected_text": "Ліра 68, прийом",
-            "corrected_text": "Ліра 68, зв'язок",
+            "expected_text": "Віра 68, прийом",
+            "corrected_text": "Віра 68, приймаю",
         },
     )
     assert response.status_code == 200
@@ -61,7 +61,7 @@ def test_editor_saves_text_and_word_vote(client_and_db):
         votes = conn.execute(
             "SELECT COUNT(*) FROM word_correction_votes"
         ).fetchone()[0]
-    assert text == "Ліра 68, зв'язок"
+    assert text == "Віра 68, приймаю"
     assert votes >= 1
 
 
@@ -69,8 +69,8 @@ def test_stale_editor_cannot_overwrite(client_and_db):
     client, db, eid = client_and_db
     body = {
         "fix_id": f"db:{eid}",
-        "expected_text": "Ліра 68, прийом",
-        "corrected_text": "Ліра 68, зв'язок",
+        "expected_text": "Віра 68, прийом",
+        "corrected_text": "Віра 68, приймаю",
     }
     first = client.put(
         "/api/corrections/draft", headers=auth_header(1001), json=body
@@ -78,14 +78,14 @@ def test_stale_editor_cannot_overwrite(client_and_db):
     assert first.status_code == 200
     second = client.put(
         "/api/corrections/draft", headers=auth_header(1001),
-        json={**body, "corrected_text": "Ліра 68, інший текст"},
+        json={**body, "corrected_text": "Віра 68, інший текст"},
     )
     assert second.status_code == 409
     with sqlite3.connect(db) as conn:
         text = conn.execute(
             "SELECT text FROM radio_events WHERE id=?", (eid,)
         ).fetchone()[0]
-    assert text == "Ліра 68, зв'язок"
+    assert text == "Віра 68, приймаю"
 
 
 def test_viewer_cannot_read_or_change_draft(client_and_db):
@@ -99,8 +99,8 @@ def test_viewer_cannot_read_or_change_draft(client_and_db):
         "/api/corrections/draft", headers=header,
         json={
             "fix_id": f"db:{eid}",
-            "expected_text": "Ліра 68, прийом",
-            "corrected_text": "Ліра 68, зв'язок",
+            "expected_text": "Віра 68, прийом",
+            "corrected_text": "Віра 68, приймаю",
         },
     ).status_code == 403
 
@@ -116,7 +116,7 @@ def test_bad_id_and_empty_text_rejected(client_and_db):
         "/api/corrections/draft", headers=headers,
         json={
             "fix_id": f"db:{eid}",
-            "expected_text": "Ліра 68, прийом",
+            "expected_text": "Віра 68, прийом",
             "corrected_text": "   ",
         },
     ).status_code == 422
@@ -165,8 +165,8 @@ def test_failed_word_vote_rolls_back_event_edit(client_and_db):
         "/api/corrections/draft", headers=auth_header(1001),
         json={
             "fix_id": f"db:{eid}",
-            "expected_text": "Ліра 68, прийом",
-            "corrected_text": "Ліра 68, зв'язок",
+            "expected_text": "Віра 68, прийом",
+            "corrected_text": "Віра 68, приймаю",
         },
     )
     assert result.status_code == 503
@@ -174,4 +174,4 @@ def test_failed_word_vote_rolls_back_event_edit(client_and_db):
         current = conn.execute(
             "SELECT text FROM radio_events WHERE id=?", (eid,)
         ).fetchone()[0]
-    assert current == "Ліра 68, прийом"
+    assert current == "Віра 68, прийом"

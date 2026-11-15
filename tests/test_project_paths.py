@@ -148,7 +148,7 @@ def test_factory_uses_configured_db_for_word_corrections(
 
     corrector = selected["corrections"]
 
-    word_engine = Mock(return_value="Липка 700")
+    word_engine = Mock(return_value="Вишня 700")
 
     monkeypatch.setattr(
         factory,
@@ -157,7 +157,7 @@ def test_factory_uses_configured_db_for_word_corrections(
     )
 
     assert corrector("Улыбка 700") == (
-        "Липка 700", True
+        "Вишня 700", True
     )
 
     word_engine.assert_called_once_with(

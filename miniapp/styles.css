@@ -242,3 +242,11 @@ body[data-role="viewer"] .view:not(#view-home) { display: none !important; }
 body[data-role="editor"] #view-users { display: none !important; }
 
 body:not([data-role="admin"]) .admin-only { display: none !important; }
+
+.learning-report { margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 12px; }
+.learning-title { margin: 6px 0 4px; font-weight: 700; color: #d7e3ec; }
+.learning-list { margin: 0; padding-left: 18px; color: #a9b8c4; }
+.learning-list li { margin: 5px 0; overflow-wrap: anywhere; }
+.learning-list strong { color: #e8f0f6; }
+.learning-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+.learning-excluded summary { cursor: pointer; color: #8ea0ad; margin-top: 6px; }

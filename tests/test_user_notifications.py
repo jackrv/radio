@@ -142,7 +142,7 @@ def test_voice_uploaded_once_then_reused_with_role_keyboards(db_path):
     service._request = Mock(side_effect=[ok_response(), ok_response(chat_id=EDITOR), ok_response(chat_id=VIEWER)])
     recipients = service.recipients_for(lambda m: True)
 
-    service.send_voice(b"\0\0", "Липка 700", "db:7", recipients)
+    service.send_voice(b"\0\0", "Вишня 700", "db:7", recipients)
 
     calls = service._request.call_args_list
     assert [c.kwargs["data"]["chat_id"] for c in calls] == [ADMIN, EDITOR, VIEWER]
@@ -201,18 +201,18 @@ def test_event_processor_passes_personal_recipients():
         return [{"chat_id": EDITOR, "role": "editor", "mode": "commands"}]
 
     processor = EventProcessor(
-        callsigns=Dictionary([("липка", "700", 100)]), commands=Dictionary([]), watch=Dictionary([]),
+        callsigns=Dictionary([("вишня", "700", 100)]), commands=Dictionary([]), watch=Dictionary([]),
         short_garbage=set(), save_event=Mock(return_value=42), telegram_service=telegram,
         fresh=Mock(return_value=True),
         db_path="x.db", log_callsigns_only=True, log=Mock(), select_recipients=select,
     )
-    processor.process("Липка 700", b"pcm")
+    processor.process("Вишня 700", b"pcm")
     assert seen == [{"all": True, "watch": False, "commands": True, "off": False}]
     assert telegram.notify.call_args.kwargs["recipients"][0]["chat_id"] == EDITOR
 
     telegram.reset_mock()
     processor.select_recipients = lambda wants: []
-    processor.process("Липка 700", b"pcm")
+    processor.process("Вишня 700", b"pcm")
     telegram.notify.assert_not_called()
     telegram.register_phrase_for_fix.assert_not_called()
 

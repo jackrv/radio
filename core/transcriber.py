@@ -25,11 +25,21 @@ class Transcriber:
         pause_gate=None,
         health=None,
         notification_filter=None,
+        spectral_matcher=None,
+        spectral_mode="shadow",
+        text_lists=None,
     ):
         self.segments = segments
         # Стан прогресу для супервізора; None — без контролю (тести, старий код).
         self.health = health
         self.notification_filter = notification_filter
+        self.spectral_matcher = spectral_matcher
+        self.spectral_mode = spectral_mode
+        # Живі списки з SQLite (фрази-галюцинації, алиаси); None — статичний blacklist.
+        self.text_lists = text_lists
+        # Інші живі джерела (словники, налаштування обробки): викликаються перед сегментом.
+        self.refreshers = ()
+        self.garbage_limits = {}
         self._whisper_called = False
         self._whisper_failed = False
         self.recognizer = recognizer
@@ -61,14 +71,42 @@ class Transcriber:
 
     def _is_blacklisted(self, text: str) -> bool:
         key = self._blacklist_key(text)
-        return bool(key) and key in self.blacklist
+        keys = self.text_lists.blacklist if self.text_lists is not None else self.blacklist
+        return bool(key) and key in keys
 
     def process_segment(self, pcm, generation=None):
         with runtime.asr_segment(pcm, self.sample_rate, self.segments):
             self._process_segment(pcm, generation)
 
+    def _spectral_score(self, pcm):
+        """Оцінка спектрального збігу. У режимі спостереження лише записується."""
+        if self.spectral_matcher is None or not self.spectral_matcher.templates:
+            return None
+        try:
+            with runtime.timed("asr.notification_spectral"):
+                result = self.spectral_matcher.score_pcm(pcm)
+        except Exception:
+            runtime.count("asr.spectral.error")
+            self.log.exception("Помилка спектрального фільтра; сегмент передано далі")
+            return None
+        if result is not None:
+            runtime.asr_notification_score(result)
+        return result
+
     def _process_segment(self, pcm, generation=None):
         runtime.count("asr.segments")
+        if self.text_lists is not None:
+            try:
+                self.text_lists.refresh()
+            except Exception:
+                runtime.count("text_lists.refresh_error")
+                self.log.exception("Не вдалося оновити текстові списки; використовую попередні")
+        for refresh in self.refreshers:
+            try:
+                refresh()
+            except Exception:
+                runtime.count("live_config.refresh_error")
+                self.log.exception("Не вдалося оновити словники чи налаштування; використовую попередні")
         def is_current():
             return (
                 self.pause_gate is None
@@ -111,6 +149,8 @@ class Transcriber:
                     self.debug_audio_count, paths[0], rms,
                 )
 
+        spectral = self._spectral_score(pcm)
+
         if self.notification_filter is not None:
             try:
                 with runtime.timed("asr.notification_filter"):
@@ -124,6 +164,13 @@ class Transcriber:
                     runtime.count("asr.notification_filtered")
                     self.log.info("Відкинуто окремий звук сповіщення: збіг із локальним зразком")
                     return
+
+        if spectral is not None and spectral["candidate"] and self.spectral_mode == "active":
+            runtime.asr_status("notification")
+            runtime.count("asr.notification_filtered")
+            runtime.count("asr.spectral.filtered")
+            self.log.info("Відкинуто окремий звук сповіщення: спектральний збіг %.3f", spectral["score"])
+            return
 
         self._whisper_called = True
         try:
@@ -149,7 +196,7 @@ class Transcriber:
             runtime.asr_status("empty_text")
             runtime.count("asr.empty_text")
             return
-        if looks_like_garbage(raw_text, duration):
+        if looks_like_garbage(raw_text, duration, **self.garbage_limits):
             runtime.asr_status("garbage")
             runtime.count("asr.garbage_filtered")
             return

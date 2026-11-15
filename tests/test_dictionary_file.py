@@ -12,31 +12,31 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_sections_comments_and_disabled_entries():
     text = """# шапка
 [callsigns]
-липка: 700 701   
+вишня: 700 701\x20\x20\x20
 # коментар усередині розділу
 
-# @radio345-disabled: беркут
+# @radio345-disabled: граб
 [Commands]
-буревій 1313
+злива 1313
 [telegram]
 """
     assert parse_dictionary_file(text) == {
-        "callsigns": [("липка: 700 701", True), ("беркут", False)],
-        "commands": [("буревій 1313", True)],
+        "callsigns": [("вишня: 700 701", True), ("граб", False)],
+        "commands": [("злива 1313", True)],
         "telegram": [],
     }
 
 
 def test_missing_sections_are_empty():
-    assert parse_dictionary_file("[callsigns]\nлипка\n") == {
-        "callsigns": [("липка", True)], "commands": [], "telegram": [],
+    assert parse_dictionary_file("[callsigns]\nвишня\n") == {
+        "callsigns": [("вишня", True)], "commands": [], "telegram": [],
     }
 
 
 @pytest.mark.parametrize(("text", "message"), [
-    ("липка: 700\n", "поза розділом"),
-    ("[позивні]\nлипка\n", "невідомий розділ"),
-    ("[callsigns]\nлипка\n[callsigns]\nнаган\n", "повторюється"),
+    ("вишня: 700\n", "поза розділом"),
+    ("[позивні]\nвишня\n", "невідомий розділ"),
+    ("[callsigns]\nвишня\n[callsigns]\nкобза\n", "повторюється"),
 ])
 def test_invalid_structure_names_the_line(text, message):
     with pytest.raises(ValueError, match=message):
@@ -45,9 +45,9 @@ def test_invalid_structure_names_the_line(text, message):
 
 def test_format_round_trip_keeps_order_and_disabled_state():
     entries = {
-        "callsigns": [("липка: 700", True), ("наган: 100-114", False)],
+        "callsigns": [("вишня: 700", True), ("кобза: 100-114", False)],
         "commands": [],
-        "telegram": [("ліра: 68", True)],
+        "telegram": [("віра: 68", True)],
     }
     assert parse_dictionary_file(format_dictionary_file(entries)) == entries
 

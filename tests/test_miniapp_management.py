@@ -30,7 +30,7 @@ def setup(tmp_path):
     create_user(path, 1001, 2002, role="viewer")
     create_user(path, 1001, 3003, role="editor")
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES ('callsigns', 1, 'Ліра: 68')")
+        db.execute("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES ('callsigns', 1, 'Віра: 68')")
     with TestClient(create_app(path, TOKEN)) as client:
         yield client, path
 
@@ -52,27 +52,27 @@ def test_dictionary_edit_preserves_order_disabled_rows_and_conflicts(setup):
     client, db = setup
     headers = auth_header(3003)
     initial = client.get("/api/dictionaries/callsigns", headers=headers).json()
-    entries = [{"raw_line": "Ліра: 68 69", "enabled": True},
-               {"raw_line": "Ліпка: 300-310", "enabled": False},
+    entries = [{"raw_line": "Віра: 68 69", "enabled": True},
+               {"raw_line": "Вішня: 300-310", "enabled": False},
                {"raw_line": "Вовк: *", "enabled": True}]
     payload = {"entries": entries, "expected_version": initial["version"]}
     response = client.put("/api/dictionaries/callsigns", headers=headers, json=payload)
     assert response.status_code == 200
     assert response.json()["entries"] == entries
-    assert get_dictionary_lines("callsigns", db) == ["Ліра: 68 69", "Вовк: *"]
+    assert get_dictionary_lines("callsigns", db) == ["Віра: 68 69", "Вовк: *"]
     assert client.put("/api/dictionaries/callsigns", headers=headers, json=payload).status_code == 409
 
 
 @pytest.mark.parametrize("entries", [[], [{"raw_line": "# comment", "enabled": True}],
-    [{"raw_line": "Ліра: 900-1", "enabled": True}],
-    [{"raw_line": "Ліра: 1-999999999", "enabled": True}],
-    [{"raw_line": "Ліра: 6x", "enabled": True}],
-    [{"raw_line": "Ліра:", "enabled": True}],
-    [{"raw_line": "Ліра 68 69", "enabled": True}],
-    [{"raw_line": "Ліра 68-69", "enabled": True}],
-    [{"raw_line": "Ліра *", "enabled": True}],
-    [{"raw_line": "Ліра\nВовк", "enabled": True}],
-    [{"raw_line": "Ліра", "enabled": False}],
+    [{"raw_line": "Віра: 900-1", "enabled": True}],
+    [{"raw_line": "Віра: 1-999999999", "enabled": True}],
+    [{"raw_line": "Віра: 6x", "enabled": True}],
+    [{"raw_line": "Віра:", "enabled": True}],
+    [{"raw_line": "Віра 68 69", "enabled": True}],
+    [{"raw_line": "Віра 68-69", "enabled": True}],
+    [{"raw_line": "Віра *", "enabled": True}],
+    [{"raw_line": "Віра\nВовк", "enabled": True}],
+    [{"raw_line": "Віра", "enabled": False}],
 ])
 def test_invalid_dictionary_leaves_original_intact(setup, entries):
     client, db = setup
@@ -115,12 +115,12 @@ def test_parallel_dictionary_updates_have_one_winner(setup):
             return "conflict"
 
     with ThreadPoolExecutor(2) as pool:
-        assert sorted(pool.map(edit, ["Ліра: 69", "Ліпка: 700"])) == ["conflict", "saved"]
+        assert sorted(pool.map(edit, ["Віра: 69", "Вішня: 700"])) == ["conflict", "saved"]
 
 
 def test_phrases_unifies_db_and_mem_and_excludes_expired(setup):
     client, db = setup
-    eid = save_event("", "", "", "", "Ліра 68", db, raw_text="Лира 68")
+    eid = save_event("", "", "", "", "Віра 68", db, raw_text="Вира 68")
     register_phrase(db, "a" * 32, "Вовк 100%")
     register_phrase(db, "b" * 32, "expired")
     with sqlite3.connect(db) as conn:
@@ -131,14 +131,14 @@ def test_phrases_unifies_db_and_mem_and_excludes_expired(setup):
     items = list_phrases(db)["items"]
     assert {item["fix_id"] for item in items} == {f"db:{eid}", "mem:" + "a" * 32}
     assert list_phrases(db, "%")["items"][0]["current_text"] == "Вовк 100%"
-    assert len(list_phrases(db, "лир")["items"]) == 1
+    assert len(list_phrases(db, "вир")["items"]) == 1
     assert len(list_phrases(db, offset=1, limit=1)["items"]) == 1
     assert list_phrases(db, offset=2)["items"] == []
 
 
 def test_rules_disable_and_reenable_respect_confirmations(setup):
     client, db = setup
-    save_word_feedback(db, "first", "Лира 68", "Ліра 68")
+    save_word_feedback(db, "first", "Вира 68", "Віра 68")
     initial = client.get("/api/word-rules", headers=auth_header(3003)).json()["items"][0]
     assert initial["status"] == "pending"
     url = f'/api/word-rules/{initial["id"]}'
@@ -148,13 +148,13 @@ def test_rules_disable_and_reenable_respect_confirmations(setup):
     disabled = client.get("/api/word-rules", headers=headers).json()["items"][0]
     assert client.put(url, headers=headers, json={"disabled": False, "expected_version": disabled["version"]}).status_code == 200
     assert load_active_word_rules(db) == []
-    save_word_feedback(db, "second", "Лира 69", "Ліра 69")
-    assert load_active_word_rules(db) == [("лира", "ліра")]
+    save_word_feedback(db, "second", "Вира 69", "Віра 69")
+    assert load_active_word_rules(db) == [("вира", "віра")]
 
 
 def test_rule_toggle_forbidden_to_viewer(setup):
     client, db = setup
-    save_word_feedback(db, "first", "Лира 68", "Ліра 68")
+    save_word_feedback(db, "first", "Вира 68", "Віра 68")
     item = client.get("/api/word-rules", headers=auth_header(3003)).json()["items"][0]
     assert client.put(f'/api/word-rules/{item["id"]}', headers=auth_header(2002),
                       json={"disabled": True, "expected_version": item["version"]}).status_code == 403
@@ -261,7 +261,7 @@ def test_new_routes_reject_disabled_user(setup):
 
 def test_overview_reports_actual_counts(setup):
     client, db = setup
-    save_event("", "", "", "", "Ліра 68", db)
+    save_event("", "", "", "", "Віра 68", db)
     response = client.get("/api/overview", headers=auth_header(3003))
     assert response.status_code == 200
     assert response.json()["events"] == 1

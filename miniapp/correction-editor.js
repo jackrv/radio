@@ -13,7 +13,102 @@
   const audioButton = document.getElementById("editor-audio-load");
   const player = document.getElementById("editor-audio");
   const audioFeedback = document.getElementById("editor-audio-feedback");
+  const learningBox = document.getElementById("correction-learning");
   let audioUrl = null;
+
+  // ---------- Що з правки потрапило в навчання ----------
+  const CANDIDATE_STATES = {
+    waiting: c => `${c.confirmations} з ${c.required} підтверджень — потрібні правки інших фраз`,
+    needs_approval: () => "підтверджено; застосовується після дозволу в «Словники → Правила»",
+    active: () => "активне правило",
+    conflict: () => "є інший варіант виправлення — не застосовується, доки конфлікт не зникне",
+    disabled: () => "правило вимкнено",
+  };
+  const KINDS = { callsign: "позивний, лише перед дозволеним номером", word: "звичайне слово" };
+  const DECISIONS = { pending: "очікує рішення", confirmed: "навчати", rejected: "не навчати" };
+
+  function el(tag, text, className) {
+    const item = document.createElement(tag);
+    if (text !== undefined) item.textContent = text;
+    if (className) item.className = className;
+    return item;
+  }
+
+  function renderLearning(report) {
+    learningBox.replaceChildren();
+    learningBox.hidden = !report;
+    if (!report) return;
+    if (report.format_only) {
+      learningBox.append(el("p", "Змінено лише регістр, пунктуацію або запис числа — навчання не потрібне.", "subtle-note"));
+    }
+    const candidates = report.candidates || [];
+    learningBox.append(el("p", `Кандидатів для навчання: ${candidates.length}`, "learning-title"));
+    const list = el("ul", undefined, "learning-list");
+    for (const c of candidates) {
+      const row = el("li");
+      row.append(el("strong", `${c.original} → ${c.corrected}`),
+        el("span", ` · ${KINDS[c.kind] || c.kind} · ${(CANDIDATE_STATES[c.state] || (() => c.state))(c)}`));
+      list.append(row);
+    }
+    if (candidates.length) learningBox.append(list);
+
+    const review = report.review || [];
+    if (review.length) {
+      learningBox.append(el("p", "Потребує перевірки (без рішення не навчає):", "learning-title"));
+      const box = el("ul", undefined, "learning-list");
+      for (const r of review) {
+        const row = el("li");
+        row.append(el("strong", `${r.original} → ${r.corrected}`), el("span", ` · ${r.message} · ${DECISIONS[r.state]}`));
+        const actions = el("div", undefined, "learning-actions");
+        const choices = r.state === "pending"
+          ? [["Навчати", "confirmed"], ["Не навчати", "rejected"]]
+          : [["Скасувати рішення", "pending"]];
+        for (const [label, decision] of choices) {
+          const choice = el("button", label, "outline-button");
+          choice.type = "button";
+          choice.addEventListener("click", () => decide(r, decision, choice));
+          actions.append(choice);
+        }
+        row.append(actions);
+        box.append(row);
+      }
+      learningBox.append(box);
+    }
+
+    const excluded = report.excluded || [];
+    if (excluded.length) {
+      const details = el("details", undefined, "learning-excluded");
+      details.append(el("summary", `Не навчається: ${excluded.length}`));
+      const box = el("ul", undefined, "learning-list");
+      for (const e of excluded) {
+        const row = el("li");
+        row.append(el("strong", e.label), el("span", ` · ${e.message}`));
+        box.append(row);
+      }
+      details.append(box);
+      learningBox.append(details);
+    }
+  }
+
+  async function decide(item, decision, control) {
+    if (!draft || busy) return;
+    busy = true;
+    control.disabled = true;
+    try {
+      const report = await window.Radio345.request("/api/corrections/learning", "PUT", {
+        fix_id: fixId, expected_text: draft.current_text,
+        original: item.original, corrected: item.corrected, decision,
+      });
+      renderLearning(report);
+      feedback.textContent = decision === "confirmed" ? "✅ Пару додано до навчання."
+        : decision === "rejected" ? "Пару не буде використано для навчання." : "Рішення скасовано.";
+    } catch (error) {
+      feedback.textContent = error.message;
+      control.disabled = false;
+    } finally {
+      busy = false;
+    }
+  }
 
   let draft = null;
   let busy = false;
@@ -141,8 +236,12 @@
       edited.value = result.corrected_text;
       fitText();
       edited.disabled = true;
+      renderLearning(result.learning);
+      // Неоднозначні пари чекають рішення оператора: вікно не закриваємо.
+      const needsDecision = (result.learning?.review || []).some(r => r.state === "pending");
+      const savedNote = result.text_changed ? "✅ Фразу збережено." : "✅ Збережено, текст не змінено.";
       if (
-        autoClose.checked &&
+        autoClose.checked && !needsDecision &&
         typeof telegram?.close === "function"
       ) {
         feedback.textContent =
@@ -158,8 +257,9 @@
           }
         }, 500);
       } else {
-        feedback.textContent =
-          "✅ Виправлення збережено. Можна закрити вікно або продовжити виправлення.";
+        feedback.textContent = needsDecision
+          ? `${savedNote} Перевір пари нижче: без рішення вони не навчають систему.`
+          : `${savedNote} Можна закрити вікно або продовжити виправлення.`;
         edited.disabled = false;
         save.disabled = false;
         restore.disabled = false;
@@ -185,6 +285,7 @@
       draft = await request("GET");
       original.textContent = draft.original_text;
       edited.value = draft.current_text;
+      renderLearning(draft.learning);
       edited.disabled = false;
       fitText();
       audioButton.disabled = !draft.has_audio;

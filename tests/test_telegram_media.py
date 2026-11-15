@@ -18,7 +18,7 @@ from tests.test_telegram_outbox import RECIPIENTS
 
 
 def phrase(db):
-    eid = save_event("", "", "", "", "Лира 68", db)
+    eid = save_event("", "", "", "", "Вира 68", db)
     fix_id = f"db:{eid}"
     message = {"chat": {"id": 1001, "type": "private"}, "message_id": 777, "voice": {"file_id": "voice-test-id"}}
     remember_message(db, fix_id, message)
@@ -66,7 +66,7 @@ def test_delete_hides_phrase_and_blocks_draft_and_audio(setup, legacy):
     for route in ["/api/corrections/draft", "/api/phrases/audio"]:
         assert client.get(route, params={"fix_id": fix_id}, headers=auth_header(1001)).status_code == 404
     assert client.put("/api/corrections/draft", headers=auth_header(1001),
-                      json={"fix_id": fix_id, "expected_text": "Лира 68", "corrected_text": "Ліра 68"}).status_code == 404
+                      json={"fix_id": fix_id, "expected_text": "Вира 68", "corrected_text": "Віра 68"}).status_code == 404
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM radio_events").fetchone()[0] == 1
 

@@ -1,8 +1,16 @@
 """Окрема локальна адмінпанель. Ніколи не монтувати на публічному API/ngrok."""
 
+import argparse
+import hashlib
+import hmac
 import json
 import math
 import os
+import socket
+import subprocess
+import threading
+import time
+import webbrowser
 from pathlib import Path
 import re
 import secrets
@@ -19,17 +27,145 @@ from api.app import create_app
 from api.management import SettingsUpdate
 from services import miniapp_management as store
 from services.notification_samples import add_sample, delete_sample, list_samples, MAX_UPLOAD_BYTES, validate_wav
+from services import notification_eval
 from services.receiver_status import read_receiver_status
 from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
 from services.telegram_sync import sync_status
+from services.db_backup import auto_backups, create_backup
+from services.miniapp_correction_editor import load_edit_draft
+from services.telegram_audio import AudioUnavailable, download_voice
+from services.telegram_media_store import audio_file_id
+from services.user_notify_store import effective_mode
 
 PORT = 8766
 ROOT = Path(__file__).resolve().parents[1]
+ACCESS_DIR = config.BASE_DIR / ".radio345-local-admin"
+SESSION_DAYS = 30
 
 
 class SessionInput(BaseModel):
     token: str = Field(max_length=128)
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    values: dict[str, bool | int | float]
+    expected_revision: int = Field(ge=0)
+
+
+class TextListEntry(BaseModel):
+    raw_line: str = Field(max_length=300)
+    enabled: bool = Field(strict=True)
+
+
+class TextListUpdate(BaseModel):
+    entries: list[TextListEntry] = Field(max_length=500)
+    expected_revision: int = Field(ge=0)
+
+
+class PhraseLabel(BaseModel):
+    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
+    label: str | None = Field(default=None, pattern=r"^(?:notification|speech)$")
+
+
+class PhraseSample(BaseModel):
+    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
+    confirmed_isolated: bool = Field(strict=True)
+
+
+def spectral_settings():
+    return {"mode": getattr(config, "SPECTRAL_NOTIFICATION_MODE", "off"),
+            "threshold": float(getattr(config, "SPECTRAL_NOTIFICATION_THRESHOLD", 0.85)),
+            "max_outside_s": float(getattr(config, "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S", 0.2)),
+            "max_extra": float(getattr(config, "SPECTRAL_NOTIFICATION_MAX_EXTRA", 0.02))}
+
+
+def _utc_seconds(text):
+    from datetime import datetime, timezone
+    try:
+        return datetime.strptime(str(text)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
+def attach_spectral(items, recent, tolerance=3.0):
+    """Підписує фразу оцінкою спектрального фільтра, якщо її сегмент є серед недавніх високих.
+
+    Кожен сегмент дістається не більш ніж одній фразі (найближчій у часі).
+    """
+    ready = [row for row in recent or () if isinstance(row, dict)
+             and isinstance(row.get("text_ready_unix_s"), (int, float)) and isinstance(row.get("notification_score"), (int, float))]
+    pairs = []
+    for position, item in enumerate(items):
+        created = _utc_seconds(item.get("created_at"))
+        if created is None:
+            continue
+        for index, row in enumerate(ready):
+            # Подія записується після готовності тексту; ts у базі округлено до секунди.
+            distance = abs(row["text_ready_unix_s"] - created - 0.5)
+            if distance <= tolerance:
+                pairs.append((distance, position, index))
+    taken_items, taken_rows = set(), set()
+    for _, position, index in sorted(pairs):
+        if position in taken_items or index in taken_rows:
+            continue
+        taken_items.add(position); taken_rows.add(index)
+        row = ready[index]
+        items[position]["spectral"] = {"score": row["notification_score"], "outside_s": row.get("notification_outside_s"),
+                                       "extra_ratio": row.get("notification_extra"),
+                                       "candidate": bool(row.get("notification_candidate"))}
+    return items
+
+
+def session_value(capability):
+    """Сесія виводиться з постійного ключа: закладка працює й після перезапуску панелі."""
+    return hmac.new(capability.encode(), b"radio345-local-session", hashlib.sha256).hexdigest()
+
+
+def events_by_hour(db_path, hours=24, now=None):
+    """Кількість подій за кожну з останніх ``hours`` годин (найстаріша — перша)."""
+    now = time.time() if now is None else now
+    start = int(now // 3600 - hours + 1) * 3600
+    counts = [0] * hours
+    with get_db(db_path) as db:
+        rows = db.execute(
+            "SELECT CAST(strftime('%s', ts) AS INTEGER) FROM radio_events WHERE ts >= datetime(?, 'unixepoch')",
+            (start,),
+        ).fetchall()
+    for (stamp,) in rows:
+        if stamp is not None and stamp >= start:
+            index = int((stamp - start) // 3600)
+            if 0 <= index < hours:
+                counts[index] += 1
+    return {"start": start, "counts": counts}
+
+
+def users_overview(db_path):
+    with get_db(db_path) as db:
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "telegram_users" not in tables:
+            return []
+        profiles = "telegram_user_profiles" in tables
+        settings = "telegram_user_settings" in tables
+        rows = db.execute(f"""SELECT u.user_id, u.role, u.enabled,
+                {"COALESCE(NULLIF(p.display_name,''), NULLIF(p.telegram_name,''), '')" if profiles else "''"},
+                {"COALESCE(p.username,'')" if profiles else "''"},
+                {"s.notify_mode" if settings else "NULL"}
+            FROM telegram_users u
+            {"LEFT JOIN telegram_user_profiles p ON p.user_id=u.user_id" if profiles else ""}
+            {"LEFT JOIN telegram_user_settings s ON s.user_id=u.user_id" if settings else ""}
+            ORDER BY u.role='admin' DESC, u.role='editor' DESC, u.user_id""").fetchall()
+    return [{"user_id": uid, "role": role, "enabled": bool(enabled), "name": name, "username": username,
+             "mode": effective_mode(role, mode) if enabled else "off"}
+            for uid, role, enabled, name, username, mode in rows]
+
+
+def backups_overview(directory):
+    items = []
+    for path in auto_backups(directory):
+        stat = path.stat()
+        items.append({"name": path.name, "size": stat.st_size, "created": stat.st_mtime})
+    return items
 
 
 def read_diagnostics(path):
@@ -45,21 +181,25 @@ def read_diagnostics(path):
         if type(value) in (int,float): return value if math.isfinite(value) else None
         if isinstance(value,list): return [numbers(x) for x in value[:128]]
         if isinstance(value,dict): return {k:numbers(v) for k,v in value.items() if isinstance(k,str) and re.fullmatch(r"[a-zA-Z0-9_.:-]{1,90}",k)}
-        if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","stale","error","whisper_error","discarded","adc","callback","s","ratio"): return value
+        if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","stale","error","whisper_error","discarded","adc","callback","s","ratio",
+                     "ok","stuck","failing","loading","failed","disabled"): return value
         return None
-    return {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","counters","gauges","timings","asr_latency") if k in data}}
+    return {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","counters","gauges","timings","asr_latency","notification_spectral") if k in data}}
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview"):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, eval_dir=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
     samples_dir = Path(samples_dir or config.NOTIFICATION_SOUNDS_DIR)
+    eval_dir = Path(eval_dir or config.NOTIFICATION_EVAL_DIR)
     diagnostics_path = Path(diagnostics_path or config.BASE_DIR/"diagnostics.json")
+    # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
+    backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
     host = f"127.0.0.1:{port}"
     origin = "http://"+host
     cookie = "radio345_local_admin"
-    session = secrets.token_urlsafe(32)
+    session = session_value(capability)
 
     def matches(value, expected):
         return isinstance(value,str) and value.isascii() and secrets.compare_digest(value,expected)
@@ -98,7 +238,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         if not matches(payload.token,capability):
             raise HTTPException(403,"Недійсний локальний ключ")
         response = Response(status_code=204)
-        response.set_cookie(cookie,session,httponly=True,samesite="strict",max_age=43200,path="/")
+        response.set_cookie(cookie,session,httponly=True,samesite="strict",max_age=SESSION_DAYS*86400,path="/")
         return response
 
     @app.get("/admin.js")
@@ -113,6 +253,157 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             "settings":store.read_settings(db_path),"roles":{k:sorted(v) for k,v in PERMISSIONS.items()},
             "notification_filter":bool(config.FILTER_NOTIFICATION_SOUNDS),
             "telegram_sync":sync_status(db_path)}
+
+    @app.get("/api/overview")
+    def overview_page(admin=Depends(actor)):
+        """Усе для головної сторінки одним запитом (автооновлення кожні кілька секунд)."""
+        return {"receiver": read_receiver_status(db_path), "overview": store.overview(db_path),
+                "events_by_hour": events_by_hour(db_path), "users": users_overview(db_path),
+                "backups": backups_overview(backup_dir), "telegram_sync": sync_status(db_path),
+                "notification_filter": bool(config.FILTER_NOTIFICATION_SOUNDS),
+                "spectral": spectral_settings(),
+                "samples": len(list_samples(samples_dir)["items"]),
+                "models": {"whisper": config.MODEL_REPO, "qwen": config.LLM_REPO},
+                "diagnostics": read_diagnostics(diagnostics_path)}
+
+    @app.get("/api/phrases")
+    def phrases(q: str = "", offset: int = 0, limit: int = 30, admin=Depends(actor)):
+        if len(q) > 200 or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100:
+            raise HTTPException(422, "Некоректні параметри пошуку")
+        page = store.list_phrases(db_path, q, offset, limit)
+        labels = notification_eval.read_labels(eval_dir)
+        for item in page["items"]:
+            item["label"] = labels.get(item["fix_id"])
+        try:
+            recent = (read_diagnostics(diagnostics_path).get("notification_spectral") or {}).get("recent")
+        except ValueError:
+            recent = None
+        attach_spectral(page["items"], recent)
+        return page
+
+    def phrase_audio(fix_id):
+        if not re.fullmatch(r"(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})", fix_id):
+            raise HTTPException(422, "Некоректний ідентифікатор фрази")
+        try:
+            load_edit_draft(db_path, fix_id)
+            file_id = audio_file_id(db_path, fix_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        try:
+            return download_voice(bot_token, file_id)
+        except AudioUnavailable:
+            raise HTTPException(502, "Не вдалося отримати аудіо з Telegram") from None
+
+    @app.get("/api/phrases/audio")
+    def audio(fix_id: str, admin=Depends(actor)):
+        return Response(phrase_audio(fix_id), media_type="audio/ogg")
+
+    @app.put("/api/phrases/notification-sample")
+    def phrase_sample(payload: PhraseSample, admin=Depends(actor)):
+        if not payload.confirmed_isolated:
+            raise HTTPException(422, "Підтвердь, що у фрагменті немає мовлення")
+        from services.notification_samples import ogg_to_wav
+        try:
+            return add_sample(samples_dir, ogg_to_wav(phrase_audio(payload.fix_id)), confirmed_isolated=True)
+        except (subprocess.SubprocessError, FileNotFoundError):
+            raise HTTPException(502, "Не вдалося перетворити аудіо") from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.put("/api/phrases/label")
+    def phrase_label(payload: PhraseLabel, admin=Depends(actor)):
+        """Позначка для перевірочного набору; сам фільтр і зразки не змінюються."""
+        if payload.label is None:
+            return notification_eval.remove_label(eval_dir, payload.fix_id)
+        from services.notification_samples import ogg_to_wav
+        try:
+            clip = ogg_to_wav(phrase_audio(payload.fix_id), max_seconds=notification_eval.MAX_SCORE_S)
+            return notification_eval.set_label(eval_dir, payload.fix_id, payload.label, clip)
+        except (subprocess.SubprocessError, FileNotFoundError):
+            raise HTTPException(502, "Не вдалося перетворити аудіо") from None
+        except ValueError as exc:
+            message = str(exc)
+            if "не більше" in message and "секунд" in message:
+                message = "Фраза довша за 10 с: такі сегменти фільтр не оцінює, позначати не потрібно."
+            raise HTTPException(422, message) from None
+
+    @app.get("/api/notification-filter")
+    def notification_filter(admin=Depends(actor)):
+        try:
+            diagnostics = read_diagnostics(diagnostics_path)
+        except ValueError:
+            diagnostics = {"available": False}
+        counters = diagnostics.get("counters") or {}
+        return {"spectral": spectral_settings(), "waveform": bool(config.FILTER_NOTIFICATION_SOUNDS),
+                "samples": len(list_samples(samples_dir)["items"]),
+                "labels": notification_eval.label_counts(eval_dir),
+                "updated_at": diagnostics.get("updated_at"), "started_at": diagnostics.get("started_at"),
+                "counters": {k: v for k, v in counters.items()
+                             if k.startswith("asr.spectral.") or k in ("asr.notification_filtered", "asr.measured_segments", "asr.low_rms")},
+                "observed": diagnostics.get("notification_spectral") or {"buckets": [], "recent": []}}
+
+    @app.get("/api/notification-filter/evaluation")
+    def notification_evaluation(admin=Depends(actor)):
+        limits = spectral_settings()
+        return notification_eval.evaluate(eval_dir, samples_dir, threshold=limits["threshold"],
+                                          max_outside_s=limits["max_outside_s"], max_extra=limits["max_extra"])
+
+    @app.get("/api/runtime-settings")
+    def runtime_settings(admin=Depends(actor)):
+        from services.runtime_settings import read_runtime_settings
+        result = read_runtime_settings(db_path)
+        try:
+            diagnostics = read_diagnostics(diagnostics_path)
+        except ValueError:
+            diagnostics = {}
+        gauges = diagnostics.get("gauges") or {}
+        result["applied"] = {"revision": gauges.get("runtime_settings.revision"),
+                             "receiver": read_receiver_status(db_path)}
+        return result
+
+    @app.put("/api/runtime-settings")
+    def runtime_settings_update(payload: RuntimeSettingsUpdate, admin=Depends(actor)):
+        from services.runtime_settings import RuntimeSettingsConflict, write_runtime_settings
+        try:
+            return write_runtime_settings(db_path, payload.values, payload.expected_revision)
+        except RuntimeSettingsConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/text-lists")
+    def text_lists(admin=Depends(actor)):
+        from services.text_lists import read_lists
+        result = read_lists(db_path)
+        try:
+            diagnostics = read_diagnostics(diagnostics_path)
+        except ValueError:
+            diagnostics = {}
+        gauges = diagnostics.get("gauges") or {}
+        result["applied"] = {"revision": gauges.get("text_lists.revision"),
+                             "updated_at": diagnostics.get("updated_at"), "receiver": read_receiver_status(db_path)}
+        return result
+
+    @app.put("/api/text-lists/{list_type}")
+    def text_list_update(list_type: str, payload: TextListUpdate, admin=Depends(actor)):
+        from services.text_lists import LIST_TYPES, TextListConflict, write_list
+        if list_type not in LIST_TYPES:
+            raise HTTPException(404, "Невідомий список")
+        try:
+            return write_list(db_path, list_type, [e.model_dump() for e in payload.entries], payload.expected_revision)
+        except TextListConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/backups")
+    def backups(admin=Depends(actor)):
+        return {"items": backups_overview(backup_dir)}
+
+    @app.post("/api/backups")
+    def backup_now(admin=Depends(actor)):
+        path = create_backup(db_path, backup_dir)
+        return {"name": path.name, "items": backups_overview(backup_dir)}
 
     @app.get("/api/diagnostics")
     def diagnostics(admin=Depends(actor)): return read_diagnostics(diagnostics_path)
@@ -198,28 +489,87 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     return app
 
 
-def main():
+def _private_dir():
+    ACCESS_DIR.mkdir(mode=0o700, exist_ok=True)
+    if ACCESS_DIR.is_symlink():
+        raise SystemExit("Каталог локального доступу не може бути посиланням")
+    ACCESS_DIR.chmod(0o700)
+
+
+def _write_private(path, text):
+    fd = os.open(path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as output:
+        output.write(text)
+
+
+def load_capability(rotate=False):
+    """Постійний локальний ключ (0600). Нове значення — лише за явним запитом."""
+    _private_dir()
+    key_path = ACCESS_DIR / "key"
+    capability = None
+    if not rotate and key_path.is_file() and not key_path.is_symlink():
+        capability = key_path.read_text().strip()
+    if not capability or len(capability) < 32:
+        capability = secrets.token_urlsafe(32)
+        _write_private(key_path, capability + "\n")
+    _write_private(ACCESS_DIR / "access-url.txt", access_url(capability) + "\n")
+    return capability
+
+
+def access_url(capability):
+    return f"http://127.0.0.1:{PORT}/#{capability}"
+
+
+def port_busy(port=PORT):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def open_when_ready(url, timeout=20.0):
+    def wait():
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if port_busy():
+                webbrowser.open(url)
+                return
+            time.sleep(0.3)
+    threading.Thread(target=wait, daemon=True).start()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Локальна адмінпанель Radio 345 (лише 127.0.0.1)")
+    parser.add_argument("--open", action="store_true", help="відкрити панель у браузері; якщо вона вже працює — лише відкрити")
+    parser.add_argument("--rotate-key", action="store_true", help="створити новий ключ доступу (старі закладки перестануть діяти)")
+    args = parser.parse_args(argv)
+
     from dotenv import load_dotenv
     load_dotenv(config.BASE_DIR/".env")
     if not Path(config.DB_PATH).is_file():
         raise SystemExit("Робочу базу не знайдено")
-    directory = config.BASE_DIR/".radio345-local-admin"
-    directory.mkdir(mode=0o700,exist_ok=True)
-    if directory.is_symlink():
-        raise SystemExit("Каталог локального доступу не може бути посиланням")
-    directory.chmod(0o700)
-    capability = secrets.token_urlsafe(32)
-    # Capability file contains the URL; never put it in launcher/shared logs.
-    path = directory/"access-url.txt"
-    fd = os.open(path,os.O_CREAT|os.O_TRUNC|os.O_WRONLY|os.O_NOFOLLOW,0o600)
-    os.fchmod(fd,0o600)
-    with os.fdopen(fd,"w") as output:
-        output.write(f"http://127.0.0.1:{PORT}/#"+capability+"\n")
+    capability = load_capability(rotate=args.rotate_key)
+    url = access_url(capability)
+
+    if port_busy():
+        # Панель уже працює (наприклад, її запустив start_radio345.py): лише відкриваємо.
+        if args.open:
+            webbrowser.open(url)
+            print(f"Локальну панель відкрито: http://127.0.0.1:{PORT}/")
+        else:
+            print(f"Локальна панель уже працює: http://127.0.0.1:{PORT}/  (відкрити: python -m api.local_dashboard --open)")
+        if args.rotate_key:
+            print("Новий ключ діятиме після перезапуску панелі.")
+        return 0
+
     print(f"Локальна панель: http://127.0.0.1:{PORT}/")
-    print("Приватне посилання входу: .radio345-local-admin/access-url.txt (відкрити локально)")
+    print("Відкрити: .venv/bin/python -m api.local_dashboard --open")
+    if args.open:
+        open_when_ready(url)
     app = create_dashboard(config.DB_PATH,capability,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"))
     uvicorn.run(app,host="127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -43,7 +43,7 @@ def service(db):
     )
 
 
-def new_phrase(db, text="Лира 68"):
+def new_phrase(db, text="Вира 68"):
     s = service(db)
     fix_id = s.register_phrase_for_fix(text, None)
     assert fix_id.startswith("mem:")
@@ -68,7 +68,7 @@ def test_mem_phrase_survives_restart(setup):
     service(db)  # новий екземпляр після перезапуску
     response = client.get("/api/corrections/draft", params={"fix_id": fix_id},
                           headers=auth_header(1001))
-    assert response.json()["original_text"] == "Лира 68"
+    assert response.json()["original_text"] == "Вира 68"
 
 
 def test_editor_prefills_memory_text(setup):
@@ -81,9 +81,9 @@ def test_editor_prefills_memory_text(setup):
     assert response.status_code == 200
     assert response.json() == {
         "fix_id": fix_id,
-        "original_text": "Лира 68",
-        "current_text": "Лира 68",
-        "has_audio": False,
+        "original_text": "Вира 68",
+        "current_text": "Вира 68",
+        "has_audio": False,        "learning": None,
     }
 
 
@@ -91,7 +91,7 @@ def test_editor_saves_word_vote_and_can_be_reopened(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
     payload = {"fix_id": fix_id,
-               "expected_text": "Лира 68", "corrected_text": "Ліра 68"}
+               "expected_text": "Вира 68", "corrected_text": "Віра 68"}
     response = client.put("/api/corrections/draft",
                           headers=auth_header(3003), json=payload)
     assert response.status_code == 200
@@ -99,8 +99,8 @@ def test_editor_saves_word_vote_and_can_be_reopened(setup):
     current = client.get("/api/corrections/draft",
                          params={"fix_id": fix_id},
                          headers=auth_header(3003)).json()
-    assert current["current_text"] == "Ліра 68"
-    assert current["original_text"] == "Лира 68"
+    assert current["current_text"] == "Віра 68"
+    assert current["original_text"] == "Вира 68"
     with sqlite3.connect(db) as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM word_correction_votes"
@@ -111,7 +111,7 @@ def test_duplicate_mem_edit_is_conflict_and_not_double_vote(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
     payload = {"fix_id": fix_id,
-               "expected_text": "Лира 68", "corrected_text": "Ліра 68"}
+               "expected_text": "Вира 68", "corrected_text": "Віра 68"}
     assert client.put("/api/corrections/draft",
                       headers=auth_header(1001), json=payload).status_code == 200
     assert client.put("/api/corrections/draft",
@@ -128,8 +128,8 @@ def test_viewer_cannot_access_mem_draft(setup):
                       headers=auth_header(2002)).status_code == 403
     assert client.put("/api/corrections/draft", headers=auth_header(2002),
                       json={"fix_id": fix_id,
-                            "expected_text": "Лира 68",
-                            "corrected_text": "Ліра 68"}).status_code == 403
+                            "expected_text": "Вира 68",
+                            "corrected_text": "Віра 68"}).status_code == 403
 
 
 def test_old_mem_id_is_rejected_by_editor_api(setup):
@@ -152,7 +152,7 @@ def test_recent_phrase_limit_prunes_oldest(setup):
     db, _ = setup
     s = service(db)
     s.recent_phrases_max = 2
-    first = s.register_phrase_for_fix("Лира 68", None)
+    first = s.register_phrase_for_fix("Вира 68", None)
     second = s.register_phrase_for_fix("На ган 110", None)
     third = s.register_phrase_for_fix("На ган 112", None)
     assert load_phrase(db, first[4:]) is None
@@ -174,16 +174,16 @@ def test_word_feedback_failure_rolls_back_mem_edit(setup):
         """)
     response = client.put("/api/corrections/draft",
                           headers=auth_header(1001),
-                          json={"fix_id": fix_id, "expected_text": "Лира 68",
-                                "corrected_text": "Ліра 68"})
+                          json={"fix_id": fix_id, "expected_text": "Вира 68",
+                                "corrected_text": "Віра 68"})
     assert response.status_code == 503
-    assert load_phrase(db, fix_id[4:])["current_text"] == "Лира 68"
+    assert load_phrase(db, fix_id[4:])["current_text"] == "Вира 68"
 
 
 def test_successive_edits_replace_votes(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
-    for expected, corrected in [("Лира 68", "Ліра 68"), ("Ліра 68", "Ліро 68")]:
+    for expected, corrected in [("Вира 68", "Віра 68"), ("Віра 68", "Віро 68")]:
         assert client.put(
             "/api/corrections/draft", headers=auth_header(3003),
             json={"fix_id": fix_id, "expected_text": expected,
@@ -192,11 +192,11 @@ def test_successive_edits_replace_votes(setup):
     with sqlite3.connect(db) as conn:
         assert conn.execute(
             "SELECT source_id, original, corrected FROM word_correction_votes"
-        ).fetchall() == [(fix_id, "лира", "ліро")]
+        ).fetchall() == [(fix_id, "вира", "віро")]
         assert conn.execute(
             "SELECT SUM(confirmations) FROM word_corrections"
         ).fetchone()[0] == 1
-    assert load_phrase(db, fix_id[4:])["current_text"] == "Ліро 68"
+    assert load_phrase(db, fix_id[4:])["current_text"] == "Віро 68"
 
 
 def test_expiry_boundary_and_edits_do_not_extend_lifetime(setup):
@@ -204,12 +204,12 @@ def test_expiry_boundary_and_edits_do_not_extend_lifetime(setup):
     with patch("services.telegram_phrase_store.time.time", return_value=100000):
         _, fix_id = new_phrase(db)
     with patch("services.telegram_phrase_store.time.time", return_value=186399):
-        save_edit_draft(db, fix_id, "Лира 68", "Ліра 68")
+        save_edit_draft(db, fix_id, "Вира 68", "Віра 68")
         assert load_phrase(db, fix_id[4:]) is not None
     with patch("services.telegram_phrase_store.time.time", return_value=186400):
         assert load_phrase(db, fix_id[4:]) is None
         with pytest.raises(LookupError):
-            save_edit_draft(db, fix_id, "Ліра 68", "Ліро 68")
+            save_edit_draft(db, fix_id, "Віра 68", "Віро 68")
 
 
 def test_registration_prunes_expired_rows_and_enforces_200_limit(setup):
@@ -238,13 +238,13 @@ def test_parallel_edits_have_one_winner(setup):
     def edit(text):
         barrier.wait(timeout=5)
         try:
-            save_edit_draft(db, fix_id, "Лира 68", text)
+            save_edit_draft(db, fix_id, "Вира 68", text)
             return "saved"
         except CorrectionConflict:
             return "conflict"
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        assert sorted(pool.map(edit, ["Ліра 68", "Ліро 68"])) == ["conflict", "saved"]
+        assert sorted(pool.map(edit, ["Віра 68", "Віро 68"])) == ["conflict", "saved"]
     with sqlite3.connect(db) as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM word_correction_votes"
@@ -262,20 +262,20 @@ def test_phrase_update_failure_rolls_back_votes(setup):
         """)
     assert client.put(
         "/api/corrections/draft", headers=auth_header(1001),
-        json={"fix_id": fix_id, "expected_text": "Лира 68",
-              "corrected_text": "Ліра 68"},
+        json={"fix_id": fix_id, "expected_text": "Вира 68",
+              "corrected_text": "Віра 68"},
     ).status_code == 503
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM word_correction_votes").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM word_corrections").fetchone()[0] == 0
-    assert load_phrase(db, fix_id[4:])["current_text"] == "Лира 68"
+    assert load_phrase(db, fix_id[4:])["current_text"] == "Вира 68"
 
 
 def test_sqlite_registration_failure_leaves_only_delete_button(setup):
     db, _ = setup
     s = service(db)
     with patch("services.telegram_outbox.register_phrase", side_effect=sqlite3.OperationalError("test")):
-        fix_id = s.register_phrase_for_fix("Лира 68", None)
+        fix_id = s.register_phrase_for_fix("Вира 68", None)
     assert fix_id is None
     rows = json.loads(s.get_keyboard(fix_id))["inline_keyboard"]
     assert rows == [[{"text": "🗑 Видалити", "callback_data": "del"}]]
@@ -288,7 +288,7 @@ def test_mem_api_requires_authentication(setup):
         "/api/corrections/draft", params={"fix_id": fix_id}
     ).status_code == 401
     assert client.put("/api/corrections/draft", json={
-        "fix_id": fix_id, "expected_text": "Лира 68", "corrected_text": "Ліра 68",
+        "fix_id": fix_id, "expected_text": "Вира 68", "corrected_text": "Віра 68",
     }).status_code == 401
 
 

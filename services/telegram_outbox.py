@@ -21,6 +21,14 @@ CONVERSION_ERRORS = (subprocess.CalledProcessError, subprocess.TimeoutExpired, F
 QUEUE_SIZE = 32
 
 
+
+def build_caption(watch_str, to_str, from_str, text):
+    """Шапка «Подія / Кому / Від» і текст — однаково для нового й виправленого повідомлення."""
+    lines = [f"Подія: {watch_str or 'Ефір'}"]
+    if from_str or to_str:
+        lines.append(f"Кому: {to_str or '-'} | Від: {from_str or '-'}")
+    return "\n".join(lines) + f"\n\n{text}"
+
 class OutboxMixin:
     def _init_outbox(self):
         # Обмежена черга вихідних голосових сповіщень.
@@ -76,10 +84,7 @@ class OutboxMixin:
             runtime.count("telegram.notify_skipped_off")
             return
 
-        lines = [f"Подія: {watch_str}"]
-        if from_str or to_str:
-            lines.append(f"Кому: {to_str or '-'} | Від: {from_str or '-'}")
-        caption = "\n".join(lines) + f"\n\n{text}"
+        caption = build_caption(watch_str, to_str, from_str, text)
 
         with self._outgoing_lock:
             if self._outgoing_stop.is_set():

@@ -101,3 +101,53 @@ def apply_word_rules(text: str, rules, *, allow_match=None) -> str:
 
     # Один проход: результат замены повторно не обрабатывается.
     return pattern.sub(replace, text)
+
+
+_BOUNDARY = r"[\w'’ʼ`]"
+
+
+def apply_general_word_rules(text: str, rules) -> str:
+    """Звичайні слова, дозволені оператором: лише цілі слова, числа не зачіпаються.
+
+    Ключі правил не містять цифр і числівників, тож номери й позивні фрази
+    лишаються без змін. Один прохід, результат повторно не обробляється.
+    """
+    mapping, conflicts = {}, set()
+    for original, corrected in rules:
+        old, new = tokenize(original), tokenize(corrected)
+        if not (1 <= len(old) <= MAX_WORDS_PER_SIDE and 1 <= len(new) <= MAX_WORDS_PER_SIDE):
+            continue
+        if contains_number(old) or contains_number(new):
+            continue
+        key, value = " ".join(old), " ".join(new)
+        if key == value:
+            continue
+        if key in mapping and mapping[key] != value:
+            conflicts.add(key)
+        else:
+            mapping[key] = value
+    for key in conflicts:
+        mapping.pop(key, None)
+    if not mapping:
+        return text
+    keys = sorted(mapping, key=lambda key: (len(key.split()), len(key)), reverse=True)
+    pattern = re.compile(
+        r"(?<!" + _BOUNDARY + r")(?:" + "|".join(r"\s+".join(re.escape(w) for w in k.split()) for k in keys)
+        + r")(?!" + _BOUNDARY + r")",
+        re.IGNORECASE,
+    )
+
+    def replace(match):
+        original = match.group(0)
+        following = re.match(r"\s+([^\W_]+)", text[match.end():], flags=re.UNICODE)
+        if following and contains_number([following.group(1).casefold()]):
+            # Слово перед номером — місце позивного; ним займаються лише правила позивних.
+            return original
+        replacement = mapping[" ".join(tokenize(original))]
+        if original.isupper() and len(original) > 1:
+            return replacement.upper()
+        if original[0].isupper():
+            return replacement[0].upper() + replacement[1:]
+        return replacement
+
+    return pattern.sub(replace, text)

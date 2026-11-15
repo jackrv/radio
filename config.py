@@ -15,8 +15,24 @@ LOG_PATH = BASE_DIR / "radio.log"
 DEBUG_AUDIO_DIR = BASE_DIR / "debug_audio"
 NOTIFICATION_SOUNDS_DIR = BASE_DIR / ".local-notification-sounds"
 FILTER_NOTIFICATION_SOUNDS = True
+# Спектральний фільтр сповіщень: "shadow" — лише оцінює кожен сегмент і показує
+# оцінки в локальній панелі, нічого не відкидає; "active" — відкидає кандидатів;
+# "off" — вимкнено. Поріг обирається в панелі за розміченими реальними записами.
+SPECTRAL_NOTIFICATION_MODE = "shadow"
+SPECTRAL_NOTIFICATION_THRESHOLD = 0.85
+SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S = 0.2
+SPECTRAL_NOTIFICATION_MAX_EXTRA = 0.02
+NOTIFICATION_EVAL_DIR = BASE_DIR / ".local-notification-eval"
+# COOLDOWN_S, LOG_CALLSIGNS_ONLY і GARBAGE_* — початкові значення; змінюються в
+# локальній панелі («Налаштування → Обробка без перезапуску»).
 COOLDOWN_S = 3.0
 LOG_CALLSIGNS_ONLY = True
+# Довга фраза — сміття Whisper, якщо слів ≥ MIN_WORDS і (унікальних < RATIO або
+# слів більше ніж тривалість × MAX_WORDS_PER_S + EXTRA_WORDS).
+GARBAGE_MIN_WORDS = 12
+GARBAGE_MIN_UNIQUE_RATIO = 0.25
+GARBAGE_MAX_WORDS_PER_S = 5.0
+GARBAGE_EXTRA_WORDS = 3
 
 # Чувствительность аудио
 GAIN = 1.0
@@ -35,7 +51,10 @@ MAX_SEGMENT_S = 20
 PREROLL_MS = 500
 VAD_LEVEL = 2
 
-# Фильтрация распознанного текста
+# Фильтрация распознанного текста.
+# Лише початкові значення: під час першого запуску вони копіюються в SQLite
+# (text_list_entries). Далі списки редагуються в локальній панелі
+# («Фільтри тексту») і застосовуються без перезапуску приймача.
 BLACKLIST = (
     "редактор субтитров",
     "корректор",

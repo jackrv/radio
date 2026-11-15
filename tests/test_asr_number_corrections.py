@@ -3,25 +3,25 @@ from callsigns import Callsigns, to_items
 
 def test_whisper_number_typo():
     text = (
-        "Ліра, шістдесят вістим, "
+        "Віра, шістдесят вістим, "
         "тридцать сім, сорок девять, прийом"
     )
 
     assert to_items(text) == [
-        ("word", "ліра"),
+        ("word", "віра"),
         ("num", "68"),
         ("num", "37"),
         ("num", "49"),
         ("word", "прийом"),
     ]
 
-    cs = Callsigns.from_lines(["ліра: 68"])
-    assert cs.find(text) == [("ліра", "68", 100.0)]
+    cs = Callsigns.from_lines(["віра: 68"])
+    assert cs.find(text) == [("віра", "68", 100.0)]
 
 
 def test_unknown_word_is_not_always_number():
-    assert to_items("Ліра, вістим, прийом") == [
-        ("word", "ліра"),
+    assert to_items("Віра, вістим, прийом") == [
+        ("word", "віра"),
         ("word", "вістим"),
         ("word", "прийом"),
     ]

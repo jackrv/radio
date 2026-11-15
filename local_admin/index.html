@@ -1,9 +1,136 @@
 <!doctype html>
-<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Radio 345 · локальне керування</title><link rel="stylesheet" href="/styles.css"><script src="/admin.js" defer></script></head>
-<body><main><header><h1>Radio 345 · локальна панель</h1><p>Доступ лише з цього Mac. Дані не публікуються через ngrok.</p><p id="feedback" role="status">Перевіряємо доступ…</p></header>
-<div id="content" hidden>
-<section><div class="toolbar"><h2>Стан і статистика</h2><button id="refresh">Оновити</button></div><p id="summary"></p><p>Середні та максимуми — за поточний запуск; p95 і докладні сегменти — останні 128. Перезапуск починає нову сесію.</p><div id="metrics"></div><details><summary>Повна діагностика без тексту й аудіо</summary><pre id="diagnostics"></pre></details></section>
-<section><h2>Налаштування розпізнавання</h2><p>Застосовуються після перезапуску. Збереження не перезапускає приймач. Поточні пороги й моделі автоматично не змінюються.</p><p id="models"></p><form id="settings"><div id="fields" class="fields"></div><button>Зберегти налаштування</button></form></section>
-<section><h2>Звуки сповіщень</h2><p>Лише чистий звук без мовлення. Моно WAV PCM16, 16000 Гц, до 5 секунд; сам звук — до 2 секунд. До 16 приватних зразків. Додавання та видалення набудуть чинності після перезапуску.</p><p>Невідомі сигнали, гучний фон і сумнівні суміші передаються Whisper. Для тесту збігу потрібен запис із тихими краями до й після сповіщення.</p><input id="sample-file" type="file" accept=".wav,audio/wav"><label><input id="sample-confirm" type="checkbox"> Я прослухав запис: мовлення немає</label><div class="toolbar"><button id="sample-add">Додати зразок</button><button id="sample-test">Перевірити вибраний WAV</button></div><ul id="samples"></ul></section>
-<section><h2>Перегляд Mini App за роллю</h2><p>Це справжні дані з обмеженнями вибраної ролі. Усі зміни в перегляді заборонено сервером. Фактичні права облікового запису не змінюються.</p><label>Роль <select id="role"><option value="viewer">Спостерігач</option><option value="editor">Редактор</option><option value="admin">Адміністратор</option></select></label><p id="permissions"></p><iframe id="preview" title="Перегляд Mini App" src="about:blank"></iframe></section>
-</div></main></body></html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Radio 345 · локальна панель</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">345</span><div><div class="overline">ЛОКАЛЬНА ПАНЕЛЬ</div><div class="title">RADIO <b>345</b></div></div></div>
+    <nav id="nav">
+      <button data-view="overview" class="active"><span>◎</span>Огляд</button>
+      <button data-view="phrases"><span>✎</span>Фрази</button>
+      <button data-view="sounds"><span>🔔</span>Звуки</button>
+      <button data-view="filter"><span>≋</span>Фільтр</button>
+      <button data-view="texts"><span>Aa</span>Фільтри тексту</button>
+      <button data-view="settings"><span>⚙</span>Налаштування</button>
+      <button data-view="users"><span>♙</span>Користувачі</button>
+      <button data-view="system"><span>▤</span>Система</button>
+      <button data-view="roles"><span>◐</span>Ролі</button>
+    </nav>
+    <p class="aside-note">Лише 127.0.0.1. Не публікується через ngrok.</p>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div><h1 id="view-title">Огляд</h1><p id="feedback" class="muted" role="status">Перевіряємо доступ…</p></div>
+      <div class="top-actions"><span id="receiver-pill" class="pill">—</span><span id="updated" class="muted small"></span>
+        <label class="switch"><input id="auto" type="checkbox" checked> Автооновлення</label><button id="refresh" class="ghost">Оновити</button></div>
+    </header>
+
+    <div id="content" hidden>
+      <!-- Огляд -->
+      <section data-panel="overview">
+        <div class="cards" id="cards"></div>
+        <div class="grid two">
+          <article class="panel"><div class="panel-head"><h2>Події за 24 години</h2><span id="events-total" class="muted small"></span></div><div id="events-chart" class="chart"></div></article>
+          <article class="panel"><div class="panel-head"><h2>Що сталося із сегментами</h2><span class="muted small">поточний запуск</span></div><div id="funnel"></div></article>
+        </div>
+        <article class="panel"><div class="panel-head"><h2>Останні сегменти</h2><span class="muted small">висота — тривалість, колір — результат</span></div><div id="timeline" class="chart"></div><div id="timeline-legend" class="legend"></div></article>
+        <div class="grid two">
+          <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
+          <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
+        </div>
+      </section>
+
+      <!-- Фрази -->
+      <section data-panel="phrases" hidden>
+        <div class="toolbar"><input id="phrase-query" type="search" placeholder="Пошук у фразах…"><button id="phrase-search">Знайти</button></div>
+        <p class="muted small">Позначки «🔔 Сповіщення» / «🗣 Мовлення» — перевірочний набір для розділу «Фільтр»; вони нічого не відкидають. «＋ До зразків» робить фрагмент еталоном фільтра (лише чистий звук без мовлення, діє після перезапуску приймача). Мітка «спектр» — оцінка цього сегмента спектральним фільтром.</p>
+        <div id="phrases" class="list"></div>
+        <button id="phrase-more" class="ghost wide" hidden>Показати ще</button>
+      </section>
+
+      <!-- Звуки -->
+      <section data-panel="sounds" hidden>
+        <article class="panel">
+          <h2>Зразки звуків сповіщень</h2>
+          <p class="muted">Чистий звук без мовлення: моно WAV PCM16, 16000 Гц, до 5 с; сам сигнал — до 2 с. До 16 зразків. Зміни діють після перезапуску приймача.</p>
+          <div class="toolbar"><input id="sample-file" type="file" accept=".wav,audio/wav"><label class="check"><input id="sample-confirm" type="checkbox"> Прослухав: мовлення немає</label>
+            <button id="sample-add">Додати зразок</button><button id="sample-test" class="ghost">Перевірити WAV</button></div>
+          <div id="samples" class="list"></div>
+        </article>
+      </section>
+
+      <!-- Фільтр сповіщень -->
+      <section data-panel="filter" hidden>
+        <div class="cards" id="filter-cards"></div>
+        <div class="grid two">
+          <article class="panel"><div class="panel-head"><h2>Розподіл оцінок</h2><span class="muted small">поточний запуск приймача</span></div>
+            <div id="filter-hist" class="chart"></div>
+            <p class="muted small">Оцінка — спектральна схожість сегмента з найближчим зразком (1 — той самий звук). Пунктир — поточний поріг.</p></article>
+          <article class="panel"><h2>Як обрати поріг</h2>
+            <ol class="steps">
+              <li>Додайте 1–3 чисті зразки сповіщення («Звуки» або «＋ До зразків» у «Фразах») і перезапустіть приймач.</li>
+              <li>Режим спостереження нічого не відкидає: кожен сегмент лише отримує оцінку, її видно тут і біля фраз.</li>
+              <li>У «Фразах» позначайте записи як <b>🔔 сповіщення</b> чи <b>🗣 мовлення</b>, насамперед ті, що мають високу оцінку.</li>
+              <li>«Оцінити розмітку» покаже, скільки сповіщень знайде кожен поріг і чи зачепить він мовлення.</li>
+              <li>Щоб увімкнути: у <code>config.py</code> задайте <code>SPECTRAL_NOTIFICATION_MODE = "active"</code> і рекомендований поріг, потім перезапустіть приймач.</li>
+            </ol></article>
+        </div>
+        <article class="panel"><div class="panel-head"><h2>Високі збіги</h2><span class="muted small">оцінка ≥ 0,5 · найновіші вгорі</span></div>
+          <div class="table-wrap"><table id="filter-recent"></table></div></article>
+        <article class="panel"><div class="panel-head"><h2>Перевірка на розмічених записах</h2><button id="filter-eval">Оцінити розмітку</button></div>
+          <p id="filter-labels" class="muted"></p><div id="filter-summary"></div>
+          <div class="grid eval"><div class="table-wrap"><table id="filter-table"></table></div><div class="table-wrap nowrap"><table id="filter-items"></table></div></div></article>
+      </section>
+
+      <!-- Текстові списки -->
+      <section data-panel="texts" hidden>
+        <article class="panel"><h2>Застосування без перезапуску</h2>
+          <p class="muted">Приймач перевіряє зміни кожні кілька секунд і застосовує їх до наступного сегмента. Рядок, що починається з <code>#</code>, зберігається, але не діє. Позивні, команди й числа захищені: такі рядки не збережуться.</p>
+          <p id="texts-status" class="muted small"></p></article>
+        <div id="text-lists" class="grid two"></div>
+      </section>
+
+      <!-- Налаштування -->
+      <section data-panel="settings" hidden>
+        <article class="panel"><h2>Розпізнавання</h2><p class="muted">Застосовуються після перезапуску приймача. Збереження його не перезапускає.</p>
+          <p id="models" class="muted small"></p><form id="settings"><div id="fields" class="fields"></div><button>Зберегти</button></form></article>
+        <article class="panel"><h2>Обробка без перезапуску</h2>
+          <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram з Mini App теж діють без перезапуску.</p>
+          <p id="runtime-status" class="muted small"></p>
+          <form id="runtime-settings"><div id="runtime-fields" class="fields"></div><button>Зберегти</button></form></article>
+      </section>
+
+      <!-- Користувачі -->
+      <section data-panel="users" hidden>
+        <article class="panel"><h2>Користувачі</h2><p class="muted small">Ролі й режими змінюються в Mini App адміністратором.</p><div class="table-wrap"><table id="users"></table></div></article>
+      </section>
+
+      <!-- Система -->
+      <section data-panel="system" hidden>
+        <div class="grid two">
+          <article class="panel"><div class="panel-head"><h2>Резервні копії бази</h2><button id="backup-now">Створити зараз</button></div><div id="backups" class="list"></div></article>
+          <article class="panel"><h2>Моделі й потоки</h2><div id="workers"></div></article>
+        </div>
+        <article class="panel"><h2>Telegram</h2><div id="telegram"></div></article>
+        <article class="panel"><details><summary>Усі лічильники</summary><div class="table-wrap"><table id="counters"></table></div></details>
+          <details><summary>Повна діагностика (JSON)</summary><pre id="diagnostics"></pre></details></article>
+      </section>
+
+      <!-- Ролі -->
+      <section data-panel="roles" hidden>
+        <article class="panel"><div class="panel-head"><h2>Mini App очима ролі</h2><select id="role"><option value="viewer">Спостерігач</option><option value="editor">Редактор</option><option value="admin">Адміністратор</option></select></div>
+          <p id="permissions" class="muted"></p><p class="muted small">Справжні дані з правами вибраної ролі; будь-який запис тут заборонено сервером.</p>
+          <iframe id="preview" title="Перегляд Mini App" src="about:blank"></iframe></article>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

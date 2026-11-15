@@ -26,6 +26,11 @@ class DictionaryUpdate(BaseModel):
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class RuleApproval(BaseModel):
+    approved: bool = Field(strict=True)
+    expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class RuleUpdate(BaseModel):
     disabled: bool = Field(strict=True)
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -83,7 +88,10 @@ def management_router(db_path, current_user, check_permission, bot_token):
 
     @router.get("/overview")
     def overview(user=Depends(current_user)):
-        return call(user, "events.read", store.overview)
+        result = call(user, "events.read", store.overview)
+        # Автоматичні зміни Qwen — окремо від правок оператора й правил (поточний запуск).
+        result["automatic"] = store.automatic_changes(config.BASE_DIR / "diagnostics.json")
+        return result
 
     @router.get("/phrases")
     def phrases(q: str = Query(default="", max_length=200),
@@ -143,6 +151,11 @@ def management_router(db_path, current_user, check_permission, bot_token):
     def update_rule(rule_id: int, payload: RuleUpdate, user=Depends(current_user)):
         return call(user, "dictionaries.write", store.toggle_rule, user["user_id"], rule_id,
                     payload.disabled, payload.expected_version)
+
+    @router.put("/word-rules/{rule_id}/approval")
+    def approve_rule(rule_id: int, payload: RuleApproval, user=Depends(current_user)):
+        return call(user, "dictionaries.write", store.approve_rule, user["user_id"], rule_id,
+                    payload.approved, payload.expected_version)
 
     @router.get("/users")
     def users(user=Depends(current_user)):

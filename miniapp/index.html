@@ -59,9 +59,10 @@
 
           <div class="metrics">
             <article class="metric"><span class="metric-name">ПОДІЇ</span><div class="metric-value" id="events-count">—</div><span class="metric-detail">У журналі SQLite</span></article>
-            <article class="metric"><span class="metric-name">ВИПРАВЛЕНІ ФРАЗИ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail" id="rules-detail">Активні словесні правила</span></article>
+            <article class="metric"><span class="metric-name">ВИПРАВЛЕНІ ФРАЗИ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail" id="rules-detail">Правки оператора</span></article>
             <article class="metric"><span class="metric-name">СЛОВНИКИ</span><div class="metric-value" id="dictionary-count">—</div><span class="metric-detail">Увімкнені рядки</span></article>
           </div>
+          <p class="subtle-note" id="learning-detail"></p>
           <button id="overview-refresh" class="outline-button" type="button">Оновити зведення</button>
           <p class="subtle-note" id="overview-feedback" role="status">Очікуємо дані журналу.</p>
 
@@ -119,6 +120,7 @@
             </label>
             <button class="primary-button" id="save-correction-button" type="button" disabled>Зберегти виправлення</button>
             <p class="notify-feedback" id="correction-feedback" role="status" aria-live="polite">Для редагування вибери повідомлення в Telegram.</p>
+            <div id="correction-learning" class="learning-report" aria-live="polite" hidden></div>
           </article>
         </section>
 
@@ -128,7 +130,7 @@
             <label class="form-label" for="dictionary-kind">Розділ словника</label>
             <select id="dictionary-kind"><option value="callsigns">Позивні та номери</option><option value="commands">Команди</option><option value="telegram">Список спостереження</option><option value="rules">Навчені заміни</option></select>
             <div class="toolbar"><button id="dictionary-refresh" class="outline-button" type="button">Оновити</button><button id="dictionary-add" class="outline-button" type="button" disabled>Додати рядок</button></div>
-            <p class="subtle-note">Формат: «ліра: 68 69», «ліпка: 300-310», «вовк: *» або окреме слово. Зміни словників застосуються після перезапуску приймача.</p>
+            <p class="subtle-note">Формат: «дуб: 68 69», «береза: 300-310», «бук: *» або окреме слово. Зміни словників діють без перезапуску приймача (за кілька секунд).</p>
             <div id="dictionary-entries" class="stack"></div>
             <button id="dictionary-save" class="primary-button margin-top" type="button" disabled>Зберегти словник</button>
             <p id="dictionary-feedback" class="notify-feedback" role="status" aria-live="polite"></p>

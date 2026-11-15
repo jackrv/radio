@@ -16,6 +16,7 @@ def build_text_pipeline(
         text, learned = apply_learned_corrections(raw_text)
 
         if learned:
+            runtime.count("learned.applied")
             log.info("Виправлено за навчанням (до LLM): %s", text)
 
         if correct_with_llm:
@@ -29,11 +30,14 @@ def build_text_pipeline(
                 runtime.count("llm.accepted")
                 if llm_text == text:
                     runtime.count("llm.unchanged")
+                else:
+                    runtime.count("llm.changed")
                 llm_text, learned_post = apply_learned_corrections(llm_text)
                 text = llm_text
                 log.info("Розпізнано (LLM): %s", text)
 
                 if learned_post:
+                    runtime.count("learned.applied")
                     log.info("Виправлено за навчанням (після LLM): %s", text)
             else:
                 runtime.count("llm.rejected_dictionary" if conservative else "llm.rejected_rewrite")

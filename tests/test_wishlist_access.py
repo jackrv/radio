@@ -64,11 +64,11 @@ def test_stats_count_phrases_even_when_no_word_rule_can_be_learned(setup):
 
 def test_correction_permission_rechecked_inside_transaction(setup):
     _,path=setup
-    eid=save_event("","","","","Лира",path)
+    eid=save_event("","","","","Вира",path)
     with sqlite3.connect(path) as db:
         db.execute("UPDATE telegram_users SET role='viewer' WHERE user_id=3003")
     with pytest.raises(PermissionError):
-        save_edit_draft(path,f"db:{eid}","Лира","Ліра",actor_id=3003)
+        save_edit_draft(path,f"db:{eid}","Вира","Віра",actor_id=3003)
     assert overview(path)["corrections"]==0
 
 

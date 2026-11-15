@@ -4,7 +4,10 @@ from core.pipeline import build_text_pipeline
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
 from core.analyzer import correction_is_safe
-from core.notification_filter import NotificationSoundFilter
+from core.notification_filter import NotificationSoundFilter, load_templates
+from core.notification_spectral import (
+    DEFAULT_MAX_EXTRA, DEFAULT_MAX_OUTSIDE_S, DEFAULT_THRESHOLD, SpectralNotificationMatcher,
+)
 
 from services.event_store import save_event
 from core.word_rule_engine import apply_verified_word_rules
@@ -24,6 +27,18 @@ def build_transcriber(
     health=None,
 ):
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
+
+    # Фрази-галюцинації, короткий шум і алиаси — з SQLite, оновлюються без перезапуску.
+    from services.text_lists import LiveTextLists
+    from services.dictionary_loader import LiveDictionaries
+    from services.runtime_settings import LiveRuntimeSettings
+    text_lists = LiveTextLists(config.DB_PATH, log)
+    text_lists.refresh(force=True)
+
+    # Словники теж живі: усі споживачі отримують об’єкти, що дивляться на поточний знімок.
+    live_dictionaries = LiveDictionaries(config.DB_PATH, callsigns, commands, watch, prompt, log)
+    live_dictionaries.refresh(force=True)
+    callsigns, commands, watch = live_dictionaries.dictionaries
 
     correct_with_llm = build_llm_corrector(
         config.USE_LLM,
@@ -55,7 +70,7 @@ def build_transcriber(
         callsigns=callsigns,
         commands=commands,
         watch=watch,
-        short_garbage=config.SHORT_GARBAGE,
+        short_garbage=text_lists.short_garbage_view(),
         save_event=save_event,
         telegram_service=telegram_service,
         fresh=cooldown.fresh,
@@ -70,17 +85,37 @@ def build_transcriber(
         model_repo=config.MODEL_REPO,
         language=config.LANGUAGE,
         sample_rate=config.SR,
-        prompt=prompt,
+        prompt=live_dictionaries.prompt,
         log=log,
     )
 
-    notification_filter = None
-    if getattr(config, "FILTER_NOTIFICATION_SOUNDS", False):
-        notification_filter = NotificationSoundFilter.from_directory(
-            config.NOTIFICATION_SOUNDS_DIR, config.SR, log,
-        )
+    def update_prompt(value):
+        recognizer.prompt = value
 
-    return Transcriber(
+    live_dictionaries.on_prompt(update_prompt)
+
+    notification_filter = None
+    spectral_matcher = None
+    spectral_mode = getattr(config, "SPECTRAL_NOTIFICATION_MODE", "off")
+    if spectral_mode not in ("off", "shadow", "active"):
+        log.warning("Невідомий режим спектрального фільтра; використано спостереження")
+        spectral_mode = "shadow"
+    use_waveform = getattr(config, "FILTER_NOTIFICATION_SOUNDS", False)
+    if use_waveform or spectral_mode != "off":
+        templates = load_templates(config.NOTIFICATION_SOUNDS_DIR, config.SR, log)
+        log.info("Фільтр звуків сповіщень: завантажено зразків — %d", len(templates))
+        if use_waveform:
+            notification_filter = NotificationSoundFilter([], config.SR)
+            notification_filter.templates = tuple(templates)
+        if spectral_mode != "off":
+            spectral_matcher = SpectralNotificationMatcher(
+                templates, config.SR, prepared=True,
+                threshold=getattr(config, "SPECTRAL_NOTIFICATION_THRESHOLD", DEFAULT_THRESHOLD),
+                max_outside_s=getattr(config, "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S", DEFAULT_MAX_OUTSIDE_S),
+                max_extra=getattr(config, "SPECTRAL_NOTIFICATION_MAX_EXTRA", DEFAULT_MAX_EXTRA),
+            )
+
+    worker = Transcriber(
         segments=segments,
         recognizer=recognizer,
         process_text=process_text,
@@ -89,9 +124,31 @@ def build_transcriber(
         min_rms=config.MIN_RMS,
         normalize_audio=config.NORMALIZE,
         debug_rms=config.DEBUG_RMS,
-        blacklist=config.BLACKLIST,
+        blacklist=(),
+        text_lists=text_lists,
         log=log,
         pause_gate=pause_gate,
         health=health,
         notification_filter=notification_filter,
+        spectral_matcher=spectral_matcher,
+        spectral_mode=spectral_mode,
     )
+
+    def apply_settings(values):
+        # Застосовується в потоці розпізнавання перед наступним сегментом.
+        if hasattr(cooldown, "cooldown_s"):
+            cooldown.cooldown_s = values["COOLDOWN_S"]
+        event_processor.log_callsigns_only = values["LOG_CALLSIGNS_ONLY"]
+        worker.garbage_limits = {
+            "min_words": values["GARBAGE_MIN_WORDS"],
+            "min_unique_ratio": values["GARBAGE_MIN_UNIQUE_RATIO"],
+            "max_words_per_s": values["GARBAGE_MAX_WORDS_PER_S"],
+            "extra_words": values["GARBAGE_EXTRA_WORDS"],
+        }
+
+    live_settings = LiveRuntimeSettings(config.DB_PATH, apply_settings, log)
+    live_settings.refresh(force=True)
+    worker.refreshers = (live_dictionaries.refresh, live_settings.refresh)
+    worker.live_dictionaries = live_dictionaries
+    worker.live_settings = live_settings
+    return worker

@@ -4,8 +4,10 @@ from collections import defaultdict
 
 from rapidfuzz import fuzz, process
 
+# Початкові значення. Робочі списки зберігаються в SQLite (text_list_entries),
+# редагуються в локальній панелі й застосовуються без перезапуску приймача.
 # как могут произнести/написать -> как записано в списках (в нормализованном виде)
-ALIASES = {
+DEFAULT_ALIASES = {
     "пзрк": ["пе зе ер ка", "пэ зэ эр ка", "пзерка"],
     "вовк": ["волк"],
     "наган": [
@@ -16,9 +18,20 @@ ALIASES = {
     ],
 }
 
-CALLSIGN_ALIASES = {
+DEFAULT_CALLSIGN_ALIASES = {
     "улыбка": "липка",
 }
+
+# Поточні значення; замінюються цілком через configure_aliases().
+ALIASES = {canon: list(variants) for canon, variants in DEFAULT_ALIASES.items()}
+CALLSIGN_ALIASES = dict(DEFAULT_CALLSIGN_ALIASES)
+
+
+def configure_aliases(aliases, callsign_aliases):
+    """Атомарно замінює робочі алиаси (посилання на словник змінюється одним присвоєнням)."""
+    global ALIASES, CALLSIGN_ALIASES
+    ALIASES = {str(canon): [str(v) for v in variants] for canon, variants in aliases.items()}
+    CALLSIGN_ALIASES = {str(heard): str(name) for heard, name in callsign_aliases.items()}
 
 # числа словами (ru + uk); апострофы при нормализации удаляются
 UNITS = {"нуль": 0, "ноль": 0, "один": 1, "одна": 1, "одне": 1, "два": 2, "дві": 2,
@@ -44,11 +57,16 @@ FOLD = str.maketrans({"і": "и", "ї": "и", "ы": "и", "є": "е", "э": "е"
                       "ґ": "г", "ъ": None, "ь": None})
 
 
-def normalize(text: str) -> str:
+def basic_normalize(text: str) -> str:
+    """Регістр, апострофи й пунктуація — без застосування алиасів."""
     text = text.lower().replace("ё", "е")
     text = re.sub(r"[’'ʼ`]", "", text)
     text = re.sub(r"[^\w\s]", " ", text)   # знаки препинания, дефисы
-    text = " ".join(text.split())
+    return " ".join(text.split())
+
+
+def normalize(text: str) -> str:
+    text = basic_normalize(text)
     for canon, variants in ALIASES.items():
         for v in variants:
             text = re.sub(rf"\b{re.escape(v)}\b", canon, text)
@@ -120,11 +138,11 @@ def to_items(text: str) -> list[tuple[str, str]]:
 class Callsigns:
     """
     Формат рядків словника (усе, крім слів і номерів, необов’язкове):
-        # комментарий
-        липка: 204 205 300-310     слово с номерами и диапазонами
-        липка: *                   слово с любым номером
-        вовк                       слово без номера
-        буревій 1313               «слово номер» (по одной паре в строке)
+        # коментар
+        дуб: 204 205 300-310       слово з номерами й діапазонами
+        дуб: *                     слово з будь-яким номером
+        бук                        слово без номера
+        дощ 1313                   «слово номер» (одна пара в рядку)
     """
 
     @classmethod

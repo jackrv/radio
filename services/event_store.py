@@ -1,7 +1,7 @@
 from contextlib import nullcontext
 from config import DB_PATH
 from services.sqlite_connection import get_db
-from services.word_store import init_word_db, save_word_feedback
+from services.word_store import init_word_db, save_word_feedback_report
 from callsigns import Callsigns
 from core.analyzer import fmt, split_roles
 
@@ -70,6 +70,10 @@ def save_correction(
 
     with manager as db:
         fields = None
+
+        # Актуальні алиаси з тієї самої SQLite (редагуються в локальній панелі).
+        from services.text_lists import sync_aliases
+        sync_aliases(db)
 
         if event_id is not None:
             event = db.execute(
@@ -161,13 +165,14 @@ def save_correction(
         )
 
         if feedback_source is not None:
-            save_word_feedback(
+            return save_word_feedback_report(
                 db_path,
                 feedback_source,
                 original,
                 corrected,
                 db=db,
             )
+        return None
 
 
 

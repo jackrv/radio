@@ -60,6 +60,34 @@ def _prepare_template(samples, sample_rate):
     return audio
 
 
+def load_templates(directory, sample_rate, log):
+    """Підготовлені (обрізані) зразки з каталогу; спільні для хвильового й спектрального фільтрів."""
+    templates = []
+    try:
+        paths = sorted(Path(directory).glob("*.wav"))
+        if len(paths) > MAX_TEMPLATES:
+            log.warning("Фільтр сповіщень: використано лише перші %d WAV-зразків", MAX_TEMPLATES)
+        for path in paths[:MAX_TEMPLATES]:
+            try:
+                with wave.open(str(path), "rb") as recording:
+                    if (recording.getnchannels() != 1 or recording.getsampwidth() != 2
+                            or recording.getframerate() != sample_rate
+                            or not 0 < recording.getnframes() <= MAX_RECORDING_S * sample_rate):
+                        raise ValueError("Потрібен короткий моно WAV PCM16 із частотою приймача")
+                    expected = recording.getnframes() * 2
+                    raw = recording.readframes(recording.getnframes())
+                if len(raw) != expected:
+                    raise ValueError("Неповний WAV-зразок")
+                samples = np.frombuffer(raw, dtype="<i2").astype(np.float64) / 32768
+                templates.append(_prepare_template(samples, sample_rate))
+            except (OSError, EOFError, wave.Error, ValueError):
+                # Ім’я файла й аудіодані не потрібні для діагностики відмови.
+                log.warning("Фільтр сповіщень: пропущено непридатний WAV-зразок")
+    except OSError:
+        log.warning("Фільтр сповіщень: каталог зразків недоступний")
+    return templates
+
+
 class NotificationSoundFilter:
     def __init__(self, templates, sample_rate):
         if not isinstance(sample_rate, int) or sample_rate <= 0:
@@ -71,32 +99,9 @@ class NotificationSoundFilter:
 
     @classmethod
     def from_directory(cls, directory, sample_rate, log):
-        templates = []
-        try:
-            paths = sorted(Path(directory).glob("*.wav"))
-            if len(paths) > MAX_TEMPLATES:
-                log.warning("Фільтр сповіщень: використано лише перші %d WAV-зразків", MAX_TEMPLATES)
-            for path in paths[:MAX_TEMPLATES]:
-                try:
-                    with wave.open(str(path), "rb") as recording:
-                        if (recording.getnchannels() != 1 or recording.getsampwidth() != 2
-                                or recording.getframerate() != sample_rate
-                                or not 0 < recording.getnframes() <= MAX_RECORDING_S * sample_rate):
-                            raise ValueError("Потрібен короткий моно WAV PCM16 із частотою приймача")
-                        expected = recording.getnframes() * 2
-                        raw = recording.readframes(recording.getnframes())
-                    if len(raw) != expected:
-                        raise ValueError("Неповний WAV-зразок")
-                    samples = np.frombuffer(raw, dtype="<i2").astype(np.float64) / 32768
-                    templates.append(_prepare_template(samples, sample_rate))
-                except (OSError, EOFError, wave.Error, ValueError):
-                    # Ім’я файла й аудіодані не потрібні для діагностики відмови.
-                    log.warning("Фільтр сповіщень: пропущено непридатний WAV-зразок")
-        except OSError:
-            log.warning("Фільтр сповіщень: каталог зразків недоступний")
         result = cls([], sample_rate)
-        result.templates = tuple(templates)
-        log.info("Фільтр звуків сповіщень: завантажено зразків — %d", len(templates))
+        result.templates = tuple(load_templates(directory, sample_rate, log))
+        log.info("Фільтр звуків сповіщень: завантажено зразків — %d", len(result.templates))
         return result
 
     def is_notification(self, pcm):

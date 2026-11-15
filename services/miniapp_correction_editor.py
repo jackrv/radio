@@ -7,6 +7,7 @@ from services.event_store import save_correction
 from services.sqlite_connection import get_db
 from services.telegram_phrase_store import load_phrase, update_phrase_text
 from services.telegram_media_store import is_hidden, has_audio
+from services.word_store import build_learning_report, decide_review
 
 
 class CorrectionConflict(Exception):
@@ -28,7 +29,8 @@ def load_edit_draft(db_path, fix_id: str):
         phrase = load_phrase(db_path, fix_id[4:])
         if phrase is None:
             raise LookupError("Фразу не знайдено або вона застаріла")
-        return {"fix_id": fix_id, **phrase, "has_audio": has_audio(db_path, fix_id)}
+        return {"fix_id": fix_id, **phrase, "has_audio": has_audio(db_path, fix_id),
+                "learning": _report(db_path, fix_id, phrase["original_text"], phrase["current_text"])}
 
     event_id = event_id_from_fix_id(fix_id)
     with get_db(db_path) as db:
@@ -46,7 +48,46 @@ def load_edit_draft(db_path, fix_id: str):
         "original_text": row[0],
         "current_text": row[1],
         "has_audio": has_audio(db_path, fix_id),
+        "learning": _report(db_path, fix_id, row[0], row[1]),
     }
+
+
+def _report(db_path, fix_id, original, current):
+    """Стан навчання для вже збереженої правки (лише читання)."""
+    if original == current:
+        return None
+    with get_db(db_path) as db:
+        return build_learning_report(db, fix_id, original, current)
+
+
+def _source(db, db_path, fix_id):
+    """(оригінал, поточний текст) у відкритій транзакції."""
+    if is_hidden(db_path, fix_id, db=db):
+        raise LookupError("Повідомлення видалено")
+    if fix_id.startswith("mem:"):
+        phrase = load_phrase(db_path, fix_id[4:], db=db)
+        if phrase is None:
+            raise LookupError("Фразу не знайдено або вона застаріла")
+        return phrase["original_text"], phrase["current_text"]
+    row = db.execute("SELECT COALESCE(raw_text, text), text FROM radio_events WHERE id = ?",
+                     (event_id_from_fix_id(fix_id),)).fetchone()
+    if row is None:
+        raise LookupError("Подію не знайдено")
+    return row
+
+
+def decide_learning(db_path, fix_id, expected_text, original, corrected, decision, *, actor_id):
+    """Оператор підтверджує або відхиляє неоднозначну пару з уже збереженої правки."""
+    if not fix_id.startswith("mem:"):
+        event_id_from_fix_id(fix_id)
+    with get_db(db_path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        from services.user_store import _require_permission
+        _require_permission(db, actor_id, "corrections.write")
+        source_original, current = _source(db, db_path, fix_id)
+        if current != expected_text:
+            raise CorrectionConflict("Текст змінився в іншому сеансі")
+        return decide_review(db, fix_id, source_original, current, original, corrected, decision)
 
 
 def save_edit_draft(db_path, fix_id: str, expected_text: str,
@@ -85,7 +126,7 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
             raise CorrectionConflict("Текст змінився в іншому сеансі")
 
         # One transaction: word feedback + current text + rollback on errors.
-        save_correction(
+        learning = save_correction(
             original, corrected, event_id, db_path,
             source_id=fix_id if memory_token is not None else None,
             db=db,
@@ -99,4 +140,6 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
         "fix_id": fix_id,
         "corrected_text": corrected,
         "saved": True,
+        "text_changed": corrected != current,
+        "learning": learning,
     }

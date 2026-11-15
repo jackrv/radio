@@ -13,27 +13,27 @@ def test_resolve_returns_whisper_original(tmp_path):
     init_db(path)
 
     event_id = save_event(
-        "липка 700", "", "", "",
-        "Липка 700, прийом",
+        "вишня 700", "", "", "",
+        "Вишня 700, прийом",
         path,
-        raw_text="Ліпка 700, прийом",
+        raw_text="Вішня 700, прийом",
     )
 
     assert resolve_event_text(event_id, path) == (
-        "Ліпка 700, прийом"
+        "Вішня 700, прийом"
     )
 
     old_id = save_event(
-        "наган 110", "", "", "",
-        "Наган 110", path,
+        "кобза 110", "", "", "",
+        "Кобза 110", path,
     )
 
-    assert resolve_event_text(old_id, path) == "Наган 110"
+    assert resolve_event_text(old_id, path) == "Кобза 110"
 
 
 def test_event_processor_registers_whisper_original():
     callsigns = Mock()
-    callsigns.find.return_value = [("липка", "700", 0)]
+    callsigns.find.return_value = [("вишня", "700", 0)]
 
     commands = Mock()
     commands.find.return_value = []
@@ -59,15 +59,15 @@ def test_event_processor_registers_whisper_original():
     )
 
     processor.process(
-        "Липка 700, прийом",
+        "Вишня 700, прийом",
         b"audio",
-        raw_text="Ліпка 700, прийом",
+        raw_text="Вішня 700, прийом",
     )
 
     telegram.register_phrase_for_fix.assert_called_once_with(
-        "Ліпка 700, прийом", 21
+        "Вішня 700, прийом", 21
     )
 
     assert telegram.notify.call_args.args[3] == (
-        "Липка 700, прийом"
+        "Вишня 700, прийом"
     )

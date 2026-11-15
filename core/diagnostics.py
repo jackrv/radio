@@ -19,7 +19,12 @@ _ASR_STAGES = {
     "asr.whisper": "whisper_s", "asr.qwen": "qwen_s",
     "asr.correction_pipeline": "correction_s", "asr.event_processing": "event_s",
     "asr.notification_filter": "notification_filter_s",
+    "asr.notification_spectral": "notification_spectral_s",
 }
+_SPECTRAL_FIELDS = ("notification_score", "notification_outside_s", "notification_extra", "notification_candidate")
+# Сегменти з такою або вищою спектральною оцінкою зберігаються для локальної панелі.
+SPECTRAL_KEEP_SCORE = 0.5
+SPECTRAL_BUCKETS = 20
 _ASR_STATUSES = frozenset({
     "discarded", "ready", "ready_fallback", "stale", "low_rms", "empty_text",
     "garbage", "blacklist", "notification", "whisper_error", "error",
@@ -33,8 +38,8 @@ _ASR_ALL_METRICS = ("audio_duration_s", "queue_wait_s", "worker_busy_s", "worker
 _ASR_RECORD_FIELDS = frozenset(_ASR_READY_METRICS + _ASR_ALL_METRICS + (
     "segment_id", "enqueued_unix_s", "audio_end_unix_s", "speech_end_unix_s",
     "processing_started_unix_s", "text_ready_unix_s", "queue_depth", "segments_dropped",
-    "whisper_calls", "qwen_calls", "status", "capture_source",
-))
+    "whisper_calls", "qwen_calls", "status", "capture_source", "notification_spectral_s",
+) + _SPECTRAL_FIELDS)
 
 
 def _finite(value):
@@ -74,6 +79,9 @@ class RuntimeDiagnostics:
         self._asr_sequence = 0
         self._asr_recent = deque(maxlen=128)
         self._asr_stats = {"ready": {}, "all_segments": {}}
+        # Спектральний фільтр (спостереження): гістограма оцінок і останні високі збіги.
+        self._spectral_buckets = [0] * SPECTRAL_BUCKETS
+        self._spectral_recent = deque(maxlen=128)
 
     def _now(self):
         return self._clock() if self._clock is not None else time.perf_counter()
@@ -101,6 +109,17 @@ class RuntimeDiagnostics:
         span = self._current_asr()
         if span is not None and status in _ASR_STATUSES:
             span["status"] = status
+
+    def asr_notification_score(self, result):
+        """Лише числа: оцінка, тривалість поза збігом, частка сторонньої енергії, кандидат."""
+        span = self._current_asr()
+        if span is None or not isinstance(result, dict):
+            return
+        values = (result.get("score"), result.get("outside_s"), result.get("extra_ratio"))
+        if not all(_finite(v) for v in values):
+            return
+        span["notification_score"], span["notification_outside_s"], span["notification_extra"] = (float(v) for v in values)
+        span["notification_candidate"] = bool(result.get("candidate"))
 
     def asr_text_ready(self, *, fallback=False):
         span = self._current_asr()
@@ -130,7 +149,7 @@ class RuntimeDiagnostics:
                 "audio_duration_s": len(pcm) / (2 * sample_rate),
                 "queue_depth": depth, "segments_dropped": dropped,
                 "whisper_s": 0.0, "qwen_s": 0.0, "correction_s": 0.0,
-                "notification_filter_s": 0.0, "event_s": 0.0,
+                "notification_filter_s": 0.0, "notification_spectral_s": 0.0, "event_s": 0.0,
                 "whisper_calls": 0, "qwen_calls": 0, "capture_source": "legacy"}
         timing = getattr(pcm, "timing", None)
         if timing is not None:
@@ -172,6 +191,18 @@ class RuntimeDiagnostics:
                 self.counters[f"asr.outcome.{span['status']}"] += 1
                 if "queue_wait_s" not in span:
                     self.counters["asr.timing_missing"] += 1
+                if "notification_score" in span:
+                    score = span["notification_score"]
+                    self.counters["asr.spectral.scored"] += 1
+                    bucket = min(SPECTRAL_BUCKETS - 1, max(0, int(score * SPECTRAL_BUCKETS)))
+                    self._spectral_buckets[bucket] += 1
+                    if span["notification_candidate"]:
+                        self.counters["asr.spectral.candidate"] += 1
+                        self.counters[f"asr.spectral.candidate.{span['status']}"] += 1
+                    if score >= SPECTRAL_KEEP_SCORE:
+                        self._spectral_recent.append({k: record[k] for k in (
+                            "segment_id", "processing_started_unix_s", "text_ready_unix_s",
+                            "audio_duration_s", "status") + _SPECTRAL_FIELDS if k in record})
                 groups = [("all_segments", _ASR_ALL_METRICS)]
                 if span["status"] in ("ready", "ready_fallback"):
                     groups.append(("ready", _ASR_READY_METRICS))
@@ -236,9 +267,12 @@ class RuntimeDiagnostics:
                     asr[group][name] = {"count": stats["count"], "mean": stats["sum"] / stats["count"],
                                         "max": stats["max"], "recent_p95": values[(len(values) * 95 + 99) // 100 - 1],
                                         "unit": "ratio" if name in ("rtf", "worker_rtf") else "s"}
+            spectral = {"buckets": list(self._spectral_buckets),
+                        "recent": [dict(row) for row in self._spectral_recent]}
             return {"schema": 1, "session": self.session, "started_at": self.started_at,
                     "updated_at": time.time(), "counters": dict(self.counters),
-                    "gauges": dict(self.gauges), "timings": timings, "asr_latency": asr}
+                    "gauges": dict(self.gauges), "timings": timings, "asr_latency": asr,
+                    "notification_spectral": spectral}
 
     def configure(self, path):
         self.path = Path(path)

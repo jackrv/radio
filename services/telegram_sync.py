@@ -81,6 +81,45 @@ def _current_text(db_path, fix_id):
     return row[0] if row else None
 
 
+_HEADER_CACHE = {}
+
+
+def _dictionaries(db_path):
+    """Поточні словники з SQLite; кеш за відбитком рядків і поточними алиасами."""
+    import callsigns as callsign_module
+    from callsigns import Callsigns
+    from services.dictionary_loader import dictionary_fingerprint
+    with get_db(db_path) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():
+            return None
+        key = (str(db_path), dictionary_fingerprint(db), id(callsign_module.ALIASES))
+        if key in _HEADER_CACHE:
+            return _HEADER_CACHE[key]
+        lines = {}
+        for kind, line in db.execute("""SELECT dictionary_type, raw_line FROM dictionary_entries
+                WHERE enabled = 1 ORDER BY dictionary_type, line_number"""):
+            lines.setdefault(kind, []).append(line)
+    result = tuple(Callsigns.from_lines(lines.get(kind, [])) for kind in ("callsigns", "telegram"))
+    _HEADER_CACHE.clear()
+    _HEADER_CACHE[key] = result
+    return result
+
+
+def corrected_caption(db_path, text):
+    """Шапка перераховується з виправленого тексту за поточними словниками, як при надсиланні."""
+    from core.analyzer import fmt, split_roles
+    from services.telegram_outbox import build_caption
+    try:
+        dictionaries = _dictionaries(db_path)
+    except Exception:
+        dictionaries = None
+    if dictionaries is None:
+        return "✏️ Виправлено оператором\n\n" + text
+    callsigns, watch = dictionaries
+    to_found, from_found = split_roles(text, callsigns)
+    return "✏️ Виправлено оператором\n" + build_caption(fmt(watch.find(text)) or "Ефір", fmt(to_found), fmt(from_found), text)
+
+
 def clipped(text, units):
     """Telegram рахує UTF-16, а Python — символи Unicode."""
     encoded = text.encode("utf-16-le")
@@ -123,7 +162,7 @@ def sync_corrections(service, *, limit=5, now=None):
             continue
         field = "caption" if kind == "voice" else "text"
         payload = {"chat_id": chat, "message_id": message,
-                   field: clipped("✏️ Виправлено оператором\n\n" + text, 1024 if kind == "voice" else 4096),
+                   field: clipped(corrected_caption(service.db_path, text), 1024 if kind == "voice" else 4096),
                    "reply_markup": service.keyboard_for(state[0], fix_id)}
         # Reserve before HTTP. A crash/timeout cannot cause a hot retry loop.
         with get_db(service.db_path) as db:

@@ -124,9 +124,11 @@ async function managementFixture(role = "admin", override) {
   const request = async (url, method = "GET", body) => {
     calls.push({ url, method, body });
     if (override) { const result = override(url, method, body); if (result !== undefined) return result; }
-    if (url === "/api/overview") return { events: 2, active_rules: 1, total_rules: 5, corrections: 4, dictionary_entries: 3 };
+    if (url === "/api/overview") return { events: 2, active_rules: 1, total_rules: 5, corrections: 4, dictionary_entries: 3,
+      learning: { candidates: 3, confirmations: 5, active_rules: 1, awaiting_approval: 1 },
+      automatic: { available: true, fresh: true, qwen_changed: 7, rules_applied: 2 } };
     if (url.startsWith("/api/phrases")) return { items: [{ fix_id: "db:1", current_text: "<img src=x onerror=alert(1)>", created_at: "2026-11-14 12:00:00" }], has_more: false };
-    if (url.startsWith("/api/dictionaries/")) return { kind: "callsigns", version: "a".repeat(64), entries: body?.entries || [{ raw_line: "Ліра: 68", enabled: true }] };
+    if (url.startsWith("/api/dictionaries/")) return { kind: "callsigns", version: "a".repeat(64), entries: body?.entries || [{ raw_line: "Віра: 68", enabled: true }] };
     if (url.startsWith("/api/word-rules")) return { items: [], has_more: false };
     if (url === "/api/users") return { items: [{ user_id: "2002", role: "viewer", notify_mode: "commands", enabled: true, version: "a".repeat(64) }] };
     if (url.startsWith("/api/users/")) return { saved: true };
@@ -153,13 +155,13 @@ test("editor can save dictionary text and enabled state with snapshot version", 
   const { get, view, calls } = await managementFixture("editor");
   await view("dictionaries");
   const row = get("dictionary-entries").children[0];
-  row.children[1].value = "Ліра: 68 69";
+  row.children[1].value = "Віра: 68 69";
   await row.children[1].fire("input");
   await get("dictionary-save").fire("click");
   const call = calls.find(c => c.method === "PUT");
   assert.equal(call.body.expected_version, "a".repeat(64));
-  assert.equal(call.body.entries[0].raw_line, "Ліра: 68 69");
-  assert.match(get("dictionary-feedback").textContent, /Перезапусти/);
+  assert.equal(call.body.entries[0].raw_line, "Віра: 68 69");
+  assert.match(get("dictionary-feedback").textContent, /без перезапуску/);
 });
 
 test("dictionary conflict keeps the operator's unsaved input", async () => {
@@ -184,7 +186,7 @@ test("viewer cannot submit dictionary changes even through a synthetic click", a
 
 test("editor can load an authenticated audio player beside a phrase", async () => {
   const { get, view, calls } = await managementFixture("editor", (url) => {
-    if (url.startsWith("/api/phrases?")) return { items: [{ fix_id: "db:1", current_text: "Ліра", has_audio: true }], has_more: false };
+    if (url.startsWith("/api/phrases?")) return { items: [{ fix_id: "db:1", current_text: "Віра", has_audio: true }], has_more: false };
     if (url.startsWith("/api/phrases/audio?")) return new Blob(["OggSfake"]);
   });
   await view("corrections");
@@ -235,7 +237,7 @@ async function correctionFixture(autoClose, hasAudio = false) {
     addEventListener() {},
     Radio345: { request: async (url, method, body) => {
       if (url.startsWith("/api/phrases/audio")) return new Blob(["OggSfake"]);
-      if (method === "GET") return { original_text: "Лира 68", current_text: "Лира 68", has_audio: hasAudio };
+      if (method === "GET") return { original_text: "Вира 68", current_text: "Вира 68", has_audio: hasAudio };
       writes.push(body);
       return { saved: true, corrected_text: body.corrected_text };
     } }
@@ -250,17 +252,17 @@ async function correctionFixture(autoClose, hasAudio = false) {
 
 test("editor can save twice without auto-close using the latest expected text", async () => {
   const { get, writes, isClosed } = await correctionFixture(false);
-  assert.equal(get("corrected-text").value, "Лира 68");
+  assert.equal(get("corrected-text").value, "Вира 68");
   assert.equal(get("phrases-panel").beforeItem, get("correction-editor-panel"));
   assert.equal(get("corrected-text").focused, undefined);
   assert.equal(get("corrected-text").scrolled.behavior, "instant");
-  get("corrected-text").value = "Ліра 68";
+  get("corrected-text").value = "Віра 68";
   await get("save-correction-button").fire("click");
   assert.equal(get("corrected-text").disabled, false);
   get("corrected-text").value = "Ліро 68";
   await get("save-correction-button").fire("click");
   assert.equal(writes.length, 2);
-  assert.equal(writes[1].expected_text, "Ліра 68");
+  assert.equal(writes[1].expected_text, "Віра 68");
   assert.equal(isClosed(), false);
 });
 
@@ -335,7 +337,7 @@ test("background taps dismiss keyboard while taps on controls do not", async () 
 
 test("editor still closes Telegram after a successful save when requested", async () => {
   const { get, isClosed } = await correctionFixture(true);
-  get("corrected-text").value = "Ліра 68";
+  get("corrected-text").value = "Віра 68";
   await get("save-correction-button").fire("click");
   assert.equal(isClosed(), true);
 });
@@ -349,7 +351,7 @@ test("editor has its own player and preserves it after text is corrected", async
   assert.equal(get("editor-audio").hidden, false);
   assert.match(get("editor-audio").src, /^blob:/);
   const src = get("editor-audio").src;
-  get("corrected-text").value = "Ліра 68";
+  get("corrected-text").value = "Віра 68";
   await get("save-correction-button").fire("click");
   assert.equal(get("editor-audio").src, src);
   assert.equal(get("corrected-text").style.height, "100px");
@@ -485,7 +487,50 @@ test("enable after OFF returns a mode the role is allowed to use", async () => {
 test("stats distinguish corrected phrases from active rules", async () => {
   const { get } = await managementFixture("editor");
   assert.equal(get("rules-count").textContent, 4);
-  assert.match(get("rules-detail").textContent, /1 із 5/);
+  const learning = get("learning-detail").textContent;
+  assert.match(learning, /кандидатів 3, підтверджень 5, активних правил 1, очікують дозволу 1/);
+  assert.match(learning, /Поточний запуск приймача: Qwen змінив 7 фраз, правила застосовано 2 раз/);
+});
+
+test("editor shows learning report and keeps window open for pending review", async () => {
+  const { doc, get } = documentFixture();
+  const calls = [];
+  const report = { text_changed: true, format_only: false,
+    candidates: [{ original: "пазіцію", corrected: "позицію", kind: "word", confirmations: 1, required: 2, approved: false, state: "waiting" }],
+    review: [{ original: "вира", corrected: "віра", reason: "with_number", message: "назву змінено разом із номером", state: "pending" }],
+    excluded: [{ label: "68 → 84", reason: "number", message: "змінено номер" }] };
+  let closed = false;
+  const context = {
+    document: doc, URLSearchParams, URL, localStorage: { getItem: () => null, setItem() {} },
+    window: {
+      location: { search: "?fix_id=mem:" + "a".repeat(32) }, addEventListener() {},
+      setTimeout: callback => callback(), Telegram: { WebApp: { close() { closed = true; } } },
+      Radio345: { request: async (path, method, body) => {
+        calls.push({ path, method, body });
+        if (method === "GET") return { original_text: "Вира 68, іду на пазіцію", current_text: "Вира 68, іду на пазіцію", has_audio: false, learning: null };
+        if (path === "/api/corrections/learning") return { ...report, review: [{ ...report.review[0], state: "confirmed" }] };
+        return { corrected_text: body.corrected_text, saved: true, text_changed: true, learning: report };
+      } },
+    },
+  };
+  get("close-after-save").checked = true;
+  vm.runInNewContext(source("correction-editor.js"), context);
+  await tick();
+  get("corrected-text").value = "Віра 84, іду на позицію";
+  await get("save-correction-button").fire("click");
+  await tick();
+  const box = get("correction-learning");
+  assert.equal(box.hidden, false);
+  assert.equal(box.children[0].textContent, "Кандидатів для навчання: 1");
+  assert.match(get("correction-feedback").textContent, /Перевір пари нижче/);
+  assert.equal(closed, false, "вікно не закривається, поки є неперевірені пари");
+  const reviewList = box.children[3];
+  const confirm = reviewList.children[0].children[2].children[0];
+  assert.equal(confirm.textContent, "Навчати");
+  await confirm.fire("click");
+  const decision = calls.find(call => call.path === "/api/corrections/learning");
+  assert.deepEqual(JSON.parse(JSON.stringify(decision.body)), { fix_id: "mem:" + "a".repeat(32), expected_text: "Віра 84, іду на позицію",
+    original: "вира", corrected: "віра", decision: "confirmed" });
 });
 
 test("admin explicitly sets a new user's notification mode", async () => {

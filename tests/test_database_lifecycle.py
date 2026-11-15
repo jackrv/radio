@@ -14,14 +14,14 @@ from services.telegram_offset_store import save_telegram_offset, load_telegram_o
 
 SOURCE = """# коментар не імпортується
 [callsigns]
-Ліра: 68
-# @radio345-disabled: Ліпка: 700
+Віра: 68
+# @radio345-disabled: Вішня: 700
 
 [commands]
 Прийом
 
 [telegram]
-Ліра: 68
+Віра: 68
 """
 
 
@@ -60,13 +60,13 @@ def test_reset_exports_backs_up_and_keeps_admin_and_identity_counters(setup, tmp
     initialize_database(db, export)
     assert save_event("", "", "", "", "новий тест", db) > old_id
     with sqlite3.connect(db) as conn:
-        assert conn.execute("SELECT raw_line,enabled FROM dictionary_entries WHERE dictionary_type='callsigns' ORDER BY line_number").fetchall() == [("Ліра: 68", 1), ("Ліпка: 700", 0)]
+        assert conn.execute("SELECT raw_line,enabled FROM dictionary_entries WHERE dictionary_type='callsigns' ORDER BY line_number").fetchall() == [("Віра: 68", 1), ("Вішня: 700", 0)]
 
 
 def test_import_deletes_only_working_source_after_commit(tmp_path):
     source = sources(tmp_path / "source")
     template = source.parent / "dictionaries.example.txt"
-    template.write_text("[callsigns]\n# липка: 700\n")
+    template.write_text("[callsigns]\n# вишня: 700\n")
     db = tmp_path / "events.db"
     result = initialize_database(db, source, delete_source=True)
     assert result["cleanup_remaining"] == []
@@ -146,10 +146,10 @@ def test_concurrent_events_keep_unique_monotonic_ids(setup):
     assert sorted(ids) == list(range(1, 13))
 
 
-@pytest.mark.parametrize("line", ["alpha: xyz", "Ліра: 1-99999", "дві команди тут"])
+@pytest.mark.parametrize("line", ["alpha: xyz", "Віра: 1-99999", "дві команди тут"])
 def test_import_uses_mini_app_rules(tmp_path, line):
     source = tmp_path / "dictionaries.txt"
-    source.write_text(f"[callsigns]\nЛіра: 68\n{line}\n", encoding="utf-8")
+    source.write_text(f"[callsigns]\nВіра: 68\n{line}\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"\[callsigns\], запис 2"):
         initialize_database(tmp_path / "events.db", source)
     assert not (tmp_path / "events.db").exists()
@@ -168,7 +168,7 @@ def test_import_and_api_share_entry_limit(tmp_path):
     from services.miniapp_management import MAX_DICTIONARY_ENTRIES
 
     source = tmp_path / "dictionaries.txt"
-    rows = "\n".join(f"Ліра: {n}" for n in range(1, MAX_DICTIONARY_ENTRIES + 2))
+    rows = "\n".join(f"Віра: {n}" for n in range(1, MAX_DICTIONARY_ENTRIES + 2))
     source.write_text(f"[callsigns]\n{rows}\n", encoding="utf-8")
     with pytest.raises(ValueError, match=str(MAX_DICTIONARY_ENTRIES)):
         initialize_database(tmp_path / "events.db", source)

@@ -10,11 +10,21 @@ from services.event_store import init_db as init_event_db
 from services.word_store import init_word_db, save_word_feedback
 
 
+DICTIONARY = ["вишня: 700 720", "кобза: 110 112", "віра: 68"]
+
+
 @pytest.fixture
 def db_path(tmp_path):
+    import sqlite3
+    from database import init_db as init_dictionary_db
     path = tmp_path / "runtime.db"
     init_event_db(path)
     init_word_db(path)
+    # Словники в тій самій SQLite: за ними класифікуються нові голоси.
+    init_dictionary_db(path)
+    with sqlite3.connect(path) as db:
+        db.executemany("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES ('callsigns', ?, ?)",
+                       list(enumerate(DICTIONARY, 1)))
     return path
 
 
@@ -34,11 +44,7 @@ def make_worker(db_path):
         BLACKLIST=(),
     )
 
-    callsigns = Callsigns.from_lines([
-        "липка: 700 720",
-        "наган: 110 112",
-        "ліра: 68",
-    ])
+    callsigns = Callsigns.from_lines(DICTIONARY)
 
     empty = Callsigns.from_lines([])
 
@@ -63,11 +69,11 @@ def make_worker(db_path):
 def teach_lipka(db_path):
     save_word_feedback(
         db_path, "db:1",
-        "Улыбка 700", "Липка 700",
+        "Улыбка 700", "Вишня 700",
     )
     save_word_feedback(
         db_path, "db:2",
-        "Улыбка 720", "Липка 720",
+        "Улыбка 720", "Вишня 720",
     )
 
 
@@ -77,7 +83,7 @@ def test_runtime_uses_word_rules(db_path):
 
     assert worker.process_text(
         "Улыбка 700, на связи"
-    ) == "Липка 700, на связи"
+    ) == "Вишня 700, на связи"
 
 
 def test_invalid_number_is_unchanged(db_path):
@@ -105,13 +111,13 @@ def test_word_correction_has_priority_over_qwen(
 
     assert worker.process_text(
         "Улыбка 700"
-    ) == "Липка 700"
+    ) == "Вишня 700"
 
-    llm.assert_called_once_with("Липка 700")
+    llm.assert_called_once_with("Вишня 700")
 
 
 def test_qwen_works_without_word_rule(db_path, monkeypatch):
-    llm = Mock(return_value="Ліра 68")
+    llm = Mock(return_value="Віра 68")
 
     monkeypatch.setattr(
         "core.transcriber_factory.build_llm_corrector",
@@ -120,8 +126,8 @@ def test_qwen_works_without_word_rule(db_path, monkeypatch):
 
     worker = make_worker(db_path)
 
-    assert worker.process_text("Лира 68") == "Ліра 68"
-    llm.assert_called_once_with("Лира 68")
+    assert worker.process_text("Вира 68") == "Віра 68"
+    llm.assert_called_once_with("Вира 68")
 
 
 def test_qwen_cannot_change_numbers(
@@ -144,7 +150,7 @@ def test_qwen_complements_learned_callsign(
 ):
     teach_lipka(db_path)
 
-    llm = Mock(return_value="Липка 700, я Ліра 68")
+    llm = Mock(return_value="Вишня 700, я Віра 68")
 
     monkeypatch.setattr(
         "core.transcriber_factory.build_llm_corrector",
@@ -154,11 +160,11 @@ def test_qwen_complements_learned_callsign(
     worker = make_worker(db_path)
 
     assert worker.process_text(
-        "Улыбка 700, я Лира 68"
-    ) == "Липка 700, я Ліра 68"
+        "Улыбка 700, я Вира 68"
+    ) == "Вишня 700, я Віра 68"
 
     llm.assert_called_once_with(
-        "Липка 700, я Лира 68"
+        "Вишня 700, я Вира 68"
     )
 
 
@@ -168,10 +174,10 @@ def test_qwen_complements_learned_callsign(
     "original, proposed",
     [
         ("Рухаємося на північ", "Рухаємося на південь"),
-        ("Липка 700, все чисто", "Липка 700, все тихо"),
-        ("Липка 700, я тут", "Липка 700, я там"),
-        ("Липка 700, я на свези",
-         "Липка 700, я на зв'язку"),
+        ("Вишня 700, все чисто", "Вишня 700, все тихо"),
+        ("Вишня 700, я тут", "Вишня 700, я там"),
+        ("Вишня 700, я на свези",
+         "Вишня 700, я на зв'язку"),
     ],
 )
 def test_unconfirmed_llm_rewrite_is_rejected(
@@ -195,7 +201,7 @@ def test_rejected_llm_preserves_learned_correction(
 ):
     teach_lipka(db_path)
 
-    llm = Mock(return_value="Липка 700, я там")
+    llm = Mock(return_value="Вишня 700, я там")
 
     monkeypatch.setattr(
         "core.transcriber_factory.build_llm_corrector",
@@ -206,6 +212,6 @@ def test_rejected_llm_preserves_learned_correction(
 
     assert worker.process_text(
         "Улыбка 700, я тут"
-    ) == "Липка 700, я тут"
+    ) == "Вишня 700, я тут"
 
-    llm.assert_called_once_with("Липка 700, я тут")
+    llm.assert_called_once_with("Вишня 700, я тут")

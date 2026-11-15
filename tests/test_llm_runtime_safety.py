@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from core.correction import build_llm_corrector
 
 
-def make_corrector(monkeypatch, response="Ліра 68", fail=False):
+def make_corrector(monkeypatch, response="Віра 68", fail=False):
     fake_module = ModuleType("mlx_lm")
 
     tokenizer = Mock()
@@ -37,7 +37,7 @@ def make_corrector(monkeypatch, response="Ліра 68", fail=False):
     )
 
     vocab = SimpleNamespace(
-        names={"ліра", "наган"}
+        names={"віра", "кобза"}
     )
 
     log = Mock()
@@ -58,9 +58,9 @@ def make_corrector(monkeypatch, response="Ліра 68", fail=False):
 def test_generation_limit_scales_with_message(monkeypatch):
     correct, limits, _, _ = make_corrector(monkeypatch)
 
-    assert correct("Ліра 68") == "Ліра 68"
-    assert correct("слово " * 30) == "Ліра 68"
-    assert correct("слово " * 200) == "Ліра 68"
+    assert correct("Віра 68") == "Віра 68"
+    assert correct("слово " * 30) == "Віра 68"
+    assert correct("слово " * 200) == "Віра 68"
 
     assert limits[0] == 64
     assert 64 < limits[1] < 512
@@ -73,7 +73,7 @@ def test_generation_error_returns_original(monkeypatch):
         fail=True,
     )
 
-    original = "Ліпка 700, прийом"
+    original = "Вішня 700, прийом"
 
     assert correct(original) == original
 
@@ -100,7 +100,7 @@ def test_tokenizer_error_returns_original(monkeypatch):
         "Tokenizer failure"
     )
 
-    original = "Наган 110"
+    original = "Кобза 110"
 
     assert correct(original) == original
 

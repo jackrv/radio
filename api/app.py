@@ -15,6 +15,7 @@ from services.miniapp_auth import (
 from services.user_store import PERMISSIONS, require_permission
 from services.miniapp_correction_editor import (
     CorrectionConflict,
+    decide_learning,
     load_edit_draft,
     save_edit_draft,
 )
@@ -50,6 +51,14 @@ class CorrectionDraftUpdate(BaseModel):
     fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     expected_text: str = Field(max_length=5000)
     corrected_text: str = Field(min_length=1, max_length=5000)
+
+
+class LearningDecision(BaseModel):
+    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
+    expected_text: str = Field(max_length=5000)
+    original: str = Field(min_length=1, max_length=200)
+    corrected: str = Field(min_length=1, max_length=200)
+    decision: str = Field(pattern=r"^(?:confirmed|rejected|pending)$")
 
 
 def create_app(db_path, bot_token):
@@ -208,6 +217,29 @@ def create_app(db_path, bot_token):
             raise HTTPException(status_code=404, detail="Подію не знайдено") from None
         except ValueError:
             raise HTTPException(status_code=422, detail="Некоректний текст") from None
+        except sqlite3.Error:
+            raise HTTPException(status_code=503, detail="База недоступна") from None
+
+    @app.put("/api/corrections/learning")
+    def decide_correction_learning(
+        payload: LearningDecision,
+        user=Depends(current_user),
+    ):
+        require_settings_permission(user, "corrections.write")
+        try:
+            return decide_learning(
+                db_path, payload.fix_id, payload.expected_text,
+                payload.original, payload.corrected, payload.decision,
+                actor_id=user["user_id"],
+            )
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="Недостатньо прав") from None
+        except CorrectionConflict:
+            raise HTTPException(status_code=409, detail="Текст уже змінено. Відкрий редактор знову.") from None
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Некоректне рішення") from None
         except sqlite3.Error:
             raise HTTPException(status_code=503, detail="База недоступна") from None
 

@@ -5,7 +5,7 @@ import numpy as np
 from core.transcriber import Transcriber
 
 
-def make_transcriber(text="Липка 700", blacklist=()):
+def make_transcriber(text="Вишня 700", blacklist=()):
     recognizer = Mock()
     recognizer.transcribe.return_value = {"text": text}
     recognizer.extract_text.return_value = text
@@ -47,9 +47,9 @@ def test_valid_segment():
     worker.process_segment(pcm)
 
     recognizer.transcribe.assert_called_once()
-    process_text.assert_called_once_with("Липка 700")
+    process_text.assert_called_once_with("Вишня 700")
     processor.process.assert_called_once_with(
-        "Исправлено: Липка 700", pcm, raw_text="Липка 700"
+        "Исправлено: Вишня 700", pcm, raw_text="Вишня 700"
     )
 
 
@@ -104,7 +104,7 @@ def test_whisper_error_does_not_stop_processing():
 
     recognizer.transcribe.side_effect = [
         RuntimeError("Whisper temporary error"),
-        {"text": "Липка 700"},
+        {"text": "Вишня 700"},
     ]
 
     # Первый сегмент вызывает ошибку Whisper.
@@ -116,10 +116,10 @@ def test_whisper_error_does_not_stop_processing():
 
     assert recognizer.transcribe.call_count == 2
 
-    process_text.assert_called_once_with("Липка 700")
+    process_text.assert_called_once_with("Вишня 700")
 
     processor.process.assert_called_once_with(
-        "Исправлено: Липка 700", pcm, raw_text="Липка 700"
+        "Исправлено: Вишня 700", pcm, raw_text="Вишня 700"
     )
 
     worker.log.exception.assert_called_once()
@@ -138,7 +138,7 @@ def test_qwen_error_falls_back_to_whisper_text():
 
     # Сохраняем исходный результат Whisper.
     processor.process.assert_called_once_with(
-        "Липка 700", pcm, raw_text="Липка 700"
+        "Вишня 700", pcm, raw_text="Вишня 700"
     )
 
     # Помилка должна попасть в журнал.
@@ -164,7 +164,7 @@ def test_event_processor_error_does_not_stop_transcriber():
     assert processor.process.call_count == 2
 
     processor.process.assert_called_with(
-        "Исправлено: Липка 700", pcm, raw_text="Липка 700"
+        "Исправлено: Вишня 700", pcm, raw_text="Вишня 700"
     )
 
     worker.log.exception.assert_called_once()

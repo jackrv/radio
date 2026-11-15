@@ -28,7 +28,7 @@ def wav(samples=None):
 @pytest.fixture
 def local(setup,tmp_path):
     _,path=setup
-    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",diagnostics_path=tmp_path/"diagnostics.json")
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",diagnostics_path=tmp_path/"diagnostics.json",eval_dir=tmp_path/"eval")
     with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",12345)) as client:
         assert client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN}).status_code==204
         yield client,path,tmp_path
@@ -152,3 +152,162 @@ def test_real_ffmpeg_conversion_creates_bounded_readable_pcm_wav():
     converted=ogg_to_wav(encoded)
     _,duration=validate_wav(converted)
     assert 1.5<duration<2
+
+
+# ---------- Доступ без перезапуску й розширена панель ----------
+
+def test_session_survives_dashboard_restart_with_same_key(setup,tmp_path):
+    _,path=setup
+    first=create_dashboard(path,KEY,samples_dir=tmp_path/"samples")
+    with TestClient(first,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        cookie=client.cookies.get("radio345_local_admin")
+        assert "Max-Age=2592000" in client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN}).headers["set-cookie"]
+    restarted=create_dashboard(path,KEY,samples_dir=tmp_path/"samples")
+    with TestClient(restarted,base_url=ORIGIN,client=("127.0.0.1",1),cookies={"radio345_local_admin":cookie}) as client:
+        assert client.get("/api/overview").status_code==200, "закладка працює після перезапуску панелі"
+    other=create_dashboard(path,"y"*43,samples_dir=tmp_path/"samples")
+    with TestClient(other,base_url=ORIGIN,client=("127.0.0.1",1),cookies={"radio345_local_admin":cookie}) as client:
+        assert client.get("/api/overview").status_code==401, "новий ключ анулює старі сесії"
+
+
+def test_overview_has_everything_for_home_page(local):
+    client,path,_=local
+    from services.event_store import save_event
+    save_event("дуб","","","","Дуб 700",path)
+    data=client.get("/api/overview").json()
+    assert data["overview"]["events"]==1
+    assert sum(data["events_by_hour"]["counts"])==1 and len(data["events_by_hour"]["counts"])==24
+    assert {u["role"] for u in data["users"]}>={"admin","editor","viewer"}
+    assert all(set(u)>={"user_id","role","enabled","name","mode"} for u in data["users"])
+    assert data["backups"]==[] and "telegram_sync" in data and "diagnostics" in data
+
+
+def test_phrases_audio_and_marking_notification_from_dashboard(local):
+    client,path,tmp=local
+    from services.telegram_phrase_store import register_phrase
+    from services.telegram_media_store import remember_voice
+    register_phrase(path,"b"*32,"дзинь")
+    fix="mem:"+"b"*32
+    remember_voice(path,fix,"voice-id")
+    items=client.get("/api/phrases?q=дзинь").json()["items"]
+    assert items[0]["fix_id"]==fix and items[0]["has_audio"] is True
+    with patch("api.local_dashboard.download_voice",return_value=b"OggS") as download:
+        audio=client.get(f"/api/phrases/audio?fix_id={fix}")
+        assert audio.status_code==200 and audio.content==b"OggS" and audio.headers["content-type"]=="audio/ogg"
+        bad=client.put("/api/phrases/notification-sample",json={"fix_id":fix,"confirmed_isolated":False},headers={"Origin":ORIGIN})
+        assert bad.status_code==422
+        with patch("services.notification_samples.ogg_to_wav",return_value=wav()):
+            ok=client.put("/api/phrases/notification-sample",json={"fix_id":fix,"confirmed_isolated":True},headers={"Origin":ORIGIN})
+        assert ok.status_code==200
+        assert download.call_args.args[1]=="voice-id"
+    assert len(list_samples(tmp/"samples")["items"])==1
+    assert client.get("/api/phrases/audio?fix_id=mem:"+"c"*32).status_code==404
+    assert client.get("/api/phrases/audio?fix_id=../../etc").status_code==422
+
+
+def test_manual_backup_from_dashboard(setup,tmp_path):
+    _,path=setup
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",backup_dir=tmp_path/"backups")
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        assert client.post("/api/backups").status_code==403, "запис без Origin заборонено"
+        result=client.post("/api/backups",headers={"Origin":ORIGIN}).json()
+        assert result["name"].startswith("events-auto-") and len(result["items"])==1
+        assert client.get("/api/backups").json()["items"][0]["name"]==result["name"]
+
+
+def test_events_by_hour_buckets(tmp_path):
+    import sqlite3
+    from api.local_dashboard import events_by_hour
+    from services.event_store import init_db
+    db=tmp_path/"e.db"; init_db(db)
+    now=1_800_001_800  # 30 хв після початку години
+    with sqlite3.connect(db) as conn:
+        for offset in (0, 60, 3600*5, 3600*30):
+            conn.execute("INSERT INTO radio_events (ts,text) VALUES (datetime(?, 'unixepoch'),'x')",(now-offset,))
+    series=events_by_hour(db,now=now)
+    assert series["counts"][-1]==2 and series["counts"][-6]==1 and sum(series["counts"])==3
+
+
+def _phrase_with_voice(path, token, text):
+    from services.telegram_phrase_store import register_phrase
+    from services.telegram_media_store import remember_voice
+    register_phrase(path, token, text)
+    fix = "mem:" + token
+    remember_voice(path, fix, "voice-" + token[:4])
+    return fix
+
+
+def test_labels_from_phrases_feed_filter_evaluation(local):
+    client,path,tmp=local
+    import numpy as np
+    from tests.test_notification_filter import phone_sound, voice_like
+    notification=_phrase_with_voice(path,"d"*32,"дзинь")
+    speech=_phrase_with_voice(path,"e"*32,"вишня")
+    add_sample(tmp/"samples",wav(phone_sound()),confirmed_isolated=True)
+    clips={notification:wav(segment(phone_sound()*0.4)),
+           speech:wav(np.concatenate((np.zeros(4000),voice_like(1.5)*0.2,np.zeros(8000))))}
+    with patch("api.local_dashboard.download_voice",side_effect=lambda token,file_id:file_id.encode()):
+        for fix,label in ((notification,"notification"),(speech,"speech")):
+            with patch("services.notification_samples.ogg_to_wav",return_value=clips[fix]) as convert:
+                result=client.put("/api/phrases/label",json={"fix_id":fix,"label":label},headers={"Origin":ORIGIN})
+            assert result.status_code==200 and result.json()["label"]==label
+            assert convert.call_args.kwargs["max_seconds"]==10
+    assert client.put("/api/phrases/label",json={"fix_id":speech,"label":"bogus"},headers={"Origin":ORIGIN}).status_code==422
+    assert client.put("/api/phrases/label",json={"fix_id":speech,"label":"speech"}).status_code==403, "без Origin запис заборонено"
+    labels={i["fix_id"]:i["label"] for i in client.get("/api/phrases").json()["items"]}
+    assert labels[notification]=="notification" and labels[speech]=="speech"
+    state=client.get("/api/notification-filter").json()
+    assert state["labels"]=={"notification":1,"speech":1} and state["samples"]==1
+    assert state["spectral"]["mode"] in ("shadow","active","off")
+    report=client.get("/api/notification-filter/evaluation").json()
+    by_fix={i["fix_id"]:i for i in report["items"]}
+    assert by_fix[notification]["candidate"] is True and by_fix[speech]["candidate"] is False
+    assert report["summary"]["status"]=="need_more"
+    removed=client.put("/api/phrases/label",json={"fix_id":speech,"label":None},headers={"Origin":ORIGIN})
+    assert removed.json()["label"] is None
+    assert client.get("/api/notification-filter").json()["labels"]=={"notification":1,"speech":0}
+    files=[p for p in (tmp/"eval").iterdir() if p.suffix==".wav"]
+    assert len(files)==1 and all(oct(p.stat().st_mode & 0o777)=="0o600" for p in files)
+
+
+def test_too_long_phrase_cannot_be_labelled(local):
+    client,path,_=local
+    fix=_phrase_with_voice(path,"f"*32,"довга")
+    with patch("api.local_dashboard.download_voice",return_value=b"OggS"), \
+         patch("services.notification_samples.ogg_to_wav",side_effect=ValueError("Зразок має тривати не більше 10 секунд")):
+        result=client.put("/api/phrases/label",json={"fix_id":fix,"label":"speech"},headers={"Origin":ORIGIN})
+    assert result.status_code==422 and "10 с" in result.json()["detail"]
+
+
+def test_spectral_observations_reach_filter_page_and_phrases(local):
+    client,path,tmp=local
+    import time as clock
+    fix=_phrase_with_voice(path,"a"*32,"дзінь")
+    created=[i for i in client.get("/api/phrases").json()["items"] if i["fix_id"]==fix][0]["created_at"]
+    from api.local_dashboard import _utc_seconds
+    ready=_utc_seconds(created)+0.4
+    row={"segment_id":7,"processing_started_unix_s":ready-1,"text_ready_unix_s":ready,"audio_duration_s":1.2,
+         "status":"ready","notification_score":0.97,"notification_outside_s":0.0,"notification_extra":0.001,
+         "notification_candidate":True,"text":"private"}
+    far={**row,"segment_id":8,"text_ready_unix_s":ready-600,"notification_score":0.6,"notification_candidate":False}
+    (tmp/"diagnostics.json").write_text(json.dumps({"schema":1,"updated_at":clock.time(),
+        "counters":{"asr.spectral.scored":5,"asr.spectral.candidate":1,"asr.spectral.candidate.ready":1,"asr.whisper":3},
+        "notification_spectral":{"buckets":[0]*19+[1],"recent":[far,row]}}))
+    state=client.get("/api/notification-filter").json()
+    assert state["counters"]=={"asr.spectral.scored":5,"asr.spectral.candidate":1,"asr.spectral.candidate.ready":1}
+    assert state["observed"]["buckets"][-1]==1 and len(state["observed"]["recent"])==2
+    assert state["observed"]["recent"][1].get("text") is None, "довільні рядки не проходять білий список"
+    item=[i for i in client.get("/api/phrases").json()["items"] if i["fix_id"]==fix][0]
+    assert item["spectral"]=={"score":0.97,"outside_s":0.0,"extra_ratio":0.001,"candidate":True}
+
+
+def test_each_spectral_observation_labels_at_most_one_phrase():
+    from api.local_dashboard import attach_spectral
+    items=[{"fix_id":"db:1","created_at":"2026-11-15 10:00:00"},{"fix_id":"db:2","created_at":"2026-11-15 10:00:01"},
+           {"fix_id":"db:3","created_at":"2026-11-15 11:00:00"}]
+    from api.local_dashboard import _utc_seconds
+    base=_utc_seconds("2026-11-15 10:00:01")
+    attach_spectral(items,[{"text_ready_unix_s":base+0.4,"notification_score":0.9,"notification_candidate":True}])
+    assert "spectral" not in items[0] and items[1]["spectral"]["score"]==0.9 and "spectral" not in items[2]

@@ -23,8 +23,8 @@ def test_migration_preserves_old_events(tmp_path):
                 (callsigns, commands, recipient, sender, text)
             VALUES (?, ?, ?, ?, ?)
         """, (
-            "липка 700", "", "", "",
-            "Липка 700, прийом"
+            "вишня 700", "", "", "",
+            "Вишня 700, прийом"
         ))
 
     init_db(path)
@@ -37,7 +37,7 @@ def test_migration_preserves_old_events(tmp_path):
         """).fetchall()
 
     assert rows == [
-        ("липка 700", "Липка 700, прийом", None)
+        ("вишня 700", "Вишня 700, прийом", None)
     ]
 
 
@@ -46,13 +46,13 @@ def test_save_event_with_original_whisper_text(tmp_path):
     init_db(path)
 
     event_id = save_event(
-        "липка 700",
+        "вишня 700",
         "",
         "",
         "",
-        "Липка 700, прийом",
+        "Вишня 700, прийом",
         path,
-        raw_text="Ліпка 700, прийом",
+        raw_text="Вішня 700, прийом",
     )
 
     with sqlite3.connect(path) as db:
@@ -63,6 +63,6 @@ def test_save_event_with_original_whisper_text(tmp_path):
         """, (event_id,)).fetchone()
 
     assert row == (
-        "Липка 700, прийом",
-        "Ліпка 700, прийом",
+        "Вишня 700, прийом",
+        "Вішня 700, прийом",
     )

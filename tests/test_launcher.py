@@ -81,8 +81,8 @@ def test_ctrl_c_stops_services_in_reverse_order_without_publishing(mocked_servic
     monkeypatch.setattr(launcher.time, "sleep", Mock(side_effect=KeyboardInterrupt))
     previous = signal.getsignal(signal.SIGINT)
     assert launcher.main() == 0
-    assert [item.name for item in created] == ["api", "ngrok", "radio"]
-    assert stopped == ["radio", "ngrok", "api"]
+    assert [item.name for item in created] == ["api", "ngrok", "admin", "radio"]
+    assert stopped == ["radio", "admin", "ngrok", "api"]
     assert signal.getsignal(signal.SIGINT) is previous
     publish.assert_not_called()
 
@@ -128,7 +128,7 @@ def test_stop_continues_if_one_service_cannot_stop(mocked_services, monkeypatch)
 
     monkeypatch.setattr(launcher.time, "sleep", interrupt)
     assert launcher.main() == 0
-    assert stopped == ["ngrok", "api"]
+    assert stopped == ["admin", "ngrok", "api"]
 
 
 def test_process_stop_escalates_only_its_own_group(monkeypatch):
@@ -171,9 +171,31 @@ def test_local_admin_is_managed_and_stops_before_ngrok(mocked_services,monkeypat
     publish.assert_not_called()
 
 
-def test_busy_local_admin_port_does_not_start_any_services(mocked_services,monkeypatch):
+def test_already_running_local_admin_is_reused_not_blocking(mocked_services,monkeypatch):
     created,stopped,_=mocked_services
-    monkeypatch.setattr(sys,"argv",["start_radio345.py","--local-admin"])
     monkeypatch.setattr(launcher,"port_busy",lambda port:port==8766)
-    assert launcher.main()==2
-    assert not created and not stopped
+    monkeypatch.setattr(launcher.time,"sleep",Mock(side_effect=KeyboardInterrupt))
+    assert launcher.main()==0
+    assert [item.name for item in created]==["api","ngrok","radio"], "окрема панель уже працює"
+
+
+def test_local_admin_can_be_disabled(mocked_services,monkeypatch):
+    created,_,_=mocked_services
+    monkeypatch.setattr(sys,"argv",["start_radio345.py","--no-local-admin"])
+    monkeypatch.setattr(launcher.time,"sleep",Mock(side_effect=KeyboardInterrupt))
+    assert launcher.main()==0
+    assert "admin" not in [item.name for item in created]
+
+
+def test_crashed_local_admin_never_stops_reception(mocked_services,monkeypatch):
+    created,stopped,_=mocked_services
+    ticks=[0]
+    def sleep(_):
+        ticks[0]+=1
+        if ticks[0]==1:
+            [item for item in created if item.name=="admin"][0].process.poll.return_value=1
+        if ticks[0]==3:
+            raise KeyboardInterrupt
+    monkeypatch.setattr(launcher.time,"sleep",sleep)
+    assert launcher.main()==0, "падіння панелі не завершує запускатель з помилкою"
+    assert "radio" in stopped and "admin" not in stopped

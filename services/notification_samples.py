@@ -100,13 +100,13 @@ def delete_sample(directory, sample_id):
     return {"deleted":True,"requires_restart":True}
 
 
-def ogg_to_wav(content):
+def ogg_to_wav(content, max_seconds=MAX_RECORDING_S):
     # Resource limits and fixed format; never construct a command from user input.
-    raw = subprocess.run(["ffmpeg","-loglevel","error","-i","pipe:0","-t","5.1",
+    raw = subprocess.run(["ffmpeg","-loglevel","error","-i","pipe:0","-t",f"{max_seconds + 0.1:.1f}",
         "-ac","1","-ar","16000","-f","s16le","pipe:1"], input=content,
         capture_output=True, check=True, timeout=15).stdout
-    if not 0 < len(raw) <= 16000*5*2:
-        raise ValueError("Зразок має тривати не більше 5 секунд")
+    if not 0 < len(raw) <= round(16000*max_seconds)*2:
+        raise ValueError(f"Зразок має тривати не більше {max_seconds:g} секунд")
     output = io.BytesIO()
     with wave.open(output,"wb") as audio:
         audio.setnchannels(1); audio.setsampwidth(2); audio.setframerate(16000); audio.writeframes(raw)

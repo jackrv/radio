@@ -131,22 +131,69 @@ def parse(list_type, lines):
     return result, errors
 
 
-def _dictionary_names(db):
+KIND_NAMES = {"callsigns": "позивних", "commands": "команд", "telegram": "Telegram"}
+
+
+def _dictionaries(db):
+    """Увімкнені словники: {тип: Callsigns}."""
     if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entries'").fetchone():
-        return set(), set()
+        return {}
     groups = {}
     for kind, line in db.execute("SELECT dictionary_type, raw_line FROM dictionary_entries WHERE enabled = 1"):
         groups.setdefault(kind, []).append(line)
-    callsigns = set(Callsigns.from_lines(groups.get("callsigns", [])).names)
+    return {kind: Callsigns.from_lines(lines) for kind, lines in groups.items()}
+
+
+def _dictionary_names(db):
+    dictionaries = _dictionaries(db)
+    callsigns = set(dictionaries["callsigns"].names) if "callsigns" in dictionaries else set()
     names = set(callsigns)
-    for kind, lines in groups.items():
-        names |= set(Callsigns.from_lines(lines).names)
+    for dictionary in dictionaries.values():
+        names |= set(dictionary.names)
     return names, callsigns
+
+
+def _callsign_alias_checks(dictionaries, heard, name):
+    """Алиас позивного: (помилки, попередження).
+
+    Позивний переписувати не можна. Слово з іншого словника можна, лише якщо
+    алиас веде до позивного з номерами й ці номери не перетинаються: тоді
+    «злива 222» лишається командою, а «злива 34» стає позивним.
+    """
+    errors, warnings = [], []
+    callsigns = dictionaries.get("callsigns")
+    if callsigns is None or name not in callsigns.names:
+        warnings.append(f"«{name}» немає у словнику позивних — алиас не діятиме, доки його не додати")
+        return errors, warnings
+    if heard in callsigns.names:
+        errors.append(f"«{heard}» — правильне словникове ім’я, його не можна переписувати")
+        return errors, warnings
+    without_number = name in callsigns.standalone or name in callsigns.any_number
+    for kind, dictionary in dictionaries.items():
+        if kind == "callsigns" or heard not in dictionary.names:
+            continue
+        where = KIND_NAMES.get(kind, kind)
+        if without_number:
+            errors.append(f"«{heard}» є у словнику {where}, а «{name}» може бути без номера — "
+                          "алиас переписував би це слово скрізь")
+            continue
+        overlap = sorted(dictionary.numbers.get(heard, set()) & callsigns.numbers[name], key=int)
+        if heard in dictionary.any_number:
+            overlap = ["будь-який"]
+        if overlap:
+            errors.append(f"«{heard}» у словнику {where} має ті самі номери, що й «{name}»: {', '.join(overlap[:5])}")
+        else:
+            warnings.append(f"«{heard}» також є у словнику {where}; алиас діє лише перед номерами «{name}», "
+                            "решта значень не зміниться")
+    if name in callsigns.standalone and not errors:
+        warnings.append(f"«{name}» — позивний без номера: «{heard}» вважатиметься ним у будь-якій фразі")
+    return errors, warnings
 
 
 def check_against_dictionaries(db, list_type, parsed):
     """Захист позивних і команд: помилки (заборонено) і попередження."""
-    names, callsigns = _dictionary_names(db)
+    dictionaries = _dictionaries(db)
+    names = set().union(*(set(d.names) for d in dictionaries.values()))
     errors, warnings = [], []
     if list_type in ("blacklist", "short_garbage"):
         for value in parsed:
@@ -160,10 +207,9 @@ def check_against_dictionaries(db, list_type, parsed):
                     errors.append(f"«{variant}» — правильне словникове ім’я, його не можна переписувати")
     else:
         for heard, name in parsed.items():
-            if heard in names:
-                errors.append(f"«{heard}» — правильне словникове ім’я, його не можна переписувати")
-            if name not in callsigns:
-                warnings.append(f"«{name}» немає у словнику позивних — алиас не діятиме, доки його не додати")
+            e, w = _callsign_alias_checks(dictionaries, heard, name)
+            errors += e
+            warnings += w
     return errors, warnings
 
 

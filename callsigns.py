@@ -201,7 +201,9 @@ class Callsigns:
                 continue
             alias = CALLSIGN_ALIASES.get(val)
 
-            if alias and alias in self.numbers:
+            # Алиас веде до позивного з номерами (тоді потрібен дозволений номер далі)
+            # або до позивного без номера (тоді діє на саме слово).
+            if alias and (alias in self.numbers or alias in self.standalone or alias in self.any_number):
                 best = (alias.translate(FOLD), 100, 0)
             else:
                 best = process.extractOne(

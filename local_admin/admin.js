@@ -390,7 +390,7 @@
     blacklist: ["Фрази-галюцинації Whisper", "Відкидається лише фраза, що повністю збігається з рядком (регістр і пунктуація не важливі). Наприклад: «дякую за перегляд»."],
     short_garbage: ["Короткий шум", "Короткі хибні фрагменти. Відкидаються, лише якщо у фразі немає позивних, команд і слів спостереження."],
     aliases: ["Алиаси тексту", "Формат «правильне: варіант, варіант». Варіант замінюється на правильне написання перед пошуком позивних і команд, наприклад «наган: на ган, ган»."],
-    callsign_aliases: ["Алиаси позивних", "Формат «позивний: почутий варіант». Діє лише для пошуку позивного з номером; позивний має бути у словнику."],
+    callsign_aliases: ["Алиаси позивних", "Формат «позивний: почутий варіант». Для позивного з номерами діє лише перед дозволеним номером; для позивного без номера — на саме слово. Позивний має бути у словнику."],
   };
   let textRevision = null;
 
@@ -437,8 +437,60 @@
       }));
       const actions = el("div", "list-actions"); actions.append(save, status);
       panel.append(el("h2", "", title), el("p", "muted small", help), area, actions, warnings);
+      if (type === "callsign_aliases") panel.append(aliasCandidates(list.entries));
       box.append(panel);
     }
+  }
+
+  // Підказка: як Whisper чув позивні в розмічених записах. Додає лише оператор.
+  const CANDIDATE_FLAGS = {
+    already_added: "вже додано",
+    already_matched: "нечіткий пошук уже ловить",
+    dictionary_word: "словникове слово — не можна",
+    function_word: "службове або коротке слово — небезпечно",
+    ambiguous: "веде до різних позивних",
+    number_unknown: "номера немає у словнику",
+    other_dictionary: "є в іншому словнику — діятиме лише перед номерами позивного",
+    no_number: "позивний без номера — діятиме на кожне це слово",
+  };
+  function aliasCandidates(entries) {
+    const wrap = el("div", "alias-candidates");
+    const load = el("button", "ghost", "Кандидати з архіву");
+    const out = el("div");
+    load.addEventListener("click", () => action(async () => {
+      const data = await request("/api/text-lists/callsign-alias-candidates");
+      out.replaceChildren();
+      if (!data.items.length) { out.append(el("p", "muted small", `Розмічених записів мовлення: ${data.records}. Кандидатів немає.`)); return; }
+      out.append(el("p", "muted small", `З ${data.records} розмічених записів: слово Whisper перед тим самим номером, що й позивний у правильному тексті. `
+        + "Додавайте лише варіанти, які не можуть бути звичайним словом."));
+      const table = el("table"), head = el("tr");
+      for (const h of ["Почуто", "Позивний", "Разів", "Схожість", "Примітки", ""]) head.append(el("th", "", h));
+      table.append(head);
+      for (const c of data.items) {
+        const row = el("tr");
+        const flags = el("td", "small");
+        for (const f of c.flags) flags.append(el("span", "badge", CANDIDATE_FLAGS[f] || f), " ");
+        const cell = el("td");
+        if (c.addable) {
+          const add = el("button", "ghost", "Додати");
+          add.addEventListener("click", () => action(async () => {
+            const next = entries.concat([{ raw_line: `${c.callsign}: ${c.heard}`, enabled: true }]);
+            const r = await request("/api/text-lists/callsign_aliases", "PUT", { entries: next, expected_revision: textRevision });
+            textRevision = r.revision;
+            note(`Додано «${c.callsign}: ${c.heard}» (ревізія ${r.revision}).`);
+            await texts();
+          }));
+          cell.append(add);
+        }
+        row.append(el("td", "", c.heard), el("td", "", c.callsign), el("td", "", String(c.count)),
+                   el("td", "", `${c.similarity}%`), flags, cell);
+        table.append(row);
+      }
+      const scroll = el("div", "table-wrap"); scroll.append(table);
+      out.append(scroll);
+    }));
+    wrap.append(load, out);
+    return wrap;
   }
 
   async function settings() {

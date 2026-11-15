@@ -361,3 +361,22 @@ def test_review_accepts_room_label_and_multiple_messages(local):
     assert ok.status_code==200 and ok.json()["multiple_messages"]==1
     room=client.put(url,json={"reference":"","label":"room","expected_revision":1},headers={"Origin":ORIGIN})
     assert room.json()["label"]=="room" and room.json()["multiple_messages"] is None
+
+
+def test_callsign_alias_candidates_read_archive_without_writing(local):
+    client,path,tmp=local
+    import sqlite3
+    from services.recordings import RecordingStore
+    with sqlite3.connect(path) as db:
+        db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
+        db.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
+                       [(1,"вишня: 210"),(2,"клен: 300")])
+    store=RecordingStore(tmp/"recordings")
+    one=store.save(pcm(segment()),16000,{"status":"ready","raw_text":"гуща 210, прийом"})
+    noise=store.save(pcm(segment()),16000,{"status":"ready","raw_text":"гуща 210"})
+    store.review(one,"Вишня 210, прийом","speech",0)
+    store.review(noise,"","noise",0)
+    before=client.get("/api/text-lists").json()["revision"]
+    data=client.get("/api/text-lists/callsign-alias-candidates").json()
+    assert data["records"]==1 and [(c["heard"],c["callsign"],c["count"]) for c in data["items"]]==[("гуща","вишня",1)]
+    assert client.get("/api/text-lists").json()["revision"]==before

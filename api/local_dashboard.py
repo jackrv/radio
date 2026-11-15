@@ -487,6 +487,25 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                              "updated_at": diagnostics.get("updated_at"), "receiver": read_receiver_status(db_path)}
         return result
 
+    @app.get("/api/text-lists/callsign-alias-candidates")
+    def callsign_alias_candidates(admin=Depends(actor)):
+        """Підказка: почуті Whisper варіанти позивних із розмічених записів. Нічого не записує."""
+        from callsigns import Callsigns
+        from services.alias_candidates import collect
+        from services.text_lists import _dictionary_names, ensure_tables, load_active, sync_aliases
+        with get_db(db_path) as db:
+            ensure_tables(db)
+            sync_aliases(db)
+            _, active = load_active(db)
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():
+                return {"items": [], "records": 0}
+            lines = [line for (line,) in db.execute("SELECT raw_line FROM dictionary_entries "
+                     "WHERE enabled=1 AND dictionary_type='callsigns' ORDER BY line_number")]
+            all_names, _ = _dictionary_names(db)
+        callsigns = Callsigns.from_lines(lines)
+        records = recordings.labelled_speech()
+        return {"items": collect(records, callsigns, all_names, active["callsign_aliases"]), "records": len(records)}
+
     @app.put("/api/text-lists/{list_type}")
     def text_list_update(list_type: str, payload: TextListUpdate, admin=Depends(actor)):
         from services.text_lists import LIST_TYPES, TextListConflict, write_list

@@ -229,6 +229,14 @@ class RecordingStore:
             raise LookupError("Запис не знайдено")
         return self.decode(row)
 
+    def labelled_speech(self):
+        """Розмічене мовлення: правильний текст оператора й сирий текст Whisper."""
+        with self.connect() as db:
+            rows = db.execute("SELECT id, reference, data FROM recordings "
+                              "WHERE reference IS NOT NULL AND label IN ('speech','unclear')").fetchall()
+        return [{"id": row["id"], "reference": row["reference"],
+                 "raw_text": json.loads(row["data"]).get("raw_text", "")} for row in rows]
+
     def audio(self, record_id):
         self.get(record_id)
         path = self.root / (record_id + ".wav")

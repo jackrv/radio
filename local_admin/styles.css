@@ -128,6 +128,7 @@ iframe { display: block; width: 100%; height: 760px; border: 1px solid var(--bor
 
 textarea.list-editor { width: 100%; min-height: 190px; resize: vertical; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
 .list-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.alias-candidates { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .warn-list { margin: 6px 0 0; padding-left: 18px; color: var(--warn); font-size: 12px; }
 
 [data-panel="recordings"] audio, [data-panel="recordings"] textarea { width:100%; }

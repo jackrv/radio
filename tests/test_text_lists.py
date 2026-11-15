@@ -91,6 +91,20 @@ def test_unknown_callsign_alias_only_warns(db_path):
     assert result["saved"] and "немає у словнику" in result["warnings"][0]
 
 
+def test_other_dictionary_word_needs_numbered_callsign_without_shared_numbers(db_path):
+    with sqlite3.connect(db_path) as db:
+        db.executemany("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES (?, ?, ?)",
+                       [("callsigns", 3, "дуб"), ("callsigns", 4, "вишня: 210"), ("commands", 2, "злива 222"), ("commands", 3, "грім 210")])
+    result = save(db_path, "callsign_aliases", "вишня: злива")
+    assert result["saved"] and "лише перед номерами «вишня»" in result["warnings"][0]
+    with pytest.raises(ValueError, match="ті самі номери, що й «вишня»: 210"):
+        save(db_path, "callsign_aliases", "вишня: грім")
+    with pytest.raises(ValueError, match="переписував би це слово скрізь"):
+        save(db_path, "callsign_aliases", "дуб: злива")
+    standalone = save(db_path, "callsign_aliases", "дуб: дубок")
+    assert "у будь-якій фразі" in standalone["warnings"][0]
+
+
 def test_disabled_lines_are_kept_but_not_applied(db_path):
     write_list(db_path, "blacklist", [{"raw_line": "стара фраза", "enabled": False},
                                       {"raw_line": "нова фраза", "enabled": True}], 1)

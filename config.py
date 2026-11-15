@@ -77,7 +77,10 @@ SHORT_GARBAGE = {
 RECORD_AUDIO = True
 RECORDINGS_DIR = BASE_DIR / ".local-recordings"
 RECORDINGS_RETENTION_DAYS = 7
-RECORDINGS_MAX_BYTES = 1024 * 1024 * 1024
+RECORDINGS_MAX_BYTES = 2 * 1024 * 1024 * 1024
+# Короткі фрагменти, відкинуті VAD (переважно клавіатура й клацання), не зберігаються:
+# вони займали майже половину архіву й майже не потрібні для розмітки.
+RECORDINGS_SAVE_VAD_SHORT = False
 # Frozen sample for offline experiments (python -m tools.asr_lab queue).
 # The audio archive UI uses live queues from SQLite, independently of this file.
 REVIEW_QUEUE_PATH = BASE_DIR / ".local-experiments" / "review-queue.json"

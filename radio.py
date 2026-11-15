@@ -274,7 +274,8 @@ def main():
         on_suspension=report_suspension,
         recognition_health=recognition_health,
         on_recognition_problem=report_recognition,
-        on_vad_discard=recording_archive.vad_short if recording_archive else None,
+        on_vad_discard=(recording_archive.vad_short
+                        if recording_archive and getattr(config, "RECORDINGS_SAVE_VAD_SHORT", True) else None),
     )
     # Щоденна перевірена копія бази в .local-backups/ (останні 7).
     backup_stop = start_backup_scheduler(DB_PATH, config.BASE_DIR / ".local-backups", log=log)

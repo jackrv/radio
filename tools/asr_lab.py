@@ -369,14 +369,17 @@ class Lab:
         from core.recognition import WhisperRecognizer
         self.recognizer = WhisperRecognizer(self.model, self.language, self.sample_rate, self.prompt, self.log)
         self.llm = None
-        if args.variant in ("qwen", "pipeline"):
+        if args.variant == "qwen" and getattr(args, "llm", "on") == "off":
+            raise SystemExit("--llm off має сенс лише для --variant pipeline")
+        if args.variant in ("qwen", "pipeline") and getattr(args, "llm", "on") == "on":
             from core.correction import build_llm_corrector
             callsigns, commands, _ = self.dictionaries
             self.llm = build_llm_corrector(True, config.LLM_REPO, callsigns, commands, self.log)
 
     def params(self):
         import config
-        return {"variant": self.args.variant, "model": self.model, "language": self.language or "auto",
+        return {"variant": self.args.variant, "llm": getattr(self.args, "llm", "on") if self.args.variant in ("qwen", "pipeline") else None,
+                "llm_repo": config.LLM_REPO if self.llm else None, "model": self.model, "language": self.language or "auto",
                 "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "prompt_text": self.prompt,
                 "prompt_tokens": prompt_token_count(self.prompt, self.language),
                 "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
@@ -680,6 +683,8 @@ def main(argv=None):
                    help="dictionary — як у приймачі; phrases — лише звороти; combined — звороти + словник")
     r.add_argument("--prompt-file", help="власний текст зворотів для phrases/combined (без номерів)")
     r.add_argument("--normalize", choices=("on", "off"), default="on")
+    r.add_argument("--llm", choices=("on", "off"), default="on",
+                   help="off: pipeline без Qwen (решта обробки як у приймачі)")
     r.add_argument("--min-rms", type=float, default=None, help="поріг RMS (типово — без відсікання)")
     r.add_argument("--model", help="інша модель Whisper (типово — з config.py)")
     r.add_argument("--seed", type=int, default=345, help="зерно для випадкового відкату температури")

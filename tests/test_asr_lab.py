@@ -229,3 +229,23 @@ def test_prompt_variants_are_built_from_phrases_and_dictionary(tmp_path, monkeyp
         combined = asr_lab.Lab(args, tmp_path).prompt
     assert combined.startswith(asr_lab.PHRASES_PROMPT) and combined.endswith("вишня")
     assert not any(ch.isdigit() for ch in asr_lab.PHRASES_PROMPT), "у підказці немає номерів"
+
+
+def test_pipeline_without_llm_skips_qwen_and_records_it(tmp_path, monkeypatch):
+    from database import init_db
+    db = tmp_path / "events.db"
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'вишня: 210')")
+    monkeypatch.setattr("config.DB_PATH", str(db))
+    args = type("Args", (), {"prompt": "dictionary", "prompt_file": None, "language": "uk", "model": None,
+                             "variant": "pipeline", "llm": "off", "normalize": "on", "min_rms": None, "seed": 345,
+                             "resegment": "none", "gate_db": 12.0, "bandpass": "off", "band_low": 300.0,
+                             "band_high": 3400.0, "split": "all", "status": None, "labelled_only": False})()
+    with patch("core.recognition.WhisperRecognizer"), patch("core.correction.build_llm_corrector") as build:
+        lab = asr_lab.Lab(args, tmp_path)
+    assert not build.called and lab.llm is None
+    assert lab.params()["llm"] == "off" and lab.params()["llm_repo"] is None
+    args.variant = "qwen"
+    with patch("core.recognition.WhisperRecognizer"), pytest.raises(SystemExit):
+        asr_lab.Lab(args, tmp_path)

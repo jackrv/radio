@@ -125,7 +125,7 @@ def test_phrases_unifies_db_and_mem_and_excludes_expired(setup):
     register_phrase(db, "b" * 32, "expired")
     with sqlite3.connect(db) as conn:
         conn.execute("UPDATE telegram_recent_phrases SET created_at=0 WHERE token=?", ("b" * 32,))
-    response = client.get("/api/phrases?limit=1", headers=auth_header(2002))
+    response = client.get("/api/phrases?limit=1", headers=auth_header(3003))
     assert response.status_code == 200
     assert response.json()["has_more"] is True
     items = list_phrases(db)["items"]
@@ -139,7 +139,7 @@ def test_phrases_unifies_db_and_mem_and_excludes_expired(setup):
 def test_rules_disable_and_reenable_respect_confirmations(setup):
     client, db = setup
     save_word_feedback(db, "first", "Лира 68", "Ліра 68")
-    initial = client.get("/api/word-rules", headers=auth_header(2002)).json()["items"][0]
+    initial = client.get("/api/word-rules", headers=auth_header(3003)).json()["items"][0]
     assert initial["status"] == "pending"
     url = f'/api/word-rules/{initial["id"]}'
     headers = auth_header(3003)
@@ -155,7 +155,7 @@ def test_rules_disable_and_reenable_respect_confirmations(setup):
 def test_rule_toggle_forbidden_to_viewer(setup):
     client, db = setup
     save_word_feedback(db, "first", "Лира 68", "Ліра 68")
-    item = client.get("/api/word-rules", headers=auth_header(2002)).json()["items"][0]
+    item = client.get("/api/word-rules", headers=auth_header(3003)).json()["items"][0]
     assert client.put(f'/api/word-rules/{item["id"]}', headers=auth_header(2002),
                       json={"disabled": True, "expected_version": item["version"]}).status_code == 403
 
@@ -262,7 +262,7 @@ def test_new_routes_reject_disabled_user(setup):
 def test_overview_reports_actual_counts(setup):
     client, db = setup
     save_event("", "", "", "", "Ліра 68", db)
-    response = client.get("/api/overview", headers=auth_header(2002))
+    response = client.get("/api/overview", headers=auth_header(3003))
     assert response.status_code == 200
     assert response.json()["events"] == 1
     assert response.json()["dictionary_entries"] == 1

@@ -12,6 +12,7 @@ import requests
 from core.diagnostics import runtime
 from services.telegram_common import OGG_TIMEOUT_S, current_notification, delivery_trace
 from services.telegram_media_store import remember_voice
+from services.telegram_sync import remember_delivery
 from services.telegram_phrase_store import register_phrase
 from services.telegram_retry import retry_delay
 from services.user_notify_store import list_recipients
@@ -124,6 +125,9 @@ class OutboxMixin:
 
     def shutdown(self, timeout=10.0):
         """Припиняє прийом і чекає завершення надсилання."""
+        self._maintenance_stop.set()
+        if self._maintenance_thread is not None:
+            self._maintenance_thread.join(timeout=min(2.0, max(0.0, timeout)))
         with self._outgoing_lock:
             self._outgoing_stop.set()
             thread = self._outgoing_thread
@@ -177,7 +181,7 @@ class OutboxMixin:
                     runtime.count("telegram.text_fallback")
                     with delivery_trace(recipient=index):
                         self.send_text(caption, self.keyboard_for(role, fix_id),
-                                       parse_mode=None, chat_id=recipient["chat_id"])
+                                       parse_mode=None, chat_id=recipient["chat_id"], fix_id=fix_id)
             return
 
         duration = max(1, round(len(pcm) / (2 * self.sample_rate)))
@@ -220,7 +224,7 @@ class OutboxMixin:
                     runtime.count("telegram.text_fallback")
                     self.log.error("Усі спроби вичерпано, надсилаю резервним текстом")
                     if self._current_role(recipient) is not None:
-                        self.send_text(caption, reply_markup, parse_mode=None, chat_id=chat_id)
+                        self.send_text(caption, reply_markup, parse_mode=None, chat_id=chat_id, fix_id=fix_id)
                     return None
                 delay = retry_delay(attempt, e)
                 self.log.warning("Повтор Telegram через %s сек.", delay)
@@ -228,6 +232,7 @@ class OutboxMixin:
                 continue
 
             file_id = None
+            message = {}
             try:
                 message = (r.json() or {}).get("result") or {}
                 file_id = (message.get("voice") or {}).get("file_id")
@@ -236,6 +241,7 @@ class OutboxMixin:
             try:
                 # file_id потрібен редактору Mini App, щоб відтворити запис фрази.
                 remember_voice(self.db_path, fix_id, file_id)
+                remember_delivery(self.db_path, fix_id, message, "voice")
             except sqlite3.Error:
                 self.log.warning("Не вдалося зберегти зв’язок голосового з фразою")
             return file_id if isinstance(file_id, str) else None

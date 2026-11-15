@@ -202,6 +202,7 @@
     try {
       const user = await window.Radio345.user();
       isAdmin = user.role === "admin";
+      if (!isAdmin) return;
 
       await refresh();
 

@@ -7,17 +7,17 @@
   <meta name="description" content="Radio 345 — панель керування розпізнаванням ефіру">
   <title>Radio 345 — керування</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css?v=12">
+  <link rel="stylesheet" href="./styles.css?v=13">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="./app.js?v=12" defer></script>
-  <script src="./keyboard.js?v=12" defer></script>
-  <script src="./client.js?v=12" defer></script>
-  <script src="./service-gate.js?v=12" defer></script>
-  <script src="./api.js?v=12" defer></script>
-  <script src="./notifications.js?v=12" defer></script>
-  <script src="./receiver-controls.js?v=12" defer></script>
-  <script src="./correction-editor.js?v=12" defer></script>
-  <script src="./management.js?v=12" defer></script>
+  <script src="./app.js?v=13" defer></script>
+  <script src="./keyboard.js?v=13" defer></script>
+  <script src="./client.js?v=13" defer></script>
+  <script src="./service-gate.js?v=13" defer></script>
+  <script src="./api.js?v=13" defer></script>
+  <script src="./notifications.js?v=13" defer></script>
+  <script src="./receiver-controls.js?v=13" defer></script>
+  <script src="./correction-editor.js?v=13" defer></script>
+  <script src="./management.js?v=13" defer></script>
 </head>
 <body>
   <button id="keyboard-done" class="keyboard-done" type="button" hidden>⌨ Сховати клавіатуру</button>
@@ -59,7 +59,7 @@
 
           <div class="metrics">
             <article class="metric"><span class="metric-name">ПОДІЇ</span><div class="metric-value" id="events-count">—</div><span class="metric-detail">У журналі SQLite</span></article>
-            <article class="metric"><span class="metric-name">ЗАМІНИ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail">Активні словесні правила</span></article>
+            <article class="metric"><span class="metric-name">ВИПРАВЛЕНІ ФРАЗИ</span><div class="metric-value" id="rules-count">—</div><span class="metric-detail" id="rules-detail">Активні словесні правила</span></article>
             <article class="metric"><span class="metric-name">СЛОВНИКИ</span><div class="metric-value" id="dictionary-count">—</div><span class="metric-detail">Увімкнені рядки</span></article>
           </div>
           <button id="overview-refresh" class="outline-button" type="button">Оновити зведення</button>
@@ -68,9 +68,9 @@
           <div class="two-column">
             <article class="panel"><div class="panel-header"><div><div class="eyebrow">ШВИДКІ ДІЇ</div><h2>Керування ефіром</h2></div><span class="section-icon" aria-hidden="true">◉</span></div>
               <div class="action-row"><div class="action-icon">◌</div><div><div class="action-title">Повна тиша</div><div class="action-description">Вимкнути сповіщення без зупинки приймання</div></div><button class="mini-button" id="silence-toggle" type="button" disabled>Завантаження...</button></div>
-              <div class="action-row"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослуховування</div><div class="action-description">Зупинити аудіопотік на заданий час</div></div><button class="mini-button" id="receiver-pause-button"
+              <div class="action-row admin-only"><div class="action-icon">Ⅱ</div><div><div class="action-title">Пауза прослуховування</div><div class="action-description">Зупинити аудіопотік на заданий час</div></div><button class="mini-button" id="receiver-pause-button"
                 type="button" disabled>Завантаження...</button></div>
-              <div class="receiver-pause-controls">
+              <div class="receiver-pause-controls admin-only">
                 <label for="receiver-pause-minutes">Тривалість паузи</label>
                 <select id="receiver-pause-minutes" disabled>
                   <option value="5">5 хвилин</option>
@@ -155,8 +155,8 @@
               <label class="notify-option"><input type="radio" name="notify-mode" value="off"> 🔕 Повна тиша</label>
             </fieldset>
             <p id="notify-mode-feedback" class="notify-feedback" role="status" aria-live="polite"></p>
-            <button id="recognition-refresh" class="outline-button margin-top" type="button">Завантажити збережені налаштування</button>
-            <form id="recognition-form">
+            <button id="recognition-refresh" class="outline-button margin-top admin-only" type="button">Завантажити збережені налаштування</button>
+            <form id="recognition-form" class="admin-only">
               <fieldset id="recognition-fields" disabled class="recognition-fields">
                 <legend>Розпізнавання</legend>
                 <p class="subtle-note" id="recognition-models"></p>
@@ -184,6 +184,7 @@
                 <legend>Додати користувача</legend>
                 <label class="form-label" for="new-user-id">Telegram ID</label><input id="new-user-id" inputmode="numeric" pattern="[1-9][0-9]{0,18}" required>
                 <label class="form-label" for="new-user-name">Назва користувача</label><input id="new-user-name" maxlength="80" placeholder="Наприклад, Оператор зміни">
+                <label class="form-label" for="new-user-mode">Сповіщення</label><select id="new-user-mode"><option value="commands">Команди</option><option value="watch">Спостереження</option><option value="off">Тиша</option><option value="all" disabled>Усі (адміністратор)</option></select>
                 <label class="form-label" for="new-user-role">Роль</label><select id="new-user-role"><option value="viewer">Спостерігач</option><option value="editor">Редактор</option><option value="admin">Адміністратор</option></select>
                 <button class="primary-button margin-top" type="submit">Надати доступ</button>
               </fieldset>

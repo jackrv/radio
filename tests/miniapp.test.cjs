@@ -11,6 +11,7 @@ class Element {
   constructor(tag = "div") {
     this.tagName = tag;
     this.children = [];
+    this.dataset = {};
     this.events = {};
     this.value = "";
     this.textContent = "";
@@ -24,6 +25,7 @@ class Element {
       toggle: (value, active) => active ? classes.add(value) : classes.delete(value)
     };
   }
+  get options() { return this.children; }
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = items; }
   setAttribute() {}
@@ -38,6 +40,7 @@ class Element {
 function documentFixture() {
   const elements = new Map([...source("index.html").matchAll(/id="([^"]+)"/g)].map(match => [match[1], new Element()]));
   const doc = new Element();
+  doc.body = new Element("body");
   doc.getElementById = id => {
     assert(elements.has(id), `Missing HTML element ${id}`);
     return elements.get(id);
@@ -60,7 +63,7 @@ function clientFixture(fetch, hasAuth = true, timers = {}) {
   return context.window.Radio345;
 }
 
-test("client sends signed auth, JSON, no cache or credentials", async () => {
+test("client sends signed auth, JSON, no cache or cross-origin cookies", async () => {
   let captured;
   const client = clientFixture(async (url, options) => {
     captured = { url, options };
@@ -70,7 +73,7 @@ test("client sends signed auth, JSON, no cache or credentials", async () => {
   assert.equal(captured.url, "https://api.example/api/users/123");
   assert.equal(captured.options.headers.Authorization, "tma signed-data");
   assert.equal(captured.options.cache, "no-store");
-  assert.equal(captured.options.credentials, "omit");
+  assert.equal(captured.options.credentials, "same-origin");
   assert.equal(captured.options.referrerPolicy, "no-referrer");
   assert.deepEqual(JSON.parse(captured.options.body), { enabled: false });
 });
@@ -121,11 +124,11 @@ async function managementFixture(role = "admin", override) {
   const request = async (url, method = "GET", body) => {
     calls.push({ url, method, body });
     if (override) { const result = override(url, method, body); if (result !== undefined) return result; }
-    if (url === "/api/overview") return { events: 2, active_rules: 1, dictionary_entries: 3 };
+    if (url === "/api/overview") return { events: 2, active_rules: 1, total_rules: 5, corrections: 4, dictionary_entries: 3 };
     if (url.startsWith("/api/phrases")) return { items: [{ fix_id: "db:1", current_text: "<img src=x onerror=alert(1)>", created_at: "2026-11-14 12:00:00" }], has_more: false };
     if (url.startsWith("/api/dictionaries/")) return { kind: "callsigns", version: "a".repeat(64), entries: body?.entries || [{ raw_line: "Ліра: 68", enabled: true }] };
     if (url.startsWith("/api/word-rules")) return { items: [], has_more: false };
-    if (url === "/api/users") return { items: [{ user_id: "2002", role: "viewer", enabled: true, version: "a".repeat(64) }] };
+    if (url === "/api/users") return { items: [{ user_id: "2002", role: "viewer", notify_mode: "commands", enabled: true, version: "a".repeat(64) }] };
     if (url.startsWith("/api/users/")) return { saved: true };
     if (url === "/api/recognition/settings") return { revision: 1, values: { USE_LLM: true, VAD_LEVEL: 2, SILENCE_END_MS: 600, MIN_SPEECH_MS: 500, MAX_SEGMENT_S: 20 } };
     throw new Error("Unexpected request " + url);
@@ -133,21 +136,17 @@ async function managementFixture(role = "admin", override) {
   const win = new Element();
   Object.assign(win, { Radio345: { request, user: async () => ({ role, user_id: 1001 }) }, confirm: () => true,
     location: { href: "https://panel.example/", assign() {} } });
-  vm.runInNewContext(source("management.js"), { document: doc, window: win, URL, Date, console });
+  vm.runInNewContext(source("management.js"), { document: doc, window: win, URL, Date, console, showView() {} });
   await tick();
   const view = async name => { doc.dispatchEvent({ type: "radio345:view", detail: name }); await tick(); };
   return { get, calls, view };
 }
 
-test("viewer can browse phrases but receives no edit controls", async () => {
+test("viewer never loads phrases, dictionaries, stats or admin screens", async () => {
   const { get, view, calls } = await managementFixture("viewer");
-  await view("corrections");
-  const card = get("phrases-list").children[0];
-  assert.equal(card.children[1].textContent, "<img src=x onerror=alert(1)>");
-  assert.equal(card.children.some(item => item.tagName === "button"), false);
-  await view("users");
-  await view("settings");
-  assert.equal(calls.some(c => ["/api/users", "/api/recognition/settings"].includes(c.url)), false);
+  for (const name of ["corrections", "dictionaries", "settings", "users", "home"]) await view(name);
+  assert.equal(get("phrases-list").children.length, 0);
+  assert.equal(calls.length, 0);
 });
 
 test("editor can save dictionary text and enabled state with snapshot version", async () => {
@@ -175,17 +174,16 @@ test("dictionary conflict keeps the operator's unsaved input", async () => {
   assert.match(get("dictionary-feedback").textContent, /Конфликт/);
 });
 
-test("viewer dictionary buttons and fields stay disabled", async () => {
+test("viewer cannot submit dictionary changes even through a synthetic click", async () => {
   const { get, view, calls } = await managementFixture("viewer");
   await view("dictionaries");
-  assert.equal(get("dictionary-save").disabled, true);
-  assert.equal(get("dictionary-entries").children[0].children[1].disabled, true);
+  assert.equal(get("dictionary-entries").children.length, 0);
   await get("dictionary-save").fire("click");
   assert.equal(calls.some(c => c.method === "PUT"), false);
 });
 
-test("viewer can load an authenticated audio player beside a phrase", async () => {
-  const { get, view, calls } = await managementFixture("viewer", (url) => {
+test("editor can load an authenticated audio player beside a phrase", async () => {
+  const { get, view, calls } = await managementFixture("editor", (url) => {
     if (url.startsWith("/api/phrases?")) return { items: [{ fix_id: "db:1", current_text: "Ліра", has_audio: true }], has_more: false };
     if (url.startsWith("/api/phrases/audio?")) return new Blob(["OggSfake"]);
   });
@@ -204,7 +202,7 @@ test("admin user edit sends expected version and requires confirmation", async (
   await view("users");
   const row = get("users-list").children[0].children[1];
   row.children[0].value = "editor";
-  await row.children[2].fire("click");
+  await row.children[3].fire("click");
   const call = calls.find(c => c.method === "PUT");
   assert.equal(call.url, "/api/users/2002");
   assert.equal(call.body.role, "editor");
@@ -369,7 +367,7 @@ test("admin can assign a friendly user name", async () => {
   await view("users");
   const card = get("users-list").children[0];
   card.children.at(-1).value = "Оператор смены";
-  await card.children[1].children[2].fire("click");
+  await card.children[1].children[3].fire("click");
   assert.equal(calls.find(call => call.method === "PUT").body.display_name, "Оператор смены");
 });
 
@@ -465,7 +463,7 @@ test("enable after OFF returns a mode the role is allowed to use", async () => {
       Telegram: { WebApp: { initData: "signed-data" } },
       setInterval: () => 1, setTimeout, clearTimeout,
       Radio345: {
-        user: async () => ({ role: "viewer" }),
+        user: async () => ({ role: "editor" }),
         request: async (path, method, body) => {
           calls.push({ method, body });
           return method === "PUT" ? { mode: body.mode, allowed: ["commands", "off", "watch"] }
@@ -482,4 +480,34 @@ test("enable after OFF returns a mode the role is allowed to use", async () => {
   const put = calls.find(call => call.method === "PUT");
   assert.ok(put, "кнопка «Увімкнути» не ігнорується");
   assert.equal(put.body.mode, "commands");
+});
+
+test("stats distinguish corrected phrases from active rules", async () => {
+  const { get } = await managementFixture("editor");
+  assert.equal(get("rules-count").textContent, 4);
+  assert.match(get("rules-detail").textContent, /1 із 5/);
+});
+
+test("admin explicitly sets a new user's notification mode", async () => {
+  const { get, calls } = await managementFixture("admin");
+  get("new-user-id").value = "4004";
+  get("new-user-role").value = "editor";
+  get("new-user-mode").value = "off";
+  await get("user-add-form").fire("submit");
+  const call = calls.find(c => c.method === "PUT");
+  assert.equal(call.body.notify_mode, "off");
+  assert.equal(call.body.role, "editor");
+});
+
+test("viewer never requests personal notification controls", async () => {
+  const { doc } = documentFixture();
+  doc.querySelectorAll = () => [];
+  const calls = [];
+  vm.runInNewContext(source("notifications.js"), {document:doc,window:{
+    Telegram:{WebApp:{initData:"signed-data"}},
+    Radio345:{user:async()=>({role:"viewer"}),request:async (...args)=>calls.push(args)},
+    setInterval(){}
+  }});
+  await tick();
+  assert.equal(calls.length, 0);
 });

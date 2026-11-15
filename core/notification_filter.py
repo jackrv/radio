@@ -18,6 +18,9 @@ QUIET_CONTEXT_S = 0.12
 MIN_CORRELATION = 0.995
 NOISE_MULTIPLIER = 2.5
 PCM_FLOOR = 3 / 32768
+# Не приймаємо безперервне тихе мовлення на обох краях за «фоновий шум».
+# За гучнішого фону відсіювання свідомо вимикається (fail open).
+MAX_CONTEXT_RMS = 0.00035
 
 
 def _window_sums(values, length):
@@ -106,6 +109,8 @@ class NotificationSoundFilter:
             return False
         audio -= np.median(np.concatenate((audio[:context], audio[-context:])))
         edge_rms = [float(np.sqrt(np.mean(edge * edge))) for edge in (audio[:context], audio[-context:])]
+        if max(edge_rms) > MAX_CONTEXT_RMS:
+            return False
         noise = max(min(edge_rms), PCM_FLOOR / NOISE_MULTIPLIER)
         residual_limit = max(PCM_FLOOR, NOISE_MULTIPLIER * noise)
         if max(edge_rms) > residual_limit:

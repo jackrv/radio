@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 
-GRACE_SECONDS = {"radio": 30.0, "ngrok": 5.0, "api": 5.0, "miniapp": 5.0}
+GRACE_SECONDS = {"radio": 30.0, "ngrok": 5.0, "api": 5.0, "miniapp": 5.0, "admin": 5.0}
 NAMES = frozenset(GRACE_SECONDS)
 
 

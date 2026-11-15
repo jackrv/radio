@@ -167,7 +167,8 @@
     }
 
     try {
-      await window.Radio345.user();
+      const user = await window.Radio345.user();
+      if (user.role === "viewer") return;
       ready = true;
 
       await refreshMode();

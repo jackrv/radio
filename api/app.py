@@ -12,7 +12,7 @@ from services.miniapp_auth import (
     TelegramAuthError,
     verify_init_data,
 )
-from services.user_store import require_permission
+from services.user_store import PERMISSIONS, require_permission
 from services.miniapp_correction_editor import (
     CorrectionConflict,
     load_edit_draft,
@@ -150,6 +150,12 @@ def create_app(db_path, bot_token):
         }
 
     def require_settings_permission(user, permission):
+        # Only the separate localhost app injects this marker via a dependency
+        # override. current_user never copies it from Telegram or request data.
+        if user.get("_preview"):
+            if permission not in PERMISSIONS[user["role"]]:
+                raise HTTPException(403, "Недостатньо прав")
+            return
         try:
             require_permission(
                 db_path, user["user_id"], permission
@@ -189,8 +195,10 @@ def create_app(db_path, bot_token):
                 db_path,
                 payload.fix_id,
                 payload.expected_text,
-                payload.corrected_text,
+                payload.corrected_text, actor_id=user["user_id"],
             )
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="Недостатньо прав") from None
         except CorrectionConflict:
             raise HTTPException(
                 status_code=409,
@@ -206,6 +214,7 @@ def create_app(db_path, bot_token):
     @app.get("/api/notifications/mode")
     def get_notification_mode(user=Depends(current_user)):
         """Особистий режим сповіщень поточного користувача."""
+        require_settings_permission(user, "events.read")
         try:
             state = load_user_mode(db_path, user["user_id"])
         except sqlite3.Error:
@@ -213,6 +222,10 @@ def create_app(db_path, bot_token):
         if state is None:
             raise HTTPException(status_code=403, detail="Доступ заборонено")
         role, mode = state
+        if user.get("_preview"):
+            role = user["role"]
+            from services.user_notify_store import effective_mode
+            mode = effective_mode(role, mode)
         return {"mode": mode, "allowed": allowed_modes(role)}
 
     @app.put("/api/notifications/mode")
@@ -220,6 +233,7 @@ def create_app(db_path, bot_token):
         payload: NotificationModeUpdate,
         user=Depends(current_user),
     ):
+        require_settings_permission(user, "events.read")
         try:
             save_user_mode(db_path, user["user_id"], payload.mode)
         except PermissionError as exc:
@@ -236,6 +250,7 @@ def create_app(db_path, bot_token):
 
     @app.get("/api/receiver/control")
     def get_receiver_control(user=Depends(current_user)):
+        require_settings_permission(user, "audio.control")
         try:
             return read_pause_state(db_path)
         except sqlite3.Error:
@@ -271,5 +286,6 @@ def create_app(db_path, bot_token):
                 detail="Не вдалося зберегти команду",
             ) from None
 
+    app.state.current_user = current_user
     app.include_router(management_router(db_path, current_user, require_settings_permission, bot_token))
     return app

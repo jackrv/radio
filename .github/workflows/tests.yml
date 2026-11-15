@@ -50,7 +50,7 @@ jobs:
           node-version: "22"
 
       - name: Syntax check
-        run: for file in miniapp/*.js; do node --check "$file"; done
+        run: for file in miniapp/*.js local_admin/*.js; do node --check "$file"; done
 
       - name: Mini App tests
         run: node --test tests/miniapp.test.cjs

@@ -229,3 +229,16 @@ h2 { font-size: 15px; letter-spacing: -.025em; margin: 3px 0 0; }
   .dictionary-row input:not([type]) { flex-basis: calc(100% - 40px); width: 0; }
   .dictionary-row button { margin-left: 28px; }
 }
+
+/* До перевірки ролі показуємо лише стан; сервер незалежно перевіряє доступ. */
+body:not([data-role="admin"]):not([data-role="editor"]) .metrics,
+body:not([data-role="admin"]):not([data-role="editor"]) #overview-refresh,
+body:not([data-role="admin"]):not([data-role="editor"]) #overview-feedback,
+body:not([data-role="admin"]):not([data-role="editor"]) .two-column,
+body:not([data-role="admin"]):not([data-role="editor"]) [data-view-target]:not([data-view-target="home"]),
+body:not([data-role="admin"]) [data-view-target="users"],
+body:not([data-role="admin"]):not([data-role="editor"]) [data-view-target="settings"] { display: none !important; }
+body[data-role="viewer"] .view:not(#view-home) { display: none !important; }
+body[data-role="editor"] #view-users { display: none !important; }
+
+body:not([data-role="admin"]) .admin-only { display: none !important; }

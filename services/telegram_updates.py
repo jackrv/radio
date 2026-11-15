@@ -9,6 +9,7 @@ import time
 import requests
 
 from core.diagnostics import runtime
+from services.telegram_sync import forget_delivery
 from services.telegram_media_store import callback_fix_id, deletion_intent, deletion_result
 from services.telegram_offset_store import load_telegram_offset, save_telegram_offset
 from services.telegram_retry import listener_retry_delay
@@ -24,9 +25,8 @@ class UpdatesMixin:
         if not msg:
             return
         # /start приймається від будь-кого: так нові користувачі просять доступ.
-        if self._handle_start(msg):
-            return
-        self._handle_user_mode_command(msg, upd.get("update_id"))
+        if self._handle_start(msg) or self._handle_user_mode_command(msg, upd.get("update_id")):
+            self.clean_command(msg)
 
     # ---------- Кнопки ----------
 
@@ -58,6 +58,8 @@ class UpdatesMixin:
             success = r.status_code == 200
         except requests.RequestException:
             pass
+        if success:
+            forget_delivery(self.db_path, chat_id, message.get("message_id"))
         self._answer_callback(cq, "Видалено" if success else "Помилка")
 
     def _hide_phrase(self, cq, chat_id, message, data):

@@ -129,7 +129,8 @@ def save_correction(
             cursor = db.execute(
                 """
                 UPDATE radio_events
-                SET text = ?,
+                SET raw_text = COALESCE(raw_text, text),
+                    text = ?,
                     callsigns = ?,
                     commands = ?,
                     recipient = ?,

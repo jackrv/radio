@@ -226,6 +226,8 @@ def main():
     if not shutil.which("ffmpeg"):
         log.warning("Утиліту ffmpeg не знайдено в системі! Конвертація в OGG не працюватиме.")
 
+    telegram_service.start_maintenance()
+
     supervisor = ApplicationSupervisor(
         frames=frames,
         segments=segments,

@@ -321,8 +321,8 @@ def test_admin_changes_own_notification_mode_including_all(setup_api):
     assert response.json()["mode"] == "all"
 
 
-@pytest.mark.parametrize("user_id", [2002, 3003])
-def test_viewer_and_editor_manage_own_mode_but_not_all(setup_api, user_id):
+@pytest.mark.parametrize("user_id", [3003])
+def test_editor_manages_own_mode_but_not_all(setup_api, user_id):
     client, _ = setup_api
 
     response = client.get("/api/notifications/mode", headers=auth_header(user_id))
@@ -412,7 +412,7 @@ def test_admin_can_resume_receiver(setup_api):
     assert response.json()["pause_requested"] is False
 
 
-def test_viewer_can_read_receiver_control(setup_api):
+def test_viewer_cannot_read_receiver_control(setup_api):
     client, _ = setup_api
 
     response = client.get(
@@ -420,8 +420,7 @@ def test_viewer_can_read_receiver_control(setup_api):
         headers=auth_header(2002),
     )
 
-    assert response.status_code == 200
-    assert response.json()["pause_requested"] is False
+    assert response.status_code == 403
 
 
 @pytest.mark.parametrize("user_id", [2002, 3003])

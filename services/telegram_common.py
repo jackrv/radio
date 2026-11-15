@@ -17,6 +17,8 @@ from urllib.parse import quote
 import requests
 
 from core.diagnostics import error_kind, runtime
+from services.telegram_maintenance import managed_key
+from services.telegram_sync import remember_delivery
 from services.telegram_media_store import FIX_RE
 from services.user_notify_store import list_recipients, load_user_mode
 
@@ -127,7 +129,7 @@ class TelegramBase:
                 "TG_DIAG operation=%s outcome=%s elapsed_s=%.3f%s", operation, outcome, elapsed, context,
             )
 
-    def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML", *, chat_id):
+    def send_text(self, text: str, reply_markup: str | None = None, parse_mode: str | None = "HTML", *, chat_id, fix_id=None):
         """Надсилає текст в особистий чат. True — Telegram прийняв повідомлення."""
         if not (self.bot_token and chat_id):
             return False
@@ -137,10 +139,17 @@ class TelegramBase:
         if reply_markup:
             data["reply_markup"] = reply_markup
         try:
+            if managed_key.get() is not None:
+                return self._managed_text(data, *managed_key.get())
             r = self._request("post", "sendMessage", data=data, timeout=15)
             r.raise_for_status()
+            if fix_id:
+                try:
+                    remember_delivery(self.db_path, fix_id, r.json().get("result"), "text")
+                except (sqlite3.Error, ValueError, AttributeError):
+                    self.log.warning("Не вдалося зберегти адресу текстової копії Telegram")
             return True
-        except requests.RequestException as e:
+        except (requests.RequestException, sqlite3.Error, ValueError) as e:
             self.log.error("Telegram (текст) не надіслано: %s", e)
             return False
 

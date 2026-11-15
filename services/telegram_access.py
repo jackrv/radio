@@ -36,14 +36,14 @@ class AccessMixin:
         state, role = register_request(self.db_path, sender)
         if state == "member":
             extra = "\nЗапити на доступ нових користувачів надходитимуть сюди." if role == "admin" else ""
-            self.send_text(
+            self.send_status(
                 f"✅ У вас є доступ до Radio 345 (роль: {ROLE_LABELS.get(role, role)}).\n"
                 + self._mode_hint(user_chat, role) + extra,
                 reply_markup=self._miniapp_markup(), chat_id=user_chat,
             )
         elif state == "new":
             if self._notify_access_request(sender):
-                self.send_text(
+                self.send_status(
                     "📨 Запит на доступ надіслано адміністратору. "
                     "Щойно його розглянуть, ви отримаєте повідомлення.",
                     chat_id=user_chat,
@@ -52,17 +52,17 @@ class AccessMixin:
                 # Картку не доставлено: наступний /start надішле її знову, без доби очікування.
                 mark_undelivered(self.db_path, sender["id"])
                 state = "undelivered"
-                self.send_text(
+                self.send_status(
                     "⚠️ Не вдалося передати запит адміністратору. Спробуйте /start трохи пізніше.",
                     chat_id=user_chat,
                 )
         elif state == "pending":
-            self.send_text("⏳ Запит уже надіслано. Очікуйте рішення адміністратора.", chat_id=user_chat)
+            self.send_status("⏳ Запит уже надіслано. Очікуйте рішення адміністратора.", chat_id=user_chat)
         elif state == "rejected":
-            self.send_text("Адміністратор поки не надав доступ.", chat_id=user_chat)
+            self.send_status("Адміністратор поки не надав доступ.", chat_id=user_chat)
         else:
             self.log.warning("Забагато нерозглянутих запитів на доступ; новий запит не надіслано")
-            self.send_text("Зараз забагато запитів. Спробуйте пізніше.", chat_id=user_chat)
+            self.send_status("Зараз забагато запитів. Спробуйте пізніше.", chat_id=user_chat)
         self.log.info("Запит доступу через /start: %s", state)
         return True
 
@@ -92,7 +92,7 @@ class AccessMixin:
         card = self._access_card(user_id, name, username)
         delivered = False
         for admin_chat in self._admin_chats():
-            delivered = self.send_text(card, reply_markup=markup, chat_id=admin_chat) or delivered
+            delivered = self.send_status(card, reply_markup=markup, chat_id=admin_chat, slot=f"access:{user_id}") or delivered
         return delivered
 
     def _handle_access_decision(self, cq, chat_id, msg_id, data):
@@ -129,15 +129,17 @@ class AccessMixin:
             self.log.warning("Не вдалося оновити картку запиту доступу: %s", type(exc).__name__)
         self._answer_callback(cq, outcome.split(" ", 1)[1])
 
+        if status not in ("stale", "admin"):
+            self.finish_access_cards(user_id)
         if status == "granted":
-            self.send_text(
+            self.send_status(
                 f"✅ Адміністратор надав вам доступ до Radio 345 (роль: {role}).\n"
                 "Голосові повідомлення ефіру надходитимуть у цей чат.\n"
                 + self._mode_hint(user_id, result["role"]),
                 reply_markup=self._miniapp_markup(), chat_id=user_id,
             )
         elif status == "rejected":
-            self.send_text("Адміністратор не надав доступ до Radio 345.", chat_id=user_id)
+            self.send_status("Адміністратор не надав доступ до Radio 345.", chat_id=user_id)
         self.log.info("Рішення щодо запиту доступу: %s", status)
 
     # ---------- Особисті режими ----------
@@ -163,7 +165,7 @@ class AccessMixin:
                 save_user_mode(self.db_path, user_id, mode)
                 applied = True
         except PermissionError:
-            self.send_text(
+            self.send_status(
                 "⛔️ Режим /all доступний лише адміністратору. "
                 f"Доступні режими: {MODE_HELP.get(state[0], MODE_HELP['viewer'])}.",
                 chat_id=user_id,
@@ -176,5 +178,5 @@ class AccessMixin:
             self.log.info("Повторну Telegram-команду %s пропущено", update_id)
             return True
         self.log.info("Особистий режим користувача змінено на: %s", mode)
-        self.send_text(response, chat_id=user_id)
+        self.send_status(response, reply_markup=self._miniapp_markup(), chat_id=user_id)
         return True

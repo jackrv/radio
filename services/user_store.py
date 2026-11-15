@@ -4,7 +4,7 @@ from services.sqlite_connection import get_db
 
 PERMISSIONS = {
     "viewer": frozenset({
-        "status.read", "events.read", "dictionaries.read",
+        "status.read",
     }),
     "editor": frozenset({
         "status.read", "events.read", "dictionaries.read",

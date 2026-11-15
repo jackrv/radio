@@ -45,3 +45,5 @@ diagnostics-report.json
 .local-notification-sounds/
 .radio345.lock
 .radio345-launcher/
+
+.radio345-local-admin/

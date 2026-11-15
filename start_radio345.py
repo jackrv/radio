@@ -340,6 +340,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Radio 345: запуск і коректна зупинка всіх служб"
     )
+    parser.add_argument("--local-admin", action="store_true", help="локальна захищена адмінпанель на 127.0.0.1:8766")
     parser.add_argument(
         "--local-miniapp", action="store_true",
         help="додатково запустити локальний перегляд Mini App на 127.0.0.1:8080",
@@ -369,7 +370,7 @@ def main() -> int:
             show_status()
             output("Немає керованого запуску. Сторонні та старі некеровані процеси не завершувались")
             return 2
-        names = ["api", "ngrok"] + (["miniapp"] if args.local_miniapp else []) + ["radio"]
+        names = ["api", "ngrok"] + (["admin"] if args.local_admin else []) + (["miniapp"] if args.local_miniapp else []) + ["radio"]
         with LauncherSession(ROOT, names, log=output) as session:
             return run_services(args, session)
     except KeyboardInterrupt:
@@ -387,7 +388,7 @@ def show_status():
         output(f"PID запускателя: {state['launcher_pid']}; контролери: {state['controllers']}")
         if not state["launcher_reachable"]:
             output("Запускатель недоступний; контролери автоматично завершують служби")
-    for port, name in ((API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok")):
+    for port, name in ((API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok"), (8766, "Локальна панель")):
         output(f"{name}: TCP {port} — {'зайнятий' if port_busy(port) else 'вільний'}")
     output("Блокування приймача: " + ("утримується" if lock_held(ROOT / ".radio345.lock") else "вільне"))
 
@@ -433,6 +434,8 @@ def run_services(args, session):
         return 2
 
     ports = [(API_PORT, "FastAPI"), (NGROK_INSPECT_PORT, "ngrok")]
+    if getattr(args,"local_admin",False):
+        ports.append((8766,"Локальна панель"))
     if args.local_miniapp:
         ports.append((MINIAPP_PORT, "Mini App preview"))
     for port, name in ports:
@@ -496,6 +499,9 @@ def run_services(args, session):
             processes.append(preview)
             output("Локальний перегляд Mini App: http://127.0.0.1:8080")
 
+        if getattr(args,"local_admin",False):
+            admin = ManagedProcess("admin", [py,"-u","-m","api.local_dashboard"], session=session)
+            processes.append(admin)
         radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session)
         processes.append(radio)
         output("Усі запитані процеси запущено. Ctrl+C — зупинити їх разом.")

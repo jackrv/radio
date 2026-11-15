@@ -165,3 +165,11 @@ def test_template_limit_is_enforced(tmp_path):
 def test_malformed_arrays_cannot_be_registered(samples):
     with pytest.raises(ValueError):
         NotificationSoundFilter([samples], SR)
+
+
+@pytest.mark.parametrize("level",[0.0008,0.002,0.01])
+def test_continuous_quiet_voice_across_both_edges_is_not_ambient_noise(detector,level):
+    audio=segment()
+    t=np.arange(len(audio))/SR
+    speech=level*(np.sin(2*np.pi*137*t)+0.4*np.sin(2*np.pi*281*t))
+    assert not detector.is_notification(pcm(audio+speech))

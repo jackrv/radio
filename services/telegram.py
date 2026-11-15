@@ -10,13 +10,15 @@
 Права й отримувачів визначає лише база користувачів.
 """
 
+from services.telegram_maintenance import MaintenanceMixin
 from services.telegram_access import AccessMixin
 from services.telegram_common import TelegramBase
 from services.telegram_outbox import OutboxMixin
 from services.telegram_updates import UpdatesMixin
 
 
-class TelegramService(UpdatesMixin, AccessMixin, OutboxMixin, TelegramBase):
+class TelegramService(MaintenanceMixin, UpdatesMixin, AccessMixin, OutboxMixin, TelegramBase):
     def __init__(self, bot_token, sample_rate, db_path, log):
         super().__init__(bot_token, sample_rate, db_path, log)
         self._init_outbox()
+        self._init_maintenance()

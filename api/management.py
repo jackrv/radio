@@ -1,6 +1,9 @@
 """Authenticated Mini App management routes; no runtime model imports."""
 
 import sqlite3
+import subprocess
+
+import config
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -28,11 +31,17 @@ class RuleUpdate(BaseModel):
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class NotificationSampleUpdate(BaseModel):
+    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
+    confirmed_isolated: bool = Field(strict=True)
+
+
 class UserUpdate(BaseModel):
     role: Literal["admin", "editor", "viewer"]
     enabled: bool = Field(strict=True)
     expected_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     display_name: str | None = Field(default=None, max_length=80)
+    notify_mode: Literal["all", "watch", "commands", "off"] | None = None
 
 
 class RecognitionValues(BaseModel):
@@ -98,6 +107,26 @@ def management_router(db_path, current_user, check_permission, bot_token):
             raise HTTPException(502, "Не вдалося отримати аудіо з Telegram") from None
         return Response(content, media_type="audio/ogg", headers={"Cache-Control": "no-store"})
 
+    @router.put("/notification-sounds/from-phrase")
+    def notification_sample(payload: NotificationSampleUpdate, user=Depends(current_user)):
+        check_permission(user, "settings.write")
+        if not payload.confirmed_isolated:
+            raise HTTPException(422, "Підтвердь відсутність мовлення у зразку")
+        call(user, "events.read", load_edit_draft, payload.fix_id)
+        file_id = call(user, "events.read", audio_file_id, payload.fix_id)
+        from services.notification_samples import add_sample, ogg_to_wav
+        try:
+            content = ogg_to_wav(download_voice(bot_token, file_id))
+            return add_sample(config.NOTIFICATION_SOUNDS_DIR, content, confirmed_isolated=True)
+        except AudioUnavailable:
+            raise HTTPException(502,"Не вдалося отримати аудіо") from None
+        except (subprocess.SubprocessError, FileNotFoundError):
+            raise HTTPException(502,"Не вдалося перетворити коротке аудіо") from None
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from None
+        except OSError:
+            raise HTTPException(503,"Каталог зразків недоступний") from None
+
     @router.put("/dictionaries/{kind}")
     def update_dictionary(kind: Literal["callsigns", "commands", "telegram"],
                           payload: DictionaryUpdate, user=Depends(current_user)):
@@ -122,7 +151,8 @@ def management_router(db_path, current_user, check_permission, bot_token):
     @router.put("/users/{user_id}")
     def update_user(user_id: int, payload: UserUpdate, user=Depends(current_user)):
         return call(user, "users.manage", store.write_user, user["user_id"], user_id,
-                    payload.role, payload.enabled, payload.expected_version, payload.display_name)
+                    payload.role, payload.enabled, payload.expected_version, payload.display_name,
+                    payload.notify_mode)
 
     @router.get("/recognition/settings")
     def settings(user=Depends(current_user)):

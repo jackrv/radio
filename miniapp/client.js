@@ -27,7 +27,7 @@ window.Radio345 = (() => {
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
-        credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer"
+        credentials: "same-origin", cache: "no-store", referrerPolicy: "no-referrer"
       });
       report(true);
       if (!response.ok) {
@@ -66,7 +66,10 @@ window.Radio345 = (() => {
   }
   let me;
   function user() {
-    if (!me) me = request("/api/me").catch(error => { me = null; throw error; });
+    if (!me) me = request("/api/me").then(value => {
+      document.body.dataset.role = value.role;
+      return value;
+    }).catch(error => { me = null; throw error; });
     return me;
   }
   return { request, user, onConnection };

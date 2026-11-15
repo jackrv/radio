@@ -159,3 +159,21 @@ def test_publish_refuses_unrelated_staged_changes(monkeypatch):
     with pytest.raises(RuntimeError, match="staged"):
         launcher.check_pages_publish_ready()
     assert not any(command[0] in ("commit", "push", "fetch") for command in commands)
+
+
+def test_local_admin_is_managed_and_stops_before_ngrok(mocked_services,monkeypatch):
+    created,stopped,publish=mocked_services
+    monkeypatch.setattr(sys,"argv",["start_radio345.py","--local-admin"])
+    monkeypatch.setattr(launcher.time,"sleep",Mock(side_effect=KeyboardInterrupt))
+    assert launcher.main()==0
+    assert [item.name for item in created]==["api","ngrok","admin","radio"]
+    assert stopped==["radio","admin","ngrok","api"]
+    publish.assert_not_called()
+
+
+def test_busy_local_admin_port_does_not_start_any_services(mocked_services,monkeypatch):
+    created,stopped,_=mocked_services
+    monkeypatch.setattr(sys,"argv",["start_radio345.py","--local-admin"])
+    monkeypatch.setattr(launcher,"port_busy",lambda port:port==8766)
+    assert launcher.main()==2
+    assert not created and not stopped

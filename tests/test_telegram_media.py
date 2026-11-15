@@ -123,7 +123,7 @@ def test_audio_requires_auth_and_does_not_expose_telegram_ids(setup):
     fix_id, _ = phrase(db)
     assert client.get("/api/phrases/audio", params={"fix_id": fix_id}).status_code == 401
     with patch("api.management.download_voice", return_value=b"OggSfake") as download:
-        result = client.get("/api/phrases/audio", params={"fix_id": fix_id}, headers=auth_header(2002))
+        result = client.get("/api/phrases/audio", params={"fix_id": fix_id}, headers=auth_header(3003))
     assert result.status_code == 200
     assert result.content == b"OggSfake"
     assert result.headers["cache-control"] == "no-store"

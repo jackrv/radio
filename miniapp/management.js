@@ -41,7 +41,8 @@
     try {
       const data = await request("/api/overview");
       $("events-count").textContent = data.events;
-      $("rules-count").textContent = data.active_rules;
+      $("rules-count").textContent = data.corrections;
+      $("rules-detail").textContent = `Активних правил: ${data.active_rules} із ${data.total_rules}`;
       $("dictionary-count").textContent = data.dictionary_entries;
       message("overview-feedback", `Остання подія: ${localDate(data.last_event_at)} · Твій Telegram ID: ${me.user_id}`);
     } catch (error) { message("overview-feedback", error.message, true); }
@@ -109,6 +110,13 @@
         }
       });
       card.append(listen);
+      if (isAdmin()) card.append(button("Зразок звуку сповіщення", async () => {
+        if (!window.confirm("Використати аудіо як зразок сповіщення? Лише після прослуховування: запис НЕ повинен містити мовлення. Застосується після перезапуску.")) return;
+        try {
+          await request("/api/notification-sounds/from-phrase", "PUT", {fix_id:item.fix_id, confirmed_isolated:true});
+          message("phrases-feedback", "Приватний зразок додано. Він застосовується після перезапуску приймача.");
+        } catch(error) { message("phrases-feedback",error.message,true); }
+      }));
     } else {
       card.append(node("p", "Аудіозапис не прив’язано до цієї фрази.", "subtle-note"));
     }
@@ -282,14 +290,25 @@
         role.setAttribute("aria-label", `Роль ${item.user_id}`);
         for (const [key, name] of Object.entries(roles)) { const option = node("option", name); option.value = key; role.append(option); }
         role.value = item.role;
+        const mode = node("select");
+        mode.setAttribute("aria-label", `Сповіщення ${item.user_id}`);
+        for (const [key, title] of Object.entries({commands:"Команди", watch:"Спостереження", off:"Тиша", all:"Усі (адміністратор)"})) {
+          const option = node("option", title); option.value = key; mode.append(option);
+        }
+        mode.value = item.notify_mode;
+        function restrictMode() {
+          for (const option of mode.options) option.disabled = option.value === "all" && role.value !== "admin";
+          if (mode.value === "all" && role.value !== "admin") mode.value = "commands";
+        }
+        role.addEventListener("change", restrictMode); restrictMode();
         const label = node("label", undefined, "checkbox-label");
         const enabled = node("input"); enabled.type = "checkbox"; enabled.checked = item.enabled;
         label.append(enabled, node("span", "Доступ увімкнено"));
         const save = button("Зберегти", async () => {
           if (usersBusy || !window.confirm(`Змінити доступ користувача ${item.user_id}?`)) return;
-          await saveUser(item.user_id, { role: role.value, enabled: enabled.checked, expected_version: item.version, display_name: nameInput.value });
+          await saveUser(item.user_id, { role: role.value, enabled: enabled.checked, expected_version: item.version, display_name: nameInput.value, notify_mode: mode.value });
         });
-        row.append(role, label, save); card.append(row); $("users-list").append(card);
+        row.append(role, mode, label, save); card.append(row); $("users-list").append(card);
         card.append(node("p", [item.username ? `@${item.username}` : "", item.telegram_name || "", `ID ${item.user_id}`].filter(Boolean).join(" · "), "subtle-note"));
         const nameInput = node("input");
         nameInput.value = item.display_name || "";
@@ -322,17 +341,23 @@
     } catch (error) { message("users-feedback", error.message, true); }
     finally { usersBusy = false; $("user-add-fields").disabled = !isAdmin(); }
   }
+  $("new-user-role").addEventListener("change", () => {
+    const mode = $("new-user-mode");
+    for (const option of mode.options) option.disabled = option.value === "all" && $("new-user-role").value !== "admin";
+    if (mode.value === "all" && $("new-user-role").value !== "admin") mode.value = "commands";
+  });
   $("user-add-form").addEventListener("submit", event => {
     event.preventDefault();
     const id = $("new-user-id").value.trim();
     if (!/^[1-9][0-9]{0,18}$/.test(id)) return;
     if (!window.confirm(`Надати доступ Telegram ID ${id}?`)) return;
-    saveUser(id, { role: $("new-user-role").value, enabled: true, expected_version: null, display_name: $("new-user-name").value });
+    saveUser(id, { role: $("new-user-role").value, enabled: true, expected_version: null, display_name: $("new-user-name").value, notify_mode: $("new-user-mode").value });
   });
   $("users-refresh").addEventListener("click", () => { if (!usersBusy) users(); });
 
   const loaders = { home: overview, corrections: phrases, dictionaries: loadDictionary, settings, users };
   async function loadView(name) {
+    if (me?.role === "viewer") return;
     if (!me || !loaders[name] || (loaded.has(name) && name !== "corrections")) return;
     loaded.add(name);
     await loaders[name]();
@@ -344,6 +369,8 @@
   async function start() {
     try {
       me = await user();
+      if (me.role === "viewer") { showView("home"); return; }
+      if (!isAdmin() && document.querySelector("#view-users.active")) showView("home");
       await overview();
       const current = document.querySelector(".view.active");
       if (current) await loadView(current.id.replace("view-", ""));

@@ -57,9 +57,8 @@ def test_viewer_permissions(db_path):
         db_path, 2002, "status.read"
     ) == "viewer"
 
-    assert require_permission(
-        db_path, 2002, "dictionaries.read"
-    ) == "viewer"
+    with pytest.raises(PermissionError):
+        require_permission(db_path, 2002, "dictionaries.read")
 
     with pytest.raises(PermissionError):
         require_permission(

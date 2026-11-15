@@ -2,6 +2,7 @@
 
 import re
 
+from services.telegram_sync import queue_correction
 from services.event_store import save_correction
 from services.sqlite_connection import get_db
 from services.telegram_phrase_store import load_phrase, update_phrase_text
@@ -49,7 +50,7 @@ def load_edit_draft(db_path, fix_id: str):
 
 
 def save_edit_draft(db_path, fix_id: str, expected_text: str,
-                    corrected_text: str):
+                    corrected_text: str, *, actor_id=None):
     memory_token = fix_id[4:] if fix_id.startswith("mem:") else None
     event_id = None if memory_token is not None else event_id_from_fix_id(fix_id)
     corrected = corrected_text.strip()
@@ -59,6 +60,9 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
     with get_db(db_path) as db:
         # Serializes edits with other SQLite writers; protects against lost updates.
         db.execute("BEGIN IMMEDIATE")
+        if actor_id is not None:
+            from services.user_store import _require_permission
+            _require_permission(db, actor_id, "corrections.write")
         if is_hidden(db_path, fix_id, db=db):
             raise LookupError("Повідомлення видалено")
         if memory_token is not None:
@@ -88,6 +92,8 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
         )
         if memory_token is not None:
             update_phrase_text(db, memory_token, corrected)
+        if corrected != current:
+            queue_correction(db, fix_id)
 
     return {
         "fix_id": fix_id,

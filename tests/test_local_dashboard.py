@@ -316,3 +316,14 @@ def test_review_queue_filters_archive_and_reports_progress(setup, tmp_path):
         assert len(client.get("/api/recordings").json()["items"])==4, "без черги — увесь архів"
         assert client.get("/api/recordings?queue=Z").status_code==404
         assert client.get("/api/recordings?queue=a;drop").status_code==422
+
+
+def test_listening_hold_endpoint_requires_origin_and_bounds(local):
+    client,path,_=local
+    from services.receiver_control import reception_request
+    assert client.put("/api/listening-hold",json={"seconds":10}).status_code==403
+    assert client.put("/api/listening-hold",json={"seconds":10},headers={"Origin":ORIGIN}).json()["active"] is True
+    assert reception_request(path)=="listening"
+    assert client.put("/api/listening-hold",json={"seconds":0},headers={"Origin":ORIGIN}).status_code==200
+    assert reception_request(path) is None
+    assert client.put("/api/listening-hold",json={"seconds":500},headers={"Origin":ORIGIN}).status_code==422

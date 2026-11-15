@@ -28,7 +28,7 @@ from services.receiver_status import (
     receiver_heartbeat,
     ReceiverRuntimeState,
 )
-from services.receiver_control import read_pause_state
+from services.receiver_control import reception_request
 from services.miniapp_management import apply_startup_settings
 from dotenv import load_dotenv
 
@@ -201,9 +201,9 @@ def main():
         last_pause_check = now
 
         try:
-            cached_pause = read_pause_state(
-                DB_PATH
-            )["pause_requested"]
+            # "pause" — пауза оператора; "listening" — мікрофон закрито, поки в
+            # локальній панелі звучить архівний запис (щоб не записати власну луну).
+            cached_pause = reception_request(DB_PATH) or False
         except sqlite3.Error:
             log.exception(
                 "Не вдалося перевірити команду паузи. "

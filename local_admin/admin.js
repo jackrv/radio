@@ -751,6 +751,42 @@
 
   const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
 
+  // ---------- Відтворення без луни в мікрофон приймача ----------
+  // Звук із колонок Mac потрапляє в мікрофон: приймач розпізнав би його знову
+  // (дублікати в Telegram і в архіві). Поки грає будь-яке аудіо панелі, просимо
+  // приймач закрити мікрофон. Утримання короткострокове й поновлюється, тож
+  // закрита вкладка не залишить приймач вимкненим довше ніж на ~10 с.
+  const HOLD_KEY = "radio345:hold-while-listening";
+  const holdBox = $("hold-while-listening");
+  try { holdBox.checked = localStorage.getItem(HOLD_KEY) !== "off"; } catch (_) { /* лишаємо типово */ }
+  holdBox.addEventListener("change", () => {
+    try { localStorage.setItem(HOLD_KEY, holdBox.checked ? "on" : "off"); } catch (_) { /* лише поточна сесія */ }
+    if (!holdBox.checked && playing.size) sendHold(0);
+  });
+  const playing = new Set();
+  let holdTimer = null;
+  function sendHold(seconds) {
+    return fetch("/api/listening-hold", { method: "PUT", credentials: "same-origin", cache: "no-store",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seconds: Math.max(0, Math.min(120, seconds)) }) })
+      .catch(() => { /* приймач не зупиняємо через збій панелі */ });
+  }
+  document.addEventListener("play", event => {
+    const media = event.target;
+    if (!(media instanceof HTMLMediaElement) || !holdBox.checked) return;
+    playing.add(media);
+    const left = Number.isFinite(media.duration) ? media.duration - media.currentTime : 10;
+    sendHold(Math.min(120, left + 1.5));
+    if (!holdTimer) holdTimer = setInterval(() => { if (playing.size) sendHold(10); }, 4000);
+  }, true);
+  function stopped(event) {
+    if (!playing.delete(event.target) || playing.size) return;
+    clearInterval(holdTimer); holdTimer = null;
+    sendHold(1);  // 1 с на відлуння кімнати, потім мікрофон відкривається
+  }
+  document.addEventListener("pause", stopped, true);
+  document.addEventListener("ended", stopped, true);
+  window.addEventListener("pagehide", () => { if (playing.size) sendHold(0); });
+
   // ---------- Автооновлення ----------
   function schedule() {
     clearInterval(timer);

@@ -124,3 +124,42 @@ def set_pause_minutes(
         """, (current + 1,))
 
         return _read_state(db, now)
+
+
+# ---------- Утримання на час прослуховування ----------
+# Окремо від паузи оператора: інша мета, власний короткий термін і без версії.
+# Термін завжди обмежений, тож закрита вкладка не залишить приймач вимкненим.
+MAX_LISTENING_HOLD_S = 120.0
+
+
+def ensure_hold_table(db):
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS receiver_listening_hold (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            hold_until REAL NOT NULL
+        )
+    """)
+
+
+def set_listening_hold(db_path, seconds, *, now=None):
+    """Утримувати мікрофон закритим ще `seconds` секунд (0 — відпустити зараз)."""
+    if type(seconds) not in (int, float) or not math.isfinite(seconds) or not 0 <= seconds <= MAX_LISTENING_HOLD_S:
+        raise ValueError(f"Утримання має бути від 0 до {MAX_LISTENING_HOLD_S:g} с")
+    now = time.time() if now is None else float(now)
+    with get_db(db_path) as db:
+        ensure_hold_table(db)
+        db.execute("""INSERT INTO receiver_listening_hold (id, hold_until) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET hold_until = excluded.hold_until""", (now + seconds,))
+    return {"active": seconds > 0, "hold_until": now + seconds}
+
+
+def reception_request(db_path, *, now=None):
+    """Що просять від приймача: "pause" (оператор), "listening" (прослуховування) або None."""
+    now = time.time() if now is None else float(now)
+    with get_db(db_path) as db:
+        ensure_table(db)
+        ensure_hold_table(db)
+        if _read_state(db, now)["pause_requested"]:
+            return "pause"
+        row = db.execute("SELECT hold_until FROM receiver_listening_hold WHERE id = 1").fetchone()
+    return "listening" if row and float(row[0]) > now else None

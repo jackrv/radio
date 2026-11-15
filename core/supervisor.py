@@ -187,6 +187,9 @@ class ApplicationSupervisor:
 
         audio_stack = ExitStack()
         paused = None
+        # Мікрофон закрито лише на час прослуховування: уже записані фрази
+        # обробляються далі, відкидається тільки незавершений фрагмент.
+        listening_hold = False
         retry_at = 0.0
         last_frame_at = time.monotonic()
 
@@ -219,10 +222,31 @@ class ApplicationSupervisor:
             retry_at = 0.0
             last_frame_at = time.monotonic()
 
-        def transition(should_pause):
-            nonlocal paused, segmenter, retry_at, last_frame_at
+        def transition(requested):
+            nonlocal paused, segmenter, retry_at, last_frame_at, listening_hold
+
+            hold = requested == "listening"
+            should_pause = bool(requested)
 
             if paused is should_pause:
+                if should_pause and listening_hold and not hold:
+                    # Під час прослуховування оператор поставив паузу: повне призупинення.
+                    if self.pause_gate is not None:
+                        self.pause_gate.set_paused(True)
+                    clear_queue(self.frames)
+                    clear_queue(self.segments)
+                    listening_hold = False
+                    self.log.info("⏸ Приймання призупинено: мікрофон закрито")
+                return
+
+            if should_pause and hold:
+                audio_stack.close()
+                clear_queue(self.frames)
+                if self.runtime_state is not None:
+                    self.runtime_state.set("paused")
+                paused = True
+                listening_hold = True
+                self.log.info("🎧 Мікрофон закрито на час прослуховування; записані фрази обробляються")
                 return
 
             if should_pause:
@@ -249,7 +273,10 @@ class ApplicationSupervisor:
 
                 # При первом запуске очереди не очищаем.
                 # Очистка нужна только при выходе из паузы.
-                if paused is True:
+                if paused is True and listening_hold:
+                    # Після прослуховування черга фраз лишається: це записане до нього.
+                    clear_queue(self.frames)
+                elif paused is True:
                     clear_queue(self.frames)
                     clear_queue(self.segments)
 
@@ -292,6 +319,7 @@ class ApplicationSupervisor:
 
                 was_paused = paused is True
                 paused = False
+                listening_hold = False
 
                 if was_paused:
                     self.log.info(
@@ -301,7 +329,7 @@ class ApplicationSupervisor:
         with ignore_repeated_sigint() as stop_requested, self.heartbeat_context():
             try:
                 requested_pause = (
-                    bool(self.pause_checker())
+                    self.pause_checker()
                     if self.pause_checker is not None
                     else False
                 )
@@ -425,7 +453,7 @@ class ApplicationSupervisor:
                                 self.log.critical("Вичерпано спроби перезапуску Telegram")
                                 telegram_restart_exhausted_logged = True
                     requested_pause = (
-                        bool(self.pause_checker())
+                        self.pause_checker()
                         if self.pause_checker is not None
                         else False
                     )

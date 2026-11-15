@@ -57,6 +57,10 @@ class SessionInput(BaseModel):
     token: str = Field(max_length=128)
 
 
+class ListeningHold(BaseModel):
+    seconds: float = Field(ge=0, le=120)
+
+
 class RuntimeSettingsUpdate(BaseModel):
     values: dict[str, bool | int | float]
     expected_revision: int = Field(ge=0)
@@ -428,6 +432,15 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         limits = spectral_settings()
         return notification_eval.evaluate(recordings, samples_dir, threshold=limits["threshold"],
                                           max_outside_s=limits["max_outside_s"], max_extra=limits["max_extra"])
+
+    @app.put("/api/listening-hold")
+    def listening_hold(payload: ListeningHold, admin=Depends(actor)):
+        """Поки в панелі звучить запис, приймач не слухає мікрофон (без власної луни)."""
+        from services.receiver_control import set_listening_hold
+        try:
+            return set_listening_hold(db_path, payload.seconds)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.get("/api/runtime-settings")
     def runtime_settings(admin=Depends(actor)):

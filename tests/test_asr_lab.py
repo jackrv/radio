@@ -189,3 +189,43 @@ def test_bandpass_keeps_radio_voice_band_and_cuts_hum_and_clicks():
     assert level(1000) > 0.95, "мовлення рації лишається"
     assert level(100) < 0.05 and level(6000) < 0.05, "гул і клацання за межами смуги послаблено"
     assert asr_lab.bandpass(b"", sr) == b""
+
+
+def test_family_matching_ignores_apostrophe_forms_and_needs_contiguous_words():
+    tokens = asr_lab.plain_tokens("Вишня 210, я Клен 300, перевірка зв’язку, прийом")
+    assert asr_lab.has_family(tokens, asr_lab.FAMILIES["перевірка звʼязку"])
+    assert asr_lab.has_family(asr_lab.plain_tokens("перевірка звязку"), asr_lab.FAMILIES["перевірка звʼязку"])
+    assert not asr_lab.has_family(asr_lab.plain_tokens("посилку я отримав"), asr_lab.FAMILIES["посилку отримав"])
+    assert asr_lab.has_family(asr_lab.plain_tokens("розбираю добре, чую"), asr_lab.FAMILIES["чую … розбираю"])
+
+
+def test_family_metrics_separate_kept_from_invented_phrases():
+    results = [result("speech", "Вишня 210, посилку отримав", "вишня 210 посилку отримав"),
+               result("speech", "Клен 300, прийнято, прийом", "клен 300 посилку отримав прийом"),
+               result("noise", "", "Прийнято, прийом."),
+               result("room", "", "посилку отримав")]
+    summary = asr_lab.summarize(results)
+    family = summary["families"]["посилку отримав"]
+    assert family == {"in_reference": 1, "kept": 1, "invented_on_speech": 1, "invented_on_negatives": 1}
+    assert summary["families"]["прийнято / прийняв"]["invented_on_negatives"] == 1
+    assert summary["exact_phrases"] == 1, "звіряються слова без розділових знаків і апострофів"
+
+
+@pytest.mark.parametrize("variant, expected", [("dictionary", "вишня"), ("phrases", "Посилку отримав"), ("none", "")])
+def test_prompt_variants_are_built_from_phrases_and_dictionary(tmp_path, monkeypatch, variant, expected):
+    from database import init_db
+    db = tmp_path / "events.db"
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'вишня: 210')")
+    monkeypatch.setattr("config.DB_PATH", str(db))
+    args = type("Args", (), {"prompt": variant, "prompt_file": None, "language": "uk", "model": None,
+                             "variant": "whisper"})()
+    with patch("core.recognition.WhisperRecognizer"):
+        lab = asr_lab.Lab(args, tmp_path)
+    assert (expected in lab.prompt) if expected else lab.prompt == ""
+    args.prompt = "combined"
+    with patch("core.recognition.WhisperRecognizer"):
+        combined = asr_lab.Lab(args, tmp_path).prompt
+    assert combined.startswith(asr_lab.PHRASES_PROMPT) and combined.endswith("вишня")
+    assert not any(ch.isdigit() for ch in asr_lab.PHRASES_PROMPT), "у підказці немає номерів"

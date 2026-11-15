@@ -40,6 +40,27 @@ OUTPUT = ROOT / ".local-experiments"
 SPEECH, UNCLEAR, NON_SPEECH = ("speech",), ("unclear",), ("noise", "notification")
 # Шум приміщення (клавіатура тощо) — артефакт тестової установки: окремо від шуму ефіру.
 ROOM = ("room",)
+
+# Короткий контекст із підтверджених оператором оборотів (ASR_TEMPLATES.md, розділ 4).
+# Без номерів і без підписів на кшталт «Позивні:» — вони самі потрапляли в галюцинації.
+PHRASES_PROMPT = ("Радіообмін. Перевірка зв’язку. На зв’язку. Чую та розбираю добре. "
+                  "Прийнято, прийом. Прийняв, прийом. Посилку отримав. "
+                  "До роботи приступив. Роботу закінчив. Повторіть, голос не пройшов.")
+PROMPTS = ("dictionary", "none", "phrases", "combined")
+
+# Характерні звороти: суцільні послідовності слів після вилучення апострофів.
+# «чую … розбираю» — обидва слова в будь-якому місці.
+FAMILIES = {
+    "перевірка звʼязку": [("перевірка", "звязку")],
+    "на звʼязку / на звʼязок": [("на", "звязку"), ("на", "звязок")],
+    "чую … розбираю": "both:чую,розбираю",
+    "до роботи приступив": [("до", "роботи", "приступив")],
+    "роботу закінчив": [("роботу", "закінчив")],
+    "посилку отримав": [("посилку", "отримав")],
+    "прийнято / прийняв": [("прийнято",), ("прийняв",)],
+    "прийом": [("прийом",)],
+    "повторіть, голос не пройшов": [("повторіть", "голос", "не", "пройшов")],
+}
 SPLIT_BLOCK_S = 20 * 60
 VARIANTS = ("whisper", "rules", "qwen", "pipeline")
 
@@ -99,6 +120,21 @@ def words(text):
 def edit_distance(a, b):
     from rapidfuzz.distance import Levenshtein
     return Levenshtein.distance(a, b)
+
+
+def plain_tokens(text):
+    """Слова без апострофів: «зв’язку», «звʼязку» і «звязку» — одне й те саме."""
+    return re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", (text or "").casefold()))
+
+
+def has_family(tokens, pattern):
+    if isinstance(pattern, str):
+        return all(word in tokens for word in pattern.split(":", 1)[1].split(","))
+    for seq in pattern:
+        n = len(seq)
+        if any(tuple(tokens[i:i + n]) == seq for i in range(len(tokens) - n + 1)):
+            return True
+    return False
 
 
 def digit_groups(text):
@@ -173,6 +209,30 @@ def summarize(results):
             if pairs:
                 summary[f"{role}_accuracy_from_{source}"] = sum(role_tokens(a) == role_tokens(b) for a, b in pairs) / len(pairs)
                 summary[f"{role}_evaluated"] = len(pairs)
+    speech_ref = [r for r in results if r.get("label") in SPEECH and r.get("reference") is not None]
+    if speech_ref:
+        summary["exact_phrases"] = sum(plain_tokens(r["reference"]) == plain_tokens(r.get("hypothesis")) for r in speech_ref)
+    segs = lambda r: r.get("whisper_segments") or []
+    summary["fallback_records"] = sum(any((s.get("temperature") or 0) > 0 for s in segs(r)) for r in results)
+    summary["loop_records"] = sum(any((s.get("compression_ratio") or 0) > 2.4 for s in segs(r)) for r in results)
+    negatives = [r for r in results if r.get("label") in NON_SPEECH + ROOM]
+    families = {}
+    for name, pattern in FAMILIES.items():
+        in_ref = [r for r in speech_ref if has_family(plain_tokens(r["reference"]), pattern)]
+        families[name] = {
+            "in_reference": len(in_ref),
+            "kept": sum(has_family(plain_tokens(r.get("hypothesis")), pattern) for r in in_ref),
+            # Зворот з'явився там, де його не казали: ціна підказки.
+            "invented_on_speech": sum(has_family(plain_tokens(r.get("hypothesis")), pattern)
+                                      and not has_family(plain_tokens(r["reference"]), pattern) for r in speech_ref),
+            "invented_on_negatives": sum(has_family(plain_tokens(r.get("hypothesis")), pattern) for r in negatives),
+        }
+    summary["families"] = families
+    rtf = [r["timing"]["whisper_s"] / r["signal"]["duration_s"] for r in results
+           if r.get("timing", {}).get("whisper_s") and (r.get("signal") or {}).get("duration_s")]
+    if rtf:
+        summary["rtf_p50"] = sorted(rtf)[len(rtf) // 2]
+    summary["errors"] = sum("error" in r for r in results)
     timings = [r["timing"].get("total_s") for r in results if r.get("timing", {}).get("total_s") is not None]
     if timings:
         ordered = sorted(timings)
@@ -253,6 +313,45 @@ def dictionaries_from(db_path):
     return (callsigns, commands, watch), build_prompt(callsigns, commands, watch), blacklist, short_garbage
 
 
+def prompt_token_count(prompt, language):
+    """Кількість токенів підказки токенізатором Whisper (зберігається ≤223 останніх)."""
+    if not prompt:
+        return 0
+    try:
+        from mlx_whisper.tokenizer import get_tokenizer
+        tokenizer = get_tokenizer(multilingual=True, num_languages=100, language=language or "uk", task="transcribe")
+        return len(tokenizer.encode(" " + prompt.strip()))
+    except Exception:
+        return None
+
+
+def dictionary_fingerprint_of(db_path):
+    from services.dictionary_loader import dictionary_fingerprint
+    try:
+        with read_only(db_path) as db:
+            return dictionary_fingerprint(db)
+    except sqlite3.Error:
+        return None
+
+
+def runtime_versions(model_repo):
+    """Версії рушія й ревізія локальних ваг (каталог snapshot HF — це хеш коміту)."""
+    from importlib import metadata
+    versions = {"python": sys.version.split()[0]}
+    for package in ("mlx-whisper", "mlx", "numpy"):
+        try:
+            versions[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            versions[package] = None
+    try:
+        from huggingface_hub import try_to_load_from_cache
+        path = try_to_load_from_cache(model_repo, "config.json")
+        versions["model_revision"] = Path(path).parent.name if isinstance(path, str) else None
+    except Exception:
+        versions["model_revision"] = None
+    return versions
+
+
 class Lab:
     def __init__(self, args, run_dir):
         import config
@@ -260,7 +359,10 @@ class Lab:
         self.log = logging.getLogger("asr_lab")
         self.db_path = snapshot_database(run_dir / "events-snapshot.db")
         self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path)
-        self.prompt = dictionary_prompt if args.prompt == "dictionary" else ""
+        phrases = Path(args.prompt_file).read_text(encoding="utf-8").strip() if args.prompt_file else PHRASES_PROMPT
+        self.prompt = {"dictionary": dictionary_prompt, "none": "", "phrases": phrases,
+                       "combined": f"{phrases} {dictionary_prompt}".strip()}[args.prompt]
+        self.dictionary_prompt = dictionary_prompt
         self.language = None if args.language == "auto" else args.language
         self.model = args.model or config.MODEL_REPO
         self.sample_rate = config.SR
@@ -275,7 +377,13 @@ class Lab:
     def params(self):
         import config
         return {"variant": self.args.variant, "model": self.model, "language": self.language or "auto",
-                "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "normalize": self.args.normalize == "on",
+                "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "prompt_text": self.prompt,
+                "prompt_tokens": prompt_token_count(self.prompt, self.language),
+                "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
+                "dictionary_prompt_sha256": hashlib.sha256(self.dictionary_prompt.encode()).hexdigest(),
+                "dictionary_fingerprint": dictionary_fingerprint_of(self.db_path),
+                "versions": runtime_versions(self.model),
+                "normalize": self.args.normalize == "on",
                 "min_rms_gate": self.args.min_rms, "llm_repo": config.LLM_REPO if self.llm else None,
                 "whisper_options": {"temperature": [0.0, 0.2, 0.4], "condition_on_previous_text": False,
                                     "no_speech_threshold": 0.6, "logprob_threshold": -1.0,
@@ -433,7 +541,12 @@ def run(args):
                 output, timing = lab.process(pcm)
             except Exception as exc:  # один зіпсований запис не зупиняє експеримент
                 output, timing = {"error": type(exc).__name__}, {}
+            try:
+                wav_sha = hashlib.sha256((Path(args.archive) / f"{record['id']}.wav").read_bytes()).hexdigest()
+            except OSError:
+                wav_sha = None
             item = {"id": record["id"], "created": record["created"], "split": record["split"],
+                    "wav_sha256": wav_sha, "session": record["data"].get("session"),
                     "status": record["status"], "label": record["label"], "reference": record["reference"],
                     "reference_recipient": record["reference_recipient"], "reference_sender": record["reference_sender"],
                     "multiple_messages": record.get("multiple_messages"),
@@ -563,7 +676,9 @@ def main(argv=None):
     r.add_argument("--limit", type=int)
     r.add_argument("--ids", help="файл з ідентифікаторами записів")
     r.add_argument("--language", default="uk", help="uk, ru або auto")
-    r.add_argument("--prompt", choices=("dictionary", "none"), default="dictionary")
+    r.add_argument("--prompt", choices=PROMPTS, default="dictionary",
+                   help="dictionary — як у приймачі; phrases — лише звороти; combined — звороти + словник")
+    r.add_argument("--prompt-file", help="власний текст зворотів для phrases/combined (без номерів)")
     r.add_argument("--normalize", choices=("on", "off"), default="on")
     r.add_argument("--min-rms", type=float, default=None, help="поріг RMS (типово — без відсікання)")
     r.add_argument("--model", help="інша модель Whisper (типово — з config.py)")

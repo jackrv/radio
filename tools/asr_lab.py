@@ -9,6 +9,7 @@
   .venv/bin/python -m tools.asr_lab queue          # черга розмітки для «Аудіоархіву»
   .venv/bin/python -m tools.asr_lab run --name base --variant whisper --status ready,empty_text,blacklist
   .venv/bin/python -m tools.asr_lab run --name no-prompt --variant whisper --prompt none
+  .venv/bin/python -m tools.asr_lab run --name band --variant whisper --bandpass on
   .venv/bin/python -m tools.asr_lab report .local-experiments/<запуск>
   .venv/bin/python -m tools.asr_lab compare <запуск A> <запуск B>
 
@@ -201,6 +202,24 @@ def breakdown(results):
 
 # ---------- Конвеєр ----------
 
+def bandpass(pcm, sample_rate, low=300.0, high=3400.0, ramp=100.0):
+    """Смуга мовлення рації перед Whisper: частотна маска з плавними краями, без зсуву фази.
+
+    Гул кімнати нижче й удари клавіш та шипіння вище смуги послаблюються.
+    Обробляє весь запис одразу (офлайн); для живого приймання потрібен потоковий фільтр.
+    """
+    x = np.frombuffer(pcm, dtype="<i2").astype(np.float64)
+    if not x.size:
+        return pcm
+    spectrum = np.fft.rfft(x)
+    freqs = np.fft.rfftfreq(len(x), 1.0 / sample_rate)
+    rise = np.clip((freqs - (low - ramp)) / ramp, 0.0, 1.0)
+    fall = np.clip(((high + ramp) - freqs) / ramp, 0.0, 1.0)
+    mask = 0.5 - 0.5 * np.cos(np.pi * np.minimum(rise, fall))
+    y = np.fft.irfft(spectrum * mask, len(x))
+    return np.clip(np.rint(y), -32768, 32767).astype("<i2").tobytes()
+
+
 def snapshot_database(target):
     """Знімок events.db для відтворюваності; робоча база не змінюється."""
     import config
@@ -262,6 +281,7 @@ class Lab:
                                     "no_speech_threshold": 0.6, "logprob_threshold": -1.0,
                                     "compression_ratio_threshold": 2.4},
                 "seed": self.args.seed, "resegment": self.args.resegment, "gate_db": self.args.gate_db,
+                "bandpass": [self.args.band_low, self.args.band_high] if self.args.bandpass == "on" else None,
                 "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only}
 
     def apply_rules(self, text):
@@ -309,12 +329,16 @@ class Lab:
         timing = {}
         started = time.perf_counter()
         audio, rms = prepare_audio(pcm, 0.0, self.args.normalize == "on")
+        # Поріг RMS — як у приймачі: за вихідним звуком, до будь-яких фільтрів.
         gated = self.args.min_rms is not None and rms < self.args.min_rms
         result = {"rms": rms, "gated": gated}
         if gated or audio.size == 0:
             result.update(hypothesis="", raw_text="", stage="rms_gate")
             timing["total_s"] = time.perf_counter() - started
             return result, timing
+        if self.args.bandpass == "on":
+            pcm = bandpass(pcm, self.sample_rate, self.args.band_low, self.args.band_high)
+            audio, _ = prepare_audio(pcm, 0.0, self.args.normalize == "on")
         t = time.perf_counter()
         try:
             # Відкат на температуру 0,2/0,4 — випадкова вибірка. Фіксуємо зерно,
@@ -547,6 +571,9 @@ def main(argv=None):
     r.add_argument("--resegment", choices=("none", "energy"), default="none",
                    help="energy — повторно різати запис VAD із умовою гучності над фоном")
     r.add_argument("--gate-db", type=float, default=12.0, help="поріг над фоном для --resegment energy, дБ")
+    r.add_argument("--bandpass", choices=("off", "on"), default="off", help="смуга мовлення перед Whisper")
+    r.add_argument("--band-low", type=float, default=300.0, help="нижня межа смуги, Гц")
+    r.add_argument("--band-high", type=float, default=3400.0, help="верхня межа смуги, Гц")
     rep = sub.add_parser("report")
     rep.add_argument("run_dir")
     c = sub.add_parser("compare")

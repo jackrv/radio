@@ -176,3 +176,16 @@ def test_room_noise_and_multiple_messages_are_reported_separately():
     assert summary["non_speech_records"] == 1 and summary["false_text_on_non_speech"] == 0, "кімната не змішується з ефіром"
     parts = asr_lab.breakdown(results)
     assert parts["передач у записі: кілька"]["records"] == 1 and parts["передач у записі: одна"]["wer"] == 0
+
+
+
+def test_bandpass_keeps_radio_voice_band_and_cuts_hum_and_clicks():
+    sr = 16000
+    t = np.arange(sr) / sr
+    def level(freq):
+        tone = (0.3 * np.sin(2 * np.pi * freq * t) * 32767).astype("<i2").tobytes()
+        out = np.frombuffer(asr_lab.bandpass(tone, sr), "<i2").astype(np.float64)
+        return float(np.sqrt(np.mean(out ** 2)) / np.sqrt(np.mean((0.3 * 32767 * np.sin(2 * np.pi * freq * t)) ** 2)))
+    assert level(1000) > 0.95, "мовлення рації лишається"
+    assert level(100) < 0.05 and level(6000) < 0.05, "гул і клацання за межами смуги послаблено"
+    assert asr_lab.bandpass(b"", sr) == b""

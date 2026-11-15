@@ -2,6 +2,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
+import os
+from core.console import ConsoleDashboard
 
 from config import LOG_PATH
 
@@ -57,13 +59,19 @@ def configure_logging(token):
             backupCount=LOG_BACKUP_COUNT,
             encoding="utf-8",
         ),
-        logging.StreamHandler(sys.stdout),
+        ConsoleDashboard(provider=lambda: __import__("core.diagnostics", fromlist=["runtime"]).runtime.snapshot()),
     ]
 
     handlers[0].namer = archive_log_name
 
     for handler in handlers:
         handler.setFormatter(formatter)
+    handlers[0].setFormatter(RedactingFormatter(
+        "%(asctime)s [%(levelname)s] %(name)s [%(threadName)s] %(message)s",
+        "%Y-%m-%d %H:%M:%S", token,
+    ))
+    if not os.environ.get("RADIO345_MANAGED_CONSOLE"):
+        handlers[1].start()
 
     logging.basicConfig(
         level=logging.INFO,

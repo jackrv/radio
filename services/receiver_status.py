@@ -24,6 +24,7 @@ class ReceiverRuntimeState:
             raise ValueError("Неприпустимий стан приймача")
         with self._lock:
             self._state = state
+        runtime.gauge("receiver.state", state)
 
     def get(self):
         with self._lock:

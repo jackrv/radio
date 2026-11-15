@@ -126,7 +126,7 @@ def transcriber():
     if not BOT_TOKEN:
         log.warning("Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN у .env")
 
-    log.info("Слухаю ефір... (Ctrl+C для виходу)")
+    log.info("Слухаю ефір... (Ctrl+C для виходу)", extra={"console": True})
     worker.run()
 
 

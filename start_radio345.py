@@ -15,6 +15,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import atexit
+from logging.handlers import RotatingFileHandler
+from core.console import ConsoleDashboard
+from core.log_security import RedactingFormatter, archive_log_name
 import os
 from pathlib import Path
 import re
@@ -39,7 +44,40 @@ NGROK_INSPECT_PORT = 4040
 MINIAPP_PORT = 8080
 
 
+_console = None
+_launcher_log = logging.getLogger("radio345.launcher")
+_launcher_log.propagate = False
+
+
+def start_console():
+    global _console
+    handler = RotatingFileHandler(ROOT / "launcher.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    handler.namer = archive_log_name
+    formatter = RedactingFormatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S", launcher_setting("TELEGRAM_BOT_TOKEN"))
+    handler.setFormatter(formatter)
+    _launcher_log.addHandler(handler)
+    _launcher_log.setLevel(logging.INFO)
+    def snapshot():
+        return json.loads((ROOT / "diagnostics.json").read_text(encoding="utf-8"))
+    _console = ConsoleDashboard(provider=snapshot).start()
+    atexit.register(_console.close)
+
+
+def close_console():
+    global _console
+    if _console is not None:
+        _console.close()
+        _console = None
+    for handler in list(_launcher_log.handlers):
+        handler.close()
+        _launcher_log.removeHandler(handler)
+
+
 def output(message: str) -> None:
+    _launcher_log.info(message)
+    if _console is not None:
+        _console.add(message)
+        return
     try:
         print(f"[launcher] {message}", flush=True)
     except (OSError, ValueError):
@@ -258,7 +296,7 @@ class ManagedProcess:
             bufsize=1,
             start_new_session=True,  # власна група контролера та його служби
             pass_fds=fds,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            env={**os.environ, "PYTHONUNBUFFERED": "1", "RADIO345_MANAGED_CONSOLE": "1"},
         )
         if session is not None:
             session.register(name, self.process)
@@ -274,7 +312,14 @@ class ManagedProcess:
             for line in self.process.stdout:
                 if writable:
                     try:
-                        print(f"[{self.name}] {line}", end="", flush=True)
+                        _launcher_log.info("[%s] %s", self.name, line.rstrip())
+                        if _console is not None:
+                            if self.name == "radio" or re.search(r"\b(error|warning|critical|fatal)\b", line, re.I):
+                                # Redact child output before placing it on the dashboard.
+                                record = _launcher_log.makeRecord(_launcher_log.name, logging.WARNING, "", 0, "[%s] %s", (self.name, line.rstrip()), None)
+                                _console.add(_launcher_log.handlers[0].format(record))
+                        else:
+                            print(f"[{self.name}] {line}", end="", flush=True)
                     except (OSError, ValueError):
                         writable = False
         except (OSError, ValueError):
@@ -455,6 +500,7 @@ def run_services(args, session):
             output(f"Помилка: порт {port} зайнятий ({name}). Зупиніть раніше запущену службу.")
             return 2
 
+    start_console()
     output(f"Python: {py}")
     processes: list[ManagedProcess] = []
     try:
@@ -550,6 +596,7 @@ def run_services(args, session):
                     output(f"Не вдалося зупинити {item.name}; перевірте процес вручну")
         finally:
             signal.signal(signal.SIGINT, previous_handler)
+            close_console()
 
 
 if __name__ == "__main__":

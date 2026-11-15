@@ -615,11 +615,14 @@
   }
   $("role").addEventListener("change", roles);
 
-  // ---------- Черга розмітки (python -m tools.asr_lab queue) ----------
+  // ---------- Черги розмітки з поточного архіву ----------
   async function loadQueue() {
-    const select = $("recording-queue"), chosen = select.value;
+    const select = $("recording-queue");
     let queue;
-    try { queue = await request("/api/recordings/queue"); } catch (_) { queue = { available: false }; }
+    try { queue = await request("/api/recordings/queue"); }
+    catch (_) { select.title = "Не вдалося оновити лічильники. Спробуємо знову."; return; }
+    // Read selection after the request: the user may have changed it while waiting.
+    const chosen = select.value;
     select.replaceChildren(el("option", "", "Без черги"));
     select.firstChild.value = "";
     if (!queue.available) {
@@ -639,7 +642,8 @@
     const lost = groups.reduce((a, g) => a + (g.total - g.present), 0);
     $("recording-queue-progress").textContent = `Черга розмітки: перевірено ${reviewed} з ${total}` +
       (lost ? ` · ${lost} записів уже видалено за терміном зберігання` : "") +
-      ". Почніть із групи A; фільтр «Без перевірки» показує лише те, що лишилося.";
+      `. Залишилось ${total - reviewed}. Почніть із групи A; оберіть «Без перевірки».` +
+      (queue.live ? " Черги поповнюються з архіву. Нові картки — кнопкою «Оновити записи»." : "");
   }
 
   let recordingOffset = 0;
@@ -654,19 +658,23 @@
     const groups = page.groups;
     const grouped = groups && ["all", "normal", "short"].every(key => typeof groups[key] === "number");
     const groupSelect = $("recording-group");
-    // Черга — фіксований перелік записів; звичайні групи тоді не застосовуються.
+    // Queues have their own criteria instead of ordinary duration groups.
     const queued = Boolean($("recording-queue").value);
     groupSelect.disabled = !grouped || queued;
     groupSelect.title = grouped ? "" : "Перезапустіть локальну панель, щоб увімкнути групи";
     if (!grouped) groupSelect.value = "all";
     for (const option of groupSelect.options) {
       const count = grouped ? groups[option.value] : option.value === "all" ? page.total : null;
-      option.textContent = `${{normal: "Основні", short: "Короткі / відсіяні", all: "Усі разом"}[option.value]}${count == null ? "" : ` · ${count}`}`;
+      option.disabled = option.value === "shadow" && typeof count !== "number";
+      option.textContent = `${{normal: "Основні", short: "Короткі / відсіяні", all: "Усі разом", shadow: "Перевірка фільтра"}[option.value]}${count == null ? "" : ` · ${count}`}`;
     }
     if (!grouped) note("Записи відкрито без груп. Перезапустіть локальну адмінпанель і оновіть список, щоб відокремити короткі фрази. Приймач зупиняти не потрібно.");
     const quality = summary.quality;
     $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі ефіру/сигналі: ${summary.false_text} · кімнатний шум: ${summary.room ?? 0} (з текстом: ${summary.room_false_text ?? 0}) · кілька передач у записі: ${summary.multiple_messages ?? 0} з ${summary.speech_reviewed ?? 0} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
     $("recording-summary").textContent = `Записів: ${page.total} · перевірено: ${summary.reviewed} · WER до / після: ${pct(quality.raw_text.wer)} / ${pct(quality.final_text.wer)}`;
+    const shadow = summary.text_filter_shadow;
+    $("recording-shadow-summary").hidden = !shadow;
+    if (shadow) $("recording-shadow-summary").textContent = `Перевірка фільтра: позначено ${shadow.candidates} з ${shadow.evaluated} оцінених записів · перевірено ${shadow.reviewed}: мовлення ${shadow.speech}, шум ${shadow.noise}, сигнал ${shadow.notification}, кімната ${shadow.room}, нерозбірливо ${shadow.unclear}. Новий фільтр лише ставить позначки. Оберіть «Перевірка фільтра» та прослухайте записи.`;
     if (!page.total) $("recordings").append(el("p", "muted", (grouped ? groups.all : page.total) ? "У цій групі записів немає. Оберіть іншу групу або стан перевірки." : "Записів за цим фільтром ще немає. Нові з’являться після запуску оновленого приймача."));
     for (const item of page.items) {
       const d = item.data, signal = d.signal || {};
@@ -679,6 +687,7 @@
       details.append(el("summary", "", "Розбір і метрики"));
       details.append(el("p", "muted small", `Тривалість: ${fix(signal.duration_s)} с · рівень: ${fix(signal.rms_dbfs, 1)} dBFS · кліпінг: ${pct(signal.clipping_ratio)} · Whisper: ${fix(d.whisper_s)} с · Qwen: ${fix(d.qwen_s)} с · черга: ${fix(d.queue_wait_s)} с`));
       card.append(el("p", "recording-raw", `Whisper: ${d.raw_text || "Текст відсутній / розпізнавання не виконувалось"}`));
+      if (d.text_filter_shadow?.additional) card.append(el("p", "recording-shadow", `Новий фільтр пропонує відсіяти: «${d.text_filter_shadow.phrase}». Перевірте аудіо.`));
       if (d.before_llm && d.before_llm !== d.raw_text) details.append(el("p", "", `До Qwen: ${d.before_llm}`));
       if (d.llm_text !== undefined) details.append(el("p", "", `Пропозиція Qwen (${d.llm_accepted ? "прийнято" : "відхилено"}): ${d.llm_text}`));
       details.append(el("p", "", `Вихід конвеєра: ${d.final_text || "Не передано далі"}`));
@@ -787,6 +796,8 @@
         await action(async () => {
           const speechLike = ["speech", "unclear"].includes(category.value);
           const result = await request(`/api/recordings/${item.id}/review`, "PUT", {reference: input.value, label: category.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read(), multiple_messages: speechLike ? multiBox.checked : null});
+          // Reviewed rows leave the pending query; keep the next page's offset aligned.
+          if (item.reference === null && $("recording-filter").value === "pending") recordingOffset = Math.max(0, recordingOffset - 1);
           item.revision = result.revision; item.reference = result.reference; item.label = result.label;
           showQuality(result);
           controller.done = true;
@@ -924,6 +935,7 @@
       if (!$("auto").checked || document.visibilityState !== "visible" || busy) return;
       if (view === "overview" || view === "system" || view === "users") action(overview);
       else if (view === "filter") action(filterView);
+      else if (view === "recordings" && document.activeElement !== $("recording-queue")) action(loadQueue);
     }, REFRESH_MS);
   }
   $("auto").addEventListener("change", schedule);

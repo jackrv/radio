@@ -19,6 +19,15 @@ _trace = ContextVar("recording_trace", default=None)
 UNSET = object()
 # Звук із кімнати (клавіатура, кроки) — не радіоефір: окремо від шуму ефіру в метриках.
 NON_SPEECH = ("noise", "notification", "room")
+# Live annotation queues; frozen experimental samples stay in tools/asr_lab.py.
+REVIEW_QUEUES = {
+    "A": ("Усе, що бачив Whisper", "status IN ('ready','empty_text','blacklist')"),
+    "B": ("Тихі поруч із порогом (−36…−34 dBFS)",
+          "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')>=-36 "
+          "AND json_extract(data,'$.signal.rms_dbfs')<-34"),
+    "C": ("Тихі нижче −36 dBFS", "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')<-36"),
+    "D": ("Відкинуті VAD, мовлення від 300 мс", "status='vad_short' AND json_extract(data,'$.speech_ms')>=300"),
+}
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -171,37 +180,44 @@ class RecordingStore:
             }
         return result
 
-    def listing(self, offset=0, limit=25, review="all", group="all", ids=None):
+    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue=""):
         reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
         # Rejected short/quiet/blacklisted material belongs outside the main
         # review list regardless of its audio duration.
         short = "(status IN ('vad_short','low_rms','blacklist') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
-        grouped = {"all": "1", "normal": f"NOT {short}", "short": short}[group]
+        shadow = "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"
+        grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow}[group]
         params = ()
-        if ids is not None:
-            # Черга розмітки: фіксований перелік записів замість звичайних груп.
+        if queue:
+            grouped = " OR ".join(f"({condition})" for _, condition in REVIEW_QUEUES.values()) \
+                if queue == "all" else REVIEW_QUEUES[queue][1]
+        elif ids is not None:
+            # Optional frozen ID list used by offline callers.
             grouped, params = "id IN (SELECT value FROM json_each(?))", (json.dumps(sorted(ids)),)
         where = f"({reviewed}) AND ({grouped})"
         with self.connect() as db:
             db.execute("BEGIN")
-            counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0) FROM recordings WHERE {reviewed}").fetchone()
-            groups = {"all": counts[0], "short": counts[1], "normal": counts[0] - counts[1]}
+            counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0), "
+                                f"COALESCE(SUM({shadow}),0) FROM recordings WHERE {reviewed}").fetchone()
+            groups = {"all": counts[0], "short": counts[1], "normal": counts[0] - counts[1], "shadow": counts[2]}
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
-            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY created DESC,id DESC LIMIT ? OFFSET ?",
+            # New recordings append to a live queue, keeping loaded pages stable.
+            order = "created ASC,id ASC" if queue else "created DESC,id DESC"
+            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
                               (*params, limit, offset)).fetchall()
         return {"items": [self.decode(row) for row in rows], "total": total, "groups": groups, "short_max_seconds": 2}
 
-    def queue_progress(self, groups):
-        """Скільки записів кожної групи черги ще є в архіві та скільки вже перевірено."""
+    def queue_progress(self):
+        """Current archive membership: new arrivals enter without rewriting an ID file."""
         result = []
         with self.connect() as db:
-            for group in groups:
-                ids = json.dumps(sorted(group["ids"]))
+            db.execute("BEGIN")
+            for key, (title, condition) in REVIEW_QUEUES.items():
                 present, reviewed = db.execute(
                     "SELECT COUNT(*), COALESCE(SUM(reference IS NOT NULL),0) FROM recordings "
-                    "WHERE id IN (SELECT value FROM json_each(?))", (ids,)).fetchone()
-                result.append({"key": group["key"], "title": group["title"], "total": len(group["ids"]),
-                               "present": present, "reviewed": reviewed})
+                    f"WHERE {condition}").fetchone()
+                result.append({"key": key, "title": title, "total": present,
+                               "present": present, "reviewed": reviewed, "pending": present - reviewed})
         return result
 
     def get(self, record_id):
@@ -251,8 +267,15 @@ class RecordingStore:
             statuses = dict(db.execute("SELECT status,COUNT(*) FROM recordings GROUP BY status").fetchall())
             rows = db.execute("SELECT * FROM recordings WHERE reference IS NOT NULL").fetchall()
             size = db.execute("SELECT COALESCE(SUM(bytes),0) FROM recordings").fetchone()[0]
+            shadow_counts = db.execute("SELECT "
+                "COALESCE(SUM(json_extract(data,'$.text_filter_shadow.evaluated')=1),0), "
+                "COALESCE(SUM(json_extract(data,'$.text_filter_shadow.additional')=1),0) FROM recordings").fetchone()
         quality = {}
         decoded = [self.decode(row) for row in rows]
+        shadow_reviewed = [r for r in decoded if r['data'].get('text_filter_shadow', {}).get('additional')]
+        shadow = {"evaluated": shadow_counts[0], "candidates": shadow_counts[1], "reviewed": len(shadow_reviewed),
+                  **{label: sum(r['label'] == label for r in shadow_reviewed)
+                     for label in ("speech", "noise", "notification", "room", "unclear")}}
         for stage in ("raw_text", "final_text"):
             speech = [r for r in decoded if r["label"] == "speech"]
             errors = sum(r["quality"][stage]["word_errors"] for r in speech)
@@ -268,6 +291,7 @@ class RecordingStore:
             roles[role] = {"evaluated": len(matches), "correct": sum(matches),
                            "accuracy": sum(matches) / len(matches) if matches else None}
         return {"roles": roles, "statuses": statuses, "reviewed": len(rows), "bytes": size, "quality": quality,
+                "text_filter_shadow": shadow,
                 "retention_days": self.retention_days, "max_bytes": self.max_bytes,
                 "reviewed_protected": True,
                 "missed_speech": sum(r["label"] == "speech" and not r["data"].get("raw_text") for r in decoded),

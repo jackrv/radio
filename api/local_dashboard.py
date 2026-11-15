@@ -211,7 +211,7 @@ def diagnostics_view(data):
     return result
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, queue_path=None):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
@@ -222,8 +222,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
-    from services.recordings import RecordingStore
-    queue_path = Path(queue_path or getattr(config, "REVIEW_QUEUE_PATH", config.BASE_DIR / ".local-experiments" / "review-queue.json"))
+    from services.recordings import RecordingStore, REVIEW_QUEUES
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES)
@@ -299,23 +298,6 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 "models": {"whisper": config.MODEL_REPO, "qwen": config.LLM_REPO},
                 "diagnostics": read_diagnostics(diagnostics_path)}
 
-    def review_queue():
-        """Черга розмітки (лише читання); створює її `python -m tools.asr_lab queue`."""
-        path = Path(queue_path)
-        if not path.is_file() or path.is_symlink() or path.stat().st_size > 2_000_000:
-            return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        groups = []
-        for group in data.get("groups") or []:
-            ids = [i for i in group.get("ids") or [] if isinstance(i, str) and re.fullmatch(r"[0-9a-f]{32}", i)]
-            key = str(group.get("key", ""))
-            if re.fullmatch(r"[A-Z]", key):
-                groups.append({"key": key, "title": str(group.get("title", ""))[:200], "ids": ids})
-        return {"created": data.get("created"), "groups": groups}
-
     callsign_cache = {}
 
     @app.post("/api/recordings/suggest-roles")
@@ -349,27 +331,17 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     @app.get("/api/recordings/queue")
     def recording_queue(admin=Depends(actor)):
-        queue = review_queue()
-        if queue is None:
-            return {"available": False, "hint": "Черги ще немає. Створіть її: .venv/bin/python -m tools.asr_lab queue"}
-        return {"available": True, "created": queue["created"], "groups": recordings.queue_progress(queue["groups"])}
+        return {"available": True, "live": True, "updated_at": time.time(), "groups": recordings.queue_progress()}
 
     @app.get("/api/recordings")
     def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
                        admin=Depends(actor)):
         if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
-                or group not in ("all", "normal", "short") or not re.fullmatch(r"(?:|all|[A-Z])", queue)):
+                or group not in ("all", "normal", "short", "shadow") or not re.fullmatch(r"(?:|all|[A-Z])", queue)):
             raise HTTPException(422, "Некоректні параметри")
-        ids = None
-        if queue:
-            data = review_queue()
-            if data is None:
-                raise HTTPException(404, "Черги ще немає. Створіть її: .venv/bin/python -m tools.asr_lab queue")
-            chosen = [g for g in data["groups"] if queue == "all" or g["key"] == queue]
-            if not chosen:
-                raise HTTPException(404, "Такої групи в черзі немає")
-            ids = {i for g in chosen for i in g["ids"]}
-        return recordings.listing(offset, limit, review, group, ids=ids)
+        if queue and queue != "all" and queue not in REVIEW_QUEUES:
+            raise HTTPException(404, "Такої групи в черзі немає")
+        return recordings.listing(offset, limit, review, group, queue=queue)
 
     @app.get("/api/recordings/summary")
     def recording_summary(admin=Depends(actor)):

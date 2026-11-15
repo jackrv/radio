@@ -78,5 +78,6 @@ RECORD_AUDIO = True
 RECORDINGS_DIR = BASE_DIR / ".local-recordings"
 RECORDINGS_RETENTION_DAYS = 7
 RECORDINGS_MAX_BYTES = 1024 * 1024 * 1024
-# Черга розмітки для оцінки розпізнавання (створює: python -m tools.asr_lab queue).
+# Frozen sample for offline experiments (python -m tools.asr_lab queue).
+# The audio archive UI uses live queues from SQLite, independently of this file.
 REVIEW_QUEUE_PATH = BASE_DIR / ".local-experiments" / "review-queue.json"

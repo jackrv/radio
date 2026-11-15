@@ -233,12 +233,12 @@ def test_short_groups_partition_archive_before_pagination(tmp_path):
     quiet=store.save(pcm()*3,16000,{'status':'low_rms'})
     blacklisted=store.save(pcm()*3,16000,{'status':'blacklist'})
     page=store.listing(group='short',limit=1)
-    assert page['groups']=={'all':6,'short':5,'normal':1}
+    assert page['groups']=={'all':6,'short':5,'normal':1,'shadow':0}
     assert page['total']==5 and len(page['items'])==1
     assert {r['id'] for r in store.listing(group='short')['items']}=={short,boundary,vad,quiet,blacklisted}
     assert [r['id'] for r in store.listing(group='normal')['items']]==[normal]
     store.review(short,'коротка фраза','speech',0)
-    assert store.listing(review='reviewed',group='short')['groups']=={'all':1,'short':1,'normal':0}
+    assert store.listing(review='reviewed',group='short')['groups']=={'all':1,'short':1,'normal':0,'shadow':0}
     assert store.listing(review='pending',group='short')['total']==4
     assert len(store.listing()['items'])==6  # No records were removed.
 
@@ -247,15 +247,63 @@ def test_recording_group_api_validation(setup,tmp_path):
     _,db=setup
     store=RecordingStore(tmp_path/'archive')
     store.save(pcm(),16000,{'status':'ready'})
-    normal=store.save(pcm()*3,16000,{'status':'ready'})
+    normal=store.save(pcm()*3,16000,{'status':'ready','text_filter_shadow':{'evaluated':True,'additional':True}})
     app=create_dashboard(db,'x'*43,recordings_dir=store.root)
     with TestClient(app,base_url='http://127.0.0.1:8766',client=('127.0.0.1',1234)) as client:
         client.post('/session',json={'token':'x'*43},headers={'Origin':'http://127.0.0.1:8766'})
         page=client.get('/api/recordings?group=normal').json()
         assert page['total']==1 and page['items'][0]['id']==normal
         assert client.get('/api/recordings?group=short').json()['total']==1
+        shadow=client.get('/api/recordings?group=shadow').json()
+        assert shadow['total']==1 and shadow['items'][0]['id']==normal
         assert client.get('/api/recordings?group=invalid').status_code==422
         assert client.get('/api/recordings').json()['total']==2
+
+
+def test_shadow_review_selection_metrics_and_legacy_records(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    candidates={label:store.save(pcm(),16000,{'status':'ready','raw_text':'дякую',
+        'text_filter_shadow':{'evaluated':True,'would_filter':True,'additional':True,'phrase':'дякую'}})
+        for label in ('speech','noise','notification','room','unclear')}
+    store.save(pcm(),16000,{'status':'ready','text_filter_shadow':{'evaluated':True,'additional':False}})
+    legacy=store.save(pcm(),16000,{'status':'ready','raw_text':'старий запис'})
+    store.review(legacy,'старий запис','speech',0)
+    page=store.listing(group='shadow',limit=1)
+    assert page['total']==5 and len(page['items'])==1
+    assert page['groups']['all']==7 and page['groups']['shadow']==5
+    assert {r['id'] for r in store.listing(group='shadow')['items']}==set(candidates.values())
+    for label,record_id in candidates.items():
+        if label!='unclear':
+            store.review(record_id,'дякую' if label=='speech' else '',label,0)
+    assert store.listing(group='shadow',review='pending')['total']==1
+    assert store.listing(group='shadow',review='reviewed')['groups']['shadow']==4
+    assert store.summary()['text_filter_shadow']=={
+        'evaluated':6,'candidates':5,'reviewed':4,'speech':1,'noise':1,'notification':1,'room':1,'unclear':0}
+    store.review(candidates['unclear'],'','unclear',0)
+    assert store.summary()['text_filter_shadow']['unclear']==1
+    assert store.get(candidates['speech'])['data']['raw_text']=='дякую'
+    assert store.audio(candidates['speech'])
+
+
+def test_live_queues_classify_thresholds_without_sample_limits(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    for level in (-36,-35,-34,-37):
+        record_id=store.save(pcm(),16000,{'status':'low_rms'})
+        with store.connect() as db:
+            db.execute("UPDATE recordings SET data=json_set(data,'$.signal.rms_dbfs',?) WHERE id=?",(level,record_id))
+    d=[store.save(pcm(),16000,{'status':'vad_short','speech_ms':300+i}) for i in range(22)]
+    store.save(pcm(),16000,{'status':'vad_short','speech_ms':299})
+    store.save(pcm(),16000,{'status':'notification'})
+    ready=store.save(pcm(),16000,{'status':'empty_text'})
+    progress={g['key']:g for g in store.queue_progress()}
+    assert {k:g['total'] for k,g in progress.items()}=={'A':1,'B':2,'C':1,'D':22}
+    assert store.listing(queue='A')['items'][0]['id']==ready
+    assert store.listing(queue='all')['total']==26
+    assert [r['id'] for r in store.listing(queue='D',limit=2)['items']]==d[:2]
+    store.review(d[0],'','noise',0)
+    pending=store.listing(queue='D',review='pending')
+    assert pending['total']==21 and pending['items'][0]['id']==d[1]
+    assert store.get(d[0])['label']=='noise'
 
 
 

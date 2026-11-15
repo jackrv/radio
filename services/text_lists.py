@@ -25,6 +25,14 @@ DISABLED_PREFIX = "#"
 MAX_ENTRIES = 500
 MAX_LINE = 300
 REFRESH_INTERVAL_S = 2.0
+# Observation only: the first revision's list, matched as WHOLE phrases.
+# It must never be passed to the active blacklist or seeded into the database.
+SHADOW_BLACKLIST = (
+    "редактор субтитров", "корректор", "субтитры", "продолжение следует",
+    "спасибо за просмотр", "дякую за перегляд", "позивні", "команди",
+    "дякую", "па па", "пам пам", "слабо", "донатичі", "поп поп", "та та",
+    "маха", "папа",
+)
 
 
 class TextListConflict(Exception):
@@ -224,6 +232,16 @@ def load_active(db):
 
 def blacklist_key(value):
     return " ".join(re.findall(r"[^\W_]+", normalize(value), flags=re.UNICODE))
+
+
+def shadow_blacklist_decision(text, active_keys):
+    """Record a counterfactual decision, independently of audio retention/routing."""
+    key = blacklist_key(text)
+    active = bool(key) and key in active_keys
+    proposed = bool(key) and key in {blacklist_key(value) for value in SHADOW_BLACKLIST}
+    return {"rule": "expanded_exact_v1", "evaluated": True,
+            "would_filter": active or proposed, "additional": proposed and not active,
+            "phrase": key if active or proposed else None}
 
 
 _synced = None

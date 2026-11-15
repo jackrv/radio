@@ -299,21 +299,25 @@ def test_review_queue_filters_archive_and_reports_progress(setup, tmp_path):
     store=RecordingStore(tmp_path/"recordings")
     ids=[store.save(pcm(segment()),16000,{"status":"ready"}) for _ in range(4)]
     store.review(ids[0],"текст","speech",0)
-    queue_path=tmp_path/"queue.json"
-    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings",queue_path=queue_path)
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
     with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
         client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
-        assert client.get("/api/recordings/queue").json()["available"] is False
-        assert client.get("/api/recordings?queue=A").status_code==404
-        queue_path.write_text(json.dumps({"groups":[{"key":"A","title":"Whisper","ids":ids[:2]+["f"*32]},
-                                                    {"key":"B","title":"Тихі","ids":[ids[2]]}]}))
         state=client.get("/api/recordings/queue").json()
-        assert state["groups"]==[{"key":"A","title":"Whisper","total":3,"present":2,"reviewed":1},
-                                 {"key":"B","title":"Тихі","total":1,"present":1,"reviewed":0}]
+        assert state["available"] is True and state["live"] is True
+        a=state["groups"][0]
+        assert (a['key'],a['total'],a['reviewed'],a['pending'])==('A',4,1,3)
         page=client.get("/api/recordings?queue=A&review=pending").json()
-        assert [i["id"] for i in page["items"]]==[ids[1]] and page["total"]==1
-        assert {i["id"] for i in client.get("/api/recordings?queue=all").json()["items"]}=={ids[0],ids[1],ids[2]}
+        assert [i["id"] for i in page["items"]]==ids[1:] and page["total"]==3
+        assert {i["id"] for i in client.get("/api/recordings?queue=all").json()["items"]}==set(ids)
         assert len(client.get("/api/recordings").json()["items"])==4, "без черги — увесь архів"
+        # Arriving audio immediately enters the same queue, without recreating a file or app.
+        new=store.save(pcm(segment()),16000,{'status':'ready'})
+        page=client.get('/api/recordings?queue=A&review=pending').json()
+        assert [i['id'] for i in page['items']]==ids[1:]+[new]
+        store.review(new,'нова фраза','speech',0)
+        a=client.get('/api/recordings/queue').json()['groups'][0]
+        assert (a['total'],a['reviewed'],a['pending'])==(5,2,3)
+        assert {i['id'] for i in client.get('/api/recordings?queue=A&review=reviewed').json()['items']}=={ids[0],new}
         assert client.get("/api/recordings?queue=Z").status_code==404
         assert client.get("/api/recordings?queue=a;drop").status_code==422
 

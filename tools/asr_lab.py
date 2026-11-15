@@ -6,7 +6,7 @@
 
 Приклади:
   .venv/bin/python -m tools.asr_lab inventory
-  .venv/bin/python -m tools.asr_lab queue          # черга розмітки для «Аудіоархіву»
+  .venv/bin/python -m tools.asr_lab queue          # зафіксована вибірка для офлайн-порівнянь
   .venv/bin/python -m tools.asr_lab run --name base --variant whisper --status ready,empty_text,blacklist
   .venv/bin/python -m tools.asr_lab run --name no-prompt --variant whisper --prompt none
   .venv/bin/python -m tools.asr_lab run --name band --variant whisper --bandpass on
@@ -551,7 +551,7 @@ def main(argv=None):
     parser.add_argument("--archive", default=str(ARCHIVE))
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("inventory")
-    qp = sub.add_parser("queue", help="зафіксувати чергу розмітки для «Аудіоархіву»")
+    qp = sub.add_parser("queue", help="зафіксувати вибірку записів для офлайн-порівнянь")
     qp.add_argument("--seed", type=int, default=345)
     qp.add_argument("--output", help="типово config.REVIEW_QUEUE_PATH")
     r = sub.add_parser("run")

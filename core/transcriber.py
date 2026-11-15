@@ -226,6 +226,14 @@ class Transcriber:
             runtime.asr_status("garbage")
             runtime.count("asr.garbage_filtered")
             return
+        if self.recorder is not None:
+            from services.text_lists import shadow_blacklist_decision
+            active_keys = self.text_lists.blacklist if self.text_lists is not None else self.blacklist
+            decision = shadow_blacklist_decision(raw_text, active_keys)
+            note(text_filter_shadow=decision)
+            runtime.count("asr.text_filter_shadow.evaluated")
+            if decision["additional"]:
+                runtime.count("asr.text_filter_shadow.candidates")
         if self._is_blacklisted(raw_text):
             runtime.asr_status("blacklist")
             runtime.count("asr.blacklist_filtered")

@@ -7,6 +7,7 @@ class FakeDictionary:
     def __init__(self, items):
         self.items = items
         self.names = []
+        self.numbers, self.any_number, self.standalone = {}, set(), set()
 
     def find(self, text):
         return self.items.get(text, [])

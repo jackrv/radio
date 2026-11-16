@@ -1,6 +1,7 @@
 from core.analyzer import (
     canonical_text, fmt, fmt_spoken, is_bare_callsign, is_short_garbage, split_roles,
 )
+from core.template_text import template_text
 
 
 class EventProcessor:
@@ -115,10 +116,12 @@ class EventProcessor:
                     note(fix_id=fix_id)
 
                 # У сповіщенні впізнані зі словником слова пишуться як у словнику,
-                # а знайдені команди — окремим рядком шапки. У базі текст незмінний.
+                # схожі позивні й обороти — за шаблоном, а знайдені команди — окремим
+                # рядком шапки. У базі текст незмінний.
                 # Збій оформлення не має зупинити сповіщення: тоді йде почутий текст.
                 try:
                     shown = canonical_text(text, (self.commands, self.callsigns, self.watch))
+                    shown = template_text(shown, self.callsigns, (*self.commands.names, *self.watch.names))
                     commands_str = fmt_spoken(cmd_found)
                 except Exception:
                     self.log.exception("Не вдалося оформити текст сповіщення; надсилаю почутий")

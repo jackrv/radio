@@ -274,3 +274,9 @@ def test_receiver_keeps_default_whisper_temperatures():
     recognizer.transcribe_fn = lambda audio, **kw: calls.append(kw) or {}
     recognizer.transcribe(None)
     assert calls[0]["temperature"] == (0.0, 0.2, 0.4)
+
+
+def test_word_errors_ignore_apostrophe_forms():
+    from tools.asr_lab import score_text
+    for hypothesis in ("на зв'язку, прийом", "на звʼязку прийом", "на звязку прийом"):
+        assert score_text("на звʼязку, прийом", hypothesis)["word_errors"] == 0

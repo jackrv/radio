@@ -114,7 +114,8 @@ def read_pcm(archive, record_id):
 # ---------- Метрики ----------
 
 def words(text):
-    return re.findall(r"[^\W_]+", (text or "").casefold())
+    """Слова для WER: апостроф будь-якого виду не ділить і не змінює слово."""
+    return re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", (text or "").casefold()))
 
 
 def edit_distance(a, b):

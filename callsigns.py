@@ -135,6 +135,13 @@ def to_items(text: str) -> list[tuple[str, str]]:
     return items
 
 
+# Поріг схожості слова для словника команд, коли одразу після слова стоїть
+# точний номер команди («злата 4242» -> «злива 4242»). Номер — головна ознака,
+# тому слово може бути впізнане гірше. Вище 50: на 50 збігаються різні слова
+# однакової довжини з двома спільними літерами.
+COMMAND_ANCHORED_THRESHOLD = 52
+
+
 class Callsigns:
     """
     Формат рядків словника (усе, крім слів і номерів, необов’язкове):
@@ -143,18 +150,25 @@ class Callsigns:
         дуб: *                     слово з будь-яким номером
         бук                        слово без номера
         дощ 1313                   «слово номер» (одна пара в рядку)
+        дощ 13 13                  те саме: цифри без двокрапки зливаються в 1313
     """
 
     @classmethod
-    def from_lines(cls, lines, threshold=80, standalone_threshold=90):
-        """Создаёт словарь из строк, полученных, например, из SQLite."""
+    def from_lines(cls, lines, threshold=80, standalone_threshold=90, anchored_threshold=None):
+        """Создаёт словарь из строк, полученных, например, из SQLite.
+
+        ``anchored_threshold`` — нижчий поріг слова, коли за ним іде точний
+        дозволений номер (лише для словника команд).
+        """
         obj = cls.__new__(cls)
         obj._load_lines(lines, threshold, standalone_threshold)
+        obj.anchored_threshold = anchored_threshold
         return obj
 
     def _load_lines(self, lines, threshold, standalone_threshold):
         self.threshold = threshold
         self.standalone_threshold = standalone_threshold
+        self.anchored_threshold = None
         self.numbers = defaultdict(set)
         self.standalone = set()
         self.any_number = set()
@@ -183,12 +197,44 @@ class Callsigns:
                 if len(parts) == 1:
                     self.standalone.add(parts[0])
                 elif len(parts) >= 2:
-                    self.numbers[parts[0]].add(parts[1])
+                    digits = [p for p in parts[1:] if p.isdigit()]
+                    # «злива 42 42» — так команду вимовляють; номер у ній 4242.
+                    number = "".join(digits) if len(digits) == len(parts) - 1 else parts[1]
+                    self.numbers[parts[0]].add(number)
 
         self.names = sorted(set(self.numbers) | self.standalone | self.any_number)
         self._folded = {n.translate(FOLD): n for n in self.names}
         self._keys = list(self._folded)
 
+
+    def _number_at(self, items, i, allowed):
+        """Номер після слова: (номер, скільки груп він займає) або (None, 0).
+
+        Whisper часто розриває номер комою: «15, 15», «0, 11». Сусідні групи
+        зливаються, лише якщо злитий номер є серед дозволених.
+        """
+        if i >= len(items) or items[i][0] != "num":
+            return None, 0
+        if allowed(items[i][1]):
+            return items[i][1], 1
+        if i + 1 < len(items) and items[i + 1][0] == "num":
+            joined = items[i][1] + items[i + 1][1]
+            if allowed(joined):
+                return joined, 2
+        return None, 0
+
+    def _anchored(self, word, items, i):
+        """Слово, схоже на назву хоча б на anchored_threshold, і точний номер цієї назви."""
+        folded = word.translate(FOLD)
+        best = None
+        for name, numbers in self.numbers.items():
+            num, used = self._number_at(items, i, numbers.__contains__)
+            if not num:
+                continue
+            score = fuzz.ratio(folded, name.translate(FOLD))
+            if score >= self.anchored_threshold and (best is None or score > best[2]):
+                best = (name, num, score, used)
+        return best
 
     def find(self, text: str) -> list[tuple[str, str | None, float]]:
         """Возвращает [(слово, номер или None, схожесть)] без повторов."""
@@ -211,17 +257,25 @@ class Callsigns:
                     self._keys,
                     scorer=fuzz.ratio
                 )
-            if not best or best[1] < self.threshold:
-                continue
-            name, score = self._folded[best[0]], best[1]
-            if i < len(items) and items[i][0] == "num":
-                num = items[i][1]
-                if num in self.numbers[name] or name in self.any_number:
+            if best and best[1] >= self.threshold:
+                name, score = self._folded[best[0]], best[1]
+                if name in self.any_number:
+                    num, used = self._number_at(items, i, lambda n: True)
+                else:
+                    num, used = self._number_at(items, i, self.numbers[name].__contains__)
+                if num:
                     found.append((name, num, score))
-                    i += 1
+                    i += used
                     continue
-            if name in self.standalone and score >= self.standalone_threshold:
-                found.append((name, None, score))
+                if name in self.standalone and score >= self.standalone_threshold:
+                    found.append((name, None, score))
+                    continue
+            if self.anchored_threshold is not None:
+                anchored = self._anchored(val, items, i)
+                if anchored:
+                    name, num, score, used = anchored
+                    found.append((name, num, score))
+                    i += used
 
         seen, unique = set(), []
         for name, num, score in found:
@@ -231,6 +285,11 @@ class Callsigns:
         return unique
 
 
+def command_dictionary(lines):
+    """Словник команд: точний номер після слова допускає менш схоже слово."""
+    return Callsigns.from_lines(lines, anchored_threshold=COMMAND_ANCHORED_THRESHOLD)
+
+
 if __name__ == "__main__":
     # Швидка перевірка розділу dictionaries.txt без мікрофона:
     #   python callsigns.py commands "арба п'ятнадцять п'ятнадцять"
@@ -238,6 +297,7 @@ if __name__ == "__main__":
     from database import parse_dictionary_file
 
     sections = parse_dictionary_file(DICTIONARIES_PATH.read_text(encoding="utf-8-sig"))
-    cs = Callsigns.from_lines([line for line, on in sections[sys.argv[1]] if on])
+    lines = [line for line, on in sections[sys.argv[1]] if on]
+    cs = command_dictionary(lines) if sys.argv[1] == "commands" else Callsigns.from_lines(lines)
     for name, num, score in cs.find(" ".join(sys.argv[2:])):
         print(name, num or "", f"({score:.0f})")

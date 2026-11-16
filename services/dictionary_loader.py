@@ -3,7 +3,7 @@ import sqlite3
 import time
 
 import callsigns as callsign_module
-from callsigns import Callsigns
+from callsigns import Callsigns, command_dictionary
 from database import DICTIONARY_TYPES, init_db, get_dictionary_lines
 from services.sqlite_connection import get_db
 
@@ -24,7 +24,7 @@ def load_dictionaries(db_path, log):
         get_dictionary_lines("callsigns", db_path)
     )
 
-    commands = Callsigns.from_lines(
+    commands = command_dictionary(
         get_dictionary_lines("commands", db_path)
     )
 
@@ -150,7 +150,7 @@ class LiveDictionaries:
             self._warned = fingerprint
             return False
         self._warned = None
-        commands = Callsigns.from_lines(lines["commands"])
+        commands = command_dictionary(lines["commands"])
         watch = Callsigns.from_lines(lines["telegram"])
         changed = self.revision is not None and fingerprint != self.revision
         self.callsigns._swap(callsigns)

@@ -335,13 +335,14 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     @app.get("/api/recordings")
     def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
-                       admin=Depends(actor)):
+                       q: str = "", admin=Depends(actor)):
         if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
-                or group not in ("all", "normal", "short", "shadow") or not re.fullmatch(r"(?:|all|[A-Z])", queue)):
+                or group not in ("all", "normal", "short", "shadow") or not re.fullmatch(r"(?:|all|[A-Z])", queue)
+                or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
-        if queue and queue != "all" and queue not in REVIEW_QUEUES:
+        if queue and queue != "all" and queue not in REVIEW_QUEUES and not q.strip():
             raise HTTPException(404, "Такої групи в черзі немає")
-        return recordings.listing(offset, limit, review, group, queue=queue)
+        return recordings.listing(offset, limit, review, group, queue=queue, search=q)
 
     @app.get("/api/recordings/summary")
     def recording_summary(admin=Depends(actor)):

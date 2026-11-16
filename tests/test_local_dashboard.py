@@ -380,3 +380,23 @@ def test_callsign_alias_candidates_read_archive_without_writing(local):
     data=client.get("/api/text-lists/callsign-alias-candidates").json()
     assert data["records"]==1 and [(c["heard"],c["callsign"],c["count"]) for c in data["items"]]==[("гуща","вишня",1)]
     assert client.get("/api/text-lists").json()["revision"]==before
+
+
+def test_archive_search_by_id_event_number_and_text(setup, tmp_path):
+    _,path=setup
+    from services.recordings import RecordingStore
+    store=RecordingStore(tmp_path/"recordings")
+    a=store.save(pcm(segment()),16000,{"status":"ready","raw_text":"Берега 56, приєм","fix_id":"db:82"})
+    b=store.save(pcm(segment()),16000,{"status":"ready","raw_text":"шум"})
+    c=store.save(pcm(segment()),16000,{"status":"vad_short","raw_text":""})
+    store.review(b,"Вишня 13, 42 42, прийом","speech",0)
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        found=lambda q: {i["id"] for i in client.get("/api/recordings",params={"q":q,"review":"pending","group":"normal"}).json()["items"]}
+        assert found(f"{a[:8]}, {c[:8]}")=={a,c}, "кілька ID; пошук ігнорує групу й стан перевірки"
+        assert found("№82")=={a} and found("#82")=={a}
+        assert found("ВИШНЯ 13")=={b} and found("берега")=={a}, "текст — без урахування регістру, і еталон, і Whisper"
+        assert found("4242")==set() and found("42 42")=={b}
+        assert found("нема такого")==set()
+        assert client.get("/api/recordings",params={"q":"x"*201}).status_code==422

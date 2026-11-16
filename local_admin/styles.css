@@ -140,6 +140,7 @@ textarea.list-editor { width: 100%; min-height: 190px; resize: vertical; backgro
 [data-panel="recordings"] > .panel { padding:10px 14px; margin-bottom:10px; }
 #recordings { gap:8px; }
 #recordings .recording-card { padding:10px 14px; margin:0; }
+#recording-search { min-width:240px; flex:1 1 240px; max-width:360px; }
 .recording-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .recording-header h3 { font-size:13px; line-height:1.3; margin:0; font-weight:600; }
 [data-panel="recordings"] .recording-header audio { height:30px; width:260px; flex-shrink:0; max-width:45%; }

@@ -701,11 +701,14 @@
 
   let recordingOffset = 0;
   const reviewCards = [];
+  // Пошук за ID («1a2b3c4d, 5e6f7a8b»), номером події («№82») або текстом — по всьому архіву.
+  const searchQuery = () => $("recording-search").value.trim();
   async function recordings(reset = true) {
     if (reset) { recordingOffset = 0; reviewCards.length = 0; $("recordings").replaceChildren(); }
     const [page, summary] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}` +
-        ($("recording-queue").value ? `&queue=${$("recording-queue").value}` : "")),
+        ($("recording-queue").value ? `&queue=${$("recording-queue").value}` : "") +
+        (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "")),
       request("/api/recordings/summary")
     ]);
     const groups = page.groups;
@@ -728,12 +731,14 @@
     const shadow = summary.text_filter_shadow;
     $("recording-shadow-summary").hidden = !shadow;
     if (shadow) $("recording-shadow-summary").textContent = `Перевірка фільтра: позначено ${shadow.candidates} з ${shadow.evaluated} оцінених записів · перевірено ${shadow.reviewed}: мовлення ${shadow.speech}, шум ${shadow.noise}, сигнал ${shadow.notification}, кімната ${shadow.room}, нерозбірливо ${shadow.unclear}. Новий фільтр лише ставить позначки. Оберіть «Перевірка фільтра» та прослухайте записи.`;
-    if (!page.total) $("recordings").append(el("p", "muted", (grouped ? groups.all : page.total) ? "У цій групі записів немає. Оберіть іншу групу або стан перевірки." : "Записів за цим фільтром ще немає. Нові з’являться після запуску оновленого приймача."));
+    if (!page.total && searchQuery()) $("recordings").append(el("p", "muted", "Нічого не знайдено. Шукайте за початком ID (від 4 знаків), №події або шматком тексту."));
+    else if (!page.total) $("recordings").append(el("p", "muted", (grouped ? groups.all : page.total) ? "У цій групі записів немає. Оберіть іншу групу або стан перевірки." : "Записів за цим фільтром ще немає. Нові з’являться після запуску оновленого приймача."));
     for (const item of page.items) {
       const d = item.data, signal = d.signal || {};
       const card = el("article", "panel recording-card");
       const header = el("div", "recording-header");
-      header.append(el("h3", "", `${new Date(item.created * 1000).toLocaleString("uk-UA")} · ${STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status)}`));
+      const eventNo = /^db:(\d+)$/.exec(d.fix_id || "");
+      header.append(el("h3", "", `${new Date(item.created * 1000).toLocaleString("uk-UA")} · ${STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status)} · ${item.id.slice(0, 8)}${eventNo ? ` · №${eventNo[1]}` : ""}`));
       const audio = el("audio"); audio.controls = true; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`; header.append(audio); card.append(header);
       const details = el("details", "recording-details");
@@ -883,6 +888,9 @@
   $("recording-group").addEventListener("change", () => action(() => recordings(true)));
   $("recording-queue").addEventListener("change", () => action(() => recordings(true)));
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));
+  // Enter — шукати; очищене поле (зокрема хрестиком) — знову звичайний список.
+  $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });
+  $("recording-search").addEventListener("input", event => { if (!event.target.value) action(() => recordings(true)); });
 
   const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
 
@@ -1006,6 +1014,9 @@
     schedule();
     // ?view=phrases тощо — одразу потрібний розділ (зручно для закладок).
     const wanted = new URLSearchParams(location.search).get("view");
+    // ?view=recordings&q=1a2b3c4d — посилання одразу на потрібні записи.
+    const query = new URLSearchParams(location.search).get("q");
+    if (query) $("recording-search").value = query.slice(0, 200);
     if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted); }
   }).then(() => {
     // Справжню помилку вже показано; підказку про вхід — лише якщо ключа не було.

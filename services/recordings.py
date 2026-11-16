@@ -83,6 +83,36 @@ def scores(reference, hypothesis):
             "number_match": number_groups(reference) == number_groups(hypothesis)}
 
 
+_SEARCH_ID = re.compile(r"[0-9a-f]{4,32}")
+_SEARCH_EVENT = re.compile(r"(?:№|#|db:)\s*([1-9][0-9]{0,17})")
+
+
+def search_condition(query):
+    """Умова SQL для пошуку: «1a2b3c4d, 5e6f7a8b», «№82» або шматок тексту.
+
+    Якщо всі слова запиту — ID записів (від 4 шістнадцяткових знаків, з початку)
+    чи номери подій, шукаються будь-які з них. Весь запит завжди шукається й як
+    шматок еталона або тексту Whisper без урахування регістру: «2684» — і число.
+    """
+    text = query.strip().casefold()
+    text_condition = ("instr(casefold(COALESCE(reference,'') || ' ' || "
+                      "COALESCE(json_extract(data,'$.raw_text'),'')), ?) > 0")
+    terms = [t for t in re.split(r"[\s,;]+", text) if t]
+    ids, events = [], []
+    for term in terms:
+        event = _SEARCH_EVENT.fullmatch(term)
+        if event:
+            events.append(f"db:{event[1]}")
+        elif _SEARCH_ID.fullmatch(term):
+            ids.append(term)
+        else:
+            break
+    else:
+        conditions = ["id LIKE ?"] * len(ids) + ["json_extract(data,'$.fix_id')=?"] * len(events)
+        return " OR ".join([*conditions, text_condition]), (*(f"{i}%" for i in ids), *events, text)
+    return text_condition, (text,)
+
+
 class RecordingStore:
     def __init__(self, directory, *, retention_days=7, max_bytes=1024 ** 3):
         self.root = Path(directory)
@@ -101,6 +131,8 @@ class RecordingStore:
         db = sqlite3.connect(path, timeout=5)
         path.chmod(0o600)
         db.row_factory = sqlite3.Row
+        # lower()/LIKE у SQLite не знають кирилиці; пошук за текстом — через casefold.
+        db.create_function("casefold", 1, lambda value: (value or "").casefold(), deterministic=True)
         db.execute("""CREATE TABLE IF NOT EXISTS recordings (
             id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL,
             bytes INTEGER NOT NULL, data TEXT NOT NULL, reference TEXT,
@@ -183,7 +215,7 @@ class RecordingStore:
             }
         return result
 
-    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue=""):
+    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue="", search=""):
         reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
         # Rejected short/quiet/blacklisted material belongs outside the main
         # review list regardless of its audio duration.
@@ -191,7 +223,10 @@ class RecordingStore:
         shadow = "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"
         grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow}[group]
         params = ()
-        if queue:
+        if search.strip():
+            # Пошук іде по всьому архіву: черги, групи й стан перевірки не застосовуються.
+            reviewed, (grouped, params) = "1", search_condition(search)
+        elif queue:
             grouped = " OR ".join(f"({condition})" for _, condition in REVIEW_QUEUES.values()) \
                 if queue == "all" else REVIEW_QUEUES[queue][1]
         elif ids is not None:

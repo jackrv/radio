@@ -328,3 +328,26 @@ def test_statistics_remain_fresh_at_29_seconds_without_heartbeat(monkeypatch):
     monkeypatch.setattr(time,'time',lambda:now+29)
     assert console._fresh(data)
     assert 'ПРИЙМАННЯ' in console._status(data)[0]
+
+
+def test_ngrok_drop_and_recovery_are_not_reported_as_failed_tunnel():
+    from core.console import NGROK_DROPPED, NGROK_RESTORED, child_event
+    state = {}
+    drop = [
+        'lvl=eror msg="heartbeat timeout, terminating session" obj=tunnels.session',
+        'lvl=eror msg="session closed, starting reconnect loop" obj=tunnels.session err="session closed"',
+    ]
+    assert [child_event("ngrok", line, state) for line in drop] == [(NGROK_DROPPED, logging.WARNING)] * 2
+    retry = child_event("ngrok", 'lvl=eror msg="failed to reconnect session" err="dial tcp: i/o timeout"', state)
+    assert retry[1] == logging.WARNING and "повторюю" in retry[0]
+    assert child_event("ngrok", 'lvl=info msg="client session established" obj=tunnels.session', state) == (
+        NGROK_RESTORED, logging.INFO)
+    assert child_event("ngrok", 'lvl=info msg="tunnel session started" obj=tunnels.session', state) is None
+    # Після відновлення невдале підключення знову є помилкою запуску.
+    assert child_event("ngrok", 'lvl=eror msg="failed to reconnect session" err="i/o timeout"', state)[1] == logging.ERROR
+
+
+def test_ngrok_normal_start_has_no_recovery_message():
+    from core.console import child_event
+    state = {}
+    assert child_event("ngrok", 'lvl=info msg="client session established" obj=tunnels.session', state) is None

@@ -301,6 +301,8 @@ class ManagedProcess:
         self.name = name
         self.last_error = None
         self.session = session
+        # Стан подій одного процесу: напр., чи перепідключається зараз ngrok.
+        self._event_state = {}
         guarded, fds = session.command(name, command) if session is not None else (command, ())
         self.process = subprocess.Popen(
             guarded,
@@ -330,7 +332,7 @@ class ManagedProcess:
                 if writable:
                     try:
                         _launcher_log.info("[%s] %s", self.name, line.rstrip())
-                        event = child_event(self.name, line)
+                        event = child_event(self.name, line, getattr(self, "_event_state", None))
                         if event is not None and event[1] >= logging.ERROR:
                             self.last_error = safe_message(event[0])
                         if _console is not None:

@@ -414,7 +414,33 @@ class ConsoleDashboard(logging.Handler):
         super().close()
 
 
-def child_event(source, line):
+NGROK_DROPPED = "ngrok: зв’язок із сервером перервався, тунель перепідключається…"
+NGROK_RESTORED = "ngrok: зв’язок відновлено, тунель працює."
+
+
+def _ngrok_reconnect_event(line, state):
+    """Обрив сесії, спроби перепідключення й відновлення для запущеного тунелю.
+
+    ``state`` належить одному процесу ngrok. Без обриву «failed to reconnect»
+    означає, що тунель не вдалося підняти, — тоді лишаються звичайні помилки.
+    """
+    if state is None:
+        return None
+    if re.search(r"heartbeat timeout|starting reconnect loop", line):
+        state["ngrok_reconnecting"] = True
+        return NGROK_DROPPED, logging.WARNING
+    if not state.get("ngrok_reconnecting"):
+        return None
+    if "client session established" in line or "tunnel session started" in line:
+        state["ngrok_reconnecting"] = False
+        return NGROK_RESTORED, logging.INFO
+    if "failed to reconnect session" in line:
+        # ngrok сам повторює спроби; помилкою це стане, лише якщо процес завершиться.
+        return "ngrok: перепідключення поки не вдалося, повторюю. Перевірте інтернет або VPN.", logging.WARNING
+    return None
+
+
+def child_event(source, line, state=None):
     """Only explicit application events reach the dashboard; raw output stays in logs."""
     if line.startswith("RADIO345_EVENT "):
         try:
@@ -424,6 +450,10 @@ def child_event(source, line):
         except (ValueError, KeyError, TypeError):
             pass
         return None
+    if source == "ngrok":
+        reconnect = _ngrok_reconnect_event(line, state)
+        if reconnect is not None:
+            return reconnect
     if source == "ngrok" and re.search(r"\blvl=(eror|error|crit)\b|ERR_NGROK_\d+", line):
         lower = line.lower()
         if any(word in lower for word in ("i/o timeout", "deadline exceeded", "timed out")):

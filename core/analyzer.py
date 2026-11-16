@@ -1,5 +1,6 @@
 import math
 import re
+from typing import NamedTuple
 
 from callsigns import basic_normalize, normalize, to_items
 
@@ -119,11 +120,17 @@ def is_bare_callsign(text: str, cs_found, callsigns) -> bool:
 _SELF = re.compile(r"(?<![\w’'ʼ`])я(?![\w’'ʼ`])", re.IGNORECASE)
 
 
+class _Header(NamedTuple):
+    found: list          # позивні заголовка
+    message_digits: bool # одразу за позивними — цифри повідомлення
+    names: int           # скільки разів у заголовку названо позивний
+    rest: list           # слова після заголовка
+
+
 def _header_callsigns(text, callsigns):
     """Позивні на самому початку фрази, до першого слова, що не є позивним.
 
-    Повертає (позивні, чи йдуть одразу за ними цифри повідомлення). Кома
-    між групами зберігається: «56, 17, 76» — три групи, а не одне число.
+    Кома між групами зберігається: «56, 17, 76» — три групи, а не одне число.
     """
     items = to_items(text)
     end = 0
@@ -132,18 +139,29 @@ def _header_callsigns(text, callsigns):
     header = lambda n: callsigns.find(", ".join(value for _, value in items[:n]))
     found = header(end)
     message_digits = end > 0 and items[end - 1][0] == "num" and header(end - 1) == found
-    return found, message_digits
+    names = sum(kind == "word" for kind, _ in items[:end])
+    return _Header(found, message_digits, names, [value for kind, value in items[end:] if kind == "word"])
+
+
+# Обороти, які каже відправник про себе: «О, посилку отримав», «О, прийняв».
+_SENDER_PHRASES = (("посилку", "отримав"), ("прийняв",))
 
 
 def split_roles(text: str, callsigns):
     """Разделяет найденные позывные на адресата и отправителя.
 
     З «я»: усе до «я» — адресати, перший позивний після — відправник.
-    Без «я» — лише форма «К, (К,) О, текст»: рівно два різні позивні підряд
-    на початку, далі слова, а не цифри, і більше жодного позивного у фразі.
-    Тоді перший — адресат, другий (лише з номером) — відправник. Решта (один позивний, кілька
-    адресатів підряд, «К1, К2, 17 76», злиті передачі «О, текст, О, текст») —
-    адресати без відправника, як раніше.
+
+    Без «я» (за розміткою оператора в архіві):
+
+    - «К, (К,) О, текст» — рівно два різні позивні підряд на початку, у другого
+      є номер, далі слова, а не цифри, і більше жодного позивного у фразі:
+      перший — адресат, другий — відправник;
+    - один позивний, названий один раз, і одразу цифри: «О, 26 84, прийом» —
+      відправник (двічі названий «К, К, 26 87» — адресат за протоколом);
+    - один позивний і «посилку отримав» або «прийняв» — відправник;
+    - решта — адресати без відправника: «П, прийнято, прийом», кілька
+      адресатів підряд, «К1, К2, 17 76» (частіше розсилка), злиті передачі.
     """
     # Ділимо сам текст, а не слова без розділових знаків: інакше «я дуб 700, 17 86»
     # злилося б у «700 17 86» -> одне число 7001786 і відправника не знайшлося б.
@@ -155,12 +173,19 @@ def split_roles(text: str, callsigns):
 
     found = callsigns.find(text)
     if len(found) == 2:
-        header, message_digits = _header_callsigns(text, callsigns)
+        header = _header_callsigns(text, callsigns)
         # «К1, К2, 17 76» — частіше розсилка двом адресатам, ніж «К, О»: ролі не вгадуємо.
         # Позивний без номера Whisper часто вигадує з підказки («…, вишня, …»):
         # відправником стає лише позивний із номером.
-        if header == found and not message_digits and found[1][1]:
+        if header.found == found and not header.message_digits and found[1][1]:
             return found[:1], found[1:]
+    elif len(found) == 1:
+        header = _header_callsigns(text, callsigns)
+        if header.found == found:
+            if header.message_digits and header.names == 1:
+                return [], found
+            if any(tuple(header.rest[:len(p)]) == p for p in _SENDER_PHRASES):
+                return [], found
     return found, []
 
 

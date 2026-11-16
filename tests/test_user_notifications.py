@@ -196,6 +196,9 @@ def test_event_processor_passes_personal_recipients():
         def find(self, text):
             return self.found
 
+        def name_of(self, word):
+            return None
+
     telegram = Mock()
     telegram.register_phrase_for_fix.return_value = "db:42"
     seen = []

@@ -15,6 +15,9 @@ class FakeDictionary:
     def matches(self, text):
         return []
 
+    def name_of(self, word):
+        return None
+
 
 def make_processor(
     mode="all",

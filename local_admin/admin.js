@@ -793,8 +793,8 @@
       }
       showQuality(item); details.append(qualityLine);
       const form = el("form"), input = el("textarea");
-      // Тип запису — кнопками; «Шум» і «Сигнал» зберігаються одразу (без тексту й ролей).
-      const CATEGORIES = [["speech", "1 Мовлення"], ["noise", "2 Шум ефіру / тиша"], ["notification", "3 Сигнал"], ["unclear", "4 Нерозбірливо"], ["room", "5 Кімната / клавіатура"]];
+      // Тип запису — кнопками; «Шум ефіру», «Сигнал» і «Кімната» зберігаються одразу (без тексту й ролей).
+      const CATEGORIES = [["speech", "1 Мовлення"], ["noise", "2 Шум ефіру"], ["notification", "3 Сигнал"], ["unclear", "4 Нерозбірливо"], ["room", "5 Кімната / клавіатура"]];
       const category = { value: item.label || "speech" };
       const segmented = el("div", "segmented");
       const categoryButtons = {};

@@ -171,6 +171,9 @@ textarea.list-editor { width: 100%; min-height: 190px; resize: vertical; backgro
 .segmented button.on, .chip button.on { background: var(--lime); border-color: var(--lime); color: #172414; }
 #recordings .recording-card.active { border-color: var(--lime2); box-shadow: 0 0 0 1px var(--lime2) inset; }
 #recordings .recording-card.done { opacity: .72; }
+/* Еталон із зауваженнями перевірки оформлення: видно в списку, навіть перевірений. */
+#recordings .recording-card.has-remarks { border-left: 3px solid var(--warn); }
+#recordings .recording-card.done.has-remarks { opacity: .9; }
 #recordings .recording-card.done.active { opacity: 1; }
 .recording-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .recording-chips:empty { display: none; }

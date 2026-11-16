@@ -872,6 +872,7 @@
       function renderLint(result) {
         lint.replaceChildren();
         const issues = result?.issues || [];
+        card.classList.toggle("has-remarks", issues.length > 0);
         if (!issues.length) return;
         if (result.formatted) {
           const all = el("button", "ghost", "Виправити оформлення"); all.type = "button";
@@ -898,6 +899,7 @@
         }, delay);
       }
       input.addEventListener("input", () => checkText());
+      if (item.text_check) renderLint(item.text_check);
 
       // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
       const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
@@ -926,7 +928,7 @@
           item.revision = result.revision; item.reference = result.reference; item.label = result.label;
           showQuality(result);
           controller.done = true;
-          card.className = "panel recording-card done";
+          card.classList.add("done");
           save.textContent = "Оновити еталон"; note("Еталон збережено. Початкові тексти й правила не змінено.");
           if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue();
           if (typeof advanceReview === "function") advanceReview(controller);
@@ -938,7 +940,7 @@
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest };
       reviewCards.push(controller);
       card.addEventListener("click", () => { if (typeof activateReview === "function") activateReview(controller, false); });
-      if (controller.done) card.className = "panel recording-card done";
+      if (controller.done) card.classList.add("done");
       setCategory(category.value, false);
       card.append(form);
       details.append(el("pre", "", JSON.stringify(d, null, 2)));

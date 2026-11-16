@@ -363,7 +363,14 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(422, "Некоректні параметри")
         if queue and queue != "all" and queue not in REVIEW_QUEUES and not q.strip():
             raise HTTPException(404, "Такої групи в черзі немає")
-        return recordings.listing(offset, limit, review, group, queue=queue, search=q)
+        page = recordings.listing(offset, limit, review, group, queue=queue, search=q)
+        # Зауваження до оформлення еталонів — щоб картки з ними було видно одразу.
+        from services.text_check import check_with_db
+        with get_db(db_path) as db:
+            for item in page["items"]:
+                if item.get("reference") and item.get("label") in ("speech", "unclear"):
+                    item["text_check"] = check_with_db(db, item["reference"])
+        return page
 
     @app.get("/api/recordings/summary")
     def recording_summary(admin=Depends(actor)):

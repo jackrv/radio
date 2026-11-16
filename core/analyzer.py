@@ -116,17 +116,52 @@ def is_bare_callsign(text: str, cs_found, callsigns) -> bool:
         not word.isdigit() and any(item[1] is None for item in callsigns.find(word)) for word in words)
 
 
-def split_roles(text: str, callsigns):
-    """Разделяет найденные позывные на адресата и отправителя."""
-    tokens = normalize(text).split()
+_SELF = re.compile(r"(?<![\w’'ʼ`])я(?![\w’'ʼ`])", re.IGNORECASE)
 
-    if "я" in tokens:
-        i = tokens.index("я")
-        to_found = callsigns.find(" ".join(tokens[:i]))
-        from_found = callsigns.find(" ".join(tokens[i + 1:]))[:1]
+
+def _header_callsigns(text, callsigns):
+    """Позивні на самому початку фрази, до першого слова, що не є позивним.
+
+    Повертає (позивні, чи йдуть одразу за ними цифри повідомлення). Кома
+    між групами зберігається: «56, 17, 76» — три групи, а не одне число.
+    """
+    items = to_items(text)
+    end = 0
+    while end < len(items) and (items[end][0] == "num" or callsigns.name_of(items[end][1])):
+        end += 1
+    header = lambda n: callsigns.find(", ".join(value for _, value in items[:n]))
+    found = header(end)
+    message_digits = end > 0 and items[end - 1][0] == "num" and header(end - 1) == found
+    return found, message_digits
+
+
+def split_roles(text: str, callsigns):
+    """Разделяет найденные позывные на адресата и отправителя.
+
+    З «я»: усе до «я» — адресати, перший позивний після — відправник.
+    Без «я» — лише форма «К, (К,) О, текст»: рівно два різні позивні підряд
+    на початку, далі слова, а не цифри, і більше жодного позивного у фразі.
+    Тоді перший — адресат, другий (лише з номером) — відправник. Решта (один позивний, кілька
+    адресатів підряд, «К1, К2, 17 76», злиті передачі «О, текст, О, текст») —
+    адресати без відправника, як раніше.
+    """
+    # Ділимо сам текст, а не слова без розділових знаків: інакше «я дуб 700, 17 86»
+    # злилося б у «700 17 86» -> одне число 7001786 і відправника не знайшлося б.
+    marker = _SELF.search(text)
+    if marker:
+        to_found = callsigns.find(text[:marker.start()])
+        from_found = callsigns.find(text[marker.end():])[:1]
         return to_found, from_found
 
-    return callsigns.find(text), []
+    found = callsigns.find(text)
+    if len(found) == 2:
+        header, message_digits = _header_callsigns(text, callsigns)
+        # «К1, К2, 17 76» — частіше розсилка двом адресатам, ніж «К, О»: ролі не вгадуємо.
+        # Позивний без номера Whisper часто вигадує з підказки («…, вишня, …»):
+        # відправником стає лише позивний із номером.
+        if header == found and not message_digits and found[1][1]:
+            return found[:1], found[1:]
+    return found, []
 
 
 def correction_is_safe(

@@ -259,6 +259,14 @@ class Callsigns:
                 best = (name, num, score, used)
         return best
 
+    def name_of(self, word: str) -> str | None:
+        """Назва словника, на яку схоже окреме нормалізоване слово (як у matches), або None."""
+        alias = CALLSIGN_ALIASES.get(word)
+        if alias in self.names:
+            return alias
+        best = process.extractOne(word.translate(FOLD), self._keys, scorer=fuzz.ratio) if self._keys else None
+        return self._folded[best[0]] if best and best[1] >= self.threshold else None
+
     def find(self, text: str) -> list[tuple[str, str | None, float]]:
         """Возвращает [(слово, номер или None, схожесть)] без повторов."""
         seen, unique = set(), []

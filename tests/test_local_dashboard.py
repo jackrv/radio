@@ -435,3 +435,21 @@ def test_dictionaries_are_edited_from_the_panel_with_miniapp_rules(local):
     assert empty.status_code==422, "приймач не лишається без позивних"
     assert client.put("/api/dictionaries/other",json={"entries":[],"expected_version":version},headers=h).status_code==404
     assert client.put("/api/dictionaries/callsigns",json={"entries":entries,"expected_version":version}).status_code==403
+
+
+def test_archive_listing_carries_text_check_of_references(setup, tmp_path):
+    _,path=setup
+    from services.recordings import RecordingStore
+    store=RecordingStore(tmp_path/"recordings")
+    remark=store.save(pcm(segment()),16000,{"status":"ready"})
+    clean=store.save(pcm(segment()),16000,{"status":"ready"})
+    pending=store.save(pcm(segment()),16000,{"status":"ready"})
+    store.review(remark,"Вишня, 4242, с півночі","speech",0)
+    store.review(clean,"Вишня, 42 42, з півночі","speech",0)
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        items={i["id"]:i for i in client.get("/api/recordings").json()["items"]}
+    assert items[remark]["text_check"]["formatted"]=="Вишня, 42 42, з півночі"
+    assert items[clean]["text_check"]=={"issues":[],"formatted":None}
+    assert "text_check" not in items[pending]

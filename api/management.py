@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from services import miniapp_management as store
 from services.miniapp_correction_editor import load_edit_draft
 from services.telegram_media_store import audio_file_id
+from services.user_activity import record as record_activity
 from services.telegram_audio import download_voice, AudioUnavailable
 
 
@@ -125,7 +126,9 @@ def management_router(db_path, current_user, check_permission, bot_token):
         from services.notification_samples import add_sample, ogg_to_wav
         try:
             content = ogg_to_wav(download_voice(bot_token, file_id))
-            return add_sample(config.NOTIFICATION_SOUNDS_DIR, content, confirmed_isolated=True)
+            result = add_sample(config.NOTIFICATION_SOUNDS_DIR, content, confirmed_isolated=True)
+            record_activity(db_path, user["user_id"], "sample", payload.fix_id, {})
+            return result
         except AudioUnavailable:
             raise HTTPException(502,"Не вдалося отримати аудіо") from None
         except (subprocess.SubprocessError, FileNotFoundError):
@@ -138,8 +141,11 @@ def management_router(db_path, current_user, check_permission, bot_token):
     @router.put("/dictionaries/{kind}")
     def update_dictionary(kind: Literal["callsigns", "commands", "telegram"],
                           payload: DictionaryUpdate, user=Depends(current_user)):
-        return call(user, "dictionaries.write", store.write_dictionary, user["user_id"],
-                    kind, [e.model_dump() for e in payload.entries], payload.expected_version)
+        result = call(user, "dictionaries.write", store.write_dictionary, user["user_id"],
+                      kind, [e.model_dump() for e in payload.entries], payload.expected_version)
+        record_activity(db_path, user["user_id"], "dictionary", kind,
+                        {"lines": sum(e.enabled for e in payload.entries)})
+        return result
 
     @router.get("/word-rules")
     def rules(q: str = Query(default="", max_length=200),
@@ -149,13 +155,17 @@ def management_router(db_path, current_user, check_permission, bot_token):
 
     @router.put("/word-rules/{rule_id}")
     def update_rule(rule_id: int, payload: RuleUpdate, user=Depends(current_user)):
-        return call(user, "dictionaries.write", store.toggle_rule, user["user_id"], rule_id,
-                    payload.disabled, payload.expected_version)
+        result = call(user, "dictionaries.write", store.toggle_rule, user["user_id"], rule_id,
+                      payload.disabled, payload.expected_version)
+        record_activity(db_path, user["user_id"], "rule", str(rule_id), {"disabled": payload.disabled})
+        return result
 
     @router.put("/word-rules/{rule_id}/approval")
     def approve_rule(rule_id: int, payload: RuleApproval, user=Depends(current_user)):
-        return call(user, "dictionaries.write", store.approve_rule, user["user_id"], rule_id,
-                    payload.approved, payload.expected_version)
+        result = call(user, "dictionaries.write", store.approve_rule, user["user_id"], rule_id,
+                      payload.approved, payload.expected_version)
+        record_activity(db_path, user["user_id"], "rule_approval", str(rule_id), {"approved": payload.approved})
+        return result
 
     @router.get("/users")
     def users(user=Depends(current_user)):
@@ -163,9 +173,12 @@ def management_router(db_path, current_user, check_permission, bot_token):
 
     @router.put("/users/{user_id}")
     def update_user(user_id: int, payload: UserUpdate, user=Depends(current_user)):
-        return call(user, "users.manage", store.write_user, user["user_id"], user_id,
-                    payload.role, payload.enabled, payload.expected_version, payload.display_name,
-                    payload.notify_mode)
+        result = call(user, "users.manage", store.write_user, user["user_id"], user_id,
+                      payload.role, payload.enabled, payload.expected_version, payload.display_name,
+                      payload.notify_mode)
+        record_activity(db_path, user["user_id"], "user", str(user_id),
+                        {"role": payload.role, "enabled": payload.enabled, "notify_mode": payload.notify_mode})
+        return result
 
     @router.get("/recognition/settings")
     def settings(user=Depends(current_user)):
@@ -173,7 +186,9 @@ def management_router(db_path, current_user, check_permission, bot_token):
 
     @router.put("/recognition/settings")
     def update_settings(payload: SettingsUpdate, user=Depends(current_user)):
-        return call(user, "settings.write", store.write_settings, user["user_id"],
-                    payload.values.model_dump(), payload.expected_revision)
+        result = call(user, "settings.write", store.write_settings, user["user_id"],
+                      payload.values.model_dump(), payload.expected_revision)
+        record_activity(db_path, user["user_id"], "settings", "", {})
+        return result
 
     return router

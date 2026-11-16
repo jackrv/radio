@@ -186,5 +186,7 @@ class AccessMixin:
             self.log.info("Повторну Telegram-команду %s пропущено", update_id)
             return True
         self.log.info("Особистий режим користувача змінено на: %s", mode)
+        from services.user_activity import record as record_activity
+        record_activity(self.db_path, user_id, "mode", mode, {"via": "bot"})
         self.send_status(response, reply_markup=self._miniapp_markup(), chat_id=user_id)
         return True

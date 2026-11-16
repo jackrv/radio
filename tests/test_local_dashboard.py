@@ -458,3 +458,31 @@ def test_archive_listing_carries_text_check_of_references(setup, tmp_path):
     assert items[remark]["text_check"]["formatted"]=="Вишня, 42 42, з півночі"
     assert items[clean]["text_check"]=={"issues":[],"formatted":None}
     assert "text_check" not in items[pending]
+
+
+def test_archive_speech_and_radio_groups(setup, tmp_path):
+    _,path=setup
+    import sqlite3
+    from services.recordings import RecordingStore
+    store=RecordingStore(tmp_path/"recordings")
+    def rec(status, duration, **data):
+        rid=store.save(pcm(segment()),16000,{"status":status,**data})
+        with sqlite3.connect(tmp_path/"recordings"/"index.sqlite3") as db:
+            db.execute("UPDATE recordings SET data=json_set(data,'$.signal.duration_s',?) WHERE id=?",(duration,rid))
+        return rid
+    room=rec("ready",4.0,raw_text="розмова в кімнаті")
+    radio=rec("ready",3.5,raw_text="Береза 56, прийом",predicted_recipient="береза 56")
+    event=rec("ready",3.0,raw_text="злива 42 42",fix_id="db:7")
+    loop=rec("empty_text",9.0,raw_text="")
+    short=rec("ready",1.5,raw_text="Ага")
+    rec("blacklist",3.0,raw_text="Дякую за перегляд!")
+    rec("vad_short",0.3)
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        page=lambda group: client.get("/api/recordings",params={"group":group}).json()
+        assert {i["id"] for i in page("speech")["items"]}=={room,radio,event,loop}, "Whisper щось чув і довше 2 с"
+        assert {i["id"] for i in page("radio")["items"]}=={radio,event}, "позивний або подія"
+        groups=page("speech")["groups"]
+        assert (groups["speech"],groups["radio"])==(4,2)
+        assert short not in {i["id"] for i in page("speech")["items"]}

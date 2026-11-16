@@ -21,6 +21,7 @@
       <button data-view="texts"><span>Aa</span>Фільтри тексту</button>
       <button data-view="settings"><span>⚙</span>Налаштування</button>
       <button data-view="users"><span>♙</span>Користувачі</button>
+      <button data-view="activity"><span>☷</span>Активність</button>
       <button data-view="system"><span>▤</span>Система</button>
       <button data-view="roles"><span>◐</span>Ролі</button>
     </nav>
@@ -53,7 +54,7 @@
       <section data-panel="recordings" hidden>
         <article class="panel"><h2>Перевірка розпізнавання</h2>
 
-          <div class="toolbar"><input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200"><select id="recording-queue" aria-label="Черга розмітки"><option value="">Без черги</option></select><select id="recording-group" aria-label="Група записів"><option value="normal">Основні</option><option value="short">Короткі</option><option value="all">Усі разом</option><option value="shadow">Перевірка фільтра</option></select><select id="recording-filter" aria-label="Стан перевірки"><option value="all">Усі записи</option><option value="pending">Без перевірки</option><option value="reviewed">Перевірені</option></select><select id="recording-speed" aria-label="Швидкість відтворення"><option value="1">1×</option><option value="0.85">0,85×</option><option value="0.75">0,75×</option></select><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
+          <div class="toolbar"><input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200"><select id="recording-queue" aria-label="Черга розмітки"><option value="">Без черги</option></select><select id="recording-group" aria-label="Група записів"><option value="normal">Основні</option><option value="speech">Мовлення</option><option value="radio">Ефір: позивні або подія</option><option value="short">Короткі</option><option value="all">Усі разом</option><option value="shadow">Перевірка фільтра</option></select><select id="recording-filter" aria-label="Стан перевірки"><option value="all">Усі записи</option><option value="pending">Без перевірки</option><option value="reviewed">Перевірені</option></select><select id="recording-speed" aria-label="Швидкість відтворення"><option value="1">1×</option><option value="0.85">0,85×</option><option value="0.75">0,75×</option></select><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
           <p id="recording-queue-progress" class="muted small"></p>
           <p class="muted small keys">Клавіші: <kbd>Пробіл</kbd> грати / пауза · <kbd>1</kbd>–<kbd>5</kbd> тип (2, 3 і 5 — одразу зберегти) · <kbd>Enter</kbd> до тексту · <kbd>⌘/Ctrl+Enter</kbd> зберегти й далі · <kbd>J</kbd>/<kbd>K</kbd> або <kbd>↓</kbd>/<kbd>↑</kbd> наступний / попередній · <kbd>R</kbd> з початку · <kbd>Esc</kbd> вийти з поля.</p>
           <p id="recording-summary" class="muted small"></p>
@@ -148,6 +149,14 @@
       <!-- Користувачі -->
       <section data-panel="users" hidden>
         <article class="panel"><h2>Користувачі</h2><p class="muted small">Ролі й режими змінюються в Mini App адміністратором.</p><div class="table-wrap"><table id="users"></table></div></article>
+      </section>
+
+      <!-- Активність користувачів -->
+      <section data-panel="activity" hidden>
+        <article class="panel"><div class="panel-head"><h2>Дії користувача</h2><select id="activity-user" aria-label="Користувач"></select></div>
+          <p class="muted small">Дії в Mini App і боті записуються з 16.11.2026: раніше база не зберігала, хто саме виправив текст чи змінив налаштування. Доставлені сповіщення, роль і режим відомі й за попередній час.</p>
+          <div class="cards" id="activity-cards"></div></article>
+        <article class="panel"><h2>Останні дії</h2><div class="table-wrap"><table id="activity-items"></table></div></article>
       </section>
 
       <!-- Система -->

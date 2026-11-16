@@ -233,12 +233,12 @@ def test_short_groups_partition_archive_before_pagination(tmp_path):
     quiet=store.save(pcm()*3,16000,{'status':'low_rms'})
     blacklisted=store.save(pcm()*3,16000,{'status':'blacklist'})
     page=store.listing(group='short',limit=1)
-    assert page['groups']=={'all':6,'short':5,'normal':1,'shadow':0}
+    assert {k:v for k,v in page['groups'].items() if k not in ('speech','radio')}=={'all':6,'short':5,'normal':1,'shadow':0}
     assert page['total']==5 and len(page['items'])==1
     assert {r['id'] for r in store.listing(group='short')['items']}=={short,boundary,vad,quiet,blacklisted}
     assert [r['id'] for r in store.listing(group='normal')['items']]==[normal]
     store.review(short,'коротка фраза','speech',0)
-    assert store.listing(review='reviewed',group='short')['groups']=={'all':1,'short':1,'normal':0,'shadow':0}
+    assert {k:v for k,v in store.listing(review='reviewed',group='short')['groups'].items() if k not in ('speech','radio')}=={'all':1,'short':1,'normal':0,'shadow':0}
     assert store.listing(review='pending',group='short')['total']==4
     assert len(store.listing()['items'])==6  # No records were removed.
 

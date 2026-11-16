@@ -367,7 +367,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
                        q: str = "", admin=Depends(actor)):
         if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
-                or group not in ("all", "normal", "short", "shadow") or not re.fullmatch(r"(?:|all|[A-Z])", queue)
+                or group not in ("all", "normal", "short", "shadow", "speech", "radio") or not re.fullmatch(r"(?:|all|[A-Z])", queue)
                 or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
         if queue and queue != "all" and queue not in REVIEW_QUEUES and not q.strip():
@@ -577,6 +577,17 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(403, "Недостатньо прав") from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/activity")
+    def activity(user_id: int | None = None, admin=Depends(actor)):
+        """Дії користувача з Mini App і бота (журнал з 16.11.2026) та його статистика."""
+        from services import user_activity
+        people = user_activity.users(db_path)
+        if user_id is None and people:
+            user_id = people[0]["user_id"]
+        if user_id is not None and all(p["user_id"] != user_id for p in people):
+            raise HTTPException(404, "Користувача не знайдено")
+        return {"users": people, "selected": user_activity.overview(db_path, user_id) if user_id is not None else None}
 
     @app.get("/api/backups")
     def backups(admin=Depends(actor)):

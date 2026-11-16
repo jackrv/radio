@@ -18,14 +18,19 @@ DIAGNOSTICS_HISTORY_DAYS = 14
 DIAGNOSTICS_HISTORY_MAX_SESSIONS = 100
 DIAGNOSTICS_HISTORY_MAX_BYTES = 50 * 1024 * 1024
 NOTIFICATION_SOUNDS_DIR = BASE_DIR / ".local-notification-sounds"
-FILTER_NOTIFICATION_SOUNDS = True
+# Хвильовий фільтр (майже точна копія зразка) вимкнено 16.11.2026: на розмітці не
+# знайшов жодного з 74 «Сигналів» — звук через динамік і мікрофон так не збігається.
+FILTER_NOTIFICATION_SOUNDS = False
 # Спектральний фільтр сповіщень: "shadow" — лише оцінює кожен сегмент і показує
 # оцінки в локальній панелі, нічого не відкидає; "active" — відкидає кандидатів;
 # "off" — вимкнено. Поріг обирається в панелі за розміченими записами «Аудіоархіву».
-SPECTRAL_NOTIFICATION_MODE = "shadow"
-SPECTRAL_NOTIFICATION_THRESHOLD = 0.85
-SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S = 0.2
-SPECTRAL_NOTIFICATION_MAX_EXTRA = 0.02
+# 16.11.2026: на розмітці (74 «Сигнали», 112 мовлення) 0,80 / 0,6 с / 0,06 знаходять
+# 29 сигналів проти 10 і не зачіпають мовлення: найближче мовлення має ≥2,4 с звуку
+# поза зразком. Шум кімнати навколо сигналу давав 0,24–0,54 с і зайву енергію 0,03–0,06.
+SPECTRAL_NOTIFICATION_MODE = "active"
+SPECTRAL_NOTIFICATION_THRESHOLD = 0.80
+SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S = 0.6
+SPECTRAL_NOTIFICATION_MAX_EXTRA = 0.06
 # COOLDOWN_S, LOG_CALLSIGNS_ONLY і GARBAGE_* — початкові значення; змінюються в
 # локальній панелі («Налаштування → Обробка без перезапуску»).
 COOLDOWN_S = 3.0

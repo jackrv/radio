@@ -31,6 +31,7 @@ from services.user_notify_store import (
     save_user_mode,
 )
 from api.management import management_router
+from services.user_activity import record as record_activity, touch_open
 from services.user_profiles import remember_verified_profile
 
 
@@ -127,6 +128,7 @@ def create_app(db_path, bot_token):
                 "status.read",
             )
             remember_verified_profile(db_path, verified_user)
+            touch_open(db_path, user_id)
         except PermissionError:
             raise HTTPException(
                 status_code=403,
@@ -204,12 +206,16 @@ def create_app(db_path, bot_token):
     ):
         require_settings_permission(user, "corrections.write")
         try:
-            return save_edit_draft(
+            result = save_edit_draft(
                 db_path,
                 payload.fix_id,
                 payload.expected_text,
                 payload.corrected_text, actor_id=user["user_id"],
             )
+            record_activity(db_path, user["user_id"], "correction", payload.fix_id,
+                            {"from": payload.expected_text, "to": result.get("corrected_text"),
+                             "changed": bool(result.get("text_changed"))})
+            return result
         except PermissionError:
             raise HTTPException(status_code=403, detail="Недостатньо прав") from None
         except CorrectionConflict:
@@ -243,11 +249,15 @@ def create_app(db_path, bot_token):
     ):
         require_settings_permission(user, "corrections.write")
         try:
-            return decide_learning(
+            result = decide_learning(
                 db_path, payload.fix_id, payload.expected_text,
                 payload.original, payload.corrected, payload.decision,
                 actor_id=user["user_id"],
             )
+            record_activity(db_path, user["user_id"], "learning", payload.fix_id,
+                            {"original": payload.original, "corrected": payload.corrected,
+                             "decision": payload.decision})
+            return result
         except PermissionError:
             raise HTTPException(status_code=403, detail="Недостатньо прав") from None
         except CorrectionConflict:
@@ -294,6 +304,7 @@ def create_app(db_path, bot_token):
                 detail="Не вдалося зберегти налаштування",
             ) from None
 
+        record_activity(db_path, user["user_id"], "mode", payload.mode, {"via": "miniapp"})
         return {"mode": payload.mode, "allowed": allowed_modes(user["role"])}
 
     @app.get("/api/receiver/control")
@@ -315,11 +326,13 @@ def create_app(db_path, bot_token):
         require_settings_permission(user, "audio.control")
 
         try:
-            return set_pause_minutes(
+            result = set_pause_minutes(
                 db_path,
                 payload.minutes,
                 expected_revision=payload.expected_revision,
             )
+            record_activity(db_path, user["user_id"], "receiver", "", {"minutes": payload.minutes})
+            return result
         except PauseVersionConflict:
             raise HTTPException(
                 status_code=409,

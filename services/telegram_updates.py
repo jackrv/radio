@@ -62,10 +62,13 @@ class UpdatesMixin:
             return
         if data == "del" or data.startswith("del:"):
             state = self._user_state(actor)
+            from services.user_activity import record as record_activity
             if state is not None and state[0] == "admin":
                 self._hide_phrase(cq, chat_id, message, data)
+                record_activity(self.db_path, actor, "hide", data[4:])
             else:
                 self._delete_own_copy(cq, chat_id, message)
+                record_activity(self.db_path, actor, "delete", data[4:])
 
     def _delete_own_copy(self, cq, chat_id, message):
         """Видаляє лише повідомлення в чаті користувача; фраза лишається для інших."""

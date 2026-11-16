@@ -28,6 +28,13 @@ REVIEW_QUEUES = {
     "C": ("Тихі нижче −36 dBFS", "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')<-36"),
     "D": ("Відкинуті VAD, мовлення від 300 мс", "status='vad_short' AND json_extract(data,'$.speech_ms')>=300"),
 }
+# Групи для розмітки тексту: Whisper щось розпізнав (або зациклився на довгому
+# мовленні) і запис довший за 2 с; «Ефір» — серед них ті, де є позивний чи подія.
+SPEECH_GROUP = ("(status IN ('ready','empty_text') "
+                "AND COALESCE(json_extract(data,'$.signal.duration_s'),0) > 2.0)")
+RADIO_GROUP = ("(json_extract(data,'$.fix_id') IS NOT NULL "
+               "OR COALESCE(json_extract(data,'$.predicted_recipient'),'') <> '' "
+               "OR COALESCE(json_extract(data,'$.predicted_sender'),'') <> '')")
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -221,7 +228,8 @@ class RecordingStore:
         # review list regardless of its audio duration.
         short = "(status IN ('vad_short','low_rms','blacklist','low_confidence') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
         shadow = "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"
-        grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow}[group]
+        grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow,
+                   "speech": SPEECH_GROUP, "radio": RADIO_GROUP}[group]
         params = ()
         if search.strip():
             # Пошук іде по всьому архіву: черги, групи й стан перевірки не застосовуються.
@@ -236,8 +244,10 @@ class RecordingStore:
         with self.connect() as db:
             db.execute("BEGIN")
             counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0), "
-                                f"COALESCE(SUM({shadow}),0) FROM recordings WHERE {reviewed}").fetchone()
-            groups = {"all": counts[0], "short": counts[1], "normal": counts[0] - counts[1], "shadow": counts[2]}
+                                f"COALESCE(SUM({shadow}),0), COALESCE(SUM({SPEECH_GROUP}),0), "
+                                f"COALESCE(SUM({RADIO_GROUP}),0) FROM recordings WHERE {reviewed}").fetchone()
+            groups = {"all": counts[0], "short": counts[1], "normal": counts[0] - counts[1], "shadow": counts[2],
+                      "speech": counts[3], "radio": counts[4]}
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
             # New recordings append to a live queue, keeping loaded pages stable.
             order = "created ASC,id ASC" if queue else "created DESC,id DESC"

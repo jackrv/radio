@@ -55,7 +55,7 @@
   async function action(callback) { if (busy) return; busy = true; try { await callback(); } catch (error) { note(error.message); } finally { busy = false; } }
 
   // ---------- Навігація ----------
-  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", dictionaries: "Словники", texts: "Фільтри тексту", settings: "Налаштування", users: "Користувачі", system: "Система", roles: "Ролі" };
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", dictionaries: "Словники", texts: "Фільтри тексту", settings: "Налаштування", users: "Користувачі", activity: "Активність", system: "Система", roles: "Ролі" };
   function show(name) {
     view = name;
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === name);
@@ -590,6 +590,82 @@
   }); });
 
   // ---------- Користувачі ----------
+  // ---------- Активність користувача ----------
+  const ACTIONS = {
+    open: "Відкрито Mini App", correction: "Правка тексту", learning: "Рішення щодо навчання",
+    mode: "Режим сповіщень", receiver: "Керування приймачем", dictionary: "Словник",
+    rule: "Правило слів", rule_approval: "Дозвіл правила", user: "Зміна користувача",
+    settings: "Налаштування розпізнавання", sample: "Зразок сигналу",
+    delete: "Видалено повідомлення в себе", hide: "Приховано фразу для всіх",
+  };
+  const DECISIONS_UA = { confirmed: "навчати", rejected: "не навчати", pending: "без рішення" };
+  const when = ts => ts ? new Date(ts * 1000).toLocaleString("uk-UA") : "—";
+  function activityTarget(item) {
+    const event = /^db:(\d+)$/.exec(item.target || "");
+    if (event) {
+      const link = el("a", "", `№${event[1]}`);
+      link.href = `?view=recordings&q=${encodeURIComponent("№" + event[1])}`;
+      link.title = "Знайти запис в «Аудіоархіві»";
+      return link;
+    }
+    if (item.action === "mode") return document.createTextNode(MODES[item.target] || item.target);
+    return document.createTextNode(item.target || "");
+  }
+  function activityDetails(item) {
+    const d = item.details || {};
+    switch (item.action) {
+      case "correction": return d.changed ? `«${d.from}» → «${d.to}»` : "текст не змінено";
+      case "learning": return `«${d.original}» → «${d.corrected}»: ${DECISIONS_UA[d.decision] || d.decision}`;
+      case "mode": return d.via === "bot" ? "командою в боті" : "у Mini App";
+      case "receiver": return d.minutes ? `пауза на ${d.minutes} хв` : "приймання відновлено";
+      case "dictionary": return `діючих рядків: ${d.lines}`;
+      case "rule": return d.disabled ? "вимкнено" : "увімкнено";
+      case "rule_approval": return d.approved ? "дозволено" : "дозвіл знято";
+      case "user": return [d.role && ROLES[d.role], d.enabled === false ? "вимкнено" : "", d.notify_mode && MODES[d.notify_mode]].filter(Boolean).join(" · ");
+      default: return "";
+    }
+  }
+  async function activity(userId) {
+    const result = await request(`/api/activity${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`);
+    const select = $("activity-user");
+    select.replaceChildren();
+    for (const u of result.users) {
+      const option = el("option", "", `${u.name || u.user_id} · ${ROLES[u.role] || u.role}${u.enabled ? "" : " · вимкнений"}`);
+      option.value = u.user_id; select.append(option);
+    }
+    const s = result.selected;
+    const cards = $("activity-cards"), table = $("activity-items");
+    cards.replaceChildren(); table.replaceChildren();
+    if (!s) { cards.append(el("p", "muted", "Користувачів ще немає.")); return; }
+    select.value = s.user_id;
+    const a = s.actions || {}, w = s.actions_week || {};
+    const other = Object.entries(a).filter(([k]) => !["open", "correction", "learning", "mode"].includes(k)).reduce((n, [, v]) => n + v, 0);
+    cards.append(
+      card("Роль", ROLES[s.role] || s.role, `${s.enabled ? "активний" : "вимкнений"} · доступ з ${s.created_at || "—"}`, s.enabled ? "ok" : "bad"),
+      card("Сповіщення", MODES[s.notify_mode] || s.notify_mode || "—", "поточний режим"),
+      card("Доставлено сповіщень", String(s.delivered.total), Object.entries(s.delivered.by_kind || {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "за весь час"),
+      card("Правки тексту", String(a.correction || 0), `зі змінами: ${s.corrections_changed} · за 7 днів: ${w.correction || 0}`),
+      card("Рішення щодо навчання", String(a.learning || 0), `за 7 днів: ${w.learning || 0}`),
+      card("Відкриття Mini App", String(a.open || 0), `останнє: ${when(s.last_activity)}`),
+      card("Активних днів", String(s.active_days || 0), s.first_logged ? `журнал з ${when(s.first_logged)}` : "дій ще не записано"),
+      card("Інші дії", String(other + (a.mode || 0)), `режим: ${a.mode || 0} · словники, правила, налаштування: ${other}`),
+    );
+    const head = el("tr");
+    for (const h of ["Час", "Дія", "Об’єкт", "Подробиці"]) head.append(el("th", "", h));
+    table.append(head);
+    if (!s.items.length) {
+      const row = el("tr"), cell = el("td", "muted", "Дій ще не записано. Вони з’являться, щойно користувач відкриє Mini App чи щось змінить.");
+      cell.colSpan = 4; row.append(cell); table.append(row);
+    }
+    for (const item of s.items) {
+      const row = el("tr"), target = el("td");
+      target.append(activityTarget(item));
+      row.append(el("td", "nowrap", when(item.ts)), el("td", "", ACTIONS[item.action] || item.action), target, el("td", "", activityDetails(item)));
+      table.append(row);
+    }
+  }
+  $("activity-user").addEventListener("change", event => action(() => activity(event.target.value)));
+
   async function users() {
     if (!data) await overview();
     const table = $("users"), head = el("tr");
@@ -754,8 +830,8 @@
     if (!grouped) groupSelect.value = "all";
     for (const option of groupSelect.options) {
       const count = grouped ? groups[option.value] : option.value === "all" ? page.total : null;
-      option.disabled = option.value === "shadow" && typeof count !== "number";
-      option.textContent = `${{normal: "Основні", short: "Короткі / відсіяні", all: "Усі разом", shadow: "Перевірка фільтра"}[option.value]}${count == null ? "" : ` · ${count}`}`;
+      option.disabled = ["shadow", "speech", "radio"].includes(option.value) && typeof count !== "number";
+      option.textContent = `${{normal: "Основні", speech: "Мовлення", radio: "Ефір: позивні або подія", short: "Короткі / відсіяні", all: "Усі разом", shadow: "Перевірка фільтра"}[option.value]}${count == null ? "" : ` · ${count}`}`;
     }
     if (!grouped) note("Записи відкрито без груп. Перезапустіть локальну адмінпанель і оновіть список, щоб відокремити короткі фрази. Приймач зупиняти не потрібно.");
     const quality = summary.quality;
@@ -1002,7 +1078,7 @@
   $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });
   $("recording-search").addEventListener("input", event => { if (!event.target.value) action(() => recordings(true)); });
 
-  const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
+  const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

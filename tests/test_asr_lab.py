@@ -280,3 +280,19 @@ def test_word_errors_ignore_apostrophe_forms():
     from tools.asr_lab import score_text
     for hypothesis in ("на зв'язку, прийом", "на звʼязку прийом", "на звязку прийом"):
         assert score_text("на звʼязку, прийом", hypothesis)["word_errors"] == 0
+
+
+def test_whisper_options_are_parsed_and_passed_without_changing_defaults():
+    from tools.asr_lab import parse_whisper_options
+    from core.recognition import WhisperRecognizer
+    options = parse_whisper_options(["hallucination_silence_threshold=2.0", "word_timestamps=true", "best_of=3"])
+    assert options == {"hallucination_silence_threshold": 2.0, "word_timestamps": True, "best_of": 3}
+    calls = []
+    recognizer = WhisperRecognizer("m", "uk", 16000, "", None, options={"word_timestamps": True})
+    recognizer.transcribe_fn = lambda audio, **kw: calls.append(kw) or {}
+    recognizer.transcribe(b"")
+    assert calls[0]["word_timestamps"] is True and calls[0]["compression_ratio_threshold"] == 2.4
+    plain = WhisperRecognizer("m", "uk", 16000, "", None)
+    plain.transcribe_fn = lambda audio, **kw: calls.append(kw) or {}
+    plain.transcribe(b"")
+    assert "word_timestamps" not in calls[1], "приймач без змін"

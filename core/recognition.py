@@ -8,13 +8,16 @@ class WhisperRecognizer:
 
     DEFAULT_TEMPERATURE = (0.0, 0.2, 0.4)
 
-    def __init__(self, model_repo, language, sample_rate, prompt, log, temperature=DEFAULT_TEMPERATURE):
+    def __init__(self, model_repo, language, sample_rate, prompt, log, temperature=DEFAULT_TEMPERATURE,
+                 options=None):
         self.model_repo = model_repo
         self.language = language
         self.sample_rate = sample_rate
         self.prompt = prompt
         self.log = log
         self.temperature = tuple(temperature)
+        # Додаткові параметри декодування — лише для офлайн-досліджень (tools/asr_lab).
+        self.options = dict(options or {})
         self.transcribe_fn = mlx_whisper.transcribe
 
     def warmup(self):
@@ -35,16 +38,20 @@ class WhisperRecognizer:
 
     def transcribe(self, audio):
         """Распознаёт аудио с исходными параметрами проекта."""
+        options = {
+            "condition_on_previous_text": False,
+            "no_speech_threshold": 0.6,
+            "logprob_threshold": -1.0,
+            "compression_ratio_threshold": 2.4,
+            **self.options,
+        }
         return self.transcribe_fn(
             audio,
             path_or_hf_repo=self.model_repo,
             language=self.language,
             initial_prompt=self.prompt,
             temperature=self.temperature,
-            condition_on_previous_text=False,
-            no_speech_threshold=0.6,
-            logprob_threshold=-1.0,
-            compression_ratio_threshold=2.4,
+            **options,
         )
 
     @staticmethod

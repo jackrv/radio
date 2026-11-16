@@ -362,6 +362,25 @@ def runtime_versions(model_repo):
     return versions
 
 
+def parse_whisper_options(items):
+    """«ключ=значення» для mlx_whisper.transcribe: true/false, числа, інакше рядок."""
+    options = {}
+    for item in items:
+        key, sep, raw = item.partition("=")
+        if not sep or not key.strip():
+            raise SystemExit(f"--whisper-option: очікується «ключ=значення», отримано «{item}»")
+        lowered = raw.strip().lower()
+        if lowered in ("true", "false"):
+            value = lowered == "true"
+        else:
+            try:
+                value = float(raw) if any(c in raw for c in ".eE") else int(raw)
+            except ValueError:
+                value = raw
+        options[key.strip()] = value
+    return options
+
+
 class Lab:
     def __init__(self, args, run_dir):
         import config
@@ -381,8 +400,9 @@ class Lab:
         self.sample_rate = config.SR
         from core.recognition import WhisperRecognizer
         self.temperature = tuple(float(t) for t in getattr(args, "temperature", "0,0.2,0.4").split(","))
+        self.whisper_options = parse_whisper_options(getattr(args, "whisper_option", None) or [])
         self.recognizer = WhisperRecognizer(self.model, self.language, self.sample_rate, self.prompt, self.log,
-                                            temperature=self.temperature)
+                                            temperature=self.temperature, options=self.whisper_options)
         self.llm = None
         if args.variant == "qwen" and getattr(args, "llm", "on") == "off":
             raise SystemExit("--llm off має сенс лише для --variant pipeline")
@@ -403,9 +423,9 @@ class Lab:
                 "versions": runtime_versions(self.model),
                 "normalize": self.args.normalize == "on",
                 "min_rms_gate": self.args.min_rms, "llm_repo": config.LLM_REPO if self.llm else None,
-                "whisper_options": {"temperature": [0.0, 0.2, 0.4], "condition_on_previous_text": False,
+                "whisper_options": {"temperature": list(self.temperature), "condition_on_previous_text": False,
                                     "no_speech_threshold": 0.6, "logprob_threshold": -1.0,
-                                    "compression_ratio_threshold": 2.4},
+                                    "compression_ratio_threshold": 2.4, **self.whisper_options},
                 "seed": self.args.seed, "resegment": self.args.resegment, "gate_db": self.args.gate_db,
                 "bandpass": [self.args.band_low, self.args.band_high] if self.args.bandpass == "on" else None,
                 "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only}
@@ -717,6 +737,9 @@ def main(argv=None):
     r.add_argument("--bandpass", choices=("off", "on"), default="off", help="смуга мовлення перед Whisper")
     r.add_argument("--band-low", type=float, default=300.0, help="нижня межа смуги, Гц")
     r.add_argument("--band-high", type=float, default=3400.0, help="верхня межа смуги, Гц")
+    r.add_argument("--whisper-option", action="append", metavar="КЛЮЧ=ЗНАЧЕННЯ",
+                   help="додатковий параметр mlx_whisper.transcribe, напр. hallucination_silence_threshold=2 "
+                        "(можна кілька разів)")
     rep = sub.add_parser("report")
     rep.add_argument("run_dir")
     c = sub.add_parser("compare")

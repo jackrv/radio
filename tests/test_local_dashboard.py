@@ -413,3 +413,25 @@ def test_text_check_endpoint_returns_hints_without_writing(local):
     assert [i["kind"] for i in body["issues"]]==["format","format","info"]
     assert client.post("/api/text-check",json={"text":"x"*5001},headers={"Origin":ORIGIN}).status_code==422
     assert client.post("/api/text-check",json={"text":"x"}).status_code==403, "без Origin — відмова"
+
+
+def test_dictionaries_are_edited_from_the_panel_with_miniapp_rules(local):
+    client,path,_=local
+    h={"Origin":ORIGIN}
+    data=client.get("/api/dictionaries").json()
+    assert set(data)=={"callsigns","commands","telegram"}
+    entries=[{"raw_line":"береза: 31 56","enabled":True},{"raw_line":"вишня","enabled":False}]
+    saved=client.put("/api/dictionaries/callsigns",json={"entries":entries,"expected_version":data["callsigns"]["version"]},headers=h)
+    assert saved.status_code==200 and saved.json()["entries"]==entries
+    import sqlite3
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT raw_line, enabled FROM dictionary_entries WHERE dictionary_type='callsigns' ORDER BY line_number").fetchall()==[("береза: 31 56",1),("вишня",0)]
+    stale={"entries":entries,"expected_version":data["callsigns"]["version"]}
+    assert client.put("/api/dictionaries/callsigns",json=stale,headers=h).status_code==409, "застаріла версія"
+    version=saved.json()["version"]
+    bad=client.put("/api/dictionaries/callsigns",json={"entries":[{"raw_line":"береза мала: 5","enabled":True}],"expected_version":version},headers=h)
+    assert bad.status_code==422 and "одним словом" in bad.json()["detail"]
+    empty=client.put("/api/dictionaries/callsigns",json={"entries":[{"raw_line":"вишня","enabled":False}],"expected_version":version},headers=h)
+    assert empty.status_code==422, "приймач не лишається без позивних"
+    assert client.put("/api/dictionaries/other",json={"entries":[],"expected_version":version},headers=h).status_code==404
+    assert client.put("/api/dictionaries/callsigns",json={"entries":entries,"expected_version":version}).status_code==403

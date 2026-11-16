@@ -85,6 +85,16 @@ class TextListUpdate(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
+class DictionaryEntry(BaseModel):
+    raw_line: str = Field(max_length=500)
+    enabled: bool = Field(strict=True)
+
+
+class DictionaryUpdate(BaseModel):
+    entries: list[DictionaryEntry] = Field(max_length=1000)
+    expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class PhraseSample(BaseModel):
     fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     confirmed_isolated: bool = Field(strict=True)
@@ -527,6 +537,28 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             return write_list(db_path, list_type, [e.model_dump() for e in payload.entries], payload.expected_revision)
         except TextListConflict as exc:
             raise HTTPException(409, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/dictionaries")
+    def dictionaries(admin=Depends(actor)):
+        """Словники позивних, команд і Telegram — ті самі, що в Mini App."""
+        from services.miniapp_management import read_dictionary
+        return {kind: read_dictionary(db_path, kind) for kind in ("callsigns", "commands", "telegram")}
+
+    @app.put("/api/dictionaries/{kind}")
+    def dictionary_update(kind: str, payload: DictionaryUpdate, admin=Depends(actor)):
+        """Збереження з тією самою перевіркою рядків і захистом від одночасної правки, що й у Mini App."""
+        from services.miniapp_management import ManagementConflict, write_dictionary
+        if kind not in ("callsigns", "commands", "telegram"):
+            raise HTTPException(404, "Невідомий словник")
+        try:
+            return write_dictionary(db_path, admin, kind, [e.model_dump() for e in payload.entries],
+                                    payload.expected_version)
+        except ManagementConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except PermissionError:
+            raise HTTPException(403, "Недостатньо прав") from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 

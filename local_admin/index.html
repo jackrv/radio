@@ -17,6 +17,7 @@
       <button data-view="phrases"><span>✎</span>Фрази</button>
       <button data-view="sounds"><span>🔔</span>Звуки</button>
       <button data-view="filter"><span>≋</span>Фільтр</button>
+      <button data-view="dictionaries"><span>☰</span>Словники</button>
       <button data-view="texts"><span>Aa</span>Фільтри тексту</button>
       <button data-view="settings"><span>⚙</span>Налаштування</button>
       <button data-view="users"><span>♙</span>Користувачі</button>
@@ -118,6 +119,13 @@
       </section>
 
       <!-- Текстові списки -->
+      <section data-panel="dictionaries" hidden>
+        <article class="panel"><h2>Словники розпізнавання</h2>
+          <p class="muted">Ті самі словники, що в Mini App («Словники»). Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
+          <p id="dictionaries-status" class="muted small"></p></article>
+        <div id="dictionary-lists" class="grid two"></div>
+      </section>
+
       <section data-panel="texts" hidden>
         <article class="panel"><h2>Застосування без перезапуску</h2>
           <p class="muted">Приймач перевіряє зміни кожні кілька секунд і застосовує їх до наступного сегмента. Рядок, що починається з <code>#</code>, зберігається, але не діє. Позивні, команди й числа захищені: такі рядки не збережуться.</p>
@@ -130,7 +138,7 @@
         <article class="panel"><h2>Розпізнавання</h2><p class="muted">Застосовуються після перезапуску приймача. Збереження його не перезапускає.</p>
           <p id="models" class="muted small"></p><form id="settings"><div id="fields" class="fields"></div><button>Зберегти</button></form></article>
         <article class="panel"><h2>Обробка без перезапуску</h2>
-          <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram з Mini App теж діють без перезапуску.</p>
+          <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram (розділ «Словники» тут або в Mini App) теж діють без перезапуску.</p>
           <p id="runtime-status" class="muted small"></p>
           <form id="runtime-settings"><div id="runtime-fields" class="fields"></div><button>Зберегти</button></form></article>
       </section>

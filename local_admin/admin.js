@@ -55,7 +55,7 @@
   async function action(callback) { if (busy) return; busy = true; try { await callback(); } catch (error) { note(error.message); } finally { busy = false; } }
 
   // ---------- Навігація ----------
-  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", texts: "Фільтри тексту", settings: "Налаштування", users: "Користувачі", system: "Система", roles: "Ролі" };
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", dictionaries: "Словники", texts: "Фільтри тексту", settings: "Налаштування", users: "Користувачі", system: "Система", roles: "Ролі" };
   function show(name) {
     view = name;
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === name);
@@ -405,6 +405,39 @@
       else entries.push({ raw_line: line, enabled: true });
     }
     return entries;
+  }
+
+  // ---------- Словники позивних, команд і Telegram ----------
+  const DICTIONARIES = {
+    callsigns: ["Позивні", "«назва: номери»: «береза: 31 56 700-710». Без номерів — позивний, що звучить сам: «вишня». «*» — будь-який номер. Порожнім словник позивних лишити не можна."],
+    commands: ["Команди", "«назва номер» так, як вимовляють: «злива 42 42» (номер 4242). Без номера — ключове слово: «грім». Кілька номерів — через двокрапку: «злива: 4242 2727»."],
+    telegram: ["Telegram (/watch)", "Що надсилати підписникам /watch. «береза: 56» — лише з цим номером; «вишня» без номера — і сам позивний без номера (на шум Whisper іноді вигадує такі слова); «вишня: *» — з будь-яким номером."],
+  };
+  async function dictionaries() {
+    const data = await request("/api/dictionaries");
+    const box = $("dictionary-lists");
+    box.replaceChildren();
+    $("dictionaries-status").textContent = Object.entries(DICTIONARIES)
+      .map(([kind, [title]]) => `${title}: ${data[kind].entries.filter(e => e.enabled).length} діючих рядків`).join(" · ");
+    for (const [kind, [title, help]] of Object.entries(DICTIONARIES)) {
+      const dictionary = data[kind];
+      const panel = el("article", "panel");
+      const area = el("textarea", "list-editor");
+      area.value = toLines(dictionary.entries);
+      area.spellcheck = false;
+      area.setAttribute("aria-label", title);
+      const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
+      save.addEventListener("click", () => action(async () => {
+        try {
+          await request(`/api/dictionaries/${kind}`, "PUT", { entries: fromLines(area.value), expected_version: dictionary.version });
+          note(`Словник «${title}» збережено. Приймач застосує зміни за кілька секунд.`);
+          await dictionaries();
+        } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
+      }));
+      const actions = el("div", "list-actions"); actions.append(save, status);
+      panel.append(el("h2", "", title), el("p", "muted small", help), area, actions);
+      box.append(panel);
+    }
   }
 
   async function texts() {
@@ -926,7 +959,7 @@
   $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });
   $("recording-search").addEventListener("input", event => { if (!event.target.value) action(() => recordings(true)); });
 
-  const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
+  const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, system, roles: async () => roles() };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

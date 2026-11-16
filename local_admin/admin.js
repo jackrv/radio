@@ -8,7 +8,7 @@
 
   const STATUS = {
     ready: "Розпізнано", low_rms: "Тихо (нижче MIN_RMS)", short: "Закоротко (VAD)",
-    notification: "Звук сповіщення", blacklist: "Чорний список", garbage: "Сміття Whisper",
+    notification: "Звук сповіщення", blacklist: "Чорний список", garbage: "Сміття Whisper", low_confidence: "Низька впевненість",
     empty_text: "Порожній текст", whisper_error: "Помилка Whisper", stale: "Після паузи", discarded: "Відкинуто",
   };
   const SPECTRAL_MODES = { shadow: "Спостереження", active: "Активний", off: "Спектральний вимкнено" };

@@ -29,7 +29,7 @@ SPECTRAL_KEEP_SCORE = 0.5
 SPECTRAL_BUCKETS = 20
 _ASR_STATUSES = frozenset({
     "discarded", "ready", "ready_fallback", "stale", "low_rms", "empty_text",
-    "garbage", "blacklist", "notification", "whisper_error", "error",
+    "garbage", "blacklist", "low_confidence", "notification", "whisper_error", "error",
 })
 _ASR_READY_METRICS = (
     "audio_duration_s", "queue_wait_s", "vad_release_s", "speech_tail_s", "capture_to_enqueue_s", "whisper_s", "qwen_s",

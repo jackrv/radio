@@ -36,6 +36,12 @@ GARBAGE_MIN_WORDS = 12
 GARBAGE_MIN_UNIQUE_RATIO = 0.25
 GARBAGE_MAX_WORDS_PER_S = 5.0
 GARBAGE_EXTRA_WORDS = 3
+# Короткий текст із низькою впевненістю Whisper — вигадка на звуку без мовлення:
+# не більше LOW_CONFIDENCE_MAX_WORDS слів і avg_logprob нижче LOW_CONFIDENCE_LOGPROB
+# (на розмічених записах: −57 зі 168 галюцинацій, −1 із 59 записів мовлення).
+# Фраза з командою чи позивним із номером не відкидається.
+LOW_CONFIDENCE_MAX_WORDS = 2
+LOW_CONFIDENCE_LOGPROB = -0.7
 
 # Чувствительность аудио
 GAIN = 1.0

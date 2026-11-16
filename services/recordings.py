@@ -21,7 +21,7 @@ UNSET = object()
 NON_SPEECH = ("noise", "notification", "room")
 # Live annotation queues; frozen experimental samples stay in tools/asr_lab.py.
 REVIEW_QUEUES = {
-    "A": ("Усе, що бачив Whisper", "status IN ('ready','empty_text','blacklist')"),
+    "A": ("Усе, що бачив Whisper", "status IN ('ready','empty_text','blacklist','low_confidence')"),
     "B": ("Тихі поруч із порогом (−36…−34 dBFS)",
           "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')>=-36 "
           "AND json_extract(data,'$.signal.rms_dbfs')<-34"),
@@ -187,7 +187,7 @@ class RecordingStore:
         reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
         # Rejected short/quiet/blacklisted material belongs outside the main
         # review list regardless of its audio duration.
-        short = "(status IN ('vad_short','low_rms','blacklist') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
+        short = "(status IN ('vad_short','low_rms','blacklist','low_confidence') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
         shadow = "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"
         grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow}[group]
         params = ()

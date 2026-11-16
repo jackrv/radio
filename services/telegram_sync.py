@@ -87,7 +87,7 @@ _HEADER_CACHE = {}
 def _dictionaries(db_path):
     """Поточні словники з SQLite; кеш за відбитком рядків і поточними алиасами."""
     import callsigns as callsign_module
-    from callsigns import Callsigns
+    from callsigns import Callsigns, command_dictionary
     from services.dictionary_loader import dictionary_fingerprint
     with get_db(db_path) as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():
@@ -99,7 +99,8 @@ def _dictionaries(db_path):
         for kind, line in db.execute("""SELECT dictionary_type, raw_line FROM dictionary_entries
                 WHERE enabled = 1 ORDER BY dictionary_type, line_number"""):
             lines.setdefault(kind, []).append(line)
-    result = tuple(Callsigns.from_lines(lines.get(kind, [])) for kind in ("callsigns", "telegram"))
+    result = (*(Callsigns.from_lines(lines.get(kind, [])) for kind in ("callsigns", "telegram")),
+              command_dictionary(lines.get("commands", [])))
     _HEADER_CACHE.clear()
     _HEADER_CACHE[key] = result
     return result
@@ -107,7 +108,7 @@ def _dictionaries(db_path):
 
 def corrected_caption(db_path, text):
     """Шапка перераховується з виправленого тексту за поточними словниками, як при надсиланні."""
-    from core.analyzer import fmt, split_roles
+    from core.analyzer import fmt, fmt_spoken, split_roles
     from services.telegram_outbox import build_caption
     try:
         dictionaries = _dictionaries(db_path)
@@ -115,9 +116,10 @@ def corrected_caption(db_path, text):
         dictionaries = None
     if dictionaries is None:
         return "✏️ Виправлено оператором\n\n" + text
-    callsigns, watch = dictionaries
+    callsigns, watch, commands = dictionaries
     to_found, from_found = split_roles(text, callsigns)
-    return "✏️ Виправлено оператором\n" + build_caption(fmt(watch.find(text)) or "Ефір", fmt(to_found), fmt(from_found), text)
+    return "✏️ Виправлено оператором\n" + build_caption(fmt(watch.find(text)) or "Ефір", fmt(to_found), fmt(from_found),
+                                                       text, fmt_spoken(commands.find(text)))
 
 
 def clipped(text, units):

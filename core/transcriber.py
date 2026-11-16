@@ -2,7 +2,7 @@ import os
 import re
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
-from core.analyzer import looks_like_garbage
+from core.analyzer import is_low_confidence_short, looks_like_garbage
 from callsigns import normalize
 from core.diagnostics import runtime
 
@@ -42,6 +42,9 @@ class Transcriber:
         # Інші живі джерела (словники, налаштування обробки): викликаються перед сегментом.
         self.refreshers = ()
         self.garbage_limits = {}
+        # {"max_words": .., "logprob": ..} — відкидати короткий текст із низькою
+        # впевненістю Whisper; None — правило вимкнене (задає фабрика приймача).
+        self.low_confidence = None
         self._whisper_called = False
         self._whisper_failed = False
         self.recognizer = recognizer
@@ -200,9 +203,10 @@ class Transcriber:
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
             from services.recordings import note
-            note(raw_text=raw_text, whisper_segments=[{k: segment[k] for k in (
+            whisper_segments = [{k: segment[k] for k in (
                 "start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "temperature") if k in segment}
-                for segment in (result.get("segments", []) if isinstance(result, dict) else [])])
+                for segment in (result.get("segments", []) if isinstance(result, dict) else [])]
+            note(raw_text=raw_text, whisper_segments=whisper_segments)
         except Exception:
             self._whisper_failed = True
             runtime.asr_status("whisper_error")
@@ -237,6 +241,13 @@ class Transcriber:
         if self._is_blacklisted(raw_text):
             runtime.asr_status("blacklist")
             runtime.count("asr.blacklist_filtered")
+            return
+        if self.low_confidence is not None and is_low_confidence_short(
+                raw_text, whisper_segments, self.event_processor.callsigns, self.event_processor.commands,
+                **self.low_confidence):
+            runtime.asr_status("low_confidence")
+            runtime.count("asr.low_confidence_filtered")
+            self.log.info("Відкинуто: короткий текст із низькою впевненістю Whisper: %s", raw_text)
             return
 
         if not is_current():

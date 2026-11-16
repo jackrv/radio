@@ -1,6 +1,7 @@
 import re
 import sys
 from collections import defaultdict
+from typing import NamedTuple
 
 from rapidfuzz import fuzz, process
 
@@ -135,6 +136,15 @@ def to_items(text: str) -> list[tuple[str, str]]:
     return items
 
 
+class Match(NamedTuple):
+    """Збіг зі словником: ``heard`` — почуте слово після нормалізації."""
+    name: str
+    number: str | None
+    score: float
+    heard: str
+    exact: bool
+
+
 # Поріг схожості слова для словника команд, коли одразу після слова стоїть
 # точний номер команди («злата 4242» -> «злива 4242»). Номер — головна ознака,
 # тому слово може бути впізнане гірше. Вище 50: на 50 збігаються різні слова
@@ -223,6 +233,19 @@ class Callsigns:
                 return joined, 2
         return None, 0
 
+    def _near_number_at(self, items, i, allowed):
+        """Номер команди, почутий з однією хибною цифрою («грім 0,23» -> 022)."""
+        if i >= len(items) or items[i][0] != "num":
+            return None, 0
+        candidates = [(items[i][1], 1)]
+        if i + 1 < len(items) and items[i + 1][0] == "num":
+            candidates.append((items[i][1] + items[i + 1][1], 2))
+        for heard, used in candidates:
+            num = near_number(heard, allowed)
+            if num:
+                return num, used
+        return None, 0
+
     def _anchored(self, word, items, i):
         """Слово, схоже на назву хоча б на anchored_threshold, і точний номер цієї назви."""
         folded = word.translate(FOLD)
@@ -238,6 +261,15 @@ class Callsigns:
 
     def find(self, text: str) -> list[tuple[str, str | None, float]]:
         """Возвращает [(слово, номер или None, схожесть)] без повторов."""
+        seen, unique = set(), []
+        for m in self.matches(text):
+            if (m.name, m.number) not in seen:
+                seen.add((m.name, m.number))
+                unique.append((m.name, m.number, m.score))
+        return unique
+
+    def matches(self, text: str) -> list["Match"]:
+        """Усі збіги по порядку: що почуто, що впізнано й чи номер точний."""
         items = to_items(text)
         found, i = [], 0
         while i < len(items):
@@ -259,30 +291,42 @@ class Callsigns:
                 )
             if best and best[1] >= self.threshold:
                 name, score = self._folded[best[0]], best[1]
+                # Точний номер — лише явно дозволений у словнику (не * і не «майже»).
+                exact = False
                 if name in self.any_number:
                     num, used = self._number_at(items, i, lambda n: True)
                 else:
                     num, used = self._number_at(items, i, self.numbers[name].__contains__)
+                    exact = bool(num)
+                    if not num and self.anchored_threshold is not None:
+                        num, used = self._near_number_at(items, i, self.numbers[name])
                 if num:
-                    found.append((name, num, score))
+                    found.append(Match(name, num, score, val, exact))
                     i += used
                     continue
                 if name in self.standalone and score >= self.standalone_threshold:
-                    found.append((name, None, score))
+                    found.append(Match(name, None, score, val, False))
                     continue
             if self.anchored_threshold is not None:
                 anchored = self._anchored(val, items, i)
                 if anchored:
                     name, num, score, used = anchored
-                    found.append((name, num, score))
+                    found.append(Match(name, num, score, val, True))
                     i += used
+        return found
 
-        seen, unique = set(), []
-        for name, num, score in found:
-            if (name, num) not in seen:
-                seen.add((name, num))
-                unique.append((name, num, score))
-        return unique
+
+def near_number(heard, allowed):
+    """Дозволений номер, від якого почутий відрізняється однією цифрою, або None.
+
+    Лише для номерів від трьох цифр однакової довжини зі спільною першою цифрою:
+    «023» -> «022», але не «922» чи «133» -> «333». Кілька кандидатів — None.
+    """
+    if len(heard) < 3:
+        return None
+    hits = [a for a in allowed if len(a) == len(heard) and a[0] == heard[0]
+            and sum(x != y for x, y in zip(a, heard)) == 1]
+    return hits[0] if len(hits) == 1 else None
 
 
 def command_dictionary(lines):

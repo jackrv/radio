@@ -446,8 +446,9 @@ class Lab:
         return pieces
 
     def process(self, pcm):
+        import config
         from core.audio import prepare_audio
-        from core.analyzer import fmt, looks_like_garbage, split_roles
+        from core.analyzer import fmt, is_low_confidence_short, looks_like_garbage, split_roles
         from core.pipeline import build_text_pipeline
         from core.analyzer import correction_is_safe
         from services.text_lists import blacklist_key
@@ -513,6 +514,10 @@ class Lab:
                 text, stage = "", "garbage"
             elif blacklist_key(raw) in {blacklist_key(v) for v in self.blacklist}:
                 text, stage = "", "blacklist"
+            elif is_low_confidence_short(raw, result["whisper_segments"], self.dictionaries[0], self.dictionaries[1],
+                                         max_words=config.LOW_CONFIDENCE_MAX_WORDS,
+                                         logprob=config.LOW_CONFIDENCE_LOGPROB):
+                text, stage = "", "low_confidence"
             else:
                 t = time.perf_counter()
                 pipeline = build_text_pipeline(self.llm, self.apply_rules, self.dictionaries, correction_is_safe, self.log)
@@ -647,7 +652,7 @@ def build_queue(records, *, seed=345, sizes=(None, 15, 10, 20)):
     pending = [r for r in records if r["label"] is None]
     rms = lambda r: (r["data"].get("signal") or {}).get("rms_dbfs") or -120
     selectors = (
-        lambda r: r["status"] in ("ready", "empty_text", "blacklist"),
+        lambda r: r["status"] in ("ready", "empty_text", "blacklist", "low_confidence"),
         lambda r: r["status"] == "low_rms" and -36 <= rms(r) < -34,
         lambda r: r["status"] == "low_rms" and rms(r) < -36,
         lambda r: r["status"] == "vad_short" and (r["data"].get("speech_ms") or 0) >= 300,

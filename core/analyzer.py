@@ -1,4 +1,7 @@
-from callsigns import normalize, to_items
+import math
+import re
+
+from callsigns import basic_normalize, normalize, to_items
 
 
 def fmt(items):
@@ -7,6 +10,48 @@ def fmt(items):
         f"{name} {number}" if number else name
         for name, number, _ in items
     )
+
+
+def spoken_number(number):
+    """Чотирицифровий код вимовляють парами: 4242 -> «42 42»."""
+    return f"{number[:2]} {number[2:]}" if len(number) == 4 and number.isdigit() else number
+
+
+def fmt_spoken(items):
+    """Знайдені команди так, як їх вимовляють: «злива 42 42, грім»."""
+    return ", ".join(f"{name} {spoken_number(number)}" if number else name for name, number, _ in items)
+
+
+_WORD = re.compile(r"[^\W\d_]+(?:[’'ʼ`][^\W\d_]+)*")
+_NUMBER_TAIL = re.compile(r"[\s,.;:–—-]*\d[\d\s,.;:–—-]*")
+
+
+def canonical_text(text, dictionaries):
+    """Слово, впізнане разом із точним номером словника, пишеться як у словнику.
+
+    «злата 42 42» -> «злива 42 42» лише тоді, коли саме це слово з саме цим
+    номером дало збіг. Номери, решта тексту й незрозумілі шматки не змінюються.
+    Слово, яке саме є назвою словника, лишається: його тлумачення видно в шапці.
+    """
+    known = {name for dictionary in dictionaries for name in dictionary.names}
+    out, last = [], 0
+    for word in _WORD.finditer(text):
+        tail = _NUMBER_TAIL.match(text, word.end())
+        if not tail:
+            continue
+        heard = basic_normalize(word.group())
+        snippet = text[word.start():tail.end()]
+        hit = None
+        for dictionary in dictionaries:
+            hit = next((m for m in dictionary.matches(snippet) if m.exact), None)
+            if hit:
+                break
+        if not hit or hit.heard != heard or heard in known:
+            continue
+        name = hit.name[:1].upper() + hit.name[1:] if word.group()[:1].isupper() else hit.name
+        out += [text[last:word.start()], name]
+        last = word.end()
+    return "".join(out) + text[last:]
 
 
 GARBAGE_DEFAULTS = {
@@ -37,6 +82,25 @@ def looks_like_garbage(text: str, duration_s: float, *, min_words=12, min_unique
 def is_short_garbage(text: str, short_garbage: set[str]) -> bool:
     """Проверяет известные короткие ложные распознавания."""
     return normalize(text) in short_garbage
+
+
+def is_low_confidence_short(text: str, segments, callsigns, commands, *, max_words=2, logprob=-0.7) -> bool:
+    """Короткий текст, у якому Whisper не впевнений: найчастіше вигадка на шумі.
+
+    ``segments`` — сегменти Whisper з ``avg_logprob``; береться найнижчий. Без
+    оцінок правило не діє. Команда (будь-яка) чи позивний із номером захищають
+    фразу: «Дуб 42» з низькою впевненістю важливіше за пропущене сміття.
+    """
+    words = re.findall(r"[^\W_]+", text or "")
+    if not words or len(words) > max_words:
+        return False
+    scores = [s.get("avg_logprob") for s in segments or () if isinstance(s, dict)]
+    scores = [s for s in scores if isinstance(s, (int, float)) and math.isfinite(s)]
+    if not scores or min(scores) >= logprob:
+        return False
+    if commands.find(text) or any(num for _name, num, _score in callsigns.find(text)):
+        return False
+    return True
 
 
 def is_bare_callsign(text: str, cs_found, callsigns) -> bool:

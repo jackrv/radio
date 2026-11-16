@@ -200,7 +200,7 @@ def diagnostics_view(data):
         if type(value) in (int,float): return value if math.isfinite(value) else None
         if isinstance(value,list): return [numbers(x) for x in value[:128]]
         if isinstance(value,dict): return {k:numbers(v) for k,v in value.items() if isinstance(k,str) and re.fullmatch(r"[a-zA-Z0-9_.:-]{1,90}",k)}
-        if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","stale","error","whisper_error","discarded","adc","callback","s","ratio",
+        if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","low_confidence","stale","error","whisper_error","discarded","adc","callback","s","ratio",
                      "ok","stuck","failing","loading","failed","disabled"): return value
         return None
     result = {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","ended_at","counters","gauges","timings","asr_latency","notification_spectral") if k in data}}

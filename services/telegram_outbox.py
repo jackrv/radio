@@ -29,9 +29,11 @@ UNCERTAIN_VOICE_NOTE = "⚠️ Telegram не підтвердив голосов
 
 
 
-def build_caption(watch_str, to_str, from_str, text):
-    """Шапка «Подія / Кому / Від» і текст — однаково для нового й виправленого повідомлення."""
+def build_caption(watch_str, to_str, from_str, text, commands_str=""):
+    """Шапка «Подія / Команди / Кому / Від» і текст — однаково для нового й виправленого повідомлення."""
     lines = [f"Подія: {watch_str or 'Ефір'}"]
+    if commands_str:
+        lines.append(f"Команди: {commands_str}")
     if from_str or to_str:
         lines.append(f"Кому: {to_str or '-'} | Від: {from_str or '-'}")
     return "\n".join(lines) + f"\n\n{text}"
@@ -85,7 +87,7 @@ class OutboxMixin:
 
     # ---------- Черга ----------
 
-    def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None, recipients=()):
+    def notify(self, watch_str, to_str, from_str, text, pcm, fix_id=None, recipients=(), commands_str=""):
         """Повертає випадковий ID прийнятого сповіщення або None, якщо черга його не прийняла."""
         runtime.count("telegram.notify_requested")
         if not self.bot_token:
@@ -95,7 +97,7 @@ class OutboxMixin:
             runtime.count("telegram.notify_skipped_off")
             return
 
-        caption = build_caption(watch_str, to_str, from_str, text)
+        caption = build_caption(watch_str, to_str, from_str, text, commands_str)
 
         with self._outgoing_lock:
             if self._outgoing_stop.is_set():

@@ -1,4 +1,6 @@
-from core.analyzer import fmt, is_bare_callsign, is_short_garbage, split_roles
+from core.analyzer import (
+    canonical_text, fmt, fmt_spoken, is_bare_callsign, is_short_garbage, split_roles,
+)
 
 
 class EventProcessor:
@@ -112,19 +114,29 @@ class EventProcessor:
                 if fix_id:
                     note(fix_id=fix_id)
 
+                # У сповіщенні впізнані зі словником слова пишуться як у словнику,
+                # а знайдені команди — окремим рядком шапки. У базі текст незмінний.
+                # Збій оформлення не має зупинити сповіщення: тоді йде почутий текст.
+                try:
+                    shown = canonical_text(text, (self.commands, self.callsigns, self.watch))
+                    commands_str = fmt_spoken(cmd_found)
+                except Exception:
+                    self.log.exception("Не вдалося оформити текст сповіщення; надсилаю почутий")
+                    shown, commands_str = text, cmd_str
                 notification = self.telegram_service.notify(
                     watch_str or "Ефір",
                     to_str,
                     from_str,
-                    text,
+                    shown,
                     pcm,
                     fix_id=fix_id,
                     recipients=recipients,
+                    commands_str=commands_str,
                 )
                 if notification:
                     self.log.info(
                         "  -> черга Telegram [notification=%s; отримувачів: %d]: %s",
-                        notification, len(recipients), text,
+                        notification, len(recipients), shown,
                     )
             except Exception:
                 self.log.exception(

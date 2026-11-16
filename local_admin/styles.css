@@ -66,7 +66,7 @@ main { padding: 22px 28px 40px; min-width: 0; }
 .bar { fill: var(--lime2); } .bar:hover { fill: var(--lime); }
 .st-ready { fill: var(--ok); background: var(--ok); } .st-low_rms { fill: #4f6273; background: #4f6273; }
 .st-notification { fill: var(--info); background: var(--info); } .st-short { fill: #3a4a5a; background: #3a4a5a; }
-.st-blacklist, .st-garbage, .st-empty_text { fill: var(--warn); background: var(--warn); }
+.st-blacklist, .st-garbage, .st-empty_text, .st-low_confidence { fill: var(--warn); background: var(--warn); }
 .st-whisper_error, .st-error { fill: var(--bad); background: var(--bad); } .st-stale, .st-discarded { fill: #8a7aa8; background: #8a7aa8; }
 .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }

@@ -6,9 +6,13 @@ from core.event_processor import EventProcessor
 class FakeDictionary:
     def __init__(self, items):
         self.items = items
+        self.names = []
 
     def find(self, text):
         return self.items.get(text, [])
+
+    def matches(self, text):
+        return []
 
 
 def make_processor(
@@ -60,7 +64,7 @@ def test_all_mode_sends_notification():
     )
     telegram.notify.assert_called_once_with(
         "Ефір", "", "", "Обычная фраза", b"pcm", fix_id="fix123",
-        recipients=[{"chat_id": 1, "role": "admin", "mode": "all"}],
+        recipients=[{"chat_id": 1, "role": "admin", "mode": "all"}], commands_str="",
     )
     save_event.assert_not_called()
 
@@ -192,7 +196,7 @@ def test_sqlite_error_does_not_block_telegram():
     # Telegram должен получить уведомление.
     telegram.notify.assert_called_once_with(
         "Ефір", "", "", "Команда", b"pcm", fix_id="fix123",
-        recipients=[{"chat_id": 1, "role": "admin", "mode": "all"}],
+        recipients=[{"chat_id": 1, "role": "admin", "mode": "all"}], commands_str="команда",
     )
 
     # Помилка SQLite должна попасть в журнал.

@@ -158,6 +158,11 @@ def build_transcriber(
             "extra_words": values["GARBAGE_EXTRA_WORDS"],
         }
 
+    worker.low_confidence = {
+        "max_words": getattr(config, "LOW_CONFIDENCE_MAX_WORDS", 2),
+        "logprob": getattr(config, "LOW_CONFIDENCE_LOGPROB", -0.7),
+    }
+
     live_settings = LiveRuntimeSettings(config.DB_PATH, apply_settings, log)
     live_settings.refresh(force=True)
     worker.refreshers = (live_dictionaries.refresh, live_settings.refresh)

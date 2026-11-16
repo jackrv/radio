@@ -30,7 +30,7 @@ def build_transcriber(
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
     # Фрази-галюцинації, короткий шум і алиаси — з SQLite, оновлюються без перезапуску.
-    from services.text_lists import LiveTextLists
+    from services.text_lists import LiveTextLists, compose_prompt
     from services.dictionary_loader import LiveDictionaries
     from services.runtime_settings import LiveRuntimeSettings
     text_lists = LiveTextLists(config.DB_PATH, log)
@@ -82,18 +82,28 @@ def build_transcriber(
         log=log,
     )
 
+    def current_prompt():
+        # Фрази зі списку «Підказка Whisper» + назви словників.
+        return compose_prompt(text_lists.whisper_prompt, live_dictionaries.prompt)
+
     recognizer = WhisperRecognizer(
         model_repo=config.MODEL_REPO,
         language=config.LANGUAGE,
         sample_rate=config.SR,
-        prompt=live_dictionaries.prompt,
+        prompt=current_prompt(),
         log=log,
     )
 
-    def update_prompt(value):
-        recognizer.prompt = value
+    log.info("Підказка Whisper: фраз зі списку — %d", len(text_lists.whisper_prompt))
+
+    def update_prompt(_value=None):
+        prompt = current_prompt()
+        if prompt != recognizer.prompt:
+            recognizer.prompt = prompt
+            log.info("Підказку Whisper оновлено: фраз зі списку — %d", len(text_lists.whisper_prompt))
 
     live_dictionaries.on_prompt(update_prompt)
+    text_lists.on_change(update_prompt)
 
     notification_filter = None
     spectral_matcher = None

@@ -223,3 +223,32 @@ def test_local_panel_edits_runtime_settings(db_path, tmp_path):
         bad = {"values": {"COOLDOWN_S": 500}, "expected_revision": 1}
         response = client.put("/api/runtime-settings", json=bad, headers={"Origin": ORIGIN})
         assert response.status_code == 422 and "від 0 до 120" in response.json()["detail"]
+
+
+def test_receiver_applies_whisper_prompt_list_without_restart(db_path, tmp_path):
+    from core.transcriber_factory import build_transcriber
+    from services.text_lists import read_lists, write_list
+    values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
+    config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
+                                "SPECTRAL_NOTIFICATION_MODE": "off", "FILTER_NOTIFICATION_SOUNDS": False,
+                                "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
+    empty = Callsigns.from_lines([])
+    with patch("core.transcriber_factory.WhisperRecognizer") as whisper:
+        worker = build_transcriber(config=config, segments=Mock(), callsigns=Callsigns.from_lines(["віра: 68"]),
+                                   commands=empty, watch=empty, prompt="віра", telegram_service=Mock(),
+                                   cooldown=Cooldown(3.0), log=Mock())
+        assert whisper.call_args.kwargs["prompt"] == worker.live_dictionaries.prompt
+    recognizer = whisper.return_value
+    recognizer.prompt = whisper.call_args.kwargs["prompt"]
+    worker.text_lists.interval = 0
+    recognizer.extract_text.return_value = ""
+
+    write_list(db_path, "whisper_prompt", [{"raw_line": "Віра 68 68", "enabled": True}],
+               read_lists(db_path)["revision"])
+    worker.process_segment(loud())
+    assert recognizer.prompt == f"Віра 68 68. {worker.live_dictionaries.prompt}"
+
+    write_list(db_path, "whisper_prompt", [{"raw_line": "Віра 68 68", "enabled": False}],
+               read_lists(db_path)["revision"])
+    worker.process_segment(loud())
+    assert recognizer.prompt == worker.live_dictionaries.prompt

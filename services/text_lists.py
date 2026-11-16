@@ -4,7 +4,9 @@
 - short_garbage — короткі хибні фрагменти (відкидаються, лише якщо в них
   немає позивних і команд);
 - aliases — «правильне: варіант, варіант»: заміни в нормалізованому тексті;
-- callsign_aliases — «позивний: почутий варіант»: лише для пошуку позивного.
+- callsign_aliases — «позивний: почутий варіант»: лише для пошуку позивного;
+- whisper_prompt — фрази на початку підказки Whisper, як їх вимовляють
+  («дощ 13 13»): допомагають правильно записати важливі команди.
 
 Початкові значення беруться з коду (config.py, callsigns.py) один раз — під
 час першого створення таблиць. Далі джерело правди — SQLite; редагування лише
@@ -20,10 +22,13 @@ import callsigns as callsign_module
 from callsigns import Callsigns, NUMBER_WORDS, basic_normalize, configure_aliases, normalize
 from services.sqlite_connection import get_db
 
-LIST_TYPES = ("blacklist", "short_garbage", "aliases", "callsign_aliases")
+LIST_TYPES = ("blacklist", "short_garbage", "aliases", "callsign_aliases", "whisper_prompt")
 DISABLED_PREFIX = "#"
 MAX_ENTRIES = 500
 MAX_LINE = 300
+# Підказка Whisper обмежена ~224 токенами; словникова частина вже займає частину.
+MAX_PROMPT_PHRASE = 80
+MAX_PROMPT_PHRASES_CHARS = 300
 REFRESH_INTERVAL_S = 2.0
 # Observation only: the first revision's list, matched as WHOLE phrases.
 # It must never be passed to the active blacklist or seeded into the database.
@@ -49,19 +54,14 @@ def default_lines():
         "short_garbage": sorted(getattr(config, "SHORT_GARBAGE", ())),
         "aliases": [f"{canon}: {', '.join(variants)}" for canon, variants in callsign_module.DEFAULT_ALIASES.items()],
         "callsign_aliases": [f"{name}: {', '.join(heard)}" for name, heard in callsign_groups.items()],
+        "whisper_prompt": [],
     }
 
 
 def ensure_tables(db):
     """Створює таблиці й один раз заповнює їх початковими значеннями з коду."""
-    db.execute(f"""CREATE TABLE IF NOT EXISTS text_list_entries (
-        id INTEGER PRIMARY KEY,
-        list_type TEXT NOT NULL CHECK(list_type IN ({", ".join(repr(t) for t in LIST_TYPES)})),
-        line_number INTEGER NOT NULL,
-        raw_line TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
-        UNIQUE(list_type, line_number)
-    )""")
+    db.execute(_entries_table_sql("IF NOT EXISTS text_list_entries"))
+    _migrate_list_types(db)
     db.execute("""CREATE TABLE IF NOT EXISTS text_list_state (
         id INTEGER PRIMARY KEY CHECK(id = 1),
         revision INTEGER NOT NULL,
@@ -74,6 +74,52 @@ def ensure_tables(db):
         db.executemany("INSERT OR IGNORE INTO text_list_entries (list_type, line_number, raw_line) VALUES (?, ?, ?)",
                        [(list_type, number, line) for number, line in enumerate(lines, 1)])
     db.execute("INSERT INTO text_list_state (id, revision) VALUES (1, 1)")
+
+
+def _entries_table_sql(name):
+    return f"""CREATE TABLE {name} (
+        id INTEGER PRIMARY KEY,
+        list_type TEXT NOT NULL CHECK(list_type IN ({", ".join(repr(t) for t in LIST_TYPES)})),
+        line_number INTEGER NOT NULL,
+        raw_line TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+        UNIQUE(list_type, line_number)
+    )"""
+
+
+def _migrate_list_types(db):
+    """Таблиця зі старим переліком типів у CHECK перебудовується без втрати рядків."""
+    def outdated():
+        row = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='text_list_entries'").fetchone()
+        return row is not None and any(repr(t) not in row[0] for t in LIST_TYPES)
+
+    if not outdated():
+        return
+    own = not db.in_transaction
+    if own:
+        db.execute("BEGIN IMMEDIATE")
+    try:
+        if outdated():  # інший процес міг уже перебудувати, поки ми чекали замок
+            db.execute("DROP TABLE IF EXISTS text_list_entries_new")
+            db.execute(_entries_table_sql("text_list_entries_new"))
+            db.execute("INSERT INTO text_list_entries_new (id, list_type, line_number, raw_line, enabled) "
+                       "SELECT id, list_type, line_number, raw_line, enabled FROM text_list_entries")
+            db.execute("DROP TABLE text_list_entries")
+            db.execute("ALTER TABLE text_list_entries_new RENAME TO text_list_entries")
+        if own:
+            db.commit()
+    except BaseException:
+        if own:
+            db.rollback()
+        raise
+
+
+def compose_prompt(phrases, dictionary_prompt):
+    """Фрази зі списку whisper_prompt перед назвами словників: «а 1 1, б 2 2. назви»."""
+    phrases = [p.strip().rstrip(".,;") for p in phrases if p.strip().rstrip(".,;")]
+    if not phrases:
+        return dictionary_prompt
+    return f"{', '.join(phrases)}. {dictionary_prompt}".strip()
 
 
 def _has_number(value):
@@ -93,6 +139,21 @@ def parse(list_type, lines):
                 errors.append(f"Рядок {number}: фраза з числом може бути справжнім повідомленням")
             elif value not in result:
                 result.append(value)
+        return result, errors
+
+    if list_type == "whisper_prompt":
+        # Регістр і цифри важливі для Whisper: рядок зберігається як є.
+        result = []
+        for number, line in lines:
+            value = " ".join(line.split()).rstrip(".,;")
+            if not value:
+                errors.append(f"Рядок {number}: порожня фраза")
+            elif len(value) > MAX_PROMPT_PHRASE:
+                errors.append(f"Рядок {number}: фраза довша за {MAX_PROMPT_PHRASE} символів")
+            elif value not in result:
+                result.append(value)
+        if len(", ".join(result)) > MAX_PROMPT_PHRASES_CHARS:
+            errors.append(f"Разом фрази довші за {MAX_PROMPT_PHRASES_CHARS} символів: підказка Whisper обмежена")
         return result, errors
 
     if list_type not in ("aliases", "callsign_aliases"):
@@ -205,6 +266,14 @@ def check_against_dictionaries(db, list_type, parsed):
             for variant in variants:
                 if variant in names:
                     errors.append(f"«{variant}» — правильне словникове ім’я, його не можна переписувати")
+    elif list_type == "whisper_prompt":
+        for phrase in parsed:
+            words = basic_normalize(phrase).split()
+            if words and not any(word in names for word in words):
+                warnings.append(f"«{phrase}» не містить жодного слова зі словників")
+        if parsed:
+            warnings.append("Фрази підказки зрідка потрапляють у розпізнаний текст. "
+                            "З’являться хибні спрацьовування — вимкніть рядок через «#».")
     else:
         for heard, name in parsed.items():
             e, w = _callsign_alias_checks(dictionaries, heard, name)
@@ -317,8 +386,14 @@ class LiveTextLists:
         self.revision = None
         self.blacklist = frozenset()
         self.short_garbage = frozenset()
+        self.whisper_prompt = ()
+        self._listeners = []
         self._checked = None
         self._failed = False
+
+    def on_change(self, callback):
+        """Виклик після кожного застосування нової ревізії (у потоці розпізнавання)."""
+        self._listeners.append(callback)
 
     def refresh(self, force=False):
         now = self.clock()
@@ -342,6 +417,7 @@ class LiveTextLists:
         # Ключі рахуються вже з новими алиасами — так само, як для розпізнаного тексту.
         self.blacklist = frozenset(k for k in (blacklist_key(v) for v in values["blacklist"]) if k)
         self.short_garbage = frozenset(normalize(v) for v in values["short_garbage"])
+        self.whisper_prompt = tuple(values.get("whisper_prompt", ()))
         changed = self.revision is not None
         self.revision = revision
         try:
@@ -353,6 +429,12 @@ class LiveTextLists:
             self.log.info("Текстові списки %s (ревізія %d): фраз %d, шуму %d, алиасів %d, алиасів позивних %d",
                           "оновлено" if changed else "завантажено", revision, len(self.blacklist),
                           len(self.short_garbage), len(values["aliases"]), len(values["callsign_aliases"]))
+        for callback in self._listeners:
+            try:
+                callback()
+            except Exception:
+                if self.log is not None:
+                    self.log.exception("Не вдалося застосувати оновлені текстові списки")
         return True
 
     def short_garbage_view(self):

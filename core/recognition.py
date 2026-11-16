@@ -6,12 +6,15 @@ from core.diagnostics import runtime
 class WhisperRecognizer:
     """Обёртка над MLX Whisper."""
 
-    def __init__(self, model_repo, language, sample_rate, prompt, log):
+    DEFAULT_TEMPERATURE = (0.0, 0.2, 0.4)
+
+    def __init__(self, model_repo, language, sample_rate, prompt, log, temperature=DEFAULT_TEMPERATURE):
         self.model_repo = model_repo
         self.language = language
         self.sample_rate = sample_rate
         self.prompt = prompt
         self.log = log
+        self.temperature = tuple(temperature)
         self.transcribe_fn = mlx_whisper.transcribe
 
     def warmup(self):
@@ -37,7 +40,7 @@ class WhisperRecognizer:
             path_or_hf_repo=self.model_repo,
             language=self.language,
             initial_prompt=self.prompt,
-            temperature=(0.0, 0.2, 0.4),
+            temperature=self.temperature,
             condition_on_previous_text=False,
             no_speech_threshold=0.6,
             logprob_threshold=-1.0,

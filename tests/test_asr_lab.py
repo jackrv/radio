@@ -77,7 +77,7 @@ def test_run_reads_archive_only_and_saves_results_with_parameters(tmp_path, monk
     before = hashlib.sha256(index.read_bytes()).hexdigest()
 
     class FakeWhisper:
-        def __init__(self, *args):
+        def __init__(self, *args, **kwargs):
             self.prompt = args[3]
 
         def transcribe(self, audio):
@@ -249,3 +249,28 @@ def test_pipeline_without_llm_skips_qwen_and_records_it(tmp_path, monkeypatch):
     args.variant = "qwen"
     with patch("core.recognition.WhisperRecognizer"), pytest.raises(SystemExit):
         asr_lab.Lab(args, tmp_path)
+
+
+def test_temperature_option_reaches_whisper_and_is_recorded(tmp_path, monkeypatch):
+    from database import init_db
+    db = tmp_path / "events.db"
+    init_db(db)
+    monkeypatch.setattr("config.DB_PATH", str(db))
+    args = type("Args", (), {"prompt": "none", "prompt_file": None, "language": "uk", "model": None,
+                             "variant": "whisper", "temperature": "0", "normalize": "on", "min_rms": None,
+                             "seed": 345, "resegment": "none", "gate_db": 12.0, "bandpass": "off",
+                             "band_low": 300.0, "band_high": 3400.0, "split": "all", "status": None,
+                             "labelled_only": False})()
+    with patch("core.recognition.WhisperRecognizer") as recognizer:
+        lab = asr_lab.Lab(args, tmp_path)
+    assert recognizer.call_args.kwargs["temperature"] == (0.0,)
+    assert lab.params()["temperature"] == [0.0]
+
+
+def test_receiver_keeps_default_whisper_temperatures():
+    from core.recognition import WhisperRecognizer
+    calls = []
+    recognizer = WhisperRecognizer("model", "uk", 16000, "", None)
+    recognizer.transcribe_fn = lambda audio, **kw: calls.append(kw) or {}
+    recognizer.transcribe(None)
+    assert calls[0]["temperature"] == (0.0, 0.2, 0.4)

@@ -46,7 +46,7 @@ ROOM = ("room",)
 PHRASES_PROMPT = ("Радіообмін. Перевірка зв’язку. На зв’язку. Чую та розбираю добре. "
                   "Прийнято, прийом. Прийняв, прийом. Посилку отримав. "
                   "До роботи приступив. Роботу закінчив. Повторіть, голос не пройшов.")
-PROMPTS = ("dictionary", "none", "phrases", "combined")
+PROMPTS = ("dictionary", "receiver", "none", "phrases", "combined")
 
 # Характерні звороти: суцільні послідовності слів після вилучення апострофів.
 # «чую … розбираю» — обидва слова в будь-якому місці.
@@ -292,8 +292,16 @@ def snapshot_database(target):
     return target
 
 
+def receiver_prompt(db_path, dictionary_prompt):
+    """Підказка, як у приймачі: фрази списку «Підказка Whisper» + назви словників."""
+    from services.text_lists import compose_prompt, load_active
+    with read_only(db_path) as db:
+        _, values = load_active(db)
+    return compose_prompt(values.get("whisper_prompt", ()), dictionary_prompt)
+
+
 def dictionaries_from(db_path):
-    from callsigns import Callsigns
+    from callsigns import Callsigns, command_dictionary
     from services.dictionary_loader import build_prompt
     lines = {}
     with read_only(db_path) as db:
@@ -309,7 +317,8 @@ def dictionaries_from(db_path):
         except sqlite3.Error:
             import config
             blacklist, short_garbage = list(config.BLACKLIST), list(config.SHORT_GARBAGE)
-    callsigns, commands, watch = (Callsigns.from_lines(lines.get(k, [])) for k in ("callsigns", "commands", "telegram"))
+    callsigns, watch = (Callsigns.from_lines(lines.get(k, [])) for k in ("callsigns", "telegram"))
+    commands = command_dictionary(lines.get("commands", []))
     return (callsigns, commands, watch), build_prompt(callsigns, commands, watch), blacklist, short_garbage
 
 
@@ -360,14 +369,19 @@ class Lab:
         self.db_path = snapshot_database(run_dir / "events-snapshot.db")
         self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path)
         phrases = Path(args.prompt_file).read_text(encoding="utf-8").strip() if args.prompt_file else PHRASES_PROMPT
-        self.prompt = {"dictionary": dictionary_prompt, "none": "", "phrases": phrases,
-                       "combined": f"{phrases} {dictionary_prompt}".strip()}[args.prompt]
+        if args.prompt == "receiver":
+            self.prompt = receiver_prompt(self.db_path, dictionary_prompt)
+        else:
+            self.prompt = {"dictionary": dictionary_prompt, "none": "", "phrases": phrases,
+                           "combined": f"{phrases} {dictionary_prompt}".strip()}[args.prompt]
         self.dictionary_prompt = dictionary_prompt
         self.language = None if args.language == "auto" else args.language
         self.model = args.model or config.MODEL_REPO
         self.sample_rate = config.SR
         from core.recognition import WhisperRecognizer
-        self.recognizer = WhisperRecognizer(self.model, self.language, self.sample_rate, self.prompt, self.log)
+        self.temperature = tuple(float(t) for t in getattr(args, "temperature", "0,0.2,0.4").split(","))
+        self.recognizer = WhisperRecognizer(self.model, self.language, self.sample_rate, self.prompt, self.log,
+                                            temperature=self.temperature)
         self.llm = None
         if args.variant == "qwen" and getattr(args, "llm", "on") == "off":
             raise SystemExit("--llm off має сенс лише для --variant pipeline")
@@ -379,7 +393,7 @@ class Lab:
     def params(self):
         import config
         return {"variant": self.args.variant, "llm": getattr(self.args, "llm", "on") if self.args.variant in ("qwen", "pipeline") else None,
-                "llm_repo": config.LLM_REPO if self.llm else None, "model": self.model, "language": self.language or "auto",
+                "llm_repo": config.LLM_REPO if self.llm else None, "temperature": list(self.temperature), "model": self.model, "language": self.language or "auto",
                 "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "prompt_text": self.prompt,
                 "prompt_tokens": prompt_token_count(self.prompt, self.language),
                 "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
@@ -680,9 +694,12 @@ def main(argv=None):
     r.add_argument("--ids", help="файл з ідентифікаторами записів")
     r.add_argument("--language", default="uk", help="uk, ru або auto")
     r.add_argument("--prompt", choices=PROMPTS, default="dictionary",
-                   help="dictionary — як у приймачі; phrases — лише звороти; combined — звороти + словник")
+                   help="dictionary — лише назви словників; receiver — як у приймачі (список «Підказка Whisper» "
+                        "+ назви); phrases — лише звороти; combined — звороти + словник")
     r.add_argument("--prompt-file", help="власний текст зворотів для phrases/combined (без номерів)")
     r.add_argument("--normalize", choices=("on", "off"), default="on")
+    r.add_argument("--temperature", default="0,0.2,0.4",
+                   help="температури Whisper через кому; «0» — без повторного розпізнавання")
     r.add_argument("--llm", choices=("on", "off"), default="on",
                    help="off: pipeline без Qwen (решта обробки як у приймачі)")
     r.add_argument("--min-rms", type=float, default=None, help="поріг RMS (типово — без відсікання)")

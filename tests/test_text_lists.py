@@ -193,7 +193,7 @@ def test_local_panel_reads_and_saves_lists(tmp_path):
     with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 1)) as client:
         client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN})
         data = client.get("/api/text-lists").json()
-        assert set(data["lists"]) == {"blacklist", "short_garbage", "aliases", "callsign_aliases"}
+        assert set(data["lists"]) == {"blacklist", "short_garbage", "aliases", "callsign_aliases", "whisper_prompt"}
         body = {"entries": [{"raw_line": "субтитри зроблено", "enabled": True}], "expected_revision": data["revision"]}
         assert client.put("/api/text-lists/blacklist", json=body).status_code == 403, "без Origin запис заборонено"
         saved = client.put("/api/text-lists/blacklist", json=body, headers={"Origin": ORIGIN})

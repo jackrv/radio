@@ -78,6 +78,8 @@ class EventProcessor:
                     **({"raw_text": raw_text} if raw_text is not None else {}),
                 )
 
+                # Зв’язок запису архіву з подією: правка в Mini App стане його еталоном.
+                note(fix_id=f"db:{event_id}")
                 self.log.info(
                     "  -> БД #%s | кому: %s | від: %s | команди: %s",
                     event_id,
@@ -107,6 +109,8 @@ class EventProcessor:
                     raw_text if raw_text is not None else text,
                     event_id,
                 )
+                if fix_id:
+                    note(fix_id=fix_id)
 
                 notification = self.telegram_service.notify(
                     watch_str or "Ефір",

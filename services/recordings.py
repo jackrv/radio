@@ -105,10 +105,13 @@ class RecordingStore:
             id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL,
             bytes INTEGER NOT NULL, data TEXT NOT NULL, reference TEXT,
             label TEXT, revision INTEGER NOT NULL DEFAULT 0, reviewed_at REAL,
-            reference_recipient TEXT, reference_sender TEXT, multiple_messages INTEGER)""")
+            reference_recipient TEXT, reference_sender TEXT, multiple_messages INTEGER,
+            reference_source TEXT)""")
         try:
             # Адитивні міграції: старі записи й розмітка не змінюються.
-            added = {"reference_recipient": "TEXT", "reference_sender": "TEXT", "multiple_messages": "INTEGER"}
+            # reference_source: NULL — розмітка оператора в панелі, 'miniapp' — правка з Mini App.
+            added = {"reference_recipient": "TEXT", "reference_sender": "TEXT", "multiple_messages": "INTEGER",
+                     "reference_source": "TEXT"}
             columns = {row[1] for row in db.execute("PRAGMA table_info(recordings)")}
             if not set(added) <= columns:
                 db.execute("BEGIN IMMEDIATE")
@@ -251,7 +254,8 @@ class RecordingStore:
                reference_recipient=UNSET, reference_sender=UNSET, multiple_messages=UNSET):
         self.get(record_id)
         with self.connect() as db:
-            fields, values = ["reference=?", "label=?", "revision=revision+1", "reviewed_at=?"], [reference, label, time.time()]
+            fields = ["reference=?", "label=?", "revision=revision+1", "reviewed_at=?", "reference_source=NULL"]
+            values = [reference, label, time.time()]
             if label in NON_SPEECH:
                 multiple_messages = None
             if multiple_messages is not UNSET:
@@ -269,6 +273,22 @@ class RecordingStore:
             if not changed:
                 raise ValueError("Запис змінено в іншому вікні. Оновіть сторінку.")
         return self.get(record_id)
+
+    def label_from_correction(self, fix_id, reference):
+        """Правка з Mini App стає еталоном запису, з якого вийшло це повідомлення.
+
+        Розмітку оператора в панелі не змінює; попередню правку з Mini App
+        замінює новішою. Повертає ID змінених записів.
+        """
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            ids = [row[0] for row in db.execute(
+                "SELECT id FROM recordings WHERE json_extract(data,'$.fix_id')=? "
+                "AND (label IS NULL OR reference_source='miniapp')", (fix_id,))]
+            for record_id in ids:
+                db.execute("UPDATE recordings SET reference=?, label='speech', reference_source='miniapp', "
+                           "revision=revision+1, reviewed_at=? WHERE id=?", (reference, time.time(), record_id))
+        return ids
 
     def summary(self):
         with self.connect() as db:
@@ -310,6 +330,21 @@ class RecordingStore:
                 "room_false_text": sum(r["label"] == "room" and bool(r["data"].get("final_text")) for r in decoded),
                 "multiple_messages": sum(r.get("multiple_messages") == 1 for r in decoded),
                 "speech_reviewed": sum(r["label"] in ("speech", "unclear") for r in decoded)}
+
+
+def label_archive_from_correction(db_path, fix_id, original, corrected):
+    """Переносить правку з Mini App в архів поруч із базою подій, якщо архів є.
+
+    Правка лише регістру чи пунктуації (у т. ч. збереження без змін) не є
+    перевіреним еталоном і не переноситься.
+    """
+    from callsigns import basic_normalize
+    if basic_normalize(original or "") == basic_normalize(corrected):
+        return []
+    root = Path(db_path).resolve().parent / ".local-recordings"
+    if not (root / "index.sqlite3").is_file():
+        return []
+    return RecordingStore(root).label_from_correction(fix_id, corrected)
 
 
 class RecordingArchive:

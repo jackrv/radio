@@ -1,5 +1,6 @@
 """Mini App drafts and atomic corrections of events and temporary phrases."""
 
+import logging
 import re
 
 from services.telegram_sync import queue_correction
@@ -135,6 +136,13 @@ def save_edit_draft(db_path, fix_id: str, expected_text: str,
             update_phrase_text(db, memory_token, corrected)
         if corrected != current:
             queue_correction(db, fix_id)
+
+    try:
+        from services.recordings import label_archive_from_correction
+        label_archive_from_correction(db_path, fix_id, original, corrected)
+    except Exception:
+        # Архів — допоміжний: збій запису еталона не скасовує збережену правку.
+        logging.getLogger("radio").exception("Не вдалося перенести правку з Mini App в архів записів")
 
     return {
         "fix_id": fix_id,

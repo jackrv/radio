@@ -291,3 +291,20 @@ def test_bare_callsign_with_command_or_watch_word_stays():
     processor, save_event, _, _ = make_processor(callsigns=callsigns, commands=commands)
     processor.process("Дуб", b"pcm")
     save_event.assert_called_once()
+
+
+def test_event_and_message_ids_are_noted_for_the_archive():
+    from services.recordings import _trace
+
+    processor, _, telegram, _ = make_processor(
+        mode="commands",
+        commands=FakeDictionary({"Злива 4242": [("злива", "4242", 100)]}),
+    )
+    telegram.register_phrase_for_fix.return_value = "db:42"
+    trace = {}
+    token = _trace.set(trace)
+    try:
+        processor.process("Злива 4242", b"pcm")
+    finally:
+        _trace.reset(token)
+    assert trace["fix_id"] == "db:42"

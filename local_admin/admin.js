@@ -808,6 +808,17 @@
       input.setAttribute("aria-label", "Еталонна розшифровка");
       const splitRoles = text => (text || "").split(",").map(v => v.trim()).filter(Boolean);
       const sameRole = (a, b) => a.toLocaleLowerCase("uk") === b.toLocaleLowerCase("uk");
+      // Ролі підставляються самі (два різні позивні: перший — «Кому», другий — «Від»),
+      // доки оператор не змінив їх уручну. Уже розмічені ролі не перезаписуються.
+      let rolesAuto = item.reference_recipient == null && item.reference_sender == null;
+      let rolesAutoApplied = false;
+      function applyAutoRoles(roles) {
+        if (!rolesAuto) return;
+        rolesAutoApplied = Boolean(roles);
+        recipient.set(roles ? [roles.recipient] : []);
+        sender.set(roles ? [roles.sender] : []);
+      }
+      function rolesTouched() { rolesAuto = false; rolesAutoApplied = false; }
       function roleField(title, reference) {
         const group = el("div", "recording-role"), mode = el("select"), value = el("input");
         group.append(el("span", "", title));
@@ -820,8 +831,8 @@
         value.placeholder = "Позивний і номер; декілька — через кому";
         value.setAttribute("aria-label", `${title}: позивний`);
         const update = () => { value.hidden = mode.value !== "value"; value.required = mode.value === "value"; };
-        mode.addEventListener("change", () => { update(); renderChips(); });
-        value.addEventListener("input", () => renderChips());
+        mode.addEventListener("change", () => { rolesTouched(); update(); renderChips(); });
+        value.addEventListener("input", () => { rolesTouched(); renderChips(); });
         update(); group.append(mode, value);
         return {node: group, read: () => mode.value === "unknown" ? null : mode.value === "absent" ? "" : value.value,
                 absent: () => { mode.value = "absent"; update(); },
@@ -836,7 +847,9 @@
       function renderChips() {
         chips.replaceChildren();
         if (!suggestions.length) return;
-        chips.append(el("span", "muted small", "Позивні у фразі:"));
+        chips.append(el("span", "muted small", rolesAutoApplied
+          ? "Ролі підставлено: перший позивний — «Кому», другий — «Від». Змініть, якщо не так:"
+          : "Позивні у фразі:"));
         for (const name of suggestions) {
           const chip = el("span", "chip");
           chip.append(el("b", "", name));
@@ -845,6 +858,7 @@
             const toggle = el("button", chosen ? "ghost on" : "ghost", title); toggle.type = "button";
             toggle.setAttribute("aria-pressed", String(chosen));
             toggle.addEventListener("click", () => {
+              rolesTouched();
               const list = field.values().filter(v => !sameRole(v, name));
               field.set(chosen ? list : [...list, name]);
               renderChips();
@@ -857,13 +871,17 @@
       function suggest() {
         clearTimeout(suggestTimer);
         suggestTimer = setTimeout(async () => {
-          if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) { suggestions = []; renderChips(); return; }
-          try { suggestions = (await request("/api/recordings/suggest-roles", "POST", { text: input.value })).callsigns || []; }
-          catch (_) { suggestions = []; }
+          if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) { suggestions = []; applyAutoRoles(null); renderChips(); return; }
+          try {
+            const result = await request("/api/recordings/suggest-roles", "POST", { text: input.value });
+            suggestions = result.callsigns || [];
+            applyAutoRoles(multiBox.checked ? null : result.roles);
+          } catch (_) { suggestions = []; }
           renderChips();
         }, 350);
       }
       input.addEventListener("input", suggest);
+      input.addEventListener("input", () => { if (controller.done) showSave("Є незбережені зміни"); });
 
       // Перевірка оформлення: пробіли, цифри групами, «з», апостроф, назви словника.
       // Лише підказки: зберегти можна будь-який текст.
@@ -904,13 +922,24 @@
       // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
       const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
       const multi = el("label", "check small"); multi.append(multiBox, el("span", "", " Кілька передач у записі"));
+      // «|» у тексті — кілька передач: відмітка ставиться сама й знімається, лише якщо її
+      // поставила підстановка. Ручне перемикання вимикає підстановку в цій картці.
+      let multiAuto = false, multiTouched = false;
+      multiBox.addEventListener("change", () => { multiTouched = true; multiAuto = false; suggest(); });
+      input.addEventListener("input", () => {
+        if (multiTouched) return;
+        const split = input.value.includes("|");
+        if (split && !multiBox.checked) { multiBox.checked = true; multiAuto = true; }
+        else if (!split && multiAuto) { multiBox.checked = false; multiAuto = false; }
+      });
       multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
       const textField = el("label", "recording-text");
       textField.append(el("span", "muted small", "Почутий текст"), input);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
       const actions = el("div", "recording-actions");
-      segmented.setAttribute("aria-label", "Тип запису"); actions.append(segmented, save);
+      const saveStatus = el("span", "muted small save-status"); saveStatus.setAttribute("role", "status");
+      segmented.setAttribute("aria-label", "Тип запису"); actions.append(segmented, save, saveStatus);
       function setCategory(value, quick) {
         category.value = value;
         for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
@@ -919,8 +948,14 @@
         if (!speechLike) { input.value = ""; recipient.absent(); sender.absent(); if (quick) submit(); }
         else if (quick) suggest();
       }
+      // Результат збереження — поруч із кнопкою: повідомлення в шапці при прокручуванні не видно.
+      // Власний прапорець замість спільного action(): фонове оновлення черги не «ковтає» натискання.
+      let saving = false;
+      function showSave(text, tone = "muted") { saveStatus.textContent = text; saveStatus.className = `${tone} small save-status`; }
       async function submit() {
-        await action(async () => {
+        if (saving) return;
+        saving = true; save.disabled = true; showSave("Зберігаю…");
+        try {
           const speechLike = ["speech", "unclear"].includes(category.value);
           const result = await request(`/api/recordings/${item.id}/review`, "PUT", {reference: input.value, label: category.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read(), multiple_messages: speechLike ? multiBox.checked : null});
           // Reviewed rows leave the pending query; keep the next page's offset aligned.
@@ -929,10 +964,16 @@
           showQuality(result);
           controller.done = true;
           card.classList.add("done");
-          save.textContent = "Оновити еталон"; note("Еталон збережено. Початкові тексти й правила не змінено.");
-          if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue();
+          save.textContent = "Оновити еталон";
+          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}`, "ok");
+          note("Еталон збережено. Початкові тексти й правила не змінено.");
+          if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue().catch(() => {});
           if (typeof advanceReview === "function") advanceReview(controller);
-        });
+        } catch (error) {
+          showSave(`Не збережено: ${error.message}`, "alert"); note(error.message);
+        } finally {
+          saving = false; save.disabled = false;
+        }
       }
       form.append(textField, lint, chips, roles, multi, actions);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });

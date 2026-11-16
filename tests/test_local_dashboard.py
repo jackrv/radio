@@ -333,7 +333,7 @@ def test_listening_hold_endpoint_requires_origin_and_bounds(local):
     assert client.put("/api/listening-hold",json={"seconds":500},headers={"Origin":ORIGIN}).status_code==422
 
 
-def test_callsign_suggestions_come_from_operator_text_without_role_guess(local):
+def test_callsign_suggestions_and_roles_for_two_callsigns(local):
     client,path,_=local
     import sqlite3
     with sqlite3.connect(path) as db:
@@ -343,8 +343,13 @@ def test_callsign_suggestions_come_from_operator_text_without_role_guess(local):
     body={"text":"Вишня 210, Вишня 210, я Клен 300, дуб, прийом"}
     assert client.post("/api/recordings/suggest-roles",json=body).status_code==403
     result=client.post("/api/recordings/suggest-roles",json=body,headers={"Origin":ORIGIN}).json()
-    assert result=={"callsigns":["вишня 210","клен 300","дуб"]}, "без повторів і без підказки ролей"
-    assert client.post("/api/recordings/suggest-roles",json={"text":"шум"},headers={"Origin":ORIGIN}).json()=={"callsigns":[]}
+    assert result=={"callsigns":["вишня 210","клен 300","дуб"],"roles":None}, "без повторів; три позивні — ролі не вгадуються"
+    assert client.post("/api/recordings/suggest-roles",json={"text":"шум"},headers={"Origin":ORIGIN}).json()=={"callsigns":[],"roles":None}
+    two=lambda text: client.post("/api/recordings/suggest-roles",json={"text":text},headers={"Origin":ORIGIN}).json()["roles"]
+    assert two("Вишня 210, я Клен 300, прийом")=={"recipient":"вишня 210","sender":"клен 300"}
+    assert two("Вишня 210, Клен 300, прийнято")=={"recipient":"вишня 210","sender":"клен 300"}
+    assert two("Вишня 210, прийнято | Клен 300, прийнято") is None, "кілька передач — ролі не підставляються"
+    assert two("Вишня 210, посилку отримав") is None, "один позивний — оператор вирішує сам"
 
 
 

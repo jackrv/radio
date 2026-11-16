@@ -192,3 +192,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .text-check-item.spelling::before { content:"✎"; }
 .text-check-item.format::before { content:"·"; }
 .text-check-item.info::before { content:"ⓘ"; }
+
+/* Результат збереження еталона поруч із кнопкою */
+.save-status.ok { color: var(--ok); }
+.save-status.alert { color: var(--bad); }

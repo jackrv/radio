@@ -318,8 +318,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     def suggest_roles(payload: RoleSuggestion, admin=Depends(actor)):
         """Позивні зі словника, знайдені в тексті оператора, — для швидкого вибору «кому / від».
 
-        Ролі навмисно не пропонуються: інакше оцінка логіки «кому / від кого» на
-        правильному тексті перевіряла б саму себе.
+        Для двох різних позивних пропонуються й ролі (перший — кому, другий — від):
+        оператор вирішив, що зручність розмітки важливіша за незалежну оцінку ролей.
         """
         from callsigns import Callsigns
         from core.analyzer import fmt
@@ -337,11 +337,20 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 callsign_cache[key] = Callsigns.from_lines(lines)
             callsigns = callsign_cache[key]
         found = []
-        for item in callsigns.find(payload.text):
+        items = callsigns.find(payload.text)
+        for item in items:
             text = fmt([item])
             if text not in found:
                 found.append(text)
-        return {"callsigns": found}
+        # Ролі підставляються лише для двох різних позивних в одній передачі
+        # (за тим самим правилом, що й у приймачі); інакше оператор вирішує сам.
+        roles = None
+        if len(items) == 2 and "|" not in payload.text:
+            from core.analyzer import split_roles
+            to_found, from_found = split_roles(payload.text, callsigns)
+            if len(to_found) == 1 and len(from_found) == 1:
+                roles = {"recipient": fmt(to_found), "sender": fmt(from_found)}
+        return {"callsigns": found, "roles": roles}
 
     @app.post("/api/text-check")
     def text_check(payload: TextCheck, admin=Depends(actor)):

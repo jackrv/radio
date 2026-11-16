@@ -32,7 +32,7 @@ def test_retries_share_notification_but_attempts_and_recipients_differ(monkeypat
     service.pcm_to_ogg = Mock(return_value=b"OggS")
     sleep = Mock()
     monkeypatch.setattr("time.sleep", sleep)
-    post = Mock(side_effect=[requests.ReadTimeout("PRIVATE_ERROR"), response(voice=True), response(voice=True)])
+    post = Mock(side_effect=[requests.ConnectionError("PRIVATE_ERROR"), response(voice=True), response(voice=True)])
     monkeypatch.setattr("requests.post", post)
     monkeypatch.setattr("requests.get", Mock(return_value=response()))
     recipients = RECIPIENTS + [{"chat_id": 987654321, "role": "admin", "mode": "all"}]
@@ -45,7 +45,7 @@ def test_retries_share_notification_but_attempts_and_recipients_differ(monkeypat
     assert len({row["notification"] for row in voice}) == 1
     assert re.fullmatch(r"[0-9a-f]{16}", voice[0]["notification"])
     assert [(r["recipient"], r["attempt"]) for r in voice] == [("1", "1"), ("1", "2"), ("2", "1")]
-    assert [r["outcome"] for r in voice] == ["ReadTimeout", "http_200", "http_200"]
+    assert [r["outcome"] for r in voice] == ["ConnectionError", "http_200", "http_200"]
     assert [r["api_result"] for r in voice] == ["unverified", "confirmed", "confirmed"]
     assert all(r["audio_bytes"] == "4" for r in voice)
     assert "notification" not in polling and "recipient" not in polling and "attempt" not in polling
@@ -69,7 +69,7 @@ def test_identical_queued_phrases_get_distinct_ids_and_preserve_queue_trace(monk
         with caplog.at_level(logging.INFO, logger="radio.diagnostics"):
             first = service.notify("Ефір", "", "", "PRIVATE_PHRASE", b"\0\0", recipients=RECIPIENTS)
             second = service.notify("Ефір", "", "", "PRIVATE_PHRASE", b"\0\0", recipients=RECIPIENTS)
-            service._outgoing_queue.join()
+            service._join_outbox()
     finally:
         assert service.shutdown(timeout=2)
 
@@ -82,9 +82,10 @@ def test_identical_queued_phrases_get_distinct_ids_and_preserve_queue_trace(monk
 
 
 def test_uncertain_voice_and_confirmed_text_share_notification_without_new_retries(monkeypatch, caplog):
+    """Telegram не відповів на завантаження: голосове могло дійти, тож без повторів одразу текст."""
     service = make_service()
     service.pcm_to_ogg = Mock(return_value=b"OggS")
-    post = Mock(side_effect=[requests.ReadTimeout()] * 3 + [response()])
+    post = Mock(side_effect=[requests.ReadTimeout(), response()])
     monkeypatch.setattr("requests.post", post)
     sleep = Mock()
     monkeypatch.setattr("time.sleep", sleep)
@@ -94,12 +95,12 @@ def test_uncertain_voice_and_confirmed_text_share_notification_without_new_retri
 
     deliveries = records(caplog)
     assert len({r["notification"] for r in deliveries}) == 1
-    assert [r["operation"] for r in deliveries] == ["sendVoice"] * 3 + ["sendMessage"]
-    assert [r["attempt"] for r in deliveries[:3]] == ["1", "2", "3"]
-    assert all(r["api_result"] == "unverified" for r in deliveries[:3])
+    assert [r["operation"] for r in deliveries] == ["sendVoice", "sendMessage"]
+    assert deliveries[0]["attempt"] == "1" and deliveries[0]["api_result"] == "unverified"
     assert deliveries[-1]["api_result"] == "confirmed"
     assert "attempt" not in deliveries[-1]
-    assert [call.args[0] for call in sleep.call_args_list] == [2, 4]
-    assert post.call_count == 4
+    sleep.assert_not_called()
+    assert post.call_count == 2
     fallback = post.call_args.kwargs["data"]
-    assert fallback["text"] == "PRIVATE_PHRASE" and "parse_mode" not in fallback
+    assert fallback["text"] == f"{outbox.UNCERTAIN_VOICE_NOTE}\n\nPRIVATE_PHRASE"
+    assert "parse_mode" not in fallback

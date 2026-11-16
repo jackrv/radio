@@ -48,7 +48,7 @@ def service(name, root, port, hung=False):
         sent = []
         telegram = TelegramService("test", 16000, ":memory:", __import__("logging").getLogger("fixture"))
 
-        def send(*_):
+        def send(*_, **__):
             time.sleep(0.03)
             sent.append(True)
 

@@ -1,5 +1,7 @@
 import logging
 import threading
+import time
+from unittest.mock import Mock
 
 from services.telegram import TelegramService
 
@@ -34,7 +36,7 @@ def test_outbox_fifo_and_single_worker():
     sent = []
     worker_ids = []
 
-    def fake_send(pcm, caption, fix_id, recipients):
+    def fake_send(pcm, caption, fix_id, recipients, **_):
         assert recipients == RECIPIENTS
         sent.append(caption)
         worker_ids.append(threading.get_ident())
@@ -62,7 +64,7 @@ def test_outbox_overflow_does_not_block(caplog):
     release = threading.Event()
     sent = []
 
-    def fake_send(pcm, caption, fix_id, recipients):
+    def fake_send(pcm, caption, fix_id, recipients, **_):
         if not started.is_set():
             started.set()
             release.wait(timeout=5)
@@ -98,7 +100,7 @@ def test_worker_survives_send_exception(caplog):
     service = make_service()
     attempts = []
 
-    def fake_send(pcm, caption, fix_id, recipients):
+    def fake_send(pcm, caption, fix_id, recipients, **_):
         attempts.append(caption)
 
         if "Сообщение 1" in caption:
@@ -114,3 +116,68 @@ def test_worker_survives_send_exception(caplog):
     assert len(attempts) == 2
     assert "Помилка фонового надсилання" in caplog.text
     assert service._outgoing_thread.is_alive()
+
+
+def _ok(file_id):
+    reply = Mock(status_code=200)
+    reply.json.return_value = {"ok": True, "result": {"voice": {"file_id": file_id}}}
+    return reply
+
+
+def test_hung_recipient_does_not_delay_others(monkeypatch):
+    """Зависле завантаження першому отримувачу не тримає другого й наступні фрази."""
+    import services.telegram_outbox as outbox
+
+    monkeypatch.setattr(outbox, "SHARED_UPLOAD_WAIT_S", 0.2)
+    service = make_service()
+    service.pcm_to_ogg = lambda pcm: b"OggS"
+    release = threading.Event()
+    delivered = []
+
+    def request(method, operation, **kwargs):
+        chat = kwargs["data"]["chat_id"]
+        if chat == 1001:
+            assert release.wait(timeout=5)
+        delivered.append((chat, kwargs["data"]["caption"].split("\n")[-1],
+                          "voice" in kwargs.get("files", {})))
+        return _ok(f"FILE-{chat}")
+
+    service._request = request
+    recipients = RECIPIENTS + [{"chat_id": 2002, "role": "admin", "mode": "all"}]
+    try:
+        service.notify("Ефір", "", "", "Фраза 1", b"\0\0", recipients=recipients)
+        service.notify("Ефір", "", "", "Фраза 2", b"\0\0", recipients=recipients)
+        deadline = time.monotonic() + 3
+        while len(delivered) < 2 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        # Другий отримувач отримав обидві фрази по порядку, поки перший висить;
+        # file_id не дочекався, тож завантажив голосове сам.
+        assert delivered == [(2002, "Фраза 1", True), (2002, "Фраза 2", True)]
+    finally:
+        release.set()
+        assert service.shutdown(timeout=3)
+    assert [d[:2] for d in delivered if d[0] == 1001] == [(1001, "Фраза 1"), (1001, "Фраза 2")]
+
+
+def test_full_recipient_queue_skips_only_that_recipient(caplog):
+    import services.telegram_outbox as outbox
+
+    service = make_service()
+    release = threading.Event()
+    ran = []
+
+    def blocking():
+        release.wait(timeout=5)
+
+    try:
+        assert service._dispatch(1001, blocking) is not None
+        for _ in range(outbox.QUEUE_SIZE + 1):
+            service._dispatch(1001, lambda: ran.append(1001))
+        with caplog.at_level(logging.ERROR):
+            assert service._dispatch(1001, lambda: ran.append(1001)) is None
+        assert "Черга отримувача переповнена" in caplog.text
+        done = service._dispatch(2002, lambda: ran.append(2002))
+        assert done.wait(timeout=2) and 2002 in ran
+    finally:
+        release.set()
+        assert service.shutdown(timeout=3)

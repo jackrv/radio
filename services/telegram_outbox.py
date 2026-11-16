@@ -1,5 +1,6 @@
 """Розсилка голосових повідомлень ефіру за особистими режимами користувачів."""
 
+import contextvars
 import queue
 import secrets
 import sqlite3
@@ -19,6 +20,12 @@ from services.user_notify_store import list_recipients
 
 CONVERSION_ERRORS = (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError)
 QUEUE_SIZE = 32
+# Скільки інші отримувачі чекають file_id від першого завантаження, перш ніж
+# завантажити голосове самі: зависле завантаження не повинно їх затримувати.
+SHARED_UPLOAD_WAIT_S = 5.0
+# Telegram отримав запит, але не відповів: голосове могло вже дійти. Повтор
+# дав би дублікат, тому замість повторів іде один текст із цією приміткою.
+UNCERTAIN_VOICE_NOTE = "⚠️ Telegram не підтвердив голосове — можливо, воно вже надійшло."
 
 
 
@@ -36,6 +43,10 @@ class OutboxMixin:
         self._outgoing_lock = threading.Lock()
         self._outgoing_thread = None
         self._outgoing_stop = threading.Event()
+        # Окрема черга й потік на кожного отримувача: зависла доставка одному чату
+        # не затримує решту. Порядок повідомлень для одного чату зберігається.
+        self._lanes = {}
+        self._lanes_lock = threading.Lock()
 
     # ---------- Отримувачі ----------
 
@@ -121,7 +132,7 @@ class OutboxMixin:
                 continue
             try:
                 with delivery_trace(notification=notification, queue_wait_s=round(queue_wait, 3)):
-                    self.send_voice(*item)
+                    self.send_voice(*item, wait=False)
             except Exception:
                 runtime.count("telegram.worker_error")
                 self.log.exception("Помилка фонового надсилання Telegram")
@@ -130,6 +141,7 @@ class OutboxMixin:
 
     def shutdown(self, timeout=10.0):
         """Припиняє прийом і чекає завершення надсилання."""
+        deadline = time.monotonic() + max(0.0, timeout)
         self._maintenance_stop.set()
         if self._maintenance_thread is not None:
             self._maintenance_thread.join(timeout=min(2.0, max(0.0, timeout)))
@@ -137,8 +149,13 @@ class OutboxMixin:
             self._outgoing_stop.set()
             thread = self._outgoing_thread
         if thread is not None:
-            thread.join(timeout=max(0.0, timeout))
-        pending = self._outgoing_queue.unfinished_tasks
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        with self._lanes_lock:
+            lanes = list(self._lanes.values())
+        for lane in lanes:
+            lane["thread"].join(timeout=max(0.0, deadline - time.monotonic()))
+        pending = self._outgoing_queue.unfinished_tasks + sum(
+            lane["queue"].unfinished_tasks for lane in lanes)
         runtime.gauge("telegram.shutdown_pending", pending)
         if pending:
             self.log.warning(
@@ -147,6 +164,61 @@ class OutboxMixin:
             return False
         self.log.info("Чергу Telegram оброблено")
         return True
+
+    def _join_outbox(self):
+        """Чекає, доки загальна черга й черги всіх отримувачів спорожніють."""
+        self._outgoing_queue.join()
+        with self._lanes_lock:
+            lanes = list(self._lanes.values())
+        for lane in lanes:
+            lane["queue"].join()
+
+    # ---------- Черги отримувачів ----------
+
+    def _dispatch(self, chat_id, job):
+        """Ставить доставку в чергу отримувача. Повертає подію завершення або None."""
+        done = threading.Event()
+        # Кожна доставка виконується у власній копії контексту: так у телеметрії
+        # лишаються ID сповіщення й очікування в загальній черзі.
+        context = contextvars.copy_context()
+        with self._lanes_lock:
+            lane = self._lanes.get(chat_id)
+            if lane is None:
+                lane = {"queue": queue.Queue(maxsize=QUEUE_SIZE), "thread": None}
+                self._lanes[chat_id] = lane
+            try:
+                lane["queue"].put_nowait((context, job, done))
+            except queue.Full:
+                runtime.count("telegram.lane_overflow")
+                self.log.error(
+                    "Черга отримувача переповнена (%d): сповіщення цьому отримувачу пропущено", QUEUE_SIZE,
+                )
+                return None
+            if lane["thread"] is None or not lane["thread"].is_alive():
+                lane["thread"] = threading.Thread(
+                    target=self._lane_loop, args=(lane,), name="telegram-recipient", daemon=True,
+                )
+                lane["thread"].start()
+        return done
+
+    def _lane_loop(self, lane):
+        while True:
+            with self._lanes_lock:
+                # Під тим самим замком, що й постановка: завдання не лишиться без потоку.
+                if self._outgoing_stop.is_set() and lane["queue"].empty():
+                    return
+            try:
+                context, job, done = lane["queue"].get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                context.run(job)
+            except Exception:
+                runtime.count("telegram.worker_error")
+                self.log.exception("Помилка фонового надсилання Telegram")
+            finally:
+                done.set()
+                lane["queue"].task_done()
 
     # ---------- Голосові ----------
 
@@ -165,37 +237,61 @@ class OutboxMixin:
         )
         return proc.stdout
 
-    def send_voice(self, pcm: bytes, caption: str, fix_id, recipients):
+    def send_voice(self, pcm: bytes, caption: str, fix_id, recipients, wait=True):
+        """Розсилає голосове; ``wait=False`` лише ставить доставки в черги отримувачів."""
         with delivery_trace(notification=current_notification() or secrets.token_hex(8)):
-            self._send_voice(pcm, caption, fix_id, recipients)
+            jobs = self._send_voice(pcm, caption, fix_id, recipients)
+        if wait:
+            for done in jobs:
+                done.wait()
 
     def _send_voice(self, pcm, caption, fix_id, recipients):
         active = [r for r in recipients if self._current_role(r) is not None]
         if not active:
             runtime.count("telegram.queue_discarded_off")
-            return
+            return []
         try:
             with runtime.timed("telegram.ogg_conversion"):
                 ogg = self.pcm_to_ogg(pcm)
         except CONVERSION_ERRORS as e:
             runtime.count("telegram.conversion_failed")
             self.log.warning("Конвертація в OGG не вдалася (%s), надсилаю текстом", e)
-            for index, recipient in enumerate(active, 1):
+
+            def text_job(index, recipient):
                 role = self._current_role(recipient)
                 if role is not None:
                     runtime.count("telegram.text_fallback")
                     with delivery_trace(recipient=index):
                         self.send_text(caption, self.keyboard_for(role, fix_id),
                                        parse_mode=None, chat_id=recipient["chat_id"], fix_id=fix_id)
-            return
+
+            jobs = [self._dispatch(r["chat_id"], lambda i=i, r=r: text_job(i, r))
+                    for i, r in enumerate(active, 1)]
+            return [done for done in jobs if done is not None]
 
         duration = max(1, round(len(pcm) / (2 * self.sample_rate)))
-        voice_ref = None  # file_id першого надісланого: далі без повторного завантаження
-        for index, recipient in enumerate(active, 1):
-            with delivery_trace(recipient=index, audio_bytes=len(ogg), audio_duration_s=duration):
-                sent = self._deliver_voice(recipient, ogg, voice_ref, caption, duration, fix_id)
-            if voice_ref is None and sent:
-                voice_ref = sent
+        # Перший отримувач завантажує файл, решта чекають його file_id, щоб не
+        # завантажувати повторно, але не довше SHARED_UPLOAD_WAIT_S.
+        shared = {"file_id": None, "ready": threading.Event()}
+
+        def voice_job(index, recipient):
+            uploader = index == 1
+            voice_ref = None
+            if not uploader:
+                shared["ready"].wait(SHARED_UPLOAD_WAIT_S)
+                voice_ref = shared["file_id"]
+            try:
+                with delivery_trace(recipient=index, audio_bytes=len(ogg), audio_duration_s=duration):
+                    sent = self._deliver_voice(recipient, ogg, voice_ref, caption, duration, fix_id)
+                if sent and shared["file_id"] is None:
+                    shared["file_id"] = sent
+            finally:
+                if uploader:
+                    shared["ready"].set()
+
+        jobs = [self._dispatch(r["chat_id"], lambda i=i, r=r: voice_job(i, r))
+                for i, r in enumerate(active, 1)]
+        return [done for done in jobs if done is not None]
 
     def _deliver_voice(self, recipient, ogg, voice_ref, caption, duration, fix_id):
         """Надсилає голосове одному отримувачу. Повертає file_id або None."""
@@ -224,6 +320,16 @@ class OutboxMixin:
                     self.log.warning("Telegram відхилив надсилання користувачу (403); пропущено")
                     return None
                 self.log.warning("Спроба %d/3 надіслати голосове не вдалася: %s", attempt, e)
+                if isinstance(e, requests.ReadTimeout):
+                    # Запит відправлено повністю, відповіді немає: повтор міг би
+                    # продублювати голосове. Текст короткий і доходить надійніше.
+                    runtime.count("telegram.voice_uncertain")
+                    runtime.count("telegram.text_fallback")
+                    self.log.error("Telegram не підтвердив голосове; без повторів надсилаю резервний текст")
+                    if self._current_role(recipient) is not None:
+                        self.send_text(f"{UNCERTAIN_VOICE_NOTE}\n\n{caption}", reply_markup,
+                                       parse_mode=None, chat_id=chat_id, fix_id=fix_id)
+                    return None
                 if attempt == 3:
                     runtime.count("telegram.voice_exhausted")
                     runtime.count("telegram.text_fallback")

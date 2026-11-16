@@ -38,7 +38,7 @@ def test_shutdown_flushes_pending_messages():
     sent = []
     result = []
 
-    def fake_send(pcm, caption, fix_id, recipients):
+    def fake_send(pcm, caption, fix_id, recipients, **_):
         started.set()
         assert release.wait(timeout=5)
         sent.append(caption)
@@ -74,7 +74,7 @@ def test_shutdown_timeout(caplog):
     started = threading.Event()
     release = threading.Event()
 
-    def fake_send(pcm, caption, fix_id, recipients):
+    def fake_send(pcm, caption, fix_id, recipients, **_):
         started.set()
         release.wait(timeout=5)
 
@@ -101,7 +101,7 @@ def test_shutdown_rejects_new_notifications(caplog):
     service = make_service()
     sent = []
 
-    service.send_voice = lambda *args: sent.append(args)
+    service.send_voice = lambda *args, **_: sent.append(args)
 
     assert service.shutdown(timeout=0.1) is True
 

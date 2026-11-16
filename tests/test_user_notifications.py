@@ -139,12 +139,16 @@ def buttons(markup):
 
 def test_voice_uploaded_once_then_reused_with_role_keyboards(db_path):
     service = make_service(db_path)
-    service._request = Mock(side_effect=[ok_response(), ok_response(chat_id=EDITOR), ok_response(chat_id=VIEWER)])
+    service._request = Mock(side_effect=lambda *a, **kw: ok_response(chat_id=kw["data"]["chat_id"]))
     recipients = service.recipients_for(lambda m: True)
 
     service.send_voice(b"\0\0", "Вишня 700", "db:7", recipients)
 
+    # Перший завантажує файл; решта отримують паралельно, тому їхній порядок довільний.
+    order = {ADMIN: 0, EDITOR: 1, VIEWER: 2}
     calls = service._request.call_args_list
+    assert calls[0].kwargs["data"]["chat_id"] == ADMIN
+    calls = sorted(calls, key=lambda c: order[c.kwargs["data"]["chat_id"]])
     assert [c.kwargs["data"]["chat_id"] for c in calls] == [ADMIN, EDITOR, VIEWER]
     assert "files" in calls[0].kwargs and "files" not in calls[1].kwargs
     assert calls[1].kwargs["data"]["voice"] == "FILE1"

@@ -9,7 +9,7 @@ from api.app import create_app
 from callsigns import Callsigns, command_dictionary
 from database import init_db as init_dictionary_db
 from services.event_store import init_db as init_event_db
-from services.text_check import check_text, format_text
+from services.text_check import check_text, format_text, tidy_text
 from services.user_store import bootstrap_admin, create_user, init_users_db
 from tests.test_web_api import TOKEN, auth_header
 
@@ -26,7 +26,7 @@ def kinds(result):
 
 
 def test_clean_text_has_no_remarks():
-    assert check("Береза 31, береза 31, я клен 15, злива 42 42, грім 0 22, на звʼязок, прийом") == {
+    assert check("Береза 31, Береза 31, я Клен 15, злива 42 42, грім 0 22, на звʼязок, прийом") == {
         "issues": [], "formatted": None}
 
 
@@ -34,8 +34,8 @@ def test_format_rules_and_fix_all():
     text = "Береза,31  я клен 15 , злива 4242, грім 022, 96,80, с півночі, на звязок"
     result = check(text)
     assert set(kinds(result)) == {"format"}
-    assert result["formatted"] == format_text(text) == (
-        "Береза, 31 я клен 15, злива 42 42, грім 0 22, 96 80, з півночі, на звʼязок")
+    assert format_text(text) == "Береза, 31 я клен 15, злива 42 42, грім 0 22, 96 80, з півночі, на звʼязок"
+    assert result["formatted"] == "Береза 31, я Клен 15, злива 42 42, грім 0 22, 96 80, з півночі, на звʼязок"
 
 
 def test_each_fix_changes_only_its_place():
@@ -45,14 +45,14 @@ def test_each_fix_changes_only_its_place():
 
 
 def test_callsign_numbers_are_not_touched():
-    assert check("береза 56, клен 15, береза 700")["formatted"] is None
+    assert check("Береза 56, Клен 15, Береза 700")["formatted"] is None
 
 
 def test_spelling_suggestions_come_from_dictionary_and_templates():
-    result = check("Бериза 56, я клен 15, до роботи переступив, прийом")
+    result = check("Бериза 56, я Клен 15, до роботи переступив, прийом")
     assert [(i["kind"], i["fixed_text"]) for i in result["issues"]] == [
-        ("spelling", "Береза 56, я клен 15, до роботи переступив, прийом"),
-        ("spelling", "Бериза 56, я клен 15, до роботи приступив, прийом"),
+        ("spelling", "Береза 56, я Клен 15, до роботи переступив, прийом"),
+        ("spelling", "Бериза 56, я Клен 15, до роботи приступив, прийом"),
     ]
     assert result["formatted"] is None, "опечатки не виправляються «усім оформленням»"
 
@@ -76,7 +76,7 @@ def test_alias_is_not_applied_to_a_dictionary_word(monkeypatch):
 
 
 def test_russian_letter_is_a_note():
-    assert [i["kind"] for i in check("клен 15, приём")["issues"]] == ["spelling", "info"]
+    assert [i["kind"] for i in check("Клен 15, приём")["issues"]] == ["spelling", "info"]
 
 
 @pytest.fixture
@@ -98,10 +98,38 @@ def api(tmp_path):
 
 def test_miniapp_check_endpoint_uses_database_dictionaries_and_permissions(api):
     _, client = api
-    response = client.post("/api/corrections/check", headers=auth_header(3003), json={"text": "Бериза 56, береза 99, злива 4242"})
+    response = client.post("/api/corrections/check", headers=auth_header(3003), json={"text": "Бериза 56, Береза 99, злива 4242"})
     assert response.status_code == 200
     body = response.json()
-    assert body["formatted"] == "Бериза 56, береза 99, злива 42 42"
+    assert body["formatted"] == "Бериза 56, Береза 99, злива 42 42"
     assert {i["kind"] for i in body["issues"]} == {"format", "spelling", "info"}
     assert client.post("/api/corrections/check", headers=auth_header(2002), json={"text": "x"}).status_code == 403
     assert client.post("/api/corrections/check", headers=auth_header(3003), json={"text": "x" * 5001}).status_code == 422
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("береза 700 береза 700 я береза 56 на звʼязок прийом", "Береза 700, Береза 700, я Береза 56, на звʼязок, прийом"),
+    ("клен 15 посилку отримав прийом | клен 15 прийнято прийом", "Клен 15, посилку отримав, прийом | Клен 15, прийнято, прийом"),
+    ("Злива 42 42, злива 42 42, я береза 700, грім, 0 22, прийом", "Злива 42 42, злива 42 42, я Береза 700, грім 0 22, прийом"),
+    ("Клен, 15, 26 84, Прийом.", "Клен 15, 26 84, прийом."),
+    ("вишня 96, 80, прийом", "Вишня, 96, 80, прийом"),
+    ("822 прийнято прийом", "822, прийнято, прийом"),
+    ("береза 700 перевірка звʼязку прийом", "Береза 700, перевірка звʼязку, прийом"),   # команда без номера — слово
+    ("береза 700, балістика з півночі, негайно в укриття", "Береза 700, балістика з півночі, негайно в укриття"),
+    ("Бериза 56, прийом", "Бериза 56, прийом"),            # слово з опечаткою: кома перед номером не додається
+])
+def test_tidy_puts_commas_between_groups_and_capitalizes_callsigns(text, expected):
+    assert tidy_text(text, CALLSIGNS, COMMANDS) == expected
+
+
+def test_tidy_never_changes_words_and_is_stable():
+    for text in ("береза 700 я клен 15 прийнято прийом", "Клен 15, 17 86, 17 86, прийом", "прийом"):
+        tidy = tidy_text(text, CALLSIGNS, COMMANDS)
+        assert tidy.lower().replace(",", "").split() == text.lower().replace(",", "").split()
+        assert tidy_text(tidy, CALLSIGNS, COMMANDS) == tidy
+
+
+def test_tidy_is_offered_as_one_formatting_fix():
+    result = check("береза 56 посилку отримав прийом")
+    assert [(i["kind"], i["message"]) for i in result["issues"]] == [("format", "Коми між групами й великі літери позивних")]
+    assert result["formatted"] == "Береза 56, посилку отримав, прийом"

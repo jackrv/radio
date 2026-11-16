@@ -150,6 +150,119 @@ def _number_issues(text, dictionaries):
     return issues
 
 
+# ---------- Коми між групами й великі літери позивних ----------
+
+_TIDY_TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`-][^\W\d_]+)*|\d+|[^\w\s]")
+# Слова зворотів пишуться з малої (крім початку передачі): «…, Прийом» -> «…, прийом».
+_LOWER_WORDS = {"прийом", "прийнято", "прийняв", "посилку", "отримав", "я", "на", "до", "як",
+                "та", "і", "чую", "розбираю", "вас", "добре", "роботу", "роботи", "закінчив",
+                "розпочав", "приступив", "повторіть", "голос", "не", "пройшов", "звʼязок", "звʼязку"}
+
+
+def _tidy_part(part, callsigns, commands):
+    """Одна передача: групи «позивний номер» / «команда номер» / цифри / текст — через кому."""
+    tokens, comma, end = [], False, ""
+    for raw in _TIDY_TOKEN.findall(part):
+        if re.match(r"\w", raw):
+            tokens.append([raw, comma]); comma = False
+        elif raw in ".!?" :
+            comma, end = True, raw
+        else:
+            comma = True
+    if not tokens:
+        return part.strip()
+    if end and tokens and comma is False:
+        end = ""                                   # крапка не в кінці — це просто розділювач
+    fold = lambda word: basic_normalize(word).translate(FOLD)
+    cs_names = {name.translate(FOLD): name for name in callsigns.names} if callsigns else {}
+    cmd_names = {name.translate(FOLD): name for name in commands.names} if commands else {}
+
+    def kind(i):
+        word = tokens[i][0]
+        if word.isdigit():
+            return "num"
+        f = fold(word)
+        if f == "я":
+            return "self"
+        if f in cs_names:
+            return "cs"
+        if f in cmd_names and i + 1 < len(tokens) and tokens[i + 1][0].isdigit():
+            return "cmd"                           # команда без номера — звичайне слово
+        return "word"
+
+    kinds = [kind(i) for i in range(len(tokens))]
+    units, i = [], 0
+    while i < len(tokens):
+        k = kinds[i]
+        start = i
+        if k == "self" and i + 1 < len(tokens) and kinds[i + 1] == "cs":
+            i, k = i + 1, "cs"
+        if k == "cs":
+            name = cs_names[fold(tokens[i][0])]
+            i += 1
+            has_numbers = bool(callsigns.numbers.get(name)) or name in callsigns.any_number
+            if has_numbers and i < len(tokens) and kinds[i] == "num":
+                i += 1
+            units.append(("group", tokens[start:i]))
+        elif k == "cmd":
+            i += 1
+            pair = (i + 1 < len(tokens) and kinds[i + 1] == "num" and len(tokens[i][0]) <= 2
+                    and len(tokens[i + 1][0]) == 2)
+            i += 2 if pair else 1                  # «0 22», «42 42» — код парами
+            units.append(("group", tokens[start:i]))
+        elif k == "num":
+            while i < len(tokens) and kinds[i] == "num":
+                i += 1
+            units.append(("digits", tokens[start:i]))
+        else:
+            i += 1
+            while i < len(tokens) and kinds[i] in ("word",) and not (
+                    kinds[i] == "self" and i + 1 < len(tokens) and kinds[i + 1] == "cs"):
+                i += 1
+            run = tokens[start:i]
+            if len(run) > 1 and fold(run[-1][0]) == "прийом":
+                units += [("text", run[:-1]), ("text", run[-1:])]
+            else:
+                units.append(("text", run))
+
+    out = []
+    for unit_kind, run in units:
+        words = []
+        for j, (word, had_comma) in enumerate(run):
+            f = fold(word)
+            if f in cs_names:
+                word = word[:1].upper() + word[1:].lower()
+            elif basic_normalize(word) in _LOWER_WORDS or f in cmd_names:
+                word = word.lower()
+            separator = ", " if (unit_kind != "group" and j and had_comma) else " "
+            words.append((separator if j else "") + word)
+        out.append((unit_kind, run, "".join(words)))
+    # Між звичайним словом і цифрами кому не додаємо: слово може бути позивним з
+    # опечаткою («Бериза 56») — лишаємо, як було написано.
+    text = ""
+    for n, (unit_kind, run, rendered) in enumerate(out):
+        if n:
+            keep = out[n - 1][0] == "text" and unit_kind == "digits" and not run[0][1]
+            text += " " if keep else ", "
+        text += rendered
+    return text[:1].upper() + text[1:] + end
+
+
+def tidy_text(text, callsigns, commands):
+    """Коми між групами й великі літери позивних; слова й цифри не змінюються.
+
+    Передачі, розділені «|», оформлюються окремо. Якщо порядок слів раптом
+    змінився б, текст повертається без змін.
+    """
+    if not text or not text.strip() or callsigns is None:
+        return text
+    parts = [p for p in text.split("|")]
+    tidy = " | ".join(_tidy_part(p, callsigns, commands) for p in parts if p.strip())
+    same = lambda a, b: re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", a.casefold())) == \
+        re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", b.casefold()))
+    return tidy if same(text, tidy) else text
+
+
 def check_text(text, callsigns=None, commands=None, watch=None):
     """Зауваження до тексту оператора; ``formatted`` — текст з усіма виправленнями оформлення."""
     text = text or ""
@@ -159,7 +272,10 @@ def check_text(text, callsigns=None, commands=None, watch=None):
     issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None])
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):
         issues.append(_issue("info", f"Російська літера «{letter}» — перевірте, чи це українське слово"))
-    formatted = format_text(text)
+    tidy = tidy_text(text, callsigns, commands)
+    if tidy != text and tidy_text(format_text(text), callsigns, commands) != format_text(text):
+        issues.append(_issue("format", "Коми між групами й великі літери позивних", text, tidy))
+    formatted = tidy_text(format_text(text), callsigns, commands)
     return {"issues": issues, "formatted": formatted if formatted != text else None}
 
 

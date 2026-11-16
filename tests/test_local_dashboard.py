@@ -413,8 +413,8 @@ def test_text_check_endpoint_returns_hints_without_writing(local):
     with sqlite3.connect(path) as db:
         db.execute("DELETE FROM dictionary_entries")
         db.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'береза: 31 56')")
-    body=client.post("/api/text-check",json={"text":"береза 99, 4242, с півночі"},headers={"Origin":ORIGIN}).json()
-    assert body["formatted"]=="береза 99, 42 42, з півночі"
+    body=client.post("/api/text-check",json={"text":"Береза 99, 4242, с півночі"},headers={"Origin":ORIGIN}).json()
+    assert body["formatted"]=="Береза 99, 42 42, з півночі"
     assert [i["kind"] for i in body["issues"]]==["format","format","info"]
     assert client.post("/api/text-check",json={"text":"x"*5001},headers={"Origin":ORIGIN}).status_code==422
     assert client.post("/api/text-check",json={"text":"x"}).status_code==403, "без Origin — відмова"

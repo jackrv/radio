@@ -225,10 +225,11 @@ test("settings form sends typed values and expected revision", async () => {
   assert.match(get("recognition-feedback").textContent, /Перезапусти/);
 });
 
-async function correctionFixture(autoClose, hasAudio = false) {
+async function correctionFixture(autoClose, hasAudio = false, check = () => ({ issues: [], formatted: null })) {
   const { doc, get } = documentFixture();
   get("close-after-save").checked = autoClose;
   const writes = [];
+  const checks = [];
   let closed = false;
   const window = {
     Telegram: { WebApp: { close: () => { closed = true; } } },
@@ -237,6 +238,7 @@ async function correctionFixture(autoClose, hasAudio = false) {
     addEventListener() {},
     Radio345: { request: async (url, method, body) => {
       if (url.startsWith("/api/phrases/audio")) return new Blob(["OggSfake"]);
+      if (url === "/api/corrections/check") { checks.push(body.text); return check(body.text); }
       if (method === "GET") return { original_text: "Вира 68", current_text: "Вира 68", has_audio: hasAudio };
       writes.push(body);
       return { saved: true, corrected_text: body.corrected_text };
@@ -247,8 +249,36 @@ async function correctionFixture(autoClose, hasAudio = false) {
     localStorage: { getItem: () => null, setItem() {} }
   });
   await tick();
-  return { get, writes, isClosed: () => closed };
+  return { get, writes, checks, isClosed: () => closed };
 }
+
+test("editor shows text check hints and applies a fix only on request", async () => {
+  const hints = text => text === "Вира 68, с півночі"
+    ? { formatted: "Вира 68, з півночі", issues: [{ kind: "format", message: "Українською — «з»", fixed_text: "Вира 68, з півночі" }] }
+    : { issues: [], formatted: null };
+  const { get, writes, checks } = await correctionFixture(false, false, hints);
+  assert.deepEqual(checks, ["Вира 68"], "перевірка одразу після завантаження");
+  get("corrected-text").value = "Вира 68, с півночі";
+  await get("corrected-text").fire("input");
+  const box = get("correction-check");
+  assert.equal(box.children[0].textContent, "Виправити оформлення");
+  const row = box.children[1];
+  assert.equal(row.children[0].textContent, "Українською — «з»");
+  assert.equal(get("corrected-text").value, "Вира 68, с півночі", "без натискання текст не змінюється");
+  await row.children[1].fire("click");
+  assert.equal(get("corrected-text").value, "Вира 68, з півночі");
+  assert.equal(box.children.length, 0, "після виправлення зауважень немає");
+  assert.equal(writes.length, 0, "перевірка нічого не зберігає");
+});
+
+test("editor works when the API has no text check yet", async () => {
+  const { get, writes } = await correctionFixture(false, false, () => { throw new Error("404"); });
+  get("corrected-text").value = "Віра 68";
+  await get("corrected-text").fire("input");
+  assert.equal(get("correction-check").children.length, 0);
+  await get("save-correction-button").fire("click");
+  assert.equal(writes.length, 1);
+});
 
 test("editor can save twice without auto-close using the latest expected text", async () => {
   const { get, writes, isClosed } = await correctionFixture(false);

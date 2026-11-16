@@ -62,6 +62,10 @@ class RoleSuggestion(BaseModel):
     text: str = Field(max_length=2000)
 
 
+class TextCheck(BaseModel):
+    text: str = Field(max_length=5000)
+
+
 class ListeningHold(BaseModel):
     seconds: float = Field(ge=0, le=120)
 
@@ -328,6 +332,13 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             if text not in found:
                 found.append(text)
         return {"callsigns": found}
+
+    @app.post("/api/text-check")
+    def text_check(payload: TextCheck, admin=Depends(actor)):
+        """Зауваження до оформлення тексту еталона; нічого не змінює."""
+        from services.text_check import check_with_db
+        with get_db(db_path) as db:
+            return check_with_db(db, payload.text)
 
     @app.get("/api/recordings/queue")
     def recording_queue(admin=Depends(actor)):

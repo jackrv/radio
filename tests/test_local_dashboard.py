@@ -400,3 +400,16 @@ def test_archive_search_by_id_event_number_and_text(setup, tmp_path):
         assert found("4242")==set() and found("42 42")=={b}
         assert found("нема такого")==set()
         assert client.get("/api/recordings",params={"q":"x"*201}).status_code==422
+
+
+def test_text_check_endpoint_returns_hints_without_writing(local):
+    import sqlite3
+    client,path,_=local
+    with sqlite3.connect(path) as db:
+        db.execute("DELETE FROM dictionary_entries")
+        db.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'береза: 31 56')")
+    body=client.post("/api/text-check",json={"text":"береза 99, 4242, с півночі"},headers={"Origin":ORIGIN}).json()
+    assert body["formatted"]=="береза 99, 42 42, з півночі"
+    assert [i["kind"] for i in body["issues"]]==["format","format","info"]
+    assert client.post("/api/text-check",json={"text":"x"*5001},headers={"Origin":ORIGIN}).status_code==422
+    assert client.post("/api/text-check",json={"text":"x"}).status_code==403, "без Origin — відмова"

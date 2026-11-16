@@ -14,6 +14,7 @@
   const player = document.getElementById("editor-audio");
   const audioFeedback = document.getElementById("editor-audio-feedback");
   const learningBox = document.getElementById("correction-learning");
+  const checkBox = document.getElementById("correction-check");
   let audioUrl = null;
 
   // ---------- Що з правки потрапило в навчання ----------
@@ -169,6 +170,53 @@
     edited.style.height = `${Math.max(80, edited.scrollHeight)}px`;
   }
   edited.addEventListener("input", fitText);
+
+  // ---------- Перевірка оформлення: лише підказки, зберегти можна будь-що ----------
+  let checkTimer = null;
+  let checkSeq = 0;
+  function useText(text) {
+    edited.value = text;
+    fitText();
+    checkText(0);
+  }
+  function renderCheck(result) {
+    checkBox.replaceChildren();
+    const issues = result?.issues || [];
+    if (!issues.length) return;
+    if (result.formatted) {
+      const all = el("button", "Виправити оформлення", "outline-button");
+      all.type = "button";
+      all.addEventListener("click", () => useText(result.formatted));
+      checkBox.append(all);
+    }
+    for (const issue of issues) {
+      const row = el("div", undefined, `text-check-item ${issue.kind}`);
+      row.append(el("span", issue.message));
+      if (issue.fixed_text) {
+        const fix = el("button", "Виправити", "outline-button");
+        fix.type = "button";
+        fix.addEventListener("click", () => useText(issue.fixed_text));
+        row.append(fix);
+      }
+      checkBox.append(row);
+    }
+  }
+  function checkText(delay = 600) {
+    window.clearTimeout?.(checkTimer);
+    checkTimer = window.setTimeout(async () => {
+      const text = edited.value;
+      const seq = ++checkSeq;
+      if (!text.trim()) { renderCheck(null); return; }
+      try {
+        const result = await window.Radio345.request("/api/corrections/check", "POST", { text });
+        if (seq === checkSeq && edited.value === text) renderCheck(result);
+      } catch (_) {
+        // Перевірка необов'язкова (наприклад, API ще не оновлено) — редактор працює як раніше.
+        renderCheck(null);
+      }
+    }, delay);
+  }
+  edited.addEventListener("input", () => checkText());
   window.addEventListener("resize", () => { if (draft) fitText(); });
   document.addEventListener("radio345:view", event => {
     if (event.detail === "corrections" && draft) fitText();
@@ -210,8 +258,7 @@
 
   restore.addEventListener("click", () => {
     if (!draft || busy) return;
-    edited.value = draft.current_text;
-    fitText();
+    useText(draft.current_text);
     edited.focus();
   });
 
@@ -294,6 +341,7 @@
         : "Для цієї фрази аудіо не прив’язано. Доступні записи нових голосових, надісланих після оновлення приймача.";
       save.disabled = false;
       restore.disabled = false;
+      checkText(0);
       feedback.textContent = "Текст уже підставлено. Виправ помилку та збережи.";
       // Do not open the mobile keyboard until the operator taps the field.
       // Avoid competing smooth scroll and keyboard viewport animations.

@@ -832,6 +832,40 @@
       }
       input.addEventListener("input", suggest);
 
+      // Перевірка оформлення: пробіли, цифри групами, «з», апостроф, назви словника.
+      // Лише підказки: зберегти можна будь-який текст.
+      const lint = el("div", "text-check");
+      let lintTimer = null;
+      function renderLint(result) {
+        lint.replaceChildren();
+        const issues = result?.issues || [];
+        if (!issues.length) return;
+        if (result.formatted) {
+          const all = el("button", "ghost", "Виправити оформлення"); all.type = "button";
+          all.addEventListener("click", () => { input.value = result.formatted; checkText(0); input.focus(); });
+          lint.append(all);
+        }
+        for (const issue of issues) {
+          const row = el("div", `text-check-item ${issue.kind}`);
+          row.append(el("span", "", issue.message));
+          if (issue.fixed_text) {
+            const fix = el("button", "ghost", "Виправити"); fix.type = "button";
+            fix.addEventListener("click", () => { input.value = issue.fixed_text; checkText(0); input.focus(); });
+            row.append(fix);
+          }
+          lint.append(row);
+        }
+      }
+      function checkText(delay = 500) {
+        clearTimeout(lintTimer);
+        lintTimer = setTimeout(async () => {
+          if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) { renderLint(null); return; }
+          try { renderLint(await request("/api/text-check", "POST", { text: input.value })); }
+          catch (_) { renderLint(null); }
+        }, delay);
+      }
+      input.addEventListener("input", () => checkText());
+
       // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
       const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
       const multi = el("label", "check small"); multi.append(multiBox, el("span", "", " Кілька передач у записі"));
@@ -846,7 +880,7 @@
         category.value = value;
         for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
         const speechLike = ["speech", "unclear"].includes(value);
-        textField.hidden = !speechLike; roles.hidden = !speechLike; chips.hidden = !speechLike; multi.hidden = !speechLike;
+        textField.hidden = !speechLike; roles.hidden = !speechLike; chips.hidden = !speechLike; multi.hidden = !speechLike; lint.hidden = !speechLike;
         if (!speechLike) { input.value = ""; recipient.absent(); sender.absent(); if (quick) submit(); }
         else if (quick) suggest();
       }
@@ -865,7 +899,7 @@
           if (typeof advanceReview === "function") advanceReview(controller);
         });
       }
-      form.append(textField, chips, roles, multi, actions);
+      form.append(textField, lint, chips, roles, multi, actions);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest };

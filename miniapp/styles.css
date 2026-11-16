@@ -243,3 +243,10 @@ body:not([data-role="admin"]) .admin-only { display: none !important; }
 .learning-list strong { color: #e8f0f6; }
 .learning-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
 .learning-excluded summary { cursor: pointer; color: #8ea0ad; margin-top: 6px; }
+
+/* Перевірка оформлення правки */
+.text-check { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 4px; font-size: 12px; }
+.text-check:empty { display: none; }
+.text-check > .outline-button { align-self: flex-start; }
+.text-check-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); line-height: 1.45; }
+.text-check-item.spelling { color: var(--text); }

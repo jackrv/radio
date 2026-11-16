@@ -7,17 +7,17 @@
   <meta name="description" content="Radio 345 — панель керування розпізнаванням ефіру">
   <title>Radio 345 — керування</title>
   <meta name="radio345-api" content="https://majestic-starring-bright.ngrok-free.dev">
-  <link rel="stylesheet" href="./styles.css?v=14">
+  <link rel="stylesheet" href="./styles.css?v=15">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="./app.js?v=14" defer></script>
-  <script src="./keyboard.js?v=14" defer></script>
-  <script src="./client.js?v=14" defer></script>
-  <script src="./service-gate.js?v=14" defer></script>
-  <script src="./api.js?v=14" defer></script>
-  <script src="./notifications.js?v=14" defer></script>
-  <script src="./receiver-controls.js?v=14" defer></script>
-  <script src="./correction-editor.js?v=14" defer></script>
-  <script src="./management.js?v=14" defer></script>
+  <script src="./app.js?v=15" defer></script>
+  <script src="./keyboard.js?v=15" defer></script>
+  <script src="./client.js?v=15" defer></script>
+  <script src="./service-gate.js?v=15" defer></script>
+  <script src="./api.js?v=15" defer></script>
+  <script src="./notifications.js?v=15" defer></script>
+  <script src="./receiver-controls.js?v=15" defer></script>
+  <script src="./correction-editor.js?v=15" defer></script>
+  <script src="./management.js?v=15" defer></script>
 </head>
 <body>
   <section class="service-gate" id="service-gate" role="status" aria-live="polite">
@@ -112,6 +112,7 @@
             <details class="original-details"><summary>Початковий текст розпізнавання</summary><div class="source-text" id="original-text">Вибери фразу в журналі.</div></details>
             <label for="corrected-text" class="form-label">Виправлений текст</label>
             <textarea id="corrected-text" rows="3" spellcheck="false" disabled></textarea>
+            <div id="correction-check" class="text-check" aria-live="polite"></div>
             <div class="editor-footer"><span class="subtle-note">Текст підставляється зі SQLite.</span><button class="outline-button" id="restore-example" type="button" disabled>Повернути текст</button></div>
             <label class="auto-close-option" for="close-after-save">
               <input id="close-after-save" type="checkbox" checked>

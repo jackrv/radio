@@ -53,6 +53,10 @@ class CorrectionDraftUpdate(BaseModel):
     corrected_text: str = Field(min_length=1, max_length=5000)
 
 
+class TextCheck(BaseModel):
+    text: str = Field(max_length=5000)
+
+
 class LearningDecision(BaseModel):
     fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     expected_text: str = Field(max_length=5000)
@@ -217,6 +221,18 @@ def create_app(db_path, bot_token):
             raise HTTPException(status_code=404, detail="Подію не знайдено") from None
         except ValueError:
             raise HTTPException(status_code=422, detail="Некоректний текст") from None
+        except sqlite3.Error:
+            raise HTTPException(status_code=503, detail="База недоступна") from None
+
+    @app.post("/api/corrections/check")
+    def check_correction_text(payload: TextCheck, user=Depends(current_user)):
+        """Зауваження до оформлення правки (пробіли, цифри, «з», апостроф, назви словника)."""
+        require_settings_permission(user, "corrections.write")
+        from services.sqlite_connection import get_db
+        from services.text_check import check_with_db
+        try:
+            with get_db(db_path) as db:
+                return check_with_db(db, payload.text)
         except sqlite3.Error:
             raise HTTPException(status_code=503, detail="База недоступна") from None
 

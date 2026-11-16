@@ -296,6 +296,17 @@ def test_bare_callsign_with_command_or_watch_word_stays():
     processor, save_event, _, _ = make_processor(callsigns=callsigns, commands=commands)
     processor.process("Дуб", b"pcm")
     save_event.assert_called_once()
+    # Позивний без номера в списку /watch — подія й сповіщення режиму «watch».
+    watch = Callsigns.from_lines(["дуб"])
+    processor, save_event, telegram, _ = make_processor(mode="watch", callsigns=callsigns, watch=watch)
+    processor.process("Дуб", b"pcm")
+    save_event.assert_called_once()
+    telegram.notify.assert_called_once()
+    # «дуб: *» — лише з номером; сам позивний так і лишається відкинутим.
+    processor, save_event, telegram, _ = make_processor(callsigns=callsigns, watch=Callsigns.from_lines(["дуб: *"]))
+    processor.process("Дуб", b"pcm")
+    save_event.assert_not_called()
+    telegram.notify.assert_not_called()
 
 
 def test_event_and_message_ids_are_noted_for_the_archive():

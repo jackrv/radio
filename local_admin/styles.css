@@ -179,3 +179,13 @@ textarea.list-editor { width: 100%; min-height: 190px; resize: vertical; backgro
 kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface2); color: var(--text); }
 .keys { margin-top: 2px; }
 .rules { margin: 4px 0 8px; padding-left: 18px; font-size: 12px; } .rules li { margin: 3px 0; }
+
+/* Перевірка оформлення тексту еталона */
+.text-check { display:flex; flex-direction:column; gap:4px; margin:4px 0 6px; font-size:12px; }
+.text-check:empty { display:none; }
+.text-check > button { align-self:flex-start; }
+.text-check-item { display:flex; align-items:center; gap:8px; color:var(--muted); }
+.text-check-item.spelling { color:var(--text); }
+.text-check-item.spelling::before { content:"✎"; }
+.text-check-item.format::before { content:"·"; }
+.text-check-item.info::before { content:"ⓘ"; }

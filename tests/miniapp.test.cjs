@@ -117,112 +117,64 @@ test("concurrent screens share the verified user request", async () => {
   assert.equal(calls, 1);
 });
 
-async function managementFixture(role = "admin", override) {
+async function phrasesFixture(role = "admin", override) {
   const { doc, get } = documentFixture();
-  get("dictionary-kind").value = "callsigns";
   const calls = [];
   const request = async (url, method = "GET", body) => {
     calls.push({ url, method, body });
     if (override) { const result = override(url, method, body); if (result !== undefined) return result; }
-    if (url === "/api/overview") return { events: 2, active_rules: 1, total_rules: 5, corrections: 4, dictionary_entries: 3,
-      learning: { candidates: 3, confirmations: 5, active_rules: 1, awaiting_approval: 1 },
-      automatic: { available: true, fresh: true, qwen_changed: 7, rules_applied: 2 } };
-    if (url.startsWith("/api/phrases")) return { items: [{ fix_id: "db:1", current_text: "<img src=x onerror=alert(1)>", created_at: "2026-11-14 12:00:00" }], has_more: false };
-    if (url.startsWith("/api/dictionaries/")) return { kind: "callsigns", version: "a".repeat(64), entries: body?.entries || [{ raw_line: "Віра: 68", enabled: true }] };
-    if (url.startsWith("/api/word-rules")) return { items: [], has_more: false };
-    if (url === "/api/users") return { items: [{ user_id: "2002", role: "viewer", notify_mode: "commands", enabled: true, version: "a".repeat(64) }] };
-    if (url.startsWith("/api/users/")) return { saved: true };
-    if (url === "/api/recognition/settings") return { revision: 1, values: { USE_LLM: true, VAD_LEVEL: 2, SILENCE_END_MS: 600, MIN_SPEECH_MS: 500, MAX_SEGMENT_S: 20 } };
+    if (url.startsWith("/api/phrases")) return { items: [{ fix_id: "db:1", current_text: "<img src=x onerror=alert(1)>", original_text: "<img src=x onerror=alert(1)>", created_at: "2026-11-14 12:00:00" }], has_more: false };
     throw new Error("Unexpected request " + url);
   };
   const win = new Element();
-  Object.assign(win, { Radio345: { request, user: async () => ({ role, user_id: 1001 }) }, confirm: () => true,
-    location: { href: "https://panel.example/", assign() {} } });
-  vm.runInNewContext(source("management.js"), { document: doc, window: win, URL, Date, console, showView() {} });
+  Object.assign(win, { Radio345: { request, user: async () => ({ role, user_id: 1001 }) },
+    location: { href: "https://panel.example/", assign(url) { win.assigned = url; } } });
+  vm.runInNewContext(source("phrases.js"), { document: doc, window: win, URL, Date, console, showView() {} });
   await tick();
   const view = async name => { doc.dispatchEvent({ type: "radio345:view", detail: name }); await tick(); };
-  return { get, calls, view };
+  return { get, calls, view, win };
 }
 
-test("viewer never loads phrases, dictionaries, stats or admin screens", async () => {
-  const { get, view, calls } = await managementFixture("viewer");
-  for (const name of ["corrections", "dictionaries", "settings", "users", "home"]) await view(name);
+test("Mini App has only home and corrections; management lives in the local panel", () => {
+  const html = source("index.html");
+  const tabs = [...html.matchAll(/data-view-target="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(tabs, ["home", "corrections"]);
+  for (const id of ["dictionary-kind", "users-list", "recognition-form", "rules-list", "events-count"]) {
+    assert.doesNotMatch(html, new RegExp(`id="${id}"`), `${id} перенесено в локальну панель`);
+  }
+  assert.equal(fs.existsSync(path.join(root, "management.js")), false);
+});
+
+test("viewer never loads phrases", async () => {
+  const { get, view, calls } = await phrasesFixture("viewer");
+  for (const name of ["corrections", "home"]) await view(name);
   assert.equal(get("phrases-list").children.length, 0);
   assert.equal(calls.length, 0);
 });
 
-test("editor can save dictionary text and enabled state with snapshot version", async () => {
-  const { get, view, calls } = await managementFixture("editor");
-  await view("dictionaries");
-  const row = get("dictionary-entries").children[0];
-  row.children[1].value = "Віра: 68 69";
-  await row.children[1].fire("input");
-  await get("dictionary-save").fire("click");
-  const call = calls.find(c => c.method === "PUT");
-  assert.equal(call.body.expected_version, "a".repeat(64));
-  assert.equal(call.body.entries[0].raw_line, "Віра: 68 69");
-  assert.match(get("dictionary-feedback").textContent, /без перезапуску/);
-});
-
-test("dictionary conflict keeps the operator's unsaved input", async () => {
-  const { get, view } = await managementFixture("editor", (url, method) => {
-    if (method === "PUT") { const e = new Error("Конфликт"); e.status = 409; throw e; }
-  });
-  await view("dictionaries");
-  const input = get("dictionary-entries").children[0].children[1];
-  input.value = "Вовк"; await input.fire("input");
-  await get("dictionary-save").fire("click");
-  assert.equal(get("dictionary-entries").children[0].children[1].value, "Вовк");
-  assert.match(get("dictionary-feedback").textContent, /Конфликт/);
-});
-
-test("viewer cannot submit dictionary changes even through a synthetic click", async () => {
-  const { get, view, calls } = await managementFixture("viewer");
-  await view("dictionaries");
-  assert.equal(get("dictionary-entries").children.length, 0);
-  await get("dictionary-save").fire("click");
-  assert.equal(calls.some(c => c.method === "PUT"), false);
+test("journal renders phrase text as text and opens the editor", async () => {
+  const { get, view, win } = await phrasesFixture("editor");
+  await view("corrections");
+  const card = get("phrases-list").children[0];
+  assert.equal(card.children[1].textContent, "<img src=x onerror=alert(1)>");
+  const edit = card.children[0].children[1].children.find(child => child.textContent === "Виправити");
+  await edit.fire("click");
+  assert.match(win.assigned, /fix_id=db%3A1/);
 });
 
 test("editor can load an authenticated audio player beside a phrase", async () => {
-  const { get, view, calls } = await managementFixture("editor", (url) => {
-    if (url.startsWith("/api/phrases?")) return { items: [{ fix_id: "db:1", current_text: "Віра", has_audio: true }], has_more: false };
+  const { get, view, calls } = await phrasesFixture("editor", (url) => {
+    if (url.startsWith("/api/phrases?")) return { items: [{ fix_id: "db:1", current_text: "Віра", original_text: "Віра", has_audio: true }], has_more: false };
     if (url.startsWith("/api/phrases/audio?")) return new Blob(["OggSfake"]);
   });
   await view("corrections");
   const card = get("phrases-list").children[0];
-  const listen = card.children.find(child => child.tagName === "button");
+  const listen = card.children[0].children[1].children[0];
   await listen.fire("click");
   assert.equal(listen.hidden, true);
   assert.equal(card.children.at(-1).tagName, "audio");
   assert.equal(card.children.at(-1).controls, true);
   assert(calls.some(call => call.url === "/api/phrases/audio?fix_id=db%3A1"));
-});
-
-test("admin user edit sends expected version and requires confirmation", async () => {
-  const { get, view, calls } = await managementFixture();
-  await view("users");
-  const row = get("users-list").children[0].children[1];
-  row.children[0].value = "editor";
-  await row.children[3].fire("click");
-  const call = calls.find(c => c.method === "PUT");
-  assert.equal(call.url, "/api/users/2002");
-  assert.equal(call.body.role, "editor");
-  assert.equal(call.body.expected_version, "a".repeat(64));
-});
-
-test("settings form sends typed values and expected revision", async () => {
-  const { get, view, calls } = await managementFixture();
-  await view("settings");
-  get("setting-llm").checked = false;
-  get("setting-vad").value = "3";
-  await get("recognition-form").fire("submit");
-  const call = calls.find(c => c.method === "PUT");
-  assert.equal(call.url, "/api/recognition/settings");
-  assert.equal(call.body.values.USE_LLM, false);
-  assert.equal(call.body.values.VAD_LEVEL, 3);
-  assert.equal(call.body.expected_revision, 1);
-  assert.match(get("recognition-feedback").textContent, /Перезапусти/);
 });
 
 async function correctionFixture(autoClose, hasAudio = false, check = () => ({ issues: [], formatted: null })) {
@@ -298,18 +250,6 @@ test("editor can save twice without auto-close using the latest expected text", 
   assert.equal(writes.length, 2);
   assert.equal(writes[1].expected_text, "Віра 68");
   assert.equal(isClosed(), false);
-});
-
-test("adding a dictionary row focuses and reveals the new final row", async () => {
-  const { get, view } = await managementFixture("editor");
-  await view("dictionaries");
-  await get("dictionary-add").fire("click");
-  const row = get("dictionary-entries").children.at(-1);
-  assert.equal(row.children[1].value, "");
-  assert.equal(row.children[1].focused, true);
-  assert.equal(row.children[1].scrolled.block, "center");
-  assert.equal(row.classList.contains("dictionary-row-new"), true);
-  assert.match(get("dictionary-feedback").textContent, /Новий рядок додано/);
 });
 
 function keyboardFixture(nativeMethod) {
@@ -390,15 +330,6 @@ test("editor explains when an old phrase has no linked audio", async () => {
   const { get } = await correctionFixture(false, false);
   assert.equal(get("editor-audio-load").disabled, true);
   assert.match(get("editor-audio-feedback").textContent, /не прив’язано/);
-});
-
-test("admin can assign a friendly user name", async () => {
-  const { get, view, calls } = await managementFixture();
-  await view("users");
-  const card = get("users-list").children[0];
-  card.children.at(-1).value = "Оператор смены";
-  await card.children[1].children[3].fire("click");
-  assert.equal(calls.find(call => call.method === "PUT").body.display_name, "Оператор смены");
 });
 
 function gateFixture(fetch, { hasAuth = true } = {}) {
@@ -484,40 +415,51 @@ test("connection loss during work shows a banner but keeps the panel", async () 
   assert.equal(get("connection-lost").hidden, true);
 });
 
-test("enable after OFF returns a mode the role is allowed to use", async () => {
+function notifyFixture(role, allowed) {
   const { doc, get } = documentFixture();
   const calls = [];
+  const radios = ["commands", "watch", "all", "off"].map(value => {
+    const radio = new Element("input");
+    const option = new Element("label");
+    radio.value = value;
+    radio.closest = () => option;
+    option.toggleAttribute = () => {};
+    return radio;
+  });
+  doc.querySelectorAll = () => radios;
+  doc.visibilityState = "visible";
   const context = {
     document: doc, Error,
     window: {
       Telegram: { WebApp: { initData: "signed-data" } },
       setInterval: () => 1, setTimeout, clearTimeout,
       Radio345: {
-        user: async () => ({ role: "editor" }),
+        user: async () => ({ role }),
         request: async (path, method, body) => {
           calls.push({ method, body });
-          return method === "PUT" ? { mode: body.mode, allowed: ["commands", "off", "watch"] }
-            : { mode: "off", allowed: ["commands", "off", "watch"] };
+          return method === "PUT" ? { mode: body.mode, allowed } : { mode: "commands", allowed };
         }
       }
     }
   };
-  doc.querySelectorAll = () => [];
-  doc.visibilityState = "visible";
   vm.runInNewContext(source("notifications.js"), context);
-  await tick();
-  await get("silence-toggle").fire("click");
-  const put = calls.find(call => call.method === "PUT");
-  assert.ok(put, "кнопка «Увімкнути» не ігнорується");
-  assert.equal(put.body.mode, "commands");
-});
+  return { get, calls, radios };
+}
 
-test("stats distinguish corrected phrases from active rules", async () => {
-  const { get } = await managementFixture("editor");
-  assert.equal(get("rules-count").textContent, 4);
-  const learning = get("learning-detail").textContent;
-  assert.match(learning, /кандидатів 3, підтверджень 5, активних правил 1, очікують дозволу 1/);
-  assert.match(learning, /Поточний запуск приймача: Qwen змінив 7 фраз, правила застосовано 2 раз/);
+test("editor switches own mode with one tap; modes of other roles are hidden", async () => {
+  const { get, calls, radios } = notifyFixture("editor", ["commands", "off", "watch"]);
+  await tick();
+  const all = radios.find(radio => radio.value === "all");
+  assert.equal(all.disabled, true);
+  assert.equal(all.closest().hidden, true);
+  assert.equal(get("notification-mode-label").textContent, "Команди");
+  const off = radios.find(radio => radio.value === "off");
+  off.checked = true;
+  await off.fire("change");
+  const put = calls.find(call => call.method === "PUT");
+  assert.equal(put.body.mode, "off");
+  assert.equal(get("notification-mode-label").textContent, "Тиша");
+  assert.match(get("notify-mode-feedback").textContent, /лише для вас/);
 });
 
 test("editor shows learning report and keeps window open for pending review", async () => {
@@ -559,17 +501,6 @@ test("editor shows learning report and keeps window open for pending review", as
   const decision = calls.find(call => call.path === "/api/corrections/learning");
   assert.deepEqual(JSON.parse(JSON.stringify(decision.body)), { fix_id: "mem:" + "a".repeat(32), expected_text: "Віра 84, іду на позицію",
     original: "вира", corrected: "віра", decision: "confirmed" });
-});
-
-test("admin explicitly sets a new user's notification mode", async () => {
-  const { get, calls } = await managementFixture("admin");
-  get("new-user-id").value = "4004";
-  get("new-user-role").value = "editor";
-  get("new-user-mode").value = "off";
-  await get("user-add-form").fire("submit");
-  const call = calls.find(c => c.method === "PUT");
-  assert.equal(call.body.notify_mode, "off");
-  assert.equal(call.body.role, "editor");
 });
 
 test("viewer never requests personal notification controls", async () => {

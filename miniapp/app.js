@@ -1,13 +1,13 @@
 "use strict";
 
 // Navigation. API-based correction editing is in correction-editor.js.
-const availableViews = new Set(["home", "corrections", "dictionaries", "settings", "users"]);
+// Словники, навчання, користувачі й налаштування розпізнавання — у локальній панелі на Mac.
+const availableViews = new Set(["home", "corrections"]);
 
 function showView(name) {
   if (!availableViews.has(name)) return;
   const role = document.body.dataset.role;
   if (role === "viewer" && name !== "home") return;
-  if (role === "editor" && name === "users") return;
   for (const section of document.querySelectorAll(".view")) {
     const active = section.id === `view-${name}`;
     section.hidden = !active;

@@ -12,6 +12,7 @@ from core.word_learning import analyze_word_changes
 from core.word_rule_engine import apply_verified_word_rules
 from services.event_store import save_event
 from services.miniapp_correction_editor import save_edit_draft, decide_learning
+from services.miniapp_management import ManagementConflict, approve_rule, learning_queue, overview as management_overview
 from services.telegram_phrase_store import register_phrase
 from services.word_store import init_word_db, load_active_word_rules
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура)
@@ -244,23 +245,23 @@ def test_confirmations_from_sources_conflicts_and_approval(setup):
     seed_dictionary(path)
     for text in ("Маяк 68, іду на пазіцію", "Дуб 12, займаю пазіцію"):
         edit(path, event(path, text), text, text.replace("пазіцію", "позицію"))
-    rules = client.get("/api/word-rules", headers=auth_header(EDITOR)).json()["items"]
-    rule = rules[0]
+    rule = learning_queue(path)["items"][0]
     assert (rule["original"], rule["corrected"], rule["confirmations"], rule["status"]) == ("пазіцію", "позицію", 2, "active")
     assert rule["kind"] == "word" and rule["needs_approval"] and not rule["applies"]
     assert apply_verified_word_rules("іду на пазіцію", path, dictionaries()) == "іду на пазіцію"
 
-    url = f"/api/word-rules/{rule['id']}/approval"
-    assert client.put(url, json={"approved": True, "expected_version": rule["version"]}, headers=auth_header(VIEWER)).status_code == 403
-    assert client.put(url, json={"approved": True, "expected_version": "0" * 64}, headers=auth_header(EDITOR)).status_code == 409
-    assert client.put(url, json={"approved": True, "expected_version": rule["version"]}, headers=auth_header(EDITOR)).status_code == 200
+    with pytest.raises(PermissionError):
+        approve_rule(path, VIEWER, rule["id"], True, rule["version"])
+    with pytest.raises(ManagementConflict):
+        approve_rule(path, EDITOR, rule["id"], True, "0" * 64)
+    approve_rule(path, EDITOR, rule["id"], True, rule["version"])
     assert apply_verified_word_rules("іду на пазіцію", path, dictionaries()) == "іду на позицію"
 
     # Третє джерело пропонує інший варіант: конфлікт вимикає застосування.
     text = "Маяк 70, бачу пазіцію"
     edit(path, event(path, text), text, "Маяк 70, бачу позіцію")
     assert apply_verified_word_rules("іду на пазіцію", path, dictionaries()) == "іду на пазіцію"
-    overview = client.get("/api/overview", headers=auth_header(EDITOR)).json()
+    overview = management_overview(path)
     assert overview["learning"]["active_rules"] == 0 and overview["learning"]["candidates"] == 2
     assert overview["learning"]["confirmations"] == 3
 
@@ -270,11 +271,10 @@ def test_callsign_rules_need_no_approval_and_cannot_be_approved(setup):
     seed_dictionary(path)
     for before, after in (("Вира 68, я Дуб 12", "Віра 68, я Дуб 14"), ("Вира 84, прийом", "Віра 84, прийом")):
         edit(path, event(path, before), before, after)
-    rule = client.get("/api/word-rules", headers=auth_header(EDITOR)).json()["items"][0]
+    rule = learning_queue(path)["items"][0]
     assert rule["kind"] == "callsign" and rule["applies"] and not rule["needs_approval"]
-    response = client.put(f"/api/word-rules/{rule['id']}/approval",
-                          json={"approved": True, "expected_version": rule["version"]}, headers=auth_header(EDITOR))
-    assert response.status_code == 422
+    with pytest.raises(ValueError):
+        approve_rule(path, EDITOR, rule["id"], True, rule["version"])
 
 
 def test_migration_keeps_rules_and_never_activates_them_retroactively(tmp_path):
@@ -311,10 +311,9 @@ def test_mixed_correction_trains_rule_that_fixes_next_message_keeping_its_number
         assert response.status_code == 200
         assert [c["original"] for c in response.json()["learning"]["candidates"]] == ["пазіцію"]
 
-    rule = client.get("/api/word-rules", headers=auth_header(ADMIN)).json()["items"][0]
+    rule = learning_queue(path)["items"][0]
     assert rule["status"] == "active" and rule["needs_approval"]
-    client.put(f"/api/word-rules/{rule['id']}/approval", headers=auth_header(ADMIN),
-               json={"approved": True, "expected_version": rule["version"]}).raise_for_status()
+    approve_rule(path, ADMIN, rule["id"], True, rule["version"])
 
     from core.pipeline import build_text_pipeline
     from core.analyzer import correction_is_safe
@@ -332,16 +331,3 @@ def test_mixed_correction_trains_rule_that_fixes_next_message_keeping_its_number
     assert process("пазіцію 84") == "пазіцію 84", "слово перед номером — місце позивного"
     assert process("пазіцію сто") == "пазіцію сто"
     assert process("опозиція пазіціями 68") == "опозиція пазіціями 68", "лише цілі слова"
-
-
-def test_qwen_counters_report_whether_receiver_data_is_fresh(tmp_path):
-    import json
-    import time
-    from services.miniapp_management import automatic_changes
-    path = tmp_path / "diagnostics.json"
-    path.write_text(json.dumps({"updated_at": time.time(), "counters": {"llm.changed": 4, "learned.applied": 1}}))
-    fresh = automatic_changes(path)
-    assert fresh["fresh"] is True and fresh["qwen_changed"] == 4 and fresh["rules_applied"] == 1
-    path.write_text(json.dumps({"updated_at": time.time() - 600, "counters": {"llm.changed": 4}}))
-    assert automatic_changes(path)["fresh"] is False
-    assert automatic_changes(tmp_path / "missing.json") == {"available": False}

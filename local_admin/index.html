@@ -176,7 +176,17 @@
 
       <!-- Користувачі -->
       <section data-panel="users" hidden>
-        <article class="panel"><h2>Користувачі</h2><p class="muted small">Ролі й режими змінюються в Mini App адміністратором.</p><div class="table-wrap"><table id="users"></table></div></article>
+        <article class="panel"><div class="panel-head"><h2>Користувачі</h2><button id="users-refresh" class="ghost">Оновити</button></div>
+          <p class="muted small">Спостерігач бачить лише стан приймача. Редактор виправляє фрази в Mini App. Адміністратор ще й ставить приймач на паузу та отримує службові повідомлення. Режим сповіщень кожен може змінити й сам у Mini App; «усі фрази» — лише для адміністратора. Останнього активного адміністратора вимкнути не можна.</p>
+          <div class="table-wrap"><table id="users"></table></div></article>
+        <article class="panel"><h2>Додати користувача</h2>
+          <p class="muted small">Telegram ID людина може дізнатися, написавши боту, або в боті на кшталт @userinfobot.</p>
+          <form id="user-add"><div class="fields">
+            <label>Telegram ID<input id="new-user-id" inputmode="numeric" pattern="[1-9][0-9]{0,18}" required></label>
+            <label>Назва (необов’язково)<input id="new-user-name" maxlength="80"></label>
+            <label>Роль<select id="new-user-role"><option value="viewer">Спостерігач</option><option value="editor" selected>Редактор</option><option value="admin">Адміністратор</option></select></label>
+            <label>Сповіщення<select id="new-user-mode"><option value="commands">команди й позивні</option><option value="watch">спостереження</option><option value="off">вимкнено</option><option value="all">усі фрази</option></select></label>
+          </div><button>Надати доступ</button></form></article>
       </section>
 
       <!-- Навчання за правками -->

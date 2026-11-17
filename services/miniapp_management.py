@@ -157,19 +157,6 @@ def _rule_item(row, names):
     return item
 
 
-def list_rules(db_path, query="", offset=0, limit=20):
-    from services.word_store import dictionary_names
-    with get_db(db_path) as db:
-        names = dictionary_names(db)
-        rows = db.execute(
-            f"SELECT {_RULE_COLUMNS} FROM word_corrections "
-            "WHERE instr(original, ?) > 0 OR instr(corrected, ?) > 0 "
-            "ORDER BY id DESC LIMIT ? OFFSET ?", (query.lower(), query.lower(), limit + 1, offset),
-        ).fetchall()
-    return {"items": [_rule_item(row, names) for row in rows[:limit]],
-            "has_more": len(rows) > limit}
-
-
 def _rule_state(item, min_confirmations):
     """Чому правило діє або не діє — одним словом для панелі."""
     if item["kind"] == "blocked":
@@ -366,22 +353,3 @@ def overview(db_path):
     return {"events": events[0], "last_event_at": events[1], "active_rules": learning["active_rules"],
             "corrections": corrections, "total_rules": total_rules, "learning": learning,
             "dictionary_entries": sum(dictionaries.values()), "dictionaries": dictionaries}
-
-
-def automatic_changes(diagnostics_path):
-    """Лише числа з діагностики приймача: зміни Qwen і застосування правил."""
-    try:
-        with open(diagnostics_path, encoding="utf-8") as source:
-            data = json.load(source)
-        counters = data.get("counters") or {}
-    except (OSError, ValueError, AttributeError):
-        return {"available": False}
-    number = lambda key: counters.get(key) if type(counters.get(key)) is int else 0
-    updated = data.get("updated_at") if isinstance(data.get("updated_at"), (int, float)) else None
-    # Приймач пише знімок кожні ~30 с; старіший за 2 хв — це вже минулий запуск.
-    fresh = updated is not None and 0 <= time.time() - updated < 120
-    return {"available": True, "fresh": fresh, "updated_at": updated,
-            "started_at": data.get("started_at") if isinstance(data.get("started_at"), (int, float)) else None,
-            "qwen_changed": number("llm.changed"), "qwen_accepted": number("llm.accepted"),
-            "qwen_rejected": number("llm.rejected_dictionary") + number("llm.rejected_rewrite"),
-            "rules_applied": number("learned.applied")}

@@ -32,4 +32,4 @@ def test_all_referenced_assets_are_published_and_ids_unique():
     assert len(html.ids) == len(set(html.ids))
     assert html.files.index("client.js") < html.files.index("api.js")
     assert html.files.index("client.js") < html.files.index("correction-editor.js")
-    assert html.files.index("client.js") < html.files.index("management.js")
+    assert html.files.index("client.js") < html.files.index("phrases.js")

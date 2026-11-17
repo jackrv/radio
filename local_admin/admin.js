@@ -810,19 +810,57 @@
   $("activity-user").addEventListener("change", event => action(() => activity(event.target.value)));
 
   async function users() {
-    if (!data) await overview();
+    const result = await request("/api/users");
     const table = $("users"), head = el("tr");
     table.replaceChildren();
-    for (const h of ["Ім’я", "Telegram", "Роль", "Сповіщення", "Стан"]) head.append(el("th", "", h));
+    for (const h of ["Користувач", "Назва", "Роль", "Сповіщення", "Доступ", ""]) head.append(el("th", "", h));
     table.append(head);
-    for (const u of data.users) {
-      const row = el("tr"), role = el("span", `role ${u.role}`, ROLES[u.role] || u.role);
-      const roleCell = el("td"); roleCell.append(role);
-      row.append(el("td", "", u.name || "—"), el("td", "", `${u.username ? "@" + u.username + " · " : ""}${u.user_id}`),
-        roleCell, el("td", "", MODES[u.mode] || u.mode), el("td", u.enabled ? "good" : "alert", u.enabled ? "активний" : "вимкнений"));
-      table.append(row);
+    for (const u of result.items) {
+      const row = el("tr"), who = el("td");
+      who.append(el("div", "", u.telegram_name || (u.username ? "@" + u.username : "—")),
+        el("div", "muted small", `${u.username && u.telegram_name ? "@" + u.username + " · " : ""}${u.user_id}`));
+      const name = el("input"); name.maxLength = 80; name.value = u.display_name || ""; name.placeholder = "ім’я з Telegram";
+      const role = el("select");
+      for (const [k, v] of Object.entries(ROLES)) { const o = el("option", "", v); o.value = k; role.append(o); }
+      role.value = u.role;
+      const mode = el("select");
+      for (const [k, v] of Object.entries(MODES)) { const o = el("option", "", v); o.value = k; mode.append(o); }
+      mode.value = u.notify_mode;
+      const restrict = () => {
+        for (const o of mode.options) o.disabled = o.value === "all" && role.value !== "admin";
+        if (mode.value === "all" && role.value !== "admin") mode.value = "commands";
+      };
+      role.addEventListener("change", restrict); restrict();
+      const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = u.enabled;
+      const access = el("label", "inline"); access.append(enabled, document.createTextNode(" увімкнено"));
+      const save = el("button", "", "Зберегти");
+      save.addEventListener("click", () => action(async () => {
+        if (u.role === "admin" && (role.value !== "admin" || !enabled.checked)
+            && !confirm("Забрати права адміністратора чи доступ? Якщо це ваш обліковий запис, керувати з Mini App ви вже не зможете.")) return;
+        await request(`/api/users/${u.user_id}`, "PUT", { role: role.value, enabled: enabled.checked,
+          display_name: name.value, notify_mode: mode.value, expected_version: u.version });
+        await users(); note("Користувача збережено.");
+      }));
+      const cells = [who, el("td"), el("td"), el("td"), el("td"), el("td")];
+      cells[1].append(name); cells[2].append(role); cells[3].append(mode); cells[4].append(access); cells[5].append(save);
+      row.append(...cells); table.append(row);
     }
   }
+  $("users-refresh").addEventListener("click", () => action(users));
+  $("new-user-role").addEventListener("change", () => {
+    const mode = $("new-user-mode"), admin = $("new-user-role").value === "admin";
+    for (const o of mode.options) o.disabled = o.value === "all" && !admin;
+    if (mode.value === "all" && !admin) mode.value = "commands";
+  });
+  $("user-add").addEventListener("submit", event => { event.preventDefault(); action(async () => {
+    const id = $("new-user-id").value.trim();
+    if (!/^[1-9][0-9]{0,18}$/.test(id)) throw new Error("Telegram ID — лише цифри");
+    await request(`/api/users/${id}`, "PUT", { role: $("new-user-role").value, enabled: true,
+      display_name: $("new-user-name").value, notify_mode: $("new-user-mode").value, expected_version: null });
+    $("new-user-id").value = ""; $("new-user-name").value = "";
+    await users(); note(`Доступ для ${id} надано.`);
+  }); });
+  $("new-user-role").dispatchEvent?.(new Event("change"));
 
   // ---------- Система ----------
   async function system() {

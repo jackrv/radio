@@ -62,9 +62,8 @@ def test_preview_uses_actual_role_permissions_and_all_writes_are_blocked(local,r
     assert client.get(prefix+"/api/me?selected=admin").json()["role"]==role
     assert client.get(prefix+"/api/status").status_code==200
     assert client.get(prefix+"/api/phrases").status_code==(403 if role=="viewer" else 200)
-    assert client.get(prefix+"/api/users").status_code==(200 if role=="admin" else 403)
+    assert client.get(prefix+"/api/users").status_code==404, "керування користувачами — лише в панелі"
     before=list_users(path,1001)
-    assert client.put(prefix+"/api/users/1001",json={"role":"viewer","enabled":False},headers={"Origin":ORIGIN}).status_code==403
     assert client.put(prefix+"/api/notifications/mode",json={"mode":"off"},headers={"Origin":ORIGIN}).status_code==403
     assert list_users(path,1001)==before
 
@@ -121,25 +120,6 @@ def test_samples_invalid_audio_path_traversal_limit_and_symlink(tmp_path):
     with pytest.raises(ValueError):delete_sample(directory,"../secret.wav")
     linked=tmp_path/"linked";linked.symlink_to(directory,target_is_directory=True)
     with pytest.raises(ValueError):add_sample(linked,wav(),confirmed_isolated=True)
-
-
-def test_phrase_enrollment_requires_admin_confirmation_and_available_audio(setup,tmp_path):
-    client,path=setup
-    from services.telegram_phrase_store import register_phrase
-    from services.telegram_media_store import remember_voice
-    register_phrase(path,"a"*32,"Звук")
-    fix="mem:"+"a"*32
-    remember_voice(path,fix,"test-file")
-    payload={"fix_id":fix,"confirmed_isolated":True}
-    for uid in [2002,3003]:
-        assert client.put("/api/notification-sounds/from-phrase",json=payload,headers=auth_header(uid)).status_code==403
-    with patch("api.management.download_voice",return_value=b"fake") as download, patch("services.notification_samples.ogg_to_wav",return_value=wav()), patch("config.NOTIFICATION_SOUNDS_DIR",tmp_path/"samples"):
-        payload["confirmed_isolated"]=False
-        assert client.put("/api/notification-sounds/from-phrase",json=payload,headers=auth_header(1001)).status_code==422
-        download.assert_not_called()
-        payload["confirmed_isolated"]=True
-        assert client.put("/api/notification-sounds/from-phrase",json=payload,headers=auth_header(1001)).status_code==200
-    assert len(list_samples(tmp_path/"samples")["items"])==1
 
 
 def test_real_ffmpeg_conversion_creates_bounded_readable_pcm_wav():

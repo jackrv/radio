@@ -4,24 +4,20 @@
 
   const telegram = window.Telegram?.WebApp;
   const fieldset = document.getElementById("notify-mode-fieldset");
-  const toggle = document.getElementById("silence-toggle");
   const label = document.getElementById("notification-mode-label");
-  const detail = document.getElementById("notification-mode-detail");
-  const settingsValue = document.getElementById("settings-mode-value");
   const feedback = document.getElementById("notify-mode-feedback");
   const radios = Array.from(
     document.querySelectorAll('input[name="notify-mode"]')
   );
 
   const names = {
-    all: "Усі повідомлення",
-    watch: "Список спостереження",
-    commands: "Команди й позивні",
-    off: "Повна тиша"
+    all: "Усі",
+    watch: "Спостереження",
+    commands: "Команди",
+    off: "Тиша"
   };
 
   let currentMode = null;
-  let previousMode = "all";
   let ready = false;
   let allowed = [];
   let busy = false;
@@ -33,31 +29,17 @@
   }
 
   function render() {
-    const name = names[currentMode] || "Невідомо";
-
-    label.textContent = name;
-    settingsValue.textContent = name;
-
-    detail.textContent = currentMode === "off"
-      ? "Автоматичні сповіщення вимкнено. Приймання триває."
-      : currentMode
-        ? "Особистий режим: застосовується до ваших нових сповіщень."
-        : "Немає даних від API.";
-
-    toggle.textContent = currentMode === "off"
-      ? "Увімкнути"
-      : "Вимкнути";
-
-    const disabled = !ready || busy || !currentMode;
-
-    toggle.disabled = disabled;
-    fieldset.disabled = disabled;
+    label.textContent = names[currentMode] || "—";
+    fieldset.disabled = !ready || busy || !currentMode;
 
     for (const radio of radios) {
       radio.checked = radio.value === currentMode;
       // «Усі повідомлення» доступні лише адміністратору; сервер перевіряє теж.
       radio.disabled = !allowed.includes(radio.value);
-      radio.closest(".notify-option")?.toggleAttribute("aria-disabled", radio.disabled);
+      const option = radio.closest(".notify-option");
+      option?.toggleAttribute("aria-disabled", radio.disabled);
+      // Недоступний ролі режим не показуємо, щойно відомо, що дозволено.
+      if (option && allowed.length) option.hidden = radio.disabled;
     }
   }
 
@@ -73,16 +55,6 @@
     currentMode = mode;
     if (Array.isArray(allowedModes)) {
       allowed = allowedModes.filter((value) => value in names);
-      // «Увімкнути» повертає попередній режим; «all» може бути недоступним для ролі.
-      if (!allowed.includes(previousMode)) {
-        previousMode = allowed.includes("commands")
-          ? "commands"
-          : allowed.find((value) => value !== "off") || previousMode;
-      }
-    }
-
-    if (mode !== "off") {
-      previousMode = mode;
     }
 
     render();
@@ -106,7 +78,7 @@
       }
 
       applyMode(data.mode, data.allowed);
-      message(allowed.includes("all") ? "" : "Режим «Усі повідомлення» доступний лише адміністратору.");
+      message(currentMode === "off" ? "Сповіщення вимкнено лише для вас. Приймання триває." : "");
     } catch (error) {
       if (expectedGeneration === generation && !busy) {
         message(`Не вдалося оновити режим: ${error.message}`, true);
@@ -136,7 +108,7 @@
       );
 
       applyMode(result.mode, result.allowed);
-      message("Налаштування збережено.");
+      message(result.mode === "off" ? "Сповіщення вимкнено лише для вас. Приймання триває." : "Збережено.");
     } catch (error) {
       message(`Помилка збереження: ${error.message}`, true);
     } finally {
@@ -144,11 +116,6 @@
       render();
     }
   }
-
-  toggle.addEventListener("click", () => {
-    const target = currentMode === "off" ? previousMode : "off";
-    updateMode(target);
-  });
 
   for (const radio of radios) {
     radio.addEventListener("change", () => {
@@ -181,9 +148,7 @@
         }
       });
     } catch (error) {
-      label.textContent = "Помилка підключення";
-      detail.textContent = error.message;
-      settingsValue.textContent = "Недоступно";
+      label.textContent = "Недоступно";
       message(error.message, true);
     }
   }

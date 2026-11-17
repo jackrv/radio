@@ -20,12 +20,13 @@ import sqlite3
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
 import uvicorn
 
 import config
 from api.app import create_app
-from api.management import RuleApproval, RuleUpdate, SettingsUpdate
 from services import miniapp_management as store
 from services.notification_samples import add_sample, delete_sample, list_samples, MAX_UPLOAD_BYTES, validate_wav
 from services import notification_eval
@@ -99,6 +100,43 @@ class DictionaryEntry(BaseModel):
 class DictionaryUpdate(BaseModel):
     entries: list[DictionaryEntry] = Field(max_length=1000)
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RuleApproval(BaseModel):
+    approved: bool = Field(strict=True)
+    expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RuleUpdate(BaseModel):
+    disabled: bool = Field(strict=True)
+    expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class UserUpdate(BaseModel):
+    role: Literal["admin", "editor", "viewer"]
+    enabled: bool = Field(strict=True)
+    expected_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    display_name: str | None = Field(default=None, max_length=80)
+    notify_mode: Literal["all", "watch", "commands", "off"] | None = None
+
+
+class RecognitionValues(BaseModel):
+    USE_LLM: bool = Field(strict=True)
+    VAD_LEVEL: int = Field(ge=0, le=3, strict=True)
+    SILENCE_END_MS: int = Field(ge=150, le=3000, strict=True)
+    MIN_SPEECH_MS: int = Field(ge=90, le=3000, strict=True)
+    MAX_SEGMENT_S: int = Field(ge=3, le=60, strict=True)
+
+    @model_validator(mode="after")
+    def valid_duration(self):
+        if self.MIN_SPEECH_MS >= self.MAX_SEGMENT_S * 1000:
+            raise ValueError("Мінімальна тривалість мовлення має бути меншою за максимальний сегмент")
+        return self
+
+
+class SettingsUpdate(BaseModel):
+    values: RecognitionValues
+    expected_revision: int = Field(ge=0, strict=True)
 
 
 class PhraseSample(BaseModel):
@@ -679,6 +717,24 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     @app.put("/api/learning/{rule_id}/approval")
     def learning_approval(rule_id: int, payload: RuleApproval, admin=Depends(actor)):
         return _rule_call(store.approve_rule, admin, rule_id, payload.approved, payload.expected_version)
+
+    @app.get("/api/users")
+    def users_list(admin=Depends(actor)):
+        """Користувачі з версіями для правки (ролі, доступ, назва, режим сповіщень)."""
+        return store.list_users(db_path, admin)
+
+    @app.put("/api/users/{user_id}")
+    def user_update(user_id: int, payload: UserUpdate, admin=Depends(actor)):
+        """Ті самі перевірки, що були в Mini App: версія, останній адміністратор, дозволені режими."""
+        try:
+            return store.write_user(db_path, admin, user_id, payload.role, payload.enabled,
+                                    payload.expected_version, payload.display_name, payload.notify_mode)
+        except store.ManagementConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except PermissionError:
+            raise HTTPException(403, "Недостатньо прав") from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.get("/api/activity")
     def activity(user_id: int | None = None, admin=Depends(actor)):

@@ -68,7 +68,8 @@ def test_local_history_controls_exist_and_ids_are_unique():
     parser = Ids()
     parser.feed((root / "local_admin/index.html").read_text())
     assert len(parser.ids) == len(set(parser.ids))
-    script = (root / "local_admin/admin.js").read_text()
+    from api.local_dashboard import panel_script
+    script = panel_script()
     for name in re.findall(r'\$\("(history-[a-z-]+)"\)', script):
         assert name in parser.ids
     assert 'await diagnosticHistory();' in script

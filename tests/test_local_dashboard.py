@@ -163,7 +163,7 @@ def test_manual_backup_from_dashboard(setup,tmp_path):
 
 def test_events_by_hour_buckets(tmp_path):
     import sqlite3
-    from api.local_dashboard import events_by_hour
+    from api.panel.common import events_by_hour
     from services.event_store import init_db
     db=tmp_path/"e.db"; init_db(db)
     now=1_800_001_800  # 30 хв після початку години

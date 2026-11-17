@@ -101,8 +101,9 @@ radio.py, config.py       приймач і базові параметри
 start_radio345.py         лаунчер служб
 core/                     аудіо, VAD, Whisper, аналіз тексту, шаблони, фільтр сигналів
 services/                 SQLite, словники, списки, навчання, Telegram, архів, підказки
-api/                      FastAPI для Mini App і локальна панель
-local_admin/              інтерфейс локальної панелі
+api/                      FastAPI для Mini App; local_dashboard.py — вхід і безпека панелі
+api/panel/                ендпоінти панелі за розділами (огляд, архів, розпізнавання, сигнали, люди, система)
+local_admin/              сторінка панелі; js/ — скрипт за розділами (сервер склеює їх в один /admin.js)
 miniapp/                  Mini App (HTML/CSS/JS без збирання, GitHub Pages)
 tools/                    лабораторія: asr_lab, text_replay
 tests/                    pytest і node-тести на тимчасових даних

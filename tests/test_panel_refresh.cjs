@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'../local_admin/admin.js'),'utf8');
+const source=require('./panel_source.cjs');
 const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 function refreshHarness(view='dictionaries') {
  const nodes=new Map(),events={},calls=[];

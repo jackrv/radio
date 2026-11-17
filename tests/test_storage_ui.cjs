@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'../local_admin/admin.js'),'utf8');
+const source=require('./panel_source.cjs');
 function harness({missing=false,error=false}={}) {
  const nodes=[],calls=[],box={textContent:'',replaceChildren(){nodes.length=0;},append(...items){nodes.push(...items);}};
  const data={audio:{available:!missing,bytes:90,max_bytes:100,remaining_bytes:10,protected_bytes:60,protected_count:1,unreviewed_count:2,unreviewed_bytes:30,retention_days:7,due_count:0,due_bytes:0,metadata_bytes:1},logs:[],

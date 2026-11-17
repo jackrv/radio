@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const source = fs.readFileSync(path.join(__dirname, '../local_admin/admin.js'), 'utf8');
+const source = require('./panel_source.cjs');
 
 function harness() {
   const listeners = {}, panels = {}, fields = {}, frames = [], scrolls = [], loads = [];
@@ -125,4 +125,12 @@ test('preview loads on its tab and releases its iframe on leaving',async()=>{
   assert.equal(h.context.$('preview').src,'/preview/viewer/');
   h.context.navigate('dictionaries');h.flush();assert.equal(h.context.$('preview').src,'about:blank');
   h.context.navigate('preview');h.flush();assert.equal(h.context.$('preview').src,'/preview/viewer/');
+});
+
+test('assembled panel script is valid JavaScript and matches what the server sends', () => {
+  new vm.Script(source);
+  const { execFileSync } = require('node:child_process');
+  const served = execFileSync(path.join(__dirname, '../.venv/bin/python'), ['-c', 'from api.local_dashboard import panel_script; import sys; sys.stdout.write(panel_script())'],
+    { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
+  assert.equal(served, source);
 });

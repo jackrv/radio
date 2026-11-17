@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const script = fs.readFileSync(path.join(__dirname, '../local_admin/admin.js'), 'utf8');
+const script = require('./panel_source.cjs');
 const block = script.slice(script.indexOf('  const TODO_VIEWS ='), script.indexOf('  const loaders ='));
 
 function harness(page, extraSummary = {}, options = {}) {

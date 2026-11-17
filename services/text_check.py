@@ -17,7 +17,7 @@ import re
 import sqlite3
 
 import callsigns as callsigns_module
-from callsigns import FOLD, basic_normalize
+from callsigns import FOLD, NUMBER_WORDS, basic_normalize
 from core.template_text import _TOKEN, template_text
 
 # Слова з апострофом, які часто пишуть без нього (ключ — без апострофа).
@@ -321,6 +321,45 @@ def _code_issues(text, codes, names):
     return issues
 
 
+# Слова, які стоять перед числом, але не є позивним: службові, звороти, одиниці.
+NOT_CALLSIGN_WORDS = {"я", "на", "до", "як", "та", "і", "й", "не", "з", "по", "о", "в", "у", "за", "від", "це",
+                      "прийом", "прийнято", "прийняв", "номер", "код", "квадрат", "точка", "хвилин", "хвилини",
+                      "секунд", "метрів", "кілометрів", "година", "години", "раз", "рази", "разів"}
+
+
+def _unknown_callsign_issues(text, callsigns, other_names, covered):
+    """Слово перед номером, якого немає в жодному словнику: можливо, новий позивний.
+
+    Лише підказка з готовим рядком для словника; оператор перевіряє на слух.
+    ``covered`` — слова, для яких уже є підказка написання (схоже на відомий позивний).
+    """
+    if callsigns is None:
+        return []
+    known = {n.translate(FOLD) for n in (*callsigns.names, *other_names)}
+    tokens = [m.group() for m in _TOKEN.finditer(text)]
+    issues, seen = [], set()
+    for i, word in enumerate(tokens[:-1]):
+        if word.isdigit() or not tokens[i + 1].isdigit():
+            continue
+        heard = basic_normalize(word)
+        folded = heard.translate(FOLD)
+        if (len(heard) < 3 or not heard.isalpha() or folded in known or heard in seen or heard in covered
+                or heard in NOT_CALLSIGN_WORDS or heard in NUMBER_WORDS or heard in callsigns_module.ORDINALS
+                or callsigns_module.CALLSIGN_ALIASES.get(heard) or heard in callsigns_module.dictionary_address_forms(known)):
+            continue
+        seen.add(heard)
+        # «Вишня, 42 42» — позивний і код (дві пари цифр), а не номер позивного.
+        code = (len(tokens[i + 1]) == 2 and i + 2 < len(tokens) and tokens[i + 2].isdigit() and len(tokens[i + 2]) == 2)
+        if code:
+            issue = _issue("info", f"«{heard}» немає у словнику позивних. Якщо це позивний (далі — код), додайте його без номера.")
+            issue["dictionary_entry"] = heard
+        else:
+            issue = _issue("info", f"«{heard}» немає у словнику позивних. Якщо це позивний — додайте його з номером {tokens[i + 1]}.")
+            issue["dictionary_entry"] = f"{heard}: {tokens[i + 1]}"
+        issues.append(issue)
+    return issues
+
+
 def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     """Зауваження до тексту оператора; ``formatted`` — текст з усіма виправленнями оформлення."""
     text = text or ""
@@ -328,6 +367,9 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     issues = _format_issues(text)
     issues += _spelling_issues(text, callsigns, known)
     issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None], callsigns)
+    covered = {basic_normalize(m) for i in issues if i["kind"] == "spelling"
+               for m in re.findall(r"а не «([^»]+)»", i["message"])}
+    issues += _unknown_callsign_issues(text, callsigns, known, covered)
     names = {n.translate(FOLD) for d in (callsigns, commands, watch) if d is not None for n in d.names}
     issues += _code_issues(text, codes, names)
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):

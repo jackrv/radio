@@ -375,23 +375,17 @@ nav button.active { box-shadow: none; }
 .save-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .recording-actions .save-primary { background: var(--lime); color: #172414; padding: 8px 16px; }
 .recording-actions .segmented button { font-size: 12px; padding: 5px 8px; }
-.save-status { flex-basis: 100%; }
+.save-status:empty { display: none; }
 .text-check-item { flex-wrap: wrap; gap: 4px 8px; padding: 3px 0; }
 .text-check-item::before { display: none; }
 .hint-kind { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 .hint-message { flex: 1 1 200px; }
 .text-check-item button { font-size: 12px; padding: 3px 7px; }
-.callsign-inline { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(130px, 1.4fr) auto auto; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-.callsign-inline > span, .callsign-inline > code { grid-column: 1 / -1; }
-.callsign-inline input { width: 100%; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 7px; }
-.callsign-inline code { overflow-wrap: anywhere; }
 #recordings.compact .recording-edit { display: block; font-size: 11px; }
 .system-controls button { display: inline-flex; align-items: center; gap: 8px; }
 .system-controls .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
 @media (max-width: 700px) {
-  .callsign-inline { grid-template-columns: 1fr 1fr; }
-  .callsign-inline input { grid-column: 1 / -1; }
-  .save-actions { margin-left: 0; }
+      .save-actions { margin-left: 0; }
 }
 .activity-users { display: flex; flex-wrap: wrap; gap: 6px; }
 .activity-users button { font-size: 12px; padding: 6px 10px; }

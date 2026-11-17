@@ -120,7 +120,7 @@ test('missing callsign number can be added from its hint without saving or repla
   const all = [];
   const visit = node => {all.push(node);for(const child of node.children || [])visit(child);};
   visit(ui.$('recordings'));
-  const add = all.find(node=>node.textContent==='＋ береза 57');
+  const add = all.find(node=>node.textContent==='＋ У словник: береза 57');
   const field = all.find(node=>node.className==='recording-text').children[1];
   field.value = 'незбережений текст оператора';
   add.listeners.click();
@@ -169,36 +169,24 @@ test('typing during save remains dirty after the earlier snapshot is acknowledge
   input.value='перша правка';form.listeners.input();assert.equal(ui.cards()[0].dirty,false);
 });
 
-test('inline callsign form keeps its values and the reference after a failed addition',async()=>{
-  const ui=harness({items:[item],total:1},{},{addError:'Конфлікт версій'});await ui.load();
-  const {input,nodes}=editor(ui);input.value='береза 57';input.selectionStart=0;input.selectionEnd=input.value.length;
-  nodes.find(n=>n.textContent==='＋ Позивний').listeners.click();
-  const form=nodes.find(n=>n.className==='callsign-inline');
-  const name=form.children.find(n=>n.placeholder==='Назва');
-  const number=form.children.find(n=>n.placeholder?.startsWith('Номер'));
-  assert.equal(name.value,'береза');assert.equal(number.value,'57');
-  await form.children.find(n=>n.textContent==='Додати').listeners.click();
-  assert.equal(form.hidden,false);assert.equal(name.value,'береза');assert.equal(input.value,'береза 57');
-  assert.equal(form.children.find(n=>n.className==='alert small').textContent,'Конфлікт версій');
-  assert.equal(ui.urls.some(url=>url.endsWith('/review')),false);
-});
-
 test('identical hints are grouped without hiding distinct remarks',async()=>{
   const hint={kind:'info',message:'Перевірте номер',dictionary_entry:'береза: 57'};
   const ui=harness({items:[{...item,text_check:{issues:[hint,hint,{kind:'format',message:'Пробіли'}]}}],total:1});await ui.load();
   const nodes=editor(ui).nodes;
   assert.equal(nodes.filter(n=>n.className?.startsWith('text-check-item')).length,2);
-  assert.equal(nodes.filter(n=>n.textContent==='＋ береза 57').length,1);
+  assert.equal(nodes.filter(n=>n.textContent==='＋ У словник: береза 57').length,1);
 });
 
 
-test('Enter in inline callsign fields adds the entry without submitting the reference',async()=>{
-  const ui=harness({items:[item],total:1});await ui.load();const {input,nodes}=editor(ui);
-  input.value='береза 57';input.selectionStart=0;input.selectionEnd=input.value.length;
-  nodes.find(n=>n.textContent==='＋ Позивний').listeners.click();
-  const inline=nodes.find(n=>n.className==='callsign-inline');
-  const event={key:'Enter',preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}};
-  inline.listeners.keydown(event);for(let i=0;i<8;i++)await Promise.resolve();
-  assert.equal(event.prevented,true);assert.equal(event.stopped,true);assert.deepEqual(ui.added,['береза: 57']);
-  assert.equal(ui.urls.some(url=>url.endsWith('/review')),false);
+
+test('callsign hints carry the add button; no separate form, save is the last action', async () => {
+  const ui = harness({items:[{...item, text_check:{issues:[{kind:'info', message:'Нового позивного немає', dictionary_entry:'клен: 48'}]}}],total:1});
+  await ui.load();
+  const nodes = editor(ui).nodes;
+  assert.equal(nodes.some(n=>n.textContent==='＋ Позивний' || n.className==='callsign-inline'), false);
+  assert.equal(nodes.filter(n=>n.textContent==='＋ У словник: клен 48').length, 1);
+  const actions = nodes.find(n=>n.className==='save-actions');
+  const last = actions.children.at(-1), before = actions.children.at(-2);
+  assert.equal(last.className, 'save-primary');
+  assert.equal(before.className, 'dirty-badge');
 });

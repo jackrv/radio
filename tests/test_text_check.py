@@ -158,3 +158,17 @@ def test_command_numbers_and_known_numbers_do_not_offer_callsign_creation():
         assert not any('dictionary_entry' in issue for issue in check(text)['issues'])
     result = check_text('злива 4343', None, COMMANDS)
     assert not any('dictionary_entry' in issue for issue in result['issues'])
+
+
+def test_unknown_word_before_a_number_offers_a_new_callsign_entry():
+    """Нового позивного немає в словнику: підказка з готовим рядком; опечатка відомого — ні."""
+    from callsigns import Callsigns, command_dictionary
+    from services.text_check import check_text
+    callsigns = Callsigns.from_lines(["береза: 56", "вишня"])
+    commands = command_dictionary(["злива 4242"])
+    entries = lambda text: [i.get("dictionary_entry") for i in check_text(text, callsigns, commands)["issues"] if i.get("dictionary_entry")]
+    assert entries("Клен 48, прийом") == ["клен: 48"]
+    assert entries("Клен, 14 77, прийом") == ["клен"], "після позивного код — пропонуємо без номера"
+    assert entries("Бериза 56, прийом") == [], "схоже на відомий позивний — підказка написання, не новий"
+    assert entries("Береза 18, прийом") == ["береза: 18"], "відомий позивний з новим номером"
+    assert entries("прийом 5") == [] and entries("злива 42 42") == [] and entries("квадрат 12") == []

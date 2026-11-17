@@ -382,7 +382,9 @@ def test_archive_listing_carries_text_check_of_references(setup, tmp_path):
         client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
         items={i["id"]:i for i in client.get("/api/recordings").json()["items"]}
     assert items[remark]["text_check"]["formatted"]=="Вишня, 42 42, з півночі"
-    assert items[clean]["text_check"]=={"issues":[],"formatted":None}
+    clean_issues=items[clean]["text_check"]["issues"]
+    assert [i.get("dictionary_entry") for i in clean_issues]==["вишня"], "лише пропозиція додати новий позивний (далі — код)"
+    assert items[clean]["text_check"]["formatted"] is None
     assert "text_check" not in items[pending]
 
 

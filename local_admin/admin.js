@@ -1808,8 +1808,8 @@
             row.append(fix);
           }
           if (issue.dictionary_entry) {
-            const add = el("button", "ghost small-button", `＋ ${issue.dictionary_entry.replace(":", "")}`); add.type = "button";
-            add.title = issue.dictionary_entry;
+            const add = el("button", "ghost small-button", `＋ У словник: ${issue.dictionary_entry.replace(":", "")}`); add.type = "button";
+            add.title = `Додати рядок «${issue.dictionary_entry}» у словник позивних (перевірте на слух)`;
             add.addEventListener("click", () => {
               if (add.disabled) return;
               add.disabled = true;
@@ -1855,51 +1855,14 @@
       const textField = el("label", "recording-text");
       textField.append(el("span", "muted small", "Почутий текст"), input);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
-      const addCallsignButton = el("button", "ghost", "＋ Позивний"); addCallsignButton.type = "button";
-      addCallsignButton.title = "Додати позивний або номер, не залишаючи еталон";
-      const quickAdd = el("div", "callsign-inline"); quickAdd.hidden = true;
-      const nameInput = el("input"), numberInput = el("input");
-      nameInput.type = numberInput.type = "text";
-      nameInput.maxLength = 100; numberInput.maxLength = 150;
-      nameInput.placeholder = "Назва"; numberInput.placeholder = "Номер або діапазон (необов’язково)";
-      nameInput.setAttribute("aria-label", "Назва позивного"); numberInput.setAttribute("aria-label", "Номери позивного");
-      const preview = el("code"), addError = el("span", "alert small"), addSubmit = el("button", "", "Додати"), addCancel = el("button", "ghost", "Скасувати");
-      addError.setAttribute("role", "alert");
-      addSubmit.type = addCancel.type = "button";
-      const entryLine = () => nameInput.value.trim() + (numberInput.value.trim() ? `: ${numberInput.value.trim()}` : "");
-      const previewEntry = () => { preview.textContent = entryLine() || "Попередній вигляд запису"; };
-      nameInput.addEventListener("input", previewEntry); numberInput.addEventListener("input", previewEntry);
-      addCancel.addEventListener("click", () => { quickAdd.hidden = true; input.focus({preventScroll:true}); });
-      addCallsignButton.addEventListener("click", () => {
-        quickAdd.hidden = !quickAdd.hidden;
-        if (quickAdd.hidden) return;
-        const selected = input.value.slice(input.selectionStart, input.selectionEnd).trim();
-        const parts = /^([^\s:]+)(?:\s*:\s*|\s+)?(.*)$/.exec(selected);
-        nameInput.value = parts?.[1] || ""; numberInput.value = parts?.[2] || "";
-        addError.textContent = ""; previewEntry(); nameInput.focus({preventScroll:true});
-      });
-      addSubmit.addEventListener("click", async () => {
-        if (addSubmit.disabled) return;
-        if (!nameInput.value.trim()) { addError.textContent = "Введіть назву позивного."; nameInput.focus(); return; }
-        addSubmit.disabled = true; addError.textContent = "";
-        try {
-          await addCallsign(entryLine()); quickAdd.hidden = true; suggest(); checkText(0); input.focus({preventScroll:true});
-        } catch (error) { addError.textContent = error.message; }
-        finally { addSubmit.disabled = false; }
-      });
-      quickAdd.addEventListener("keydown", event => {
-        if (event.isComposing) return;
-        if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); addSubmit.click(); }
-        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); quickAdd.hidden = true; input.focus({preventScroll:true}); }
-      });
-      quickAdd.append(el("span", "small muted", "Перевірте позивний за аудіо"), nameInput, numberInput, preview, addSubmit, addCancel, addError);
       const actions = el("div", "recording-actions");
       const saveStatus = el("span", "muted small save-status"); saveStatus.setAttribute("role", "status");
       save.className = "save-primary";
       const dirtyBadge = el("span", "dirty-badge", "Незбережені зміни"); dirtyBadge.hidden = true;
       segmented.setAttribute("aria-label", "Тип запису");
-      const saveActions = el("div", "save-actions"); saveActions.append(addCallsignButton, save);
-      actions.append(segmented, saveActions, dirtyBadge, saveStatus);
+      // «Зберегти» — крайня праворуч, позначка незбережених змін і результат — ліворуч від неї.
+      const saveActions = el("div", "save-actions"); saveActions.append(saveStatus, dirtyBadge, save);
+      actions.append(segmented, saveActions);
       function setCategory(value, quick) {
         category.value = value;
         for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
@@ -1952,7 +1915,7 @@
           saving = false; save.disabled = false;
         }
       }
-      form.append(textField, lint, chips, roles, multi, quickAdd, actions);
+      form.append(textField, lint, chips, roles, multi, actions);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,

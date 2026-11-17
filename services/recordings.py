@@ -34,6 +34,7 @@ VIEWS = {
     "filtered": ("pending", f"(NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "shadow": ("pending", "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"),
     "reviewed": ("reviewed", "1"),
+    "telegram": ("all", "json_extract(data,'$.fix_id') IS NOT NULL"),   # усе, що надіслано в Telegram
     "all": ("all", "1"),
 }
 _REVIEW_SQL = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}

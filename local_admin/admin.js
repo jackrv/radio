@@ -3,7 +3,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const REFRESH_MS = 10000;
-  let busy = false, data = null, view = "overview", phraseOffset = 0, timer = null;
+  let busy = false, data = null, view = "overview", timer = null;
   const loaded = new Set();
 
   const STATUS = {
@@ -56,12 +56,12 @@
   async function action(callback) { if (busy) return; busy = true; try { await callback(); } catch (error) { note(error.message); } finally { busy = false; } }
 
   // ---------- Навігація: розділи й вкладки ----------
-  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази з Telegram", sounds: "Зразки звуків", filter: "Фільтр", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", system: "Система", roles: "Mini App очима ролі" };
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", sounds: "Зразки звуків", filter: "Фільтр", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", system: "Система", roles: "Mini App очима ролі" };
   const GROUPS = {
     overview: ["Огляд", ["overview"]],
     recordings: ["Аудіоархів", ["recordings"]],
     recognition: ["Розпізнавання", ["dictionaries", "codes", "texts", "learning", "settings"]],
-    signals: ["Сигнали сповіщень", ["sounds", "filter", "phrases"]],
+    signals: ["Сигнали сповіщень", ["sounds", "filter"]],
     people: ["Люди", ["users", "activity", "roles"]],
     system: ["Система", ["system"]],
   };
@@ -69,11 +69,16 @@
   const ALWAYS_RELOAD = new Set(["codes", "learning", "users", "activity"]);
   const lastTab = {};
   const groupOf = name => Object.keys(GROUPS).find(g => GROUPS[g][1].includes(name));
-  function show(name) {
+  // history: "push" — новий крок для кнопки «Назад», "replace" — замінити поточний, "none" — уже з історії.
+  function show(name, { history: mode = "push" } = {}) {
     if (GROUPS[name]) name = lastTab[name] || GROUPS[name][1][0];
     const group = groupOf(name);
     if (!group) return;
+    const changed = name !== view;
     view = name; lastTab[group] = name;
+    const url = name === "overview" ? location.pathname : `${location.pathname}?view=${encodeURIComponent(name)}`;
+    if (mode === "push" && changed) history.pushState({ view: name }, "", url);
+    else if (mode === "replace") history.replaceState({ view: name }, "", location.pathname + location.search);
     for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.group === group);
     for (const s of document.querySelectorAll("[data-panel]")) s.hidden = s.dataset.panel !== name;
     $("view-title").textContent = GROUPS[group][0];
@@ -89,6 +94,11 @@
     if (!loaded.has(name) || ALWAYS_RELOAD.has(name)) { loaded.add(name); action(() => loaders[name]()); }
   }
   for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.group));
+  // «Назад» / «Вперед» у браузері перемикають розділи панелі, а не залишають її.
+  window.addEventListener("popstate", event => {
+    const wanted = event.state?.view || new URLSearchParams(location.search).get("view") || "overview";
+    show(titles[wanted] ? wanted : "overview", { history: "none" });
+  });
 
   // ---------- Огляд: що потребує уваги ----------
   let attentionAt = 0;
@@ -266,58 +276,11 @@
     ]));
   }
 
-  // ---------- Фрази ----------
-  async function phrases(reset = true) {
-    if (reset) { phraseOffset = 0; $("phrases").replaceChildren(); }
-    const q = encodeURIComponent($("phrase-query").value.trim());
-    const page = await request(`/api/phrases?q=${q}&offset=${phraseOffset}&limit=30`);
-    for (const item of page.items) $("phrases").append(phraseItem(item));
-    phraseOffset += page.items.length;
-    $("phrase-more").hidden = !page.has_more;
-    if (!phraseOffset) $("phrases").append(el("p", "muted", "Фраз не знайдено."));
-  }
-  function phraseItem(item) {
-    const box = el("div", "item"), meta = el("div", "meta");
-    const created = utcTs(item.created_at);
-    meta.append(el("span", "", created ? stamp(created) : item.created_at || ""), el("span", "", item.fix_id.startsWith("db:") ? `подія ${item.fix_id.slice(3)}` : "тимчасова фраза"));
-    if (item.spectral) {
-      const sp = item.spectral;
-      const badge = el("span", `badge ${sp.candidate ? "cand" : ""}`, `спектр ${fix(sp.score)}${sp.candidate ? " · кандидат" : ""}`);
-      badge.title = `Поза збігом: ${fix(sp.outside_s)} с · стороння енергія: ${pct(sp.extra_ratio)}`;
-      meta.append(badge);
-    }
-    box.append(meta, el("div", "text", item.current_text));
-    if (item.original_text && item.original_text !== item.current_text) box.append(el("div", "orig", `Whisper: ${item.original_text}`));
-    const actions = el("div", "actions");
-    if (item.has_audio) {
-      const play = el("button", "ghost", "▶ Аудіо");
-      const mark = el("button", "ghost", "＋ До зразків");
-      play.addEventListener("click", () => action(async () => {
-        const blob = await request(`/api/phrases/audio?fix_id=${encodeURIComponent(item.fix_id)}`);
-        const audio = el("audio"); audio.controls = true; audio.src = URL.createObjectURL(blob);
-        play.replaceWith(audio); audio.play().catch(() => {});
-      }));
-      mark.addEventListener("click", () => action(async () => {
-        if (!confirm("Додати цей фрагмент до зразків звуків сповіщень?\n\nСпершу прослухайте його: у записі не має бути мовлення. Зразок — еталон фільтра; діє після перезапуску приймача.")) return;
-        await request("/api/phrases/notification-sample", "PUT", { fix_id: item.fix_id, confirmed_isolated: true });
-        mark.disabled = true; mark.textContent = "✓ Додано до зразків";
-        loaded.delete("sounds"); loaded.delete("filter");
-        note("Зразок додано. Набуде чинності після перезапуску приймача.");
-      }));
-      actions.append(play, mark);
-    } else actions.append(el("span", "muted small", "аудіо не збережено"));
-    box.append(actions);
-    return box;
-  }
-  $("phrase-search").addEventListener("click", () => action(() => phrases(true)));
-  $("phrase-query").addEventListener("keydown", e => { if (e.key === "Enter") action(() => phrases(true)); });
-  $("phrase-more").addEventListener("click", () => action(() => phrases(false)));
-
   // ---------- Звуки ----------
   async function samples() {
     const list = await request("/api/samples");
     $("samples").replaceChildren();
-    if (!list.items.length) $("samples").append(el("p", "muted", "Зразків ще немає. Додайте WAV або позначте фрагмент у розділі «Фрази»."));
+    if (!list.items.length) $("samples").append(el("p", "muted", "Зразків ще немає. Додайте WAV або натисніть «＋ До зразків» у картці запису «Аудіоархіву»."));
     for (const item of list.items) {
       const row = el("div", "item"), actions = el("div", "actions");
       row.append(el("div", "text", `${item.id}`), el("div", "orig", item.duration_s ? `${fix(item.duration_s)} с` : "непридатний файл"));
@@ -459,6 +422,7 @@
     whisper_prompt: ["Підказка Whisper", "Фрази на початку підказки розпізнавання, по одній у рядку, так, як їх вимовляють: «дощ 13 13». Допомагають Whisper правильно записати важливі команди, але зрідка потрапляють у розпізнаний текст. З’являться хибні спрацьовування — вимкніть рядок, поставивши «#» на початку."],
   };
   let textRevision = null;
+  let textListType = (() => { try { return localStorage.getItem("radio345:text-list") || "short_garbage"; } catch (_) { return "short_garbage"; } })();
 
   function toLines(entries) { return entries.map(e => (e.enabled ? "" : "# ") + e.raw_line).join("\n"); }
   function fromLines(text) {
@@ -548,33 +512,50 @@
     });
   }
 
+  // Один словник за раз: перемикач угорі, ліворуч поле рядків, праворуч пояснення й підказки.
+  let dictionaryKind = (() => { try { return localStorage.getItem("radio345:dictionary") || "callsigns"; } catch (_) { return "callsigns"; } })();
   async function dictionaries() {
     const data = await request("/api/dictionaries");
     const box = $("dictionary-lists");
     box.replaceChildren();
-    $("dictionaries-status").textContent = Object.entries(DICTIONARIES)
-      .map(([kind, [title]]) => `${title}: ${data[kind].entries.filter(e => e.enabled).length} діючих рядків`).join(" · ");
-    for (const [kind, [title, help]] of Object.entries(DICTIONARIES)) {
-      const dictionary = data[kind];
-      const panel = el("article", "panel");
-      const area = el("textarea", "list-editor");
-      area.value = toLines(dictionary.entries);
-      area.spellcheck = false;
-      area.setAttribute("aria-label", title);
-      const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
-      save.addEventListener("click", () => action(async () => {
-        try {
-          await request(`/api/dictionaries/${kind}`, "PUT", { entries: fromLines(area.value), expected_version: dictionary.version });
-          note(`Словник «${title}» збережено. Приймач застосує зміни за кілька секунд.`);
-          await dictionaries();
-        } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
-      }));
-      const actions = el("div", "list-actions"); actions.append(save, status);
-      const hints = el("ul", "warn-list");
-      liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
-      panel.append(el("h2", "", title), el("p", "muted small", help), area, actions, hints);
-      box.append(panel);
+    $("dictionaries-status").textContent = "";
+    if (!DICTIONARIES[dictionaryKind]) dictionaryKind = "callsigns";
+    const picker = el("div", "segmented list-picker");
+    for (const [kind, [title]] of Object.entries(DICTIONARIES)) {
+      const active = data[kind].entries.filter(e => e.enabled).length;
+      const b = el("button", kind === dictionaryKind ? "ghost on" : "ghost", `${title} · ${active}`); b.type = "button";
+      b.addEventListener("click", () => {
+        dictionaryKind = kind;
+        try { localStorage.setItem("radio345:dictionary", kind); } catch (_) { /* сесія */ }
+        action(dictionaries);
+      });
+      picker.append(b);
     }
+    box.append(picker);
+    const kind = dictionaryKind, [title, help] = DICTIONARIES[kind], dictionary = data[kind];
+    const panel = el("article", "panel list-layout dictionary-layout");
+    const left = el("div", "list-left"), right = el("div", "list-right");
+    const area = el("textarea", "list-editor");
+    area.value = toLines(dictionary.entries);
+    area.spellcheck = false;
+    area.setAttribute("aria-label", title);
+    const fit = () => { area.rows = Math.min(32, Math.max(8, area.value.split("\n").length + 2)); };
+    fit(); area.addEventListener("input", fit);
+    const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
+    save.addEventListener("click", () => action(async () => {
+      try {
+        await request(`/api/dictionaries/${kind}`, "PUT", { entries: fromLines(area.value), expected_version: dictionary.version });
+        note(`Словник «${title}» збережено. Приймач застосує зміни за кілька секунд.`);
+        await dictionaries();
+      } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
+    }));
+    const actions = el("div", "list-actions"); actions.append(save, status);
+    const hints = el("ul", "warn-list");
+    liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
+    left.append(area, actions);
+    right.append(el("h2", "", title), el("p", "muted small", help), hints);
+    panel.append(left, right);
+    box.append(panel);
   }
 
   async function texts() {
@@ -586,32 +567,49 @@
       ? "Приймач не працює — списки застосуються під час запуску."
       : a.revision === data.revision ? "Приймач уже використовує цю ревізію."
       : `Приймач: ревізія ${a.revision ?? "—"} (знімок метрик оновлюється ~30 с; самі списки застосовуються за кілька секунд).`);
+    // Один список за раз: перемикач угорі, ліворуч вузьке поле рядків, праворуч пояснення, підказки й кандидати.
     const box = $("text-lists");
     box.replaceChildren();
-    for (const [type, [title, help]] of Object.entries(TEXT_LISTS)) {
-      const list = data.lists[type];
-      const panel = el("article", "panel");
-      const area = el("textarea", "list-editor");
-      area.value = toLines(list.entries);
-      area.spellcheck = false;
-      area.setAttribute("aria-label", title);
-      const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
-      const warnings = el("ul", "warn-list");
-      liveCheck(area, warnings, `/api/text-lists/${type}/check`, list.warnings || []);
-      save.addEventListener("click", () => action(async () => {
-        try {
-          const r = await request(`/api/text-lists/${type}`, "PUT", { entries: fromLines(area.value), expected_revision: textRevision });
-          textRevision = r.revision;
-          note(`«${title}» збережено (ревізія ${r.revision}). Приймач застосує зміни за кілька секунд.`);
-          await texts();
-        } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
-      }));
-      const actions = el("div", "list-actions"); actions.append(save, status);
-      panel.append(el("h2", "", title), el("p", "muted small", help), area, actions, warnings);
-      if (type === "callsign_aliases") panel.append(aliasCandidates(list.entries));
-      if (type === "blacklist" || type === "short_garbage") panel.append(noiseCandidates(type, list.entries));
-      box.append(panel);
+    if (!TEXT_LISTS[textListType]) textListType = "short_garbage";
+    const picker = el("div", "segmented list-picker");
+    for (const [type, [title]] of Object.entries(TEXT_LISTS)) {
+      const active = data.lists[type].entries.filter(e => e.enabled).length;
+      const b = el("button", type === textListType ? "ghost on" : "ghost", `${title} · ${active}`); b.type = "button";
+      b.addEventListener("click", () => {
+        textListType = type;
+        try { localStorage.setItem("radio345:text-list", type); } catch (_) { /* сесія */ }
+        action(texts);
+      });
+      picker.append(b);
     }
+    box.append(picker);
+    const type = textListType, [title, help] = TEXT_LISTS[type], list = data.lists[type];
+    const panel = el("article", "panel list-layout");
+    const left = el("div", "list-left"), right = el("div", "list-right");
+    const area = el("textarea", "list-editor");
+    area.value = toLines(list.entries);
+    area.spellcheck = false;
+    area.setAttribute("aria-label", title);
+    const fit = () => { area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
+    fit(); area.addEventListener("input", fit);
+    const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
+    const warnings = el("ul", "warn-list");
+    liveCheck(area, warnings, `/api/text-lists/${type}/check`, list.warnings || []);
+    save.addEventListener("click", () => action(async () => {
+      try {
+        const r = await request(`/api/text-lists/${type}`, "PUT", { entries: fromLines(area.value), expected_revision: textRevision });
+        textRevision = r.revision;
+        note(`«${title}» збережено (ревізія ${r.revision}). Приймач застосує зміни за кілька секунд.`);
+        await texts();
+      } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
+    }));
+    const actions = el("div", "list-actions"); actions.append(save, status);
+    left.append(area, actions);
+    right.append(el("h2", "", title), el("p", "muted small", help), warnings);
+    if (type === "callsign_aliases") right.append(aliasCandidates(list.entries));
+    if (type === "blacklist" || type === "short_garbage") right.append(noiseCandidates(type, list.entries));
+    panel.append(left, right);
+    box.append(panel);
   }
 
   // Підказка: як Whisper чув позивні в розмічених записах. Додає лише оператор.
@@ -835,16 +833,23 @@
   function renderLearning() {
     const data = learningData, c = data.counts || {}, need = data.min_confirmations;
     const cards = $("learning-cards");
+    const pick = value => () => {
+      $("learning-filter").value = value;
+      try { localStorage.setItem("radio345:learning-filter", value); } catch (_) { /* сесія */ }
+      renderLearning();
+    };
+    const learningCard = (c, value, title) => { c.dataset.filter = value; return linked(c, pick(value), title); };
     cards.replaceChildren(
-      card("Діють у розпізнаванні", String(c.applies || 0), `з ${data.total} навчених замін`, (c.applies || 0) ? "ok" : ""),
-      card("Чекають підтвердження", String(c.needs_confirmation || 0), `потрібно ${need} однакові правки в різних фразах`, (c.needs_confirmation || 0) ? "warn" : ""),
-      card("Чекають дозволу", String(c.needs_approval || 0), "підтверджено, але звичайне слово — потрібна ваша згода", (c.needs_approval || 0) ? "warn" : ""),
-      card("Конфлікти", String(c.conflict || 0), "одне слово виправлено по-різному", (c.conflict || 0) ? "bad" : ""),
-      card("Вимкнені й заборонені", String((c.disabled || 0) + (c.blocked || 0)), `вимкнено: ${c.disabled || 0} · заборонено перевіркою: ${c.blocked || 0}`),
+      learningCard(card("Діють у розпізнаванні", String(c.applies || 0), `з ${data.total} навчених замін`, (c.applies || 0) ? "ok" : ""), "applies", "Показати заміни, що діють"),
+      learningCard(card("Чекають підтвердження", String(c.needs_confirmation || 0), `потрібно ${need} однакові правки в різних фразах`, (c.needs_confirmation || 0) ? "warn" : ""), "needs_confirmation", "Показати заміни, яким бракує правки"),
+      learningCard(card("Чекають дозволу", String(c.needs_approval || 0), "підтверджено, але звичайне слово — потрібна ваша згода", (c.needs_approval || 0) ? "warn" : ""), "needs_approval", "Показати заміни, що чекають дозволу"),
+      learningCard(card("Конфлікти", String(c.conflict || 0), "одне слово виправлено по-різному", (c.conflict || 0) ? "bad" : ""), "conflict", "Показати конфлікти"),
+      learningCard(card("Вимкнені й заборонені", String((c.disabled || 0) + (c.blocked || 0)), `вимкнено: ${c.disabled || 0} · заборонено перевіркою: ${c.blocked || 0}`), "other", "Показати вимкнені й заборонені"),
     );
     const filter = $("learning-filter").value;
+    for (const c of cards.children) c.classList.toggle("picked", c.dataset.filter === filter);
     const shown = data.items.filter(item => filter === "all" || (filter === "queue" ? LEARNING_QUEUE.includes(item.state)
-      : filter === "applies" ? item.state === "applies" : ["disabled", "blocked"].includes(item.state)));
+      : filter === "other" ? ["disabled", "blocked"].includes(item.state) : item.state === filter));
     const table = $("learning-items"), head = el("tr");
     table.replaceChildren();
     for (const h of ["Почуте → правильне", "Тип", "Правок", "Стан", "Звідки", ""]) head.append(el("th", "", h));
@@ -950,8 +955,19 @@
       default: return "";
     }
   }
+  // Вибраний користувач запам’ятовується в цьому браузері.
+  const ACTIVITY_KEY = "radio345.activityUser";
+  let activityFilter = "all";
+  const remembered = () => { try { return localStorage.getItem(ACTIVITY_KEY) || ""; } catch (_) { return ""; } };
   async function activity(userId) {
-    const result = await request(`/api/activity${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`);
+    userId = userId || remembered();
+    let result;
+    try { result = await request(`/api/activity${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`); }
+    catch (error) {
+      if (!userId) throw error;
+      try { localStorage.removeItem(ACTIVITY_KEY); } catch (_) {}
+      result = await request("/api/activity");   // користувача вже немає — перший у списку
+    }
     const select = $("activity-user");
     select.replaceChildren();
     for (const u of result.users) {
@@ -965,31 +981,62 @@
     select.value = s.user_id;
     const a = s.actions || {}, w = s.actions_week || {};
     const other = Object.entries(a).filter(([k]) => !["open", "correction", "learning", "mode"].includes(k)).reduce((n, [, v]) => n + v, 0);
+    const MAIN = ["open", "correction", "learning"];
+    const filters = { all: () => true, correction: i => i.action === "correction", learning: i => i.action === "learning",
+                      open: i => i.action === "open", other: i => !MAIN.includes(i.action) };
+    const FILTER_NAMES = { correction: "правки тексту", learning: "рішення щодо навчання", open: "відкриття Mini App", other: "інші дії" };
+    const filterBy = key => { activityFilter = key; renderItems(); };
+    const openEdits = () => {
+      // Архів: усі записи з правками цього користувача.
+      const select = $("recording-edits"), id = String(s.user_id);
+      if (![...select.options].some(o => o.value === id)) { const o = el("option", "", `Правки: ${($("activity-user").selectedOptions?.[0]?.textContent || id).split(" · ")[0]}`); o.value = id; select.append(o); }
+      select.value = id; $("recording-view").value = "all"; $("recording-period").value = "";
+      if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
+    };
+    const filterCard = (c, key, title) => { c.dataset.filter = key; return linked(c, () => filterBy(key), title); };
     cards.append(
-      card("Роль", ROLES[s.role] || s.role, `${s.enabled ? "активний" : "вимкнений"} · доступ з ${s.created_at || "—"}`, s.enabled ? "ok" : "bad"),
-      card("Сповіщення", MODES[s.notify_mode] || s.notify_mode || "—", "поточний режим"),
-      card("Доставлено сповіщень", String(s.delivered.total), Object.entries(s.delivered.by_kind || {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "за весь час"),
-      card("Правки тексту", String(a.correction || 0), `зі змінами: ${s.corrections_changed} · за 7 днів: ${w.correction || 0}`),
-      card("Рішення щодо навчання", String(a.learning || 0), `за 7 днів: ${w.learning || 0}`),
-      card("Відкриття Mini App", String(a.open || 0), `останнє: ${when(s.last_activity)}`),
-      card("Активних днів", String(s.active_days || 0), s.first_logged ? `журнал з ${when(s.first_logged)}` : "дій ще не записано"),
-      card("Інші дії", String(other + (a.mode || 0)), `режим: ${a.mode || 0} · словники, правила, налаштування: ${other}`),
+      linked(card("Роль", ROLES[s.role] || s.role, `${s.enabled ? "активний" : "вимкнений"} · доступ з ${s.created_at || "—"}`, s.enabled ? "ok" : "bad"), () => show("users"), "Змінити роль і доступ"),
+      linked(card("Сповіщення", MODES[s.notify_mode] || s.notify_mode || "—", "поточний режим"), () => show("users"), "Змінити режим сповіщень"),
+      filterCard(card("Доставлено сповіщень", String(s.delivered.total), Object.entries(s.delivered.by_kind || {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "за весь час"), "all", "Показати всі дії"),
+      linked(card("Правки тексту", String(a.correction || 0), `зі змінами: ${s.corrections_changed} · за 7 днів: ${w.correction || 0}`), openEdits, "Записи архіву з правками цього користувача"),
+      filterCard(card("Рішення щодо навчання", String(a.learning || 0), `за 7 днів: ${w.learning || 0}`), "learning", "Показати лише рішення щодо навчання"),
+      filterCard(card("Відкриття Mini App", String(a.open || 0), `останнє: ${when(s.last_activity)}`), "open", "Показати лише відкриття Mini App"),
+      filterCard(card("Активних днів", String(s.active_days || 0), s.first_logged ? `журнал з ${when(s.first_logged)}` : "дій ще не записано"), "all", "Показати всі дії"),
+      filterCard(card("Інші дії", String(other + (a.mode || 0)), `режим: ${a.mode || 0} · словники, правила, налаштування: ${other}`), "other", "Показати лише інші дії"),
     );
-    const head = el("tr");
-    for (const h of ["Час", "Дія", "Об’єкт", "Подробиці"]) head.append(el("th", "", h));
-    table.append(head);
-    if (!s.items.length) {
-      const row = el("tr"), cell = el("td", "muted", "Дій ще не записано. Вони з’являться, щойно користувач відкриє Mini App чи щось змінить.");
-      cell.colSpan = 4; row.append(cell); table.append(row);
+    function renderItems() {
+      for (const c of cards.children) c.classList?.toggle("picked", !!c.dataset?.filter && c.dataset.filter === activityFilter && activityFilter !== "all");
+      table.replaceChildren();
+      const items = s.items.filter(filters[activityFilter] || filters.all);
+      const head = el("tr");
+      for (const h of ["Час", "Дія", "Об’єкт", "Подробиці"]) head.append(el("th", "", h));
+      table.append(head);
+      if (activityFilter !== "all") {
+        const row = el("tr"), cell = el("td", "small muted");
+        cell.colSpan = 4;
+        const reset = el("button", "ghost", "показати всі"); reset.type = "button";
+        reset.addEventListener("click", () => filterBy("all"));
+        cell.append(`Показано: ${FILTER_NAMES[activityFilter]} (${items.length}) · `, reset);
+        row.append(cell); table.append(row);
+      }
+      if (!items.length) {
+        const row = el("tr"), cell = el("td", "muted", s.items.length ? "Таких дій серед останніх немає." : "Дій ще не записано. Вони з’являться, щойно користувач відкриє Mini App чи щось змінить.");
+        cell.colSpan = 4; row.append(cell); table.append(row);
+      }
+      for (const item of items) {
+        const row = el("tr"), target = el("td");
+        target.append(activityTarget(item));
+        row.append(el("td", "nowrap", when(item.ts)), el("td", "", ACTIONS[item.action] || item.action), target, el("td", "", activityDetails(item)));
+        table.append(row);
+      }
     }
-    for (const item of s.items) {
-      const row = el("tr"), target = el("td");
-      target.append(activityTarget(item));
-      row.append(el("td", "nowrap", when(item.ts)), el("td", "", ACTIONS[item.action] || item.action), target, el("td", "", activityDetails(item)));
-      table.append(row);
-    }
+    renderItems();
   }
-  $("activity-user").addEventListener("change", event => action(() => activity(event.target.value)));
+  $("activity-user").addEventListener("change", event => {
+    try { localStorage.setItem(ACTIVITY_KEY, event.target.value); } catch (_) {}
+    activityFilter = "all";
+    action(() => activity(event.target.value));
+  });
 
   async function users() {
     const result = await request("/api/users");
@@ -1045,26 +1092,44 @@
   $("new-user-role").dispatchEvent?.(new Event("change"));
 
   // ---------- Система ----------
+  const shortModel = name => (name || "—").replace(/^mlx-community\//, "").replace(/-mlx$/, "");
+  const size = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} МБ` : `${Math.round(bytes / 1024)} КБ`;
   async function system() {
     if (!data) await overview();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {};
-    $("backups").replaceChildren(...(data.backups.length ? data.backups.map(b => {
-      const row = el("div", "item"); row.append(el("div", "text", stamp(b.created)), el("div", "orig", `${b.name} · ${Math.round(b.size / 1024)} КБ · ${ago(now() - b.created)} тому`)); return row;
-    }) : [el("p", "muted", "Автоматичних копій ще немає: перша з’являється через 5 хв після старту приймача.")]));
+    let launcher = {};
+    try { launcher = await request("/api/launcher"); } catch (_) { /* панель без лаунчера */ }
+    const alive = value => value === false ? ["зупинено", "alert"] : value === true ? ["працює", "good"] : ["—", ""];
+    const fresh = d.updated_at && now() - d.updated_at < 120;
+    const [asr, asrTone] = fresh ? alive(g["workers.transcriber_alive"]) : ["немає свіжих даних", ""];
+    const [tg, tgTone] = fresh ? alive(g["workers.telegram_alive"]) : ["немає свіжих даних", ""];
     $("workers").replaceChildren(kv([
-      ["Whisper", data.models.whisper], ["Стан Whisper", g["models.whisper"] || "—"],
-      ["Qwen", data.models.qwen], ["Стан Qwen", g["models.qwen"] || "—"],
-      ["Потік розпізнавання", g["workers.transcriber_alive"] === false ? "зупинено" : "працює", g["workers.transcriber_alive"] === false ? "alert" : "good"],
-      ["Потік Telegram", g["workers.telegram_alive"] === false ? "зупинено" : "працює", g["workers.telegram_alive"] === false ? "alert" : "good"],
-      ["Початок сесії", d.started_at ? stamp(d.started_at) : "—"],
+      ["Лаунчер", launcher.managed ? (LAUNCHER[launcher.state] || launcher.state) + (launcher.receiver_stopped ? " · приймач зупинено" : "") : "не керує панеллю", launcher.managed ? "good" : ""],
+      ["Сесія приймача", d.started_at ? `з ${stamp(d.started_at)} · ${ago(now() - d.started_at)}` : "—"],
+      ["Whisper", `${shortModel(data.models.whisper)} · ${g["models.whisper"] || "—"}`],
+      ["Qwen", `${shortModel(data.models.qwen)} · ${g["models.qwen"] || "—"}`],
+      ["Потік розпізнавання", asr, asrTone], ["Потік Telegram", tg, tgTone],
+      ["Втрачено кадрів / сегментів", `${num(g["audio.frames_dropped"] ?? 0)} / ${num(g["audio.segments_dropped"] ?? 0)}`, (g["audio.frames_dropped"] || g["audio.segments_dropped"]) ? "alert" : ""],
+      ["Ревізії: словники · списки · налаштування", `${g["dictionaries.revision"] ?? "—"} · ${g["text_lists.revision"] ?? "—"} · ${g["runtime_settings.revision"] ?? "—"}`],
     ]));
     const t = data.telegram_sync || {};
+    const pollFailures = Object.entries(c).filter(([k]) => k.startsWith("telegram.getUpdates.") && !k.endsWith("attempts") && !k.endsWith("http_200")).reduce((s, [, v]) => s + v, 0);
     $("telegram").replaceChildren(kv([
-      ["Відомих копій повідомлень", num(t.copies)], ["Правок у черзі", num(t.pending)], ["Правок, що не вдалися", num(t.exhausted), t.exhausted ? "alert" : "good"],
-      ["Надіслано голосових", num(c["telegram.sendVoice.api_confirmed"] || 0)], ["Заблокували бота (403)", num(c["telegram.recipient_blocked"] || 0)],
-      ["Збоїв опитування", num(Object.entries(c).filter(([k]) => k.startsWith("telegram.getUpdates.") && !k.endsWith("attempts") && !k.endsWith("http_200")).reduce((s, [, v]) => s + v, 0))],
+      ["Надіслано голосових (сесія)", num(c["telegram.sendVoice.api_confirmed"] || 0)],
+      ["Правок у черзі / не вдалося", `${num(t.pending)} / ${num(t.exhausted)}`, t.exhausted ? "alert" : t.pending ? "" : "good"],
+      ["Відомих копій повідомлень", num(t.copies)],
+      ["Збоїв опитування бота", num(pollFailures), pollFailures ? "alert" : "good"],
+      ["Заблокували бота (403)", num(c["telegram.recipient_blocked"] || 0), c["telegram.recipient_blocked"] ? "alert" : ""],
       ["Службових повідомлень адміністраторам", num(c["telegram.alert_sent"] || 0)],
     ]));
+    const backups = data.backups || [];
+    const latest = backups.reduce((m, b) => (!m || b.created > m.created ? b : m), null);
+    $("backups-summary").replaceChildren(kv(latest ? [
+      ["Остання", `${ago(now() - latest.created)} тому`, now() - latest.created > 30 * 3600 ? "alert" : "good"],
+      ["Копій", `${backups.length} · ${size(backups.reduce((s, b) => s + b.size, 0))}`],
+      ["Розмір останньої", size(latest.size)],
+    ] : [["Остання", "немає — перша з’являється через 5 хв після старту приймача", "alert"]]));
+    $("backups").replaceChildren(...backups.map(b => el("div", "sys-row", `${stamp(b.created)} · ${size(b.size)} · ${b.name}`)));
     const table = $("counters"); table.replaceChildren();
     for (const [k, v] of Object.entries(c).sort()) { const r = el("tr"); r.append(el("td", "", k), el("td", "", num(v))); table.append(r); }
     $("diagnostics").textContent = JSON.stringify(d, null, 2);
@@ -1132,9 +1197,9 @@
   function roles() {
     const role = $("role").value;
     $("permissions").textContent = {
-      viewer: "Спостерігач: лише стан ефіру. Журнал, словники, аудіо, налаштування й користувачі недоступні.",
-      editor: "Редактор: журнал, аудіо, виправлення, словники й особисті сповіщення. Без користувачів і керування приймачем.",
-      admin: "Адміністратор: усі розділи.",
+      viewer: "Спостерігач: лише стан приймача. Журнал, аудіо й сповіщення недоступні.",
+      editor: "Редактор: журнал фраз, аудіо, виправлення й особистий режим сповіщень.",
+      admin: "Адміністратор: те саме, що редактор, і пауза приймача. Словники, навчання й користувачі — лише в цій панелі.",
     }[role];
     $("preview").src = `/preview/${role}/`;
   }
@@ -1143,6 +1208,8 @@
   // ---------- Черги розмітки з поточного архіву ----------
   // Види «розмітки» показують лише нерозмічене: розмічений запис зникає зі списку.
   const TODO_VIEWS = ["radio", "speech", "filtered", "shadow"];
+  let pendingEdits = "";   // збережений фільтр «правки користувача», доки варіанти ще не завантажено
+  const editsValue = () => $("recording-edits").value || pendingEdits;
   function periodSince() {
     const value = $("recording-period").value;
     if (!value) return null;
@@ -1160,11 +1227,12 @@
       request(`/api/recordings?offset=${recordingOffset}&view=${$("recording-view").value}` +
         (since ? `&since=${since}` : "") +
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
-        ($("recording-edits").value ? `&edits=${encodeURIComponent($("recording-edits").value)}` : "")),
+        (editsValue() ? `&edits=${encodeURIComponent(editsValue())}` : "")),
       request("/api/recordings/summary")
     ]);
     // Правки з Mini App: усі або конкретного користувача (журнал дій з 16.11.2026).
-    const editsSelect = $("recording-edits"), chosenEdits = editsSelect.value;
+    const editsSelect = $("recording-edits"), chosenEdits = editsValue();
+    pendingEdits = "";
     for (const option of [...editsSelect.options].slice(2)) option.remove();
     for (const person of page.editors || []) {
       const option = el("option", "", `Правки: ${person.name} (${person.corrections})`);
@@ -1196,6 +1264,26 @@
       header.append(el("h3", "", `${new Date(item.created * 1000).toLocaleString("uk-UA")} · ${STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status)} · ${item.id.slice(0, 8)}${eventNo ? ` · №${eventNo[1]}` : ""}`));
       const audio = el("audio"); audio.controls = true; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`; header.append(audio); card.append(header);
+      if (typeof d.notification_score === "number" || d.fix_id) {
+        // Надіслане в Telegram і оцінка спектрального фільтра; чистий сигнал можна зробити зразком.
+        const tags = el("div", "recording-tags");
+        if (d.fix_id) tags.append(el("span", "badge", eventNo ? `надіслано в Telegram · подія №${eventNo[1]}` : "надіслано в Telegram"));
+        if (typeof d.notification_score === "number") {
+          const badge = el("span", `badge ${d.notification_candidate ? "cand" : ""}`, `спектр ${fix(d.notification_score)}${d.notification_candidate ? " · кандидат" : ""}`);
+          badge.title = `Схожість на зразок сигналу. Поза збігом: ${fix(d.notification_outside_s)} с · стороння енергія: ${pct(d.notification_extra)}`;
+          tags.append(badge);
+        }
+        const sample = el("button", "ghost small-button", "＋ До зразків"); sample.type = "button";
+        sample.title = "Зробити цей звук зразком фільтра сигналів (лише чистий сигнал без мовлення)";
+        sample.addEventListener("click", () => action(async () => {
+          if (!confirm("Додати цей запис як зразок звуку сповіщення? Лише якщо в ньому чистий сигнал без мовлення. Діє після перезапуску.")) return;
+          await request(`/api/recordings/${item.id}/notification-sample`, "POST", { confirmed_isolated: true });
+          sample.disabled = true; sample.textContent = "✓ у зразках";
+          note("Зразок додано. Він почне діяти після перезапуску (кнопка внизу меню).");
+        }));
+        tags.append(sample);
+        card.append(tags);
+      }
       const details = el("details", "recording-details");
       details.append(el("summary", "", "Розбір і метрики"));
       details.append(el("p", "muted small", `Тривалість: ${fix(signal.duration_s)} с · рівень: ${fix(signal.rms_dbfs, 1)} dBFS · кліпінг: ${pct(signal.clipping_ratio)} · Whisper: ${fix(d.whisper_s)} с · Qwen: ${fix(d.qwen_s)} с · черга: ${fix(d.queue_wait_s)} с`));
@@ -1425,24 +1513,45 @@
   $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
   // Обраний вид і період запам’ятовуються в цьому браузері.
   const VIEW_KEY = "radio345:archive-view";
+  const saveArchiveView = () => {
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value, edits: $("recording-edits").value })); } catch (_) { /* лише поточна сесія */ }
+  };
   try {
     const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}");
+    // Варіанти «правки користувача» з’являються після першого завантаження архіву.
+    if ([...$("recording-edits").options].some(o => o.value === saved.edits)) $("recording-edits").value = saved.edits;
+    else if (saved.edits) pendingEdits = String(saved.edits);
     if ([...$("recording-view").options].some(o => o.value === saved.view)) $("recording-view").value = saved.view;
     if ([...$("recording-period").options].some(o => o.value === saved.period)) $("recording-period").value = saved.period;
   } catch (_) { /* типовий вибір */ }
   for (const id of ["recording-view", "recording-period"]) {
-    $(id).addEventListener("change", () => {
-      try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value })); } catch (_) { /* лише поточна сесія */ }
-      action(() => recordings(true));
-    });
+    $(id).addEventListener("change", () => { saveArchiveView(); action(() => recordings(true)); });
   }
-  $("recording-edits").addEventListener("change", () => action(() => recordings(true)));
+  $("recording-edits").addEventListener("change", () => { saveArchiveView(); action(() => recordings(true)); });
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));
   // Enter — шукати; очищене поле (зокрема хрестиком) — знову звичайний список.
   $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });
   $("recording-search").addEventListener("input", event => { if (!event.target.value) action(() => recordings(true)); });
 
-  const loaders = { recordings: () => recordings(true), overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
+  // Інші вибори, що запам’ятовуються в цьому браузері.
+  function rememberValue(id, key, { checkbox = false } = {}) {
+    const box = $(id);
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        if (checkbox) box.checked = saved === "on";
+        else if ([...box.options].some(o => o.value === saved)) box.value = saved;
+      }
+    } catch (_) { /* типово */ }
+    box.addEventListener("change", () => {
+      try { localStorage.setItem(key, checkbox ? (box.checked ? "on" : "off") : box.value); } catch (_) { /* сесія */ }
+    });
+  }
+  rememberValue("learning-filter", "radio345:learning-filter");
+  rememberValue("role", "radio345:preview-role");
+  rememberValue("auto", "radio345:auto-refresh", { checkbox: true });
+
+  const loaders = { recordings: () => recordings(true), overview, sounds: samples, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";
@@ -1554,19 +1663,21 @@
   // ---------- Вхід ----------
   action(async () => {
     const token = location.hash.slice(1);
-    history.replaceState(null, "", location.pathname + location.search);
+    history.replaceState({ view: "overview" }, "", location.pathname + location.search);
     if (token) await request("/session", "POST", { token });
     await overview();
     loaded.add("overview");
     $("content").hidden = false;
     note("Локальний доступ підтверджено.");
     schedule();
-    // ?view=phrases тощо — одразу потрібний розділ (зручно для закладок).
-    const wanted = new URLSearchParams(location.search).get("view");
+    // ?view=codes тощо — одразу потрібний розділ (зручно для закладок).
+    let wanted = new URLSearchParams(location.search).get("view");
+    // Колишня вкладка «Фрази» тепер — вид «Надіслано в Telegram» в «Аудіоархіві».
+    if (wanted === "phrases") { $("recording-view").value = "telegram"; wanted = "recordings"; }
     // ?view=recordings&q=1a2b3c4d — посилання одразу на потрібні записи.
     const query = new URLSearchParams(location.search).get("q");
     if (query) $("recording-search").value = query.slice(0, 200);
-    if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted); }
+    if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted, { history: "replace" }); }
   }).then(() => {
     // Справжню помилку вже показано; підказку про вхід — лише якщо ключа не було.
     if ($("content").hidden && $("feedback").textContent === "Перевіряємо доступ…")

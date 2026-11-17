@@ -608,3 +608,25 @@ def test_lists_and_dictionaries_are_checked_while_typing_without_saving(local):
     assert client.put("/api/dictionaries/callsigns/check", headers=h,
                       json={"entries": [{"raw_line": "береза: 5", "enabled": True}]}).json()["errors"] == []
     assert client.get("/api/text-lists/noise-candidates").json() == {"items": [], "records": 0}
+
+
+def test_archive_shows_what_went_to_telegram_and_turns_a_clean_signal_into_a_sample(setup, tmp_path):
+    _, path = setup
+    from services.recordings import RecordingStore
+    store = RecordingStore(tmp_path/'recordings')
+    sent = store.save(pcm(segment()), 16000, {'status': 'ready', 'fix_id': 'mem:' + 'a'*32, 'notification_score': 0.91})
+    store.save(pcm(segment()), 16000, {'status': 'low_rms'})
+    reviewed = store.save(pcm(segment()), 16000, {'status': 'ready', 'fix_id': 'db:5'})
+    store.review(reviewed, 'текст', 'speech', 0)
+    app = create_dashboard(path, KEY, samples_dir=tmp_path/'samples', recordings_dir=store.root)
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1', 1)) as client:
+        client.post('/session', json={'token': KEY}, headers={'Origin': ORIGIN})
+        page = client.get('/api/recordings?view=telegram').json()
+        assert {i['id'] for i in page['items']} == {sent, reviewed}, "і розмічені, і ні — усе надіслане"
+        url = f'/api/recordings/{sent}/notification-sample'
+        assert client.post(url, json={'confirmed_isolated': False}, headers={'Origin': ORIGIN}).status_code == 422
+        assert client.post(url, json={'confirmed_isolated': True}).status_code == 403, "без Origin панелі"
+        assert client.post(url, json={'confirmed_isolated': True}, headers={'Origin': ORIGIN}).status_code == 200
+        assert len(list_samples(tmp_path/'samples')['items']) == 1
+        assert client.post('/api/recordings/' + '0'*32 + '/notification-sample', json={'confirmed_isolated': True},
+                           headers={'Origin': ORIGIN}).status_code == 404

@@ -143,6 +143,10 @@ class SettingsUpdate(BaseModel):
     expected_revision: int = Field(ge=0, strict=True)
 
 
+class SampleConfirmation(BaseModel):
+    confirmed_isolated: bool = Field(strict=True)
+
+
 class PhraseSample(BaseModel):
     fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     confirmed_isolated: bool = Field(strict=True)
@@ -575,6 +579,20 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             return add_sample(samples_dir, ogg_to_wav(phrase_audio(payload.fix_id)), confirmed_isolated=True)
         except (subprocess.SubprocessError, FileNotFoundError):
             raise HTTPException(502, "Не вдалося перетворити аудіо") from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.post("/api/recordings/{record_id}/notification-sample")
+    def recording_sample(record_id: str, payload: SampleConfirmation, admin=Depends(actor)):
+        """Чистий звук сповіщення з архіву стає зразком спектрального фільтра (після перезапуску)."""
+        if not payload.confirmed_isolated:
+            raise HTTPException(422, "Підтвердь, що у фрагменті немає мовлення")
+        try:
+            content = recordings.audio(record_id)
+        except (LookupError, ValueError):
+            raise HTTPException(404, "Аудіо запису недоступне") from None
+        try:
+            return add_sample(samples_dir, content, confirmed_isolated=True)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 

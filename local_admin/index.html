@@ -65,6 +65,7 @@
                 </optgroup>
                 <optgroup label="Перегляд">
                   <option value="reviewed">Розмічені</option>
+                  <option value="telegram">Надіслано в Telegram</option>
                   <option value="all">Усі записи</option>
                 </optgroup>
                 <optgroup label="Інше">
@@ -103,13 +104,6 @@
         <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
       </section>
 
-      <!-- Фрази -->
-      <section data-panel="phrases" hidden>
-        <div class="toolbar"><input id="phrase-query" type="search" placeholder="Пошук у фразах…"><button id="phrase-search">Знайти</button></div>
-        <p class="muted small">«＋ До зразків» робить фрагмент еталоном фільтра звуків сповіщень (лише чистий звук без мовлення, діє після перезапуску — кнопка внизу меню). Мітка «спектр» — оцінка цього сегмента спектральним фільтром. Розмітка для перевірки фільтра — у «Аудіоархіві».</p>
-        <div id="phrases" class="list"></div>
-        <button id="phrase-more" class="ghost wide" hidden>Показати ще</button>
-      </section>
 
       <!-- Звуки -->
       <section data-panel="sounds" hidden>
@@ -132,7 +126,7 @@
           <article class="panel"><h2>Як працює фільтр</h2>
             <ol class="steps">
               <li>Фільтр увімкнено (режим <code>active</code>): сегмент, схожий на зразок сповіщення, відкидається ще до Whisper. Поточний поріг і режим — угорі цієї сторінки.</li>
-              <li>Зразки — у вкладці «Зразки звуків» або кнопкою «＋ До зразків» у «Фразах з Telegram». Нові зразки діють після перезапуску (кнопка «Перезапустити» внизу меню).</li>
+              <li>Зразки — у вкладці «Зразки звуків» або кнопкою «＋ До зразків» у картці запису «Аудіоархіву». Нові зразки діють після перезапуску (кнопка «Перезапустити» внизу меню).</li>
               <li>У «Аудіоархіві» позначайте записи: <b>«Сигнал»</b>, <b>«Мовлення»</b>, «Нерозбірливо», «Шум ефіру» чи «Кімната / клавіатура». Там справжній звук приймача, зокрема відкинуті сегменти.</li>
               <li>«Оцінити розмітку» покаже, скільки сповіщень знайде кожен поріг і чи зачепить він мовлення. Поріг змінюється в <code>config.py</code>.</li>
             </ol></article>
@@ -146,10 +140,9 @@
 
       <!-- Текстові списки -->
       <section data-panel="dictionaries" hidden>
-        <article class="panel"><h2>Словники розпізнавання</h2>
-          <p class="muted">Словники позивних, команд і списку спостереження. Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
-          <p id="dictionaries-status" class="muted small"></p></article>
-        <div id="dictionary-lists" class="grid two"></div>
+        <p class="muted small page-note">Словники позивних, команд і списку спостереження. Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
+        <p id="dictionaries-status" class="muted small" hidden></p>
+        <div id="dictionary-lists"></div>
       </section>
 
       <section data-panel="codes" hidden>
@@ -165,17 +158,19 @@
         <article class="panel"><h2>Застосування без перезапуску</h2>
           <p class="muted">Приймач перевіряє зміни кожні кілька секунд і застосовує їх до наступного сегмента. Рядок, що починається з <code>#</code>, зберігається, але не діє. Позивні, команди й числа захищені: такі рядки не збережуться.</p>
           <p id="texts-status" class="muted small"></p></article>
-        <div id="text-lists" class="grid two"></div>
+        <div id="text-lists"></div>
       </section>
 
       <!-- Налаштування -->
       <section data-panel="settings" hidden>
+        <div class="grid two settings-grid">
         <article class="panel"><h2>Розпізнавання</h2><p class="muted">Застосовуються після перезапуску приймача. Збереження його не перезапускає.</p>
           <p id="models" class="muted small"></p><form id="settings"><div id="fields" class="fields"></div><button>Зберегти</button></form></article>
         <article class="panel"><h2>Обробка без перезапуску</h2>
           <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram (розділ «Словники») теж діють без перезапуску.</p>
           <p id="runtime-status" class="muted small"></p>
           <form id="runtime-settings"><div id="runtime-fields" class="fields"></div><button>Зберегти</button></form></article>
+        </div>
       </section>
 
       <!-- Користувачі -->
@@ -198,7 +193,7 @@
         <article class="panel"><div class="panel-head"><h2>Навчені заміни слів</h2><button id="learning-refresh" class="ghost">Оновити</button></div>
           <p class="muted small">Кожна правка тексту (в Mini App чи еталоном в «Аудіоархіві») порівнюється з почутим, і пари слів «почуте → правильне» стають кандидатами в заміни. Заміна діє в розпізнаванні лише після двох однакових правок у різних фразах. Заміна звичайного слова потребує ще й вашого дозволу. Позивний виправляється лише перед номером із його словника. Номери й назви зі словників правилами не змінюються. Моделі Whisper і Qwen від цього не перенавчаються: заміни застосовуються до їхнього тексту.</p>
           <div class="cards" id="learning-cards"></div></article>
-        <article class="panel"><div class="panel-head"><h2>Заміни</h2><select id="learning-filter" aria-label="Показати"><option value="queue">Черга: чекають підтвердження чи дозволу</option><option value="applies">Діють зараз</option><option value="other">Вимкнені й заборонені</option><option value="all">Усі</option></select></div>
+        <article class="panel"><div class="panel-head"><h2>Заміни</h2><select id="learning-filter" aria-label="Показати"><option value="queue">Черга: чекають підтвердження чи дозволу</option><option value="needs_confirmation">Чекають підтвердження</option><option value="needs_approval">Чекають дозволу</option><option value="conflict">Конфлікти</option><option value="applies">Діють зараз</option><option value="other">Вимкнені й заборонені</option><option value="all">Усі</option></select></div>
           <div class="table-wrap"><table id="learning-items"></table></div></article>
       </section>
 
@@ -212,22 +207,25 @@
 
       <!-- Система -->
       <section data-panel="system" hidden>
-        <div class="grid two">
-          <article class="panel"><div class="panel-head"><h2>Резервні копії бази</h2><button id="backup-now">Створити зараз</button></div><div id="backups" class="list"></div></article>
-          <article class="panel"><h2>Моделі й потоки</h2><div id="workers"></div></article>
+        <div class="sys-grid">
+          <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>
+          <article class="panel sys"><h3>Telegram</h3><div id="telegram"></div></article>
+          <article class="panel sys"><div class="panel-head"><h3>Резервні копії бази</h3><button id="backup-now" class="ghost">Створити</button></div>
+            <div id="backups-summary"></div>
+            <details><summary>Усі копії</summary><div id="backups" class="sys-list"></div></details></article>
         </div>
-        <article class="panel"><h2>Telegram</h2><div id="telegram"></div></article>
         <article class="panel">
-          <div class="panel-head"><h2>Історія сесій діагностики</h2><button id="history-refresh" class="ghost">Оновити історію</button></div>
-          <p id="history-policy" class="muted small"></p>
-          <div class="toolbar"><label for="history-session">Сесія</label><select id="history-session" disabled></select><button id="history-download" disabled>Завантажити JSON</button></div>
-          <p id="history-summary" class="muted" role="status">Історія з’явиться після запуску оновленого приймача.</p>
-          <div class="table-wrap"><table id="history-metrics"></table></div>
-          <p class="muted small">Часові метрики — у секундах, RTF — відношення часу до тривалості аудіо. Середні й максимуми — за сесію; p95 і докладні сегменти — останні 128. Знімок без позначки завершення не підтверджує, що процес досі працює.</p>
+          <div class="panel-head"><h2>Історія сесій</h2>
+            <div class="toolbar"><select id="history-session" aria-label="Сесія" disabled></select><button id="history-download" class="ghost" disabled>JSON</button><button id="history-refresh" class="ghost">Оновити</button></div></div>
+          <p id="history-summary" class="muted small" role="status">Історія з’явиться після запуску оновленого приймача.</p>
+          <div class="table-wrap"><table id="history-metrics" class="compact"></table></div>
+          <details><summary>Пояснення й зберігання</summary>
+            <p class="muted small">Часові метрики — у секундах, RTF — відношення часу до тривалості аудіо. Середні й максимуми — за сесію; p95 і докладні сегменти — останні 128. Знімок без позначки завершення не підтверджує, що процес досі працює.</p>
+            <p id="history-policy" class="muted small"></p></details>
           <details><summary>Знімок вибраної сесії</summary><pre id="history-json"></pre></details>
+          <details><summary>Усі лічильники поточної сесії</summary><div class="table-wrap"><table id="counters" class="compact"></table></div></details>
+          <details><summary>Повна діагностика (JSON)</summary><pre id="diagnostics"></pre></details>
         </article>
-        <article class="panel"><details><summary>Усі лічильники</summary><div class="table-wrap"><table id="counters"></table></div></details>
-          <details><summary>Повна діагностика (JSON)</summary><pre id="diagnostics"></pre></details></article>
       </section>
 
       <!-- Ролі -->

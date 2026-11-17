@@ -222,13 +222,41 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .warn-list li.error { color: var(--bad); }
 @media (max-width: 1250px) { .top-actions #updated { display: none; } }
 @media (max-width: 900px) { .top-actions { flex-wrap: wrap; } }
-#cards { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
-#cards .card { padding: 12px 12px; }
-#cards .card .value { font-size: 17px; line-height: 1.2; overflow-wrap: anywhere; }
-#cards .card .detail { font-size: 11px; }
-#cards .card .label { font-size: 9px; letter-spacing: .08em; }
-@media (max-width: 1100px) { #cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 760px) { #cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .card.clickable { cursor: pointer; transition: border-color .15s, background .15s; }
 .card.clickable:hover { border-color: #4f7359; background: #16222f; }
 .card.clickable:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.sys-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; align-items: start; }
+.panel.sys { padding: 12px 14px; }
+.panel.sys h3 { margin: 0 0 8px; font-size: 13px; }
+.panel.sys .panel-head { margin-bottom: 8px; } .panel.sys .panel-head h3 { margin: 0; }
+.panel.sys .kv { font-size: 12px; gap: 4px 10px; }
+.panel.sys details { margin-top: 6px; }
+.sys-list { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow: auto; }
+.sys-row { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+table.compact td, table.compact th { padding: 4px 8px; font-size: 12px; }
+@media (max-width: 1100px) { .sys-grid { grid-template-columns: 1fr; } }
+.card.clickable.picked { border-color: var(--lime); background: #1a2b22; }
+/* Картки всіх сторінок — компактно, в один ряд, поки вистачає ширини. */
+.cards { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
+.cards .card { padding: 12px; }
+.cards .card .value { font-size: 17px; line-height: 1.2; overflow-wrap: anywhere; }
+.cards .card .detail { font-size: 11px; }
+.cards .card .label { font-size: 9px; letter-spacing: .08em; }
+.recording-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 2px 0 8px; }
+.small-button { padding: 3px 9px; font-size: 12px; }
+.list-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.list-layout { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.list-layout .list-editor { width: 100%; min-height: 0; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
+.list-right h2 { margin-top: 0; }
+@media (max-width: 900px) { .list-layout { grid-template-columns: 1fr; } }
+/* Налаштування: підпис ліворуч, вузьке поле праворуч, підказка під підписом. */
+.settings-grid { align-items: start; }
+#fields, #runtime-fields { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 12px; }
+#fields label, #runtime-fields label { display: grid; grid-template-columns: minmax(0, 1fr) 90px; align-items: center; column-gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }
+#fields label:last-child, #runtime-fields label:last-child { border-bottom: 0; }
+#fields input[type="number"], #runtime-fields input[type="number"] { width: 90px; grid-column: 2; grid-row: 1 / span 2; padding: 5px 8px; text-align: right; }
+#runtime-fields label .muted { grid-column: 1; font-size: 11px; }
+#fields label.inline, #runtime-fields label.inline { display: flex; gap: 8px; }
+.settings-grid .panel > p.muted { font-size: 12px; }
+.dictionary-layout { grid-template-columns: minmax(260px, 420px) minmax(0, 1fr); }
+.page-note { margin: 0 0 10px; max-width: 980px; }

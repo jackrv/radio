@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import socket
@@ -433,11 +434,46 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 isinstance(value, str) and value.strip() for value in role_fields.values()):
             raise HTTPException(422, "Для запису без мовлення позивні не вказуються")
         try:
-            return recordings.review(record_id, payload.reference.strip(), payload.label, payload.expected_revision, **role_fields)
+            result = recordings.review(record_id, payload.reference.strip(), payload.label, payload.expected_revision, **role_fields)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
+        result["event_sync"] = sync_event_from_reference(result, admin)
+        return result
+
+    def sync_event_from_reference(record, admin):
+        """Еталон мовлення стає текстом пов'язаної події: оновлюються журнал, підпис у
+        Telegram і навчання правил — так само, як після правки в Mini App.
+
+        Повертає None (немає події), "same", "updated", "hidden" або "failed".
+        Збій не скасовує збережений еталон.
+        """
+        fix_id = (record.get("data") or {}).get("fix_id") or ""
+        reference = (record.get("reference") or "").strip()
+        if record.get("label") not in ("speech", "unclear") or not reference or not re.fullmatch(r"db:[1-9][0-9]{0,17}", fix_id):
+            return None
+        from services.miniapp_correction_editor import CorrectionConflict, save_edit_draft
+        from services.telegram_media_store import is_hidden
+        try:
+            if is_hidden(db_path, fix_id):
+                return "hidden"
+            for _ in range(2):   # подію могли змінити між читанням і записом — одна повторна спроба
+                with get_db(db_path) as db:
+                    row = db.execute("SELECT text FROM radio_events WHERE id=?", (int(fix_id[3:]),)).fetchone()
+                if row is None:
+                    return None
+                if row[0] == reference:
+                    return "same"
+                try:
+                    save_edit_draft(db_path, fix_id, row[0], reference, actor_id=admin)
+                    return "updated"
+                except CorrectionConflict:
+                    continue
+            return "failed"
+        except Exception:
+            logging.getLogger("radio").exception("Не вдалося перенести еталон у подію %s", fix_id)
+            return "failed"
 
     @app.get("/api/phrases")
     def phrases(q: str = "", offset: int = 0, limit: int = 30, admin=Depends(actor)):

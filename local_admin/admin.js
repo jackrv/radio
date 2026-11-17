@@ -1032,8 +1032,11 @@
           controller.done = true;
           card.classList.add("done");
           save.textContent = "Оновити еталон";
-          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}`, "ok");
-          note("Еталон збережено. Початкові тексти й правила не змінено.");
+          const synced = { updated: " · подію й повідомлення в Telegram оновлено", hidden: " · повідомлення видалене — Telegram не змінено",
+                           failed: " · подію оновити не вдалося" }[result.event_sync] || "";
+          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}${synced}`,
+                   result.event_sync === "failed" ? "alert" : "ok");
+          note(result.event_sync === "updated" ? "Еталон збережено; подію й повідомлення в Telegram оновлено." : "Еталон збережено.");
           if (typeof advanceReview === "function") advanceReview(controller);
         } catch (error) {
           showSave(`Не збережено: ${error.message}`, "alert"); note(error.message);

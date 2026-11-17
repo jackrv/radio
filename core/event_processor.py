@@ -35,6 +35,19 @@ class EventProcessor:
         self.select_recipients = select_recipients
 
     def process(self, text, pcm, raw_text=None):
+        # Автокорекція за словниками й шаблонами — до пошуку позивних і команд:
+        # «Берега 56» -> «Береза 56», «приєм» -> «прийом». Виправлений текст —
+        # основний (подія, журнал, Mini App, сповіщення); почутий лишається в raw_text.
+        # Збій автокорекції не зупиняє обробку: тоді йде текст без неї.
+        original = text
+        try:
+            text = canonical_text(text, (self.commands, self.callsigns, self.watch))
+            text = template_text(text, self.callsigns, (*self.commands.names, *self.watch.names))
+        except Exception:
+            self.log.exception("Не вдалося застосувати автокорекцію; обробляю текст без неї")
+            text = original
+        if raw_text is None and text != original:
+            raw_text = original
         cs_found = self.callsigns.find(text)
         cmd_found = self.commands.find(text)
         watch_found = self.watch.find(text)
@@ -49,6 +62,8 @@ class EventProcessor:
 
         from services.recordings import note
         note(predicted_recipient=to_str, predicted_sender=from_str, roles_parsed=True)
+        if text != original:
+            note(final_text=text)
 
         if (
             is_short_garbage(text, self.short_garbage)
@@ -115,17 +130,14 @@ class EventProcessor:
                 if fix_id:
                     note(fix_id=fix_id)
 
-                # У сповіщенні впізнані зі словником слова пишуться як у словнику,
-                # схожі позивні й обороти — за шаблоном, а знайдені команди — окремим
-                # рядком шапки. У базі текст незмінний.
-                # Збій оформлення не має зупинити сповіщення: тоді йде почутий текст.
+                # Знайдені команди — окремим рядком шапки, так, як їх вимовляють.
+                # Збій оформлення не має зупинити сповіщення.
+                shown = text
                 try:
-                    shown = canonical_text(text, (self.commands, self.callsigns, self.watch))
-                    shown = template_text(shown, self.callsigns, (*self.commands.names, *self.watch.names))
                     commands_str = fmt_spoken(cmd_found)
                 except Exception:
-                    self.log.exception("Не вдалося оформити текст сповіщення; надсилаю почутий")
-                    shown, commands_str = text, cmd_str
+                    self.log.exception("Не вдалося оформити рядок команд; надсилаю без нього")
+                    commands_str = cmd_str
                 notification = self.telegram_service.notify(
                     watch_str or "Ефір",
                     to_str,

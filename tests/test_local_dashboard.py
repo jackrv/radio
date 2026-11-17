@@ -517,3 +517,30 @@ def test_archive_views_split_archive_and_period_limits(setup, tmp_path):
         counts=client.get("/api/recordings",params={"view":"radio","since":day}).json()["views"]
         assert (counts["radio"],counts["speech"],counts["filtered"],counts["reviewed"],counts["all"])==(1,1,1,1,4)
         assert client.get("/api/recordings",params={"view":"nope"}).status_code==422
+
+
+def test_reference_from_panel_updates_linked_event_and_telegram(setup, tmp_path):
+    _,path=setup
+    import sqlite3
+    from services.event_store import save_event
+    from services.recordings import RecordingStore
+    from services.telegram_sync import remember_delivery
+    heard="Берега 56, прийом"
+    event=save_event("береза 56","","","",heard,path,raw_text=heard)
+    fix=f"db:{event}"
+    remember_delivery(path,fix,{"message_id":5,"chat":{"id":1001},"voice":{"file_id":"x"}},"voice")
+    store=RecordingStore(tmp_path/"recordings")
+    linked=store.save(pcm(segment()),16000,{"status":"ready","fix_id":fix})
+    lonely=store.save(pcm(segment()),16000,{"status":"ready"})
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        review=lambda rid,text,label="speech",rev=0: client.put(f"/api/recordings/{rid}/review",
+            json={"reference":text,"label":label,"expected_revision":rev},headers={"Origin":ORIGIN}).json()
+        assert review(linked,"Береза 56, прийнято, прийом")["event_sync"]=="updated"
+        with sqlite3.connect(path) as db:
+            assert db.execute("SELECT text, raw_text FROM radio_events WHERE id=?",(event,)).fetchone()==("Береза 56, прийнято, прийом",heard)
+            assert db.execute("SELECT revision FROM correction_sources WHERE fix_id=?",(fix,)).fetchone()[0]>=1, "підпис у Telegram стоїть у черзі"
+        assert review(linked,"Береза 56, прийнято, прийом",rev=1)["event_sync"]=="same"
+        assert review(lonely,"Береза 56")["event_sync"] is None, "без події нічого не змінюється"
+        assert review(linked,"","room",rev=2)["event_sync"] is None, "шум не переписує подію"

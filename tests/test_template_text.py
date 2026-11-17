@@ -54,7 +54,7 @@ def test_only_last_word_becomes_end_of_message():
     assert snap("приймаю, береза 56") == "приймаю, береза 56"
 
 
-def test_notification_shows_templates_but_event_keeps_heard_text():
+def test_event_and_notification_get_templates_heard_text_is_kept_as_raw():
     telegram, save = Mock(), Mock(return_value=7)
     heard = "Берега 56, посилка отриму, приєм"
     EventProcessor(
@@ -63,5 +63,6 @@ def test_notification_shows_templates_but_event_keeps_heard_text():
         select_recipients=lambda wants: [{"chat_id": 1, "role": "admin", "mode": "all"}],
         db_path="unused-test.db", log_callsigns_only=True, log=Mock(),
     ).process(heard, b"\0\0")
-    assert save.call_args.args[4] == heard
+    assert save.call_args.args[4] == "Береза 56, посилку отримав, прийом"
+    assert save.call_args.kwargs["raw_text"] == heard
     assert telegram.notify.call_args.args[3] == "Береза 56, посилку отримав, прийом"

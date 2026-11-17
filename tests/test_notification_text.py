@@ -66,23 +66,25 @@ def processor(telegram, commands=COMMANDS, save=None):
     )
 
 
-def test_notification_shows_dictionary_words_but_event_keeps_heard_text():
+def test_event_and_notification_get_dictionary_words_heard_text_is_kept_as_raw():
     telegram, save = Mock(), Mock(return_value=7)
     heard = "Злата 42 42, злата, кем 25 15, прийом."
     processor(telegram, save=save).process(heard, b"\0\0")
-    assert save.call_args.args[4] == heard
+    assert save.call_args.args[4] == "Злива 42 42, злата, кем 25 15, прийом."
+    assert save.call_args.kwargs["raw_text"] == heard
     assert telegram.notify.call_args.args[3] == "Злива 42 42, злата, кем 25 15, прийом."
     assert telegram.notify.call_args.kwargs["commands_str"] == "злива 42 42"
 
 
-def test_notification_is_sent_even_if_formatting_fails():
-    telegram = Mock()
+def test_notification_is_sent_even_if_autocorrection_fails():
+    telegram, save = Mock(), Mock(return_value=7)
     broken = Mock(wraps=COMMANDS)
     broken.matches.side_effect = RuntimeError("synthetic")
-    processor(telegram, commands=broken).process("злива 42 42", b"\0\0")
+    processor(telegram, commands=broken, save=save).process("злива 42 42", b"\0\0")
     telegram.notify.assert_called_once()
     assert telegram.notify.call_args.args[3] == "злива 42 42"
-    assert telegram.notify.call_args.kwargs["commands_str"] == "злива 4242"
+    assert telegram.notify.call_args.kwargs["commands_str"] == "злива 42 42"
+    assert save.call_args.args[4] == "злива 42 42" and "raw_text" not in save.call_args.kwargs
 
 
 def test_corrected_caption_has_commands_line(setup):  # noqa: F811

@@ -20,7 +20,7 @@ def found(text):
 
 def test_ordinal_means_callsign_number():
     assert found("другий, прийняв") == [("дятел", "2")]
-    assert found("18 36, перший прийняв, другий прийняв") == [("дятел", "1"), ("дятел", "2")]
+    assert found("31 05, перший прийняв, другий прийняв") == [("дятел", "1"), ("дятел", "2")]
 
 
 def test_only_with_alias_and_allowed_number():

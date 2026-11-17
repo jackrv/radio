@@ -26,7 +26,7 @@ def test_callsign_threshold_depends_on_number():
 
 
 def test_numbers_are_never_changed():
-    assert snap("Берега 5,6, 2684, приєм") == "Береза 5,6, 2684, прийом"
+    assert snap("Берега 5,6, 5316, приєм") == "Береза 5,6, 5316, прийом"
 
 
 def test_dictionary_and_phrase_words_are_not_rewritten():
@@ -38,7 +38,7 @@ def test_alias_and_callsign_without_numbers(monkeypatch):
     import callsigns
     monkeypatch.setattr(callsigns, "CALLSIGN_ALIASES", {"бук": "клен"})
     assert snap("Бук 15, прийом") == "Клен 15, прийом"
-    assert snap("Вишна 2684, прийом") == "Вишня 2684, прийом"
+    assert snap("Вишна 5316, прийом") == "Вишня 5316, прийом"
 
 
 def test_unclear_words_stay_as_heard():

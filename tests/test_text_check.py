@@ -31,11 +31,11 @@ def test_clean_text_has_no_remarks():
 
 
 def test_format_rules_and_fix_all():
-    text = "Береза,31  я клен 15 , злива 4242, грім 022, 96,80, с півночі, на звязок"
+    text = "Береза,31  я клен 15 , злива 4242, грім 022, 63,27, с півночі, на звязок"
     result = check(text)
     assert set(kinds(result)) == {"format"}
-    assert format_text(text) == "Береза, 31 я клен 15, злива 42 42, грім 0 22, 96 80, з півночі, на звʼязок"
-    assert result["formatted"] == "Береза 31, я Клен 15, злива 42 42, грім 0 22, 96 80, з півночі, на звʼязок"
+    assert format_text(text) == "Береза, 31 я клен 15, злива 42 42, грім 0 22, 63 27, з півночі, на звʼязок"
+    assert result["formatted"] == "Береза 31, я Клен 15, злива 42 42, грім 0 22, 63 27, з півночі, на звʼязок"
 
 
 def test_each_fix_changes_only_its_place():
@@ -112,7 +112,7 @@ def test_miniapp_check_endpoint_uses_database_dictionaries_and_permissions(api):
     ("клен 15 посилку отримав прийом / клен 15 прийнято прийом", "Клен 15, посилку отримав, прийом / Клен 15, прийнято, прийом"),
     ("клен 15 прийнято прийом | вишня прийнято", "Клен 15, прийнято, прийом / Вишня, прийнято"),   # старий «|» -> « / »
     ("Злива 42 42, злива 42 42, я береза 700, грім, 0 22, прийом", "Злива 42 42, злива 42 42, я Береза 700, грім 0 22, прийом"),
-    ("Клен, 15, 26 84, Прийом.", "Клен 15, 26 84, прийом."),
+    ("Клен, 15, 53 16, Прийом.", "Клен 15, 53 16, прийом."),
     ("вишня 96, 80, прийом", "Вишня, 96, 80, прийом"),
     ("822 прийнято прийом", "822, прийнято, прийом"),
     ("береза 700 перевірка звʼязку прийом", "Береза 700, перевірка звʼязку, прийом"),   # команда без номера — слово
@@ -124,7 +124,7 @@ def test_tidy_puts_commas_between_groups_and_capitalizes_callsigns(text, expecte
 
 
 def test_tidy_never_changes_words_and_is_stable():
-    for text in ("береза 700 я клен 15 прийнято прийом", "Клен 15, 17 86, 17 86, прийом", "прийом"):
+    for text in ("береза 700 я клен 15 прийнято прийом", "Клен 15, 39 64, 39 64, прийом", "прийом"):
         tidy = tidy_text(text, CALLSIGNS, COMMANDS)
         assert tidy.lower().replace(",", "").split() == text.lower().replace(",", "").split()
         assert tidy_text(tidy, CALLSIGNS, COMMANDS) == tidy
@@ -168,7 +168,7 @@ def test_unknown_word_before_a_number_offers_a_new_callsign_entry():
     commands = command_dictionary(["злива 4242"])
     entries = lambda text: [i.get("dictionary_entry") for i in check_text(text, callsigns, commands)["issues"] if i.get("dictionary_entry")]
     assert entries("Клен 48, прийом") == ["клен: 48"]
-    assert entries("Клен, 14 77, прийом") == ["клен"], "після позивного код — пропонуємо без номера"
+    assert entries("Клен, 48 62, прийом") == ["клен"], "після позивного код — пропонуємо без номера"
     assert entries("Бериза 56, прийом") == [], "схоже на відомий позивний — підказка написання, не новий"
     assert entries("Береза 18, прийом") == ["береза: 18"], "відомий позивний з новим номером"
     assert entries("прийом 5") == [] and entries("злива 42 42") == [] and entries("квадрат 12") == []

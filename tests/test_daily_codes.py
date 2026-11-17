@@ -1,4 +1,4 @@
-"""Коди доби: ручне введення, зберігання за датою й підказка «Можливо, 14 77?»."""
+"""Коди доби: ручне введення, зберігання за датою й підказка «Можливо, 48 62?»."""
 
 import datetime
 
@@ -13,7 +13,7 @@ from tests.test_web_api import auth_header
 
 CALLSIGNS = Callsigns.from_lines(["береза: 56 68"])
 COMMANDS = command_dictionary(["злива 4242"])
-CODES = ["14 77", "26 87", "18 36"]
+CODES = ["48 62", "53 19", "31 05"]
 
 
 def hints(text, codes=CODES):
@@ -22,25 +22,25 @@ def hints(text, codes=CODES):
 
 
 def test_parse_codes_accepts_spoken_and_merged_forms():
-    assert daily_codes.parse_codes("14 77, 1836; 24-91\n14,77") == ["14 77", "18 36", "24 91"]
+    assert daily_codes.parse_codes("48 62, 3105; 72-59\n48,62") == ["48 62", "31 05", "72 59"]
     with pytest.raises(ValueError, match="чотирьох цифр"):
-        daily_codes.parse_codes("14 7, 18 36")
+        daily_codes.parse_codes("48 6, 31 05")
 
 
 def test_hint_for_one_wrong_digit_only():
-    assert hints("Береза 68, 14, 57, прийом") == [("Можливо, «14 77» — код доби, а не «14, 57»?", "Береза 68, 14 77, прийом")]
-    assert hints("Береза 68, 14 77, прийом") == []
+    assert hints("Береза 68, 48, 42, прийом") == [("Можливо, «48 62» — код доби, а не «48, 42»?", "Береза 68, 48 62, прийом")]
+    assert hints("Береза 68, 48 62, прийом") == []
     assert hints("Береза 68, 15 57") == [], "дві цифри інші — не підказуємо"
-    assert hints("Береза 68, 96 80") == [], "68 — номер позивного, 96 80 не схоже на коди"
-    assert hints("Береза 68, 14, 57", codes=[]) == [], "без кодів доби — без підказок"
+    assert hints("Береза 68, 63 27") == [], "68 — номер позивного, 63 27 не схоже на коди"
+    assert hints("Береза 68, 48, 42", codes=[]) == [], "без кодів доби — без підказок"
 
 
 def test_store_by_day_and_event_day(tmp_path):
     from services.event_store import init_db
     db_path = tmp_path / "events.db"
     init_db(db_path)
-    assert daily_codes.write(db_path, "2026-11-17", "14 77, 18 36") == ["14 77", "18 36"]
-    daily_codes.write(db_path, "2026-11-16", "26 87")
+    assert daily_codes.write(db_path, "2026-11-17", "48 62, 31 05") == ["48 62", "31 05"]
+    daily_codes.write(db_path, "2026-11-16", "53 19")
     assert [i["day"] for i in daily_codes.recent(db_path)] == ["2026-11-17", "2026-11-16"]
     from services.sqlite_connection import get_db
     with get_db(db_path) as db:
@@ -51,7 +51,7 @@ def test_store_by_day_and_event_day(tmp_path):
     assert daily_codes.write(db_path, "2026-11-16", "") == [], "порожньо — коди дня прибрано"
     assert [i["day"] for i in daily_codes.recent(db_path)] == ["2026-11-17"]
     with pytest.raises(ValueError):
-        daily_codes.write(db_path, "17.11.2026", "14 77")
+        daily_codes.write(db_path, "17.11.2026", "48 62")
 
 
 def test_panel_codes_and_hint_by_record_day(tmp_path):
@@ -70,30 +70,30 @@ def test_panel_codes_and_hint_by_record_day(tmp_path):
     with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 1)) as client:
         client.post("/session", json={"token": KEY}, headers=h)
         today = client.get("/api/daily-codes").json()["today"]
-        assert client.put(f"/api/daily-codes/{today}", json={"codes": "14 77"}, headers=h).json()["codes"] == ["14 77"]
+        assert client.put(f"/api/daily-codes/{today}", json={"codes": "48 62"}, headers=h).json()["codes"] == ["48 62"]
         assert client.put(f"/api/daily-codes/{today}", json={"codes": "1"}, headers=h).status_code == 422
-        assert [(i["day"], i["codes"]) for i in client.get("/api/daily-codes").json()["items"]] == [(today, ["14 77"])]
-        assert client.put("/api/daily-codes/permanent", json={"codes": "18 36, 2491"}, headers=h).json()["codes"] == ["18 36", "24 91"]
+        assert [(i["day"], i["codes"]) for i in client.get("/api/daily-codes").json()["items"]] == [(today, ["48 62"])]
+        assert client.put("/api/daily-codes/permanent", json={"codes": "31 05, 7259"}, headers=h).json()["codes"] == ["31 05", "72 59"]
         listing = client.get("/api/daily-codes").json()
-        assert listing["permanent"] == ["18 36", "24 91"] and [i["day"] for i in listing["items"]] == [today]
+        assert listing["permanent"] == ["31 05", "72 59"] and [i["day"] for i in listing["items"]] == [today]
         check = lambda **body: [i["message"] for i in client.post("/api/text-check", json=body, headers=h).json()["issues"]]
         now = datetime.datetime.now().timestamp()
-        assert any("14 77" in m for m in check(text="Береза 68, 14, 57", at=now))
-        assert not any("14 77" in m for m in check(text="Береза 68, 14, 57", at=now - 3 * 24 * 3600)), "інший день — свої коди"
-        assert any("18 36" in m for m in check(text="Береза 68, 15 36", at=now - 3 * 24 * 3600)), "постійні — щодня"
+        assert any("48 62" in m for m in check(text="Береза 68, 48, 42", at=now))
+        assert not any("48 62" in m for m in check(text="Береза 68, 48, 42", at=now - 3 * 24 * 3600)), "інший день — свої коди"
+        assert any("31 05" in m for m in check(text="Береза 68, 31 08", at=now - 3 * 24 * 3600)), "постійні — щодня"
 
 
 def test_miniapp_check_uses_codes_of_the_event_day(api):  # noqa: F811
     db_path, client = api
     from services.sqlite_connection import get_db
-    daily_codes.write(db_path, daily_codes.local_day(), "14 77")
-    body = client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "Береза 68, 14, 57"}).json()
-    assert any("14 77" in i["message"] for i in body["issues"]), "без fix_id — коди сьогодні"
+    daily_codes.write(db_path, daily_codes.local_day(), "48 62")
+    body = client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "Береза 68, 48, 42"}).json()
+    assert any("48 62" in i["message"] for i in body["issues"]), "без fix_id — коди сьогодні"
     with get_db(db_path) as db:
         db.execute("INSERT INTO radio_events (id, ts, callsigns, commands, recipient, sender, text) "
                    "VALUES (9, '2026-01-01 10:00:00', '', '', '', '', 'x')")
     body = client.put("/api/corrections/check", headers=auth_header(3003),
-                      json={"text": "Береза 68, 14, 57", "fix_id": "db:9"}).json()
+                      json={"text": "Береза 68, 48, 42", "fix_id": "db:9"}).json()
     assert not any("код доби" in i["message"] for i in body["issues"]), "подія іншого дня — без кодів сьогодні"
 
 
@@ -113,9 +113,9 @@ def test_permanent_codes_join_every_day(tmp_path):
     from services.sqlite_connection import get_db
     db_path = tmp_path / "events.db"
     init_db(db_path)
-    daily_codes.write_permanent(db_path, "18 36, 24 91")
-    daily_codes.write(db_path, "2026-11-17", "14 77, 18 36")
+    daily_codes.write_permanent(db_path, "31 05, 72 59")
+    daily_codes.write(db_path, "2026-11-17", "48 62, 31 05")
     with get_db(db_path) as db:
-        assert daily_codes.read(db, "2026-11-17") == ["18 36", "24 91", "14 77"], "без повторів"
-        assert daily_codes.read(db, "2026-11-01") == ["18 36", "24 91"]
+        assert daily_codes.read(db, "2026-11-17") == ["31 05", "72 59", "48 62"], "без повторів"
+        assert daily_codes.read(db, "2026-11-01") == ["31 05", "72 59"]
     assert [i["day"] for i in daily_codes.recent(db_path)] == ["2026-11-17"], "постійні — не доба"

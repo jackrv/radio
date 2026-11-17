@@ -538,7 +538,7 @@ def test_attention_lists_what_waits_for_the_operator(local):
     data = client.get("/api/attention").json()
     assert data["codes_missing"] is True and data["codes_day"] == daily_codes.local_day()
     assert data["approvals"] == 0 and data["telegram_failed"] == 0 and data["unlabeled_radio_24h"] == 0
-    daily_codes.write(path, data["codes_day"], "14 77")
+    daily_codes.write(path, data["codes_day"], "48 62")
     init_word_db(path)
     with sqlite3.connect(path) as db:
         db.execute("INSERT INTO word_corrections (original, corrected, confirmations, status) VALUES ('прием','прийом',2,'active')")

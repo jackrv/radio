@@ -311,3 +311,15 @@ def test_when_space_runs_out_filtered_noise_goes_first_and_radio_last(tmp_path):
     with patch('services.recordings.time.time', return_value=10**10):
         store.prune()
     assert store.listing(view='all', limit=10)['items'] == [], "строк за віком діє для всіх нерозмічених"
+
+
+def test_quality_by_day_counts_phrases_that_needed_no_edits_and_missed_speech(tmp_path):
+    store = RecordingStore(tmp_path / 'archive')
+    for heard, final, reference in (('клен 15 прийом', 'Клен 15, прийом', 'Клен 15, прийом'),
+                                    ('клин 15', 'клин 15', 'Клен 15, прийом'),
+                                    ('', '', 'Клен 15, прийом')):
+        rid = store.save(pcm(), 16000, {'status': 'ready', 'raw_text': heard, 'final_text': final})
+        store.review(rid, reference, 'speech', 0)
+    day, = store.quality_by_day()
+    assert day['records'] == 3 and day['no_edits'] == 1 and day['missed'] == 1
+    assert round(day['no_edits_share'], 2) == 0.33

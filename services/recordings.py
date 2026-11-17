@@ -314,7 +314,12 @@ class RecordingStore:
                               f"{' AND reference IS NULL' if unreviewed else ''}", (status,)).fetchone()[0]
 
     def quality_by_day(self, days=30):
-        """Якість за еталонами оператора по днях запису: слова, номери, адресат."""
+        """Якість за еталонами оператора по днях запису: слова, номери, адресат.
+
+        «Без правок» — фраза, де підсумковий текст збігся з еталоном слово в слово
+        (регістр і розділові знаки не враховуються): головна мета — текст, що не
+        потребує виправлення. «Пропущено» — мовлення, з якого тексту не вийшло зовсім.
+        """
         import datetime
         cutoff = time.time() - days * 86400
         with self.connect() as db:
@@ -324,9 +329,12 @@ class RecordingStore:
         for row in map(self.decode, rows):
             day = datetime.datetime.fromtimestamp(row["created"]).strftime("%Y-%m-%d")
             item = by_day.setdefault(day, {"day": day, "records": 0, "words": 0, "raw_errors": 0, "final_errors": 0,
-                                           "with_numbers": 0, "numbers_ok": 0, "roles": 0, "roles_ok": 0})
+                                           "with_numbers": 0, "numbers_ok": 0, "roles": 0, "roles_ok": 0,
+                                           "no_edits": 0, "missed": 0})
             q = row["quality"]
             item["records"] += 1
+            item["no_edits"] += q["final_text"]["word_errors"] == 0
+            item["missed"] += not (row["data"].get("final_text") or row["data"].get("raw_text") or "").strip()
             item["words"] += q["final_text"]["reference_words"]
             item["raw_errors"] += q["raw_text"]["word_errors"]
             item["final_errors"] += q["final_text"]["word_errors"]
@@ -341,6 +349,8 @@ class RecordingStore:
         for item in by_day.values():
             words_ = item["words"] or None
             result.append({**item,
+                           "no_edits_share": item["no_edits"] / item["records"],
+                           "missed_share": item["missed"] / item["records"],
                            "wer_raw": item["raw_errors"] / words_ if words_ else None,
                            "wer_final": item["final_errors"] / words_ if words_ else None,
                            "numbers": item["numbers_ok"] / item["with_numbers"] if item["with_numbers"] else None,

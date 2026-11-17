@@ -404,3 +404,4 @@ nav button.active { box-shadow: none; }
 .link-button { background: none; border: none; padding: 2px 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; }
 .link-button:hover { color: var(--text); }
 .danger-text { color: var(--bad); }
+table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--border); }

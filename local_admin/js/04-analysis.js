@@ -3,11 +3,11 @@
     const r = await request("/api/quality?days=60");
     const table = $("quality-days"), head = el("tr");
     table.replaceChildren();
-    for (const h of ["День", "Розмічено", "Помилка в словах: Whisper", "після обробки", "Номери точно", "Адресат вірно"]) head.append(el("th", "", h));
+    for (const h of ["День", "Розмічено", "Без правок", "Пропущено", "Помилка в словах: Whisper", "після обробки", "Номери точно", "Адресат вірно"]) head.append(el("th", "", h));
     table.append(head);
     if (!r.days.length) {
       const row = el("tr"), cell = el("td", "muted", "Розмічених записів мовлення за цей період немає. Розмітьте кілька в «Аудіоархіві».");
-      cell.colSpan = 6; row.append(cell); table.append(row); return;
+      cell.colSpan = 8; row.append(cell); table.append(row); return;
     }
     const bar = (value, good) => {
       const cell = el("td", "num");
@@ -18,10 +18,17 @@
       cell.append(wrap);
       return cell;
     };
-    for (const d of [...r.days].reverse()) {
-      const row = el("tr");
-      row.append(el("td", "nowrap", d.day.split("-").reverse().join(".")), el("td", "num", String(d.records)),
-        bar(d.wer_raw, false), bar(d.wer_final, false),
+    // Підсумок за весь період — зважений за кількістю записів і слів.
+    const sum = key => r.days.reduce((a, d) => a + (d[key] || 0), 0);
+    const share = (a, b) => (b ? a / b : null);
+    const total = { day: "Усього", records: sum("records"), no_edits_share: share(sum("no_edits"), sum("records")),
+      missed_share: share(sum("missed"), sum("records")), wer_raw: share(sum("raw_errors"), sum("words")),
+      wer_final: share(sum("final_errors"), sum("words")), numbers: share(sum("numbers_ok"), sum("with_numbers")),
+      recipient: share(sum("roles_ok"), sum("roles")) };
+    for (const d of [total, ...[...r.days].reverse()]) {
+      const row = el("tr", d === total ? "total" : "");
+      row.append(el("td", "nowrap", d === total ? "Усього" : d.day.split("-").reverse().join(".")), el("td", "num", String(d.records)),
+        bar(d.no_edits_share, true), bar(d.missed_share, false), bar(d.wer_raw, false), bar(d.wer_final, false),
         bar(d.numbers, true), bar(d.recipient, true));
       table.append(row);
     }

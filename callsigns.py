@@ -70,6 +70,22 @@ def basic_normalize(text: str) -> str:
     return " ".join(text.split())
 
 
+
+def dictionary_address_forms(names):
+    """Обережний захист давальних форм зі збереженою основою.
+
+    Це не повний морфологічний аналіз і не нові алиаси: лише заборона
+    переписувати «Клену»/«Кленові» на словникове «Клен» у почутому тексті.
+    Форми зі зміною основи тут не вгадуються.
+    """
+    forms = set()
+    for name in names:
+        name = basic_normalize(name)
+        if len(name) >= 3 and name[-1] not in "аеєиіїоуюяьй" and name.isalpha():
+            forms.update((name + "у", name + "ові"))
+    return forms
+
+
 def normalize(text: str) -> str:
     text = basic_normalize(text)
     for canon, variants in ALIASES.items():

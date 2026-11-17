@@ -2,7 +2,7 @@ import math
 import re
 from typing import NamedTuple
 
-from callsigns import FOLD, basic_normalize, normalize, to_items
+from callsigns import FOLD, basic_normalize, normalize, to_items, dictionary_address_forms
 
 
 def fmt(items):
@@ -35,12 +35,15 @@ def canonical_text(text, dictionaries):
     Слово, яке саме є назвою словника, лишається: його тлумачення видно в шапці.
     """
     known = {name for dictionary in dictionaries for name in dictionary.names}
+    address_forms = dictionary_address_forms(known)
     out, last = [], 0
     for word in _WORD.finditer(text):
         tail = _NUMBER_TAIL.match(text, word.end())
         if not tail:
             continue
         heard = basic_normalize(word.group())
+        if heard in address_forms:
+            continue
         snippet = text[word.start():tail.end()]
         hit = None
         for dictionary in dictionaries:

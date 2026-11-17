@@ -145,3 +145,16 @@ def test_browser_may_send_text_check_from_the_miniapp(api):
         "Access-Control-Request-Headers": "authorization,content-type,ngrok-skip-browser-warning"})
     assert response.status_code == 200
     assert "PUT" in response.headers["access-control-allow-methods"]
+
+
+def test_missing_callsign_number_has_an_explicit_quick_add_action():
+    result = check('Береза 57, прийом')
+    actions = [issue['dictionary_entry'] for issue in result['issues'] if 'dictionary_entry' in issue]
+    assert actions == ['береза: 57']
+
+
+def test_command_numbers_and_known_numbers_do_not_offer_callsign_creation():
+    for text in ('Береза 56, прийом', 'злива 4343', 'грім 023'):
+        assert not any('dictionary_entry' in issue for issue in check(text)['issues'])
+    result = check_text('злива 4343', None, COMMANDS)
+    assert not any('dictionary_entry' in issue for issue in result['issues'])

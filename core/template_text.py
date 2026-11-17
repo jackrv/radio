@@ -22,7 +22,7 @@ import re
 from rapidfuzz import fuzz
 
 import callsigns as callsigns_module
-from callsigns import FOLD, NUMBER_WORDS, basic_normalize
+from callsigns import FOLD, NUMBER_WORDS, basic_normalize, dictionary_address_forms
 
 # Обороти з підтверджених оператором шаблонів (ASR_TEMPLATES.md, розділ 2).
 PHRASES = (
@@ -61,6 +61,7 @@ def template_text(text, callsigns, known_names=()):
     ``callsigns`` — словник позивних (Callsigns): назви з номерами;
     ``known_names`` — назви з усіх словників, які не можна переписувати.
     """
+    known_names = tuple(known_names)
     tokens = [(m.start(), m.end(), m.group()) for m in _TOKEN.finditer(text)]
     if not tokens:
         return text
@@ -68,9 +69,14 @@ def template_text(text, callsigns, known_names=()):
     vocabulary = {_fold(w) for words, _ in phrases for w in words} | {_fold(w) for w in FUNCTION_WORDS}
     known = {_fold(n) for n in known_names} | {_fold(n) for n in callsigns.names}
 
+    address_forms = dictionary_address_forms((*known_names, *callsigns.names))
+
     def protected(word):
         folded = _fold(word)
-        return folded in known or folded in vocabulary or basic_normalize(word) in NUMBER_WORDS
+        # Порядкове «четвертий» — уже позивний разом із номером (дуб 4): число після нього
+        # не його номер, тож слово не переписується.
+        return (basic_normalize(word) in address_forms or folded in known or folded in vocabulary or basic_normalize(word) in NUMBER_WORDS
+                or basic_normalize(word) in callsigns_module.ORDINALS)
 
     # Явний перелік: numbers — defaultdict, тож у ньому бувають порожні записи.
     # Позивний без номерів у словнику («вишня») може стояти перед цифрами повідомлення.
@@ -108,6 +114,8 @@ def template_text(text, callsigns, known_names=()):
                 continue
             heard = [tokens[i][2] for i in idx]
             if all(_fold(h) == _fold(p) for h, p in zip(heard, parts)) or all(map(protected, heard)):
+                continue
+            if any(basic_normalize(h) in address_forms and _fold(h) != _fold(p) for h, p in zip(heard, parts)):
                 continue
             if min(fuzz.ratio(_fold(h), _fold(p)) for h, p in zip(heard, parts)) < PHRASE_WORD:
                 continue

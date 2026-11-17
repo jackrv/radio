@@ -164,29 +164,6 @@ def test_overview_has_everything_for_home_page(local):
     assert data["backups"]==[] and "telegram_sync" in data and "diagnostics" in data
 
 
-def test_phrases_audio_and_marking_notification_from_dashboard(local):
-    client,path,tmp=local
-    from services.telegram_phrase_store import register_phrase
-    from services.telegram_media_store import remember_voice
-    register_phrase(path,"b"*32,"дзинь")
-    fix="mem:"+"b"*32
-    remember_voice(path,fix,"voice-id")
-    items=client.get("/api/phrases?q=дзинь").json()["items"]
-    assert items[0]["fix_id"]==fix and items[0]["has_audio"] is True
-    with patch("api.local_dashboard.download_voice",return_value=b"OggS") as download:
-        audio=client.get(f"/api/phrases/audio?fix_id={fix}")
-        assert audio.status_code==200 and audio.content==b"OggS" and audio.headers["content-type"]=="audio/ogg"
-        bad=client.put("/api/phrases/notification-sample",json={"fix_id":fix,"confirmed_isolated":False},headers={"Origin":ORIGIN})
-        assert bad.status_code==422
-        with patch("services.notification_samples.ogg_to_wav",return_value=wav()):
-            ok=client.put("/api/phrases/notification-sample",json={"fix_id":fix,"confirmed_isolated":True},headers={"Origin":ORIGIN})
-        assert ok.status_code==200
-        assert download.call_args.args[1]=="voice-id"
-    assert len(list_samples(tmp/"samples")["items"])==1
-    assert client.get("/api/phrases/audio?fix_id=mem:"+"c"*32).status_code==404
-    assert client.get("/api/phrases/audio?fix_id=../../etc").status_code==422
-
-
 def test_manual_backup_from_dashboard(setup,tmp_path):
     _,path=setup
     app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",backup_dir=tmp_path/"backups")
@@ -211,15 +188,6 @@ def test_events_by_hour_buckets(tmp_path):
     assert series["counts"][-1]==2 and series["counts"][-6]==1 and sum(series["counts"])==3
 
 
-def _phrase_with_voice(path, token, text):
-    from services.telegram_phrase_store import register_phrase
-    from services.telegram_media_store import remember_voice
-    register_phrase(path, token, text)
-    fix = "mem:" + token
-    remember_voice(path, fix, "voice-" + token[:4])
-    return fix
-
-
 def test_archive_labels_feed_filter_evaluation(local):
     client,path,tmp=local
     import numpy as np
@@ -242,13 +210,10 @@ def test_archive_labels_feed_filter_evaluation(local):
     assert client.put("/api/phrases/label",json={"fix_id":"mem:"+"d"*32,"label":"speech"},headers={"Origin":ORIGIN}).status_code in (404,405)
 
 
-def test_spectral_observations_reach_filter_page_and_phrases(local):
+def test_spectral_observations_reach_filter_page(local):
     client,path,tmp=local
     import time as clock
-    fix=_phrase_with_voice(path,"a"*32,"дзінь")
-    created=[i for i in client.get("/api/phrases").json()["items"] if i["fix_id"]==fix][0]["created_at"]
-    from api.local_dashboard import _utc_seconds
-    ready=_utc_seconds(created)+0.4
+    ready=clock.time()
     row={"segment_id":7,"processing_started_unix_s":ready-1,"text_ready_unix_s":ready,"audio_duration_s":1.2,
          "status":"ready","notification_score":0.97,"notification_outside_s":0.0,"notification_extra":0.001,
          "notification_candidate":True,"text":"private"}
@@ -260,18 +225,7 @@ def test_spectral_observations_reach_filter_page_and_phrases(local):
     assert state["counters"]=={"asr.spectral.scored":5,"asr.spectral.candidate":1,"asr.spectral.candidate.ready":1}
     assert state["observed"]["buckets"][-1]==1 and len(state["observed"]["recent"])==2
     assert state["observed"]["recent"][1].get("text") is None, "довільні рядки не проходять білий список"
-    item=[i for i in client.get("/api/phrases").json()["items"] if i["fix_id"]==fix][0]
-    assert item["spectral"]=={"score":0.97,"outside_s":0.0,"extra_ratio":0.001,"candidate":True}
-
-
-def test_each_spectral_observation_labels_at_most_one_phrase():
-    from api.local_dashboard import attach_spectral
-    items=[{"fix_id":"db:1","created_at":"2026-11-15 10:00:00"},{"fix_id":"db:2","created_at":"2026-11-15 10:00:01"},
-           {"fix_id":"db:3","created_at":"2026-11-15 11:00:00"}]
-    from api.local_dashboard import _utc_seconds
-    base=_utc_seconds("2026-11-15 10:00:01")
-    attach_spectral(items,[{"text_ready_unix_s":base+0.4,"notification_score":0.9,"notification_candidate":True}])
-    assert "spectral" not in items[0] and items[1]["spectral"]["score"]==0.9 and "spectral" not in items[2]
+    assert client.get("/api/phrases").status_code==404, "журнал фраз тепер — вид архіву"
 
 
 def test_current_archive_views_refresh_without_rewriting_samples(setup, tmp_path):
@@ -630,3 +584,97 @@ def test_archive_shows_what_went_to_telegram_and_turns_a_clean_signal_into_a_sam
         assert len(list_samples(tmp_path/'samples')['items']) == 1
         assert client.post('/api/recordings/' + '0'*32 + '/notification-sample', json={'confirmed_isolated': True},
                            headers={'Origin': ORIGIN}).status_code == 404
+
+
+def test_live_feed_quality_experiments_and_pause_for_the_panel(setup, tmp_path):
+    _, path = setup
+    import json as _json
+    from services.recordings import RecordingStore
+    store = RecordingStore(tmp_path/'recordings')
+    heard = store.save(pcm(segment()), 16000, {'status': 'ready', 'raw_text': 'Вишня 12, прийом', 'final_text': 'Вишня 12, прийом', 'fix_id': 'db:3'})
+    store.save(pcm(segment()), 16000, {'status': 'low_rms'})   # тихий після показаного — лише підраховується
+    store.review(heard, 'Вишня 12, прийом', 'speech', 0)
+    runs = tmp_path/'experiments'
+    run = runs/'20261117T120000Z_test-run'
+    run.mkdir(parents=True)
+    (run/'params.json').write_text(_json.dumps({'variant': 'whisper', 'prompt': 'receiver', 'records': 1}))
+    (run/'results.jsonl').write_text(_json.dumps({'id': 'x', 'label': 'speech', 'reference': 'а', 'hypothesis': 'а',
+        'score': {'word_errors': 0, 'reference_words': 1, 'char_errors': 0, 'reference_chars': 1, 'reference_has_digits': False}}) + '\n')
+    (run/'metrics.json').write_text(_json.dumps({'summary': {'wer': 0.0, 'records': 1}}))
+    app = create_dashboard(path, KEY, samples_dir=tmp_path/'samples', recordings_dir=store.root, experiments_dir=runs)
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1', 1)) as client:
+        client.post('/session', json={'token': KEY}, headers={'Origin': ORIGIN})
+        feed = client.get('/api/live').json()
+        assert [i['id'] for i in feed['items']] == [heard] and feed['skipped_quiet'] == 1
+        assert feed['items'][0]['fix_id'] == 'db:3' and feed['items'][0]['reference'] == 'Вишня 12, прийом'
+        days = client.get('/api/quality').json()['days']
+        assert len(days) == 1 and days[0]['records'] == 1 and days[0]['wer_final'] == 0 and days[0]['numbers'] == 1
+        listed = client.get('/api/experiments').json()['items']
+        assert listed[0]['label'] == 'test-run' and listed[0]['complete'] and listed[0]['summary']['wer'] == 0.0
+        same = client.get('/api/experiments/compare', params={'a': run.name, 'b': run.name}).json()
+        assert same['common'] == 1 and same['a']['wer'] == same['b']['wer'] == 0
+        assert client.get('/api/experiments/compare', params={'a': '../x', 'b': run.name}).status_code == 422
+        pause = client.get('/api/receiver-pause').json()
+        assert pause['pause_requested'] is False
+        on = client.put('/api/receiver-pause', json={'minutes': 15, 'expected_revision': pause['revision']}, headers={'Origin': ORIGIN}).json()
+        assert on['pause_requested'] is True and on['remaining_seconds'] > 0
+        assert client.put('/api/receiver-pause', json={'minutes': 0, 'expected_revision': pause['revision']}, headers={'Origin': ORIGIN}).status_code == 409
+        assert client.put('/api/receiver-pause', json={'minutes': 0, 'expected_revision': on['revision']}, headers={'Origin': ORIGIN}).json()['pause_requested'] is False
+
+
+def test_signals_page_lists_dropped_segments_and_plays_samples(setup, tmp_path):
+    _, path = setup
+    from services.recordings import RecordingStore
+    store = RecordingStore(tmp_path/'recordings')
+    dropped = store.save(pcm(segment()), 16000, {'status': 'notification', 'notification_score': 0.93})
+    store.save(pcm(segment()), 16000, {'status': 'ready'})
+    add_sample(tmp_path/'samples', wav(), confirmed_isolated=True)
+    app = create_dashboard(path, KEY, samples_dir=tmp_path/'samples', recordings_dir=store.root)
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1', 1)) as client:
+        client.post('/session', json={'token': KEY}, headers={'Origin': ORIGIN})
+        items = client.get('/api/notification-filter/dropped').json()['items']
+        assert [i['id'] for i in items] == [dropped] and items[0]['score'] == 0.93 and items[0]['reviewed'] is False
+        sample = client.get('/api/samples').json()['items'][0]
+        assert sample['created'] > 0
+        audio = client.get(f"/api/samples/{sample['id']}/audio")
+        assert audio.status_code == 200 and audio.content[:4] == b'RIFF'
+        assert client.get('/api/samples/..%2F..%2Fevents.db/audio').status_code == 404
+        assert client.get('/api/samples/missing.wav/audio').status_code == 404
+
+
+def test_editor_quick_add_preserves_dictionary_rows_and_checks_version(local):
+    client, _, _ = local
+    headers = {'Origin': ORIGIN}
+    current = client.get('/api/dictionaries').json()['callsigns']
+    seeded = client.put('/api/dictionaries/callsigns', headers=headers, json={
+        'entries': current['entries'] + [{'raw_line':'береза: 56', 'enabled':True}],
+        'expected_version': current['version'],
+    })
+    assert seeded.status_code == 200
+    hint = client.post('/api/text-check', headers=headers, json={'text':'Береза 57, прийом'}).json()
+    entry = next(i['dictionary_entry'] for i in hint['issues'] if 'dictionary_entry' in i)
+    current = client.get('/api/dictionaries').json()['callsigns']
+    added = client.put('/api/dictionaries/callsigns', headers=headers, json={
+        'entries': current['entries'] + [{'raw_line':entry, 'enabled':True}],
+        'expected_version': current['version'],
+    })
+    assert added.status_code == 200
+    assert added.json()['entries'][:-1] == current['entries']
+    assert added.json()['entries'][-1] == {'raw_line':'береза: 57', 'enabled':True}
+
+
+def test_editor_quick_add_conflict_keeps_concurrent_dictionary_change(local):
+    client, _, _ = local
+    headers = {'Origin': ORIGIN}
+    old = client.get('/api/dictionaries').json()['callsigns']
+    new = client.put('/api/dictionaries/callsigns', headers=headers, json={
+        'entries': old['entries'] + [{'raw_line':'ясень: 90', 'enabled':True}],
+        'expected_version': old['version'],
+    })
+    assert new.status_code == 200
+    stale = client.put('/api/dictionaries/callsigns', headers=headers, json={
+        'entries': old['entries'] + [{'raw_line':'береза: 57', 'enabled':True}],
+        'expected_version': old['version'],
+    })
+    assert stale.status_code == 409
+    assert client.get('/api/dictionaries').json()['callsigns'] == new.json()

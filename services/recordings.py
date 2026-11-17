@@ -275,6 +275,74 @@ class RecordingStore:
         return [{"id": row["id"], "reference": row["reference"],
                  "raw_text": json.loads(row["data"]).get("raw_text", "")} for row in rows]
 
+    def recent(self, limit=15, skip=("low_rms", "vad_short")):
+        """Останні записи для стрічки «Ефір зараз»; тихі й закороткі лише підраховуються."""
+        marks = ",".join("?" * len(skip))
+        with self.connect() as db:
+            rows = db.execute(f"SELECT id, created, status, label, reference, data FROM recordings "
+                              f"WHERE status NOT IN ({marks}) ORDER BY created DESC LIMIT ?", (*skip, limit)).fetchall()
+            since = rows[-1]["created"] if rows else time.time() - 3600
+            skipped = db.execute(f"SELECT COUNT(*) FROM recordings WHERE status IN ({marks}) AND created >= ?",
+                                 (*skip, since)).fetchone()[0]
+        items = []
+        for row in rows:
+            d = json.loads(row["data"])
+            items.append({"id": row["id"], "created": row["created"], "status": row["status"], "label": row["label"],
+                          "reference": row["reference"], "raw_text": d.get("raw_text") or "",
+                          "final_text": d.get("final_text") or "", "rejected_text": d.get("rejected_text") or "",
+                          "fix_id": d.get("fix_id"), "duration_s": (d.get("signal") or {}).get("duration_s")
+                          or d.get("audio_duration_s"), "notification_candidate": d.get("notification_candidate")})
+        return {"items": items, "skipped_quiet": skipped}
+
+    def by_status(self, status, limit=15):
+        """Останні записи з цим статусом (напр. відкинуті як сигнал) для швидкої перевірки."""
+        with self.connect() as db:
+            rows = db.execute("SELECT id, created, label, reference, revision, data FROM recordings "
+                              "WHERE status=? ORDER BY created DESC LIMIT ?", (status, limit)).fetchall()
+        items = []
+        for row in rows:
+            d = json.loads(row["data"])
+            items.append({"id": row["id"], "created": row["created"], "label": row["label"], "revision": row["revision"],
+                          "reviewed": row["reference"] is not None,
+                          "duration_s": (d.get("signal") or {}).get("duration_s") or d.get("audio_duration_s"),
+                          "score": d.get("notification_score"), "outside_s": d.get("notification_outside_s"),
+                          "extra": d.get("notification_extra")})
+        return items
+
+    def quality_by_day(self, days=30):
+        """Якість за еталонами оператора по днях запису: слова, номери, адресат."""
+        import datetime
+        cutoff = time.time() - days * 86400
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM recordings WHERE reference IS NOT NULL AND label='speech' AND created >= ? "
+                              "ORDER BY created", (cutoff,)).fetchall()
+        by_day = {}
+        for row in map(self.decode, rows):
+            day = datetime.datetime.fromtimestamp(row["created"]).strftime("%Y-%m-%d")
+            item = by_day.setdefault(day, {"day": day, "records": 0, "words": 0, "raw_errors": 0, "final_errors": 0,
+                                           "with_numbers": 0, "numbers_ok": 0, "roles": 0, "roles_ok": 0})
+            q = row["quality"]
+            item["records"] += 1
+            item["words"] += q["final_text"]["reference_words"]
+            item["raw_errors"] += q["raw_text"]["word_errors"]
+            item["final_errors"] += q["final_text"]["word_errors"]
+            if re.search(r"\d", row["reference"] or ""):
+                item["with_numbers"] += 1
+                item["numbers_ok"] += bool(q["final_text"]["number_match"])
+            match = row["role_quality"]["recipient"]["match"]
+            if match is not None:
+                item["roles"] += 1
+                item["roles_ok"] += bool(match)
+        result = []
+        for item in by_day.values():
+            words_ = item["words"] or None
+            result.append({**item,
+                           "wer_raw": item["raw_errors"] / words_ if words_ else None,
+                           "wer_final": item["final_errors"] / words_ if words_ else None,
+                           "numbers": item["numbers_ok"] / item["with_numbers"] if item["with_numbers"] else None,
+                           "recipient": item["roles_ok"] / item["roles"] if item["roles"] else None})
+        return result
+
     def labelled_texts(self):
         """Усі розмічені записи: мітка, статус, текст Whisper і правильний текст."""
         with self.connect() as db:

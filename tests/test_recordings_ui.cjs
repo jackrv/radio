@@ -6,20 +6,22 @@ const path = require('node:path');
 const script = fs.readFileSync(path.join(__dirname, '../local_admin/admin.js'), 'utf8');
 const block = script.slice(script.indexOf('  const TODO_VIEWS ='), script.indexOf('  const loaders ='));
 
-function harness(page, extraSummary = {}) {
+function harness(page, extraSummary = {}, options = {}) {
   class Element {
-    constructor() { this.children = []; this.value = ''; this.dataset = {}; this.classList = {add(){}, toggle(){}}; }
+    constructor() { this.children = []; this.value = ''; this.dataset = {}; this.listeners = {}; this.classList = {add(){}, toggle(){}}; }
     get firstChild() { return this.children[0]; }
     get options() { return this._options || this.children; }
     set options(items) { this._options = items; }
     append(...items) { this.children.push(...items); }
     replaceChildren(...items) { this.children = items; }
+    click() { return this.listeners.click?.(); }
+    focus() { this.focused = true; }
     setAttribute() {}
-    addEventListener() {}
+    addEventListener(name, callback) { this.listeners[name] = callback; }
   }
   const elements = new Map();
   const $ = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
-  $('recording-view').options = ['radio','speech','filtered','shadow','reviewed','all'].map(value => ({value, textContent:value, dataset:{}}));
+  $('recording-view').options = ['radio','speech','filtered','reviewed','telegram','all'].map(value => ({value, textContent:value, dataset:{}}));
   $('recording-view').value = 'radio';
   $('recording-period').value = '';
   $('recording-edits').options = [{value:''}, {value:'miniapp'}];
@@ -27,15 +29,19 @@ function harness(page, extraSummary = {}) {
   let response = page;
   const notes = [];
   const urls = [];
+  const added = [];
+  const windowEvents = {};
   const context = vm.createContext({$, el:(tag, cls, text)=>Object.assign(new Element(), {className:cls,textContent:text}), request: async (url, method, body) => {
     urls.push(url);
-    if (method==='PUT') return {...body,revision:body.expected_revision+1};
+    if (method==='PUT') return options.review ? options.review(body) : {...body,revision:body.expected_revision+1};
     return url.includes('/summary') ? summary : response;
   },
+    addCallsign:async line=>{added.push(line); if (options.addError) throw new Error(options.addError);},
+    window:{addEventListener:(name,cb)=>{windowEvents[name]=cb;}}, confirm:()=>options.discard !== false,
     pct:String, fix:String, yes:String, note:text=>notes.push(text), STATUS:{ready:'Ready'}, action:cb=>cb(),
     localStorage:{getItem(){return null;}}, clearTimeout(){}, setTimeout(){return 1;}});
-  vm.runInContext(block + '\nglobalThis.loadRecordings = recordings; globalThis.saveFirst = () => reviewCards[0].submit();', context);
-  return {$, notes, urls, load:()=>context.loadRecordings(true), more:()=>context.loadRecordings(false),
+  vm.runInContext(block + '\nglobalThis.loadRecordings = recordings; globalThis.saveFirst = () => reviewCards[0].submit(); globalThis.cards = reviewCards;', context);
+  return {$, notes, urls, added, windowEvents, cards:()=>context.cards, load:()=>context.loadRecordings(true), more:()=>context.loadRecordings(false),
     save:()=>context.saveFirst(), set:page=>{response=page;}};
 }
 
@@ -80,27 +86,6 @@ test('search text is encoded and the next page uses its offset', async () => {
   assert.match(lists[1], /offset=1&/);
 });
 
-test('shadow view is hidden only when no candidates are available', async () => {
-  const ui = harness({items:[],total:0,views:{shadow:0}});
-  await ui.load();
-  assert.equal(ui.$('recording-view').options[3].hidden, true);
-  ui.set({items:[],total:0,views:{shadow:4}});
-  await ui.load();
-  assert.equal(ui.$('recording-view').options[3].hidden, false);
-  assert.equal(ui.$('recording-view').options[3].textContent, 'shadow · 4');
-});
-
-test('shadow review shows the reason and reviewed speech separately from noise', async () => {
-  const candidate = {...item, data:{...item.data,text_filter_shadow:{additional:true,phrase:'дякую'}}};
-  const ui = harness({items:[candidate],total:1},
-    {text_filter_shadow:{evaluated:7,candidates:4,reviewed:2,speech:1,noise:1,notification:0,room:0,unclear:0}});
-  await ui.load();
-  assert.equal(ui.$('recording-shadow-summary').hidden, false);
-  assert.match(ui.$('recording-shadow-summary').textContent, /мовлення 1, шум 1/);
-  const reason = ui.$('recordings').children[0].children.find(child=>child.className==='recording-shadow');
-  assert.match(reason.textContent, /«дякую»/);
-});
-
 test('loading more preserves the existing card and its unsaved input', async () => {
   const ui = harness({items:[item],total:3});
   await ui.load();
@@ -127,3 +112,93 @@ for (const view of ['radio', 'reviewed']) {
     assert.match(ui.notes[0], /збережено/);
   });
 }
+
+
+test('missing callsign number can be added from its hint without saving or replacing the draft', async () => {
+  const ui = harness({items:[{...item, text_check:{issues:[{kind:'info', message:'Бракує номера', dictionary_entry:'береза: 57'}]}}],total:1});
+  await ui.load();
+  const all = [];
+  const visit = node => {all.push(node);for(const child of node.children || [])visit(child);};
+  visit(ui.$('recordings'));
+  const add = all.find(node=>node.textContent==='＋ береза 57');
+  const field = all.find(node=>node.className==='recording-text').children[1];
+  field.value = 'незбережений текст оператора';
+  add.listeners.click();
+  for(let i=0;i<8;i++)await Promise.resolve();
+  assert.deepEqual(ui.added,['береза: 57']);
+  assert.equal(field.value,'незбережений текст оператора');
+  assert.equal(ui.urls.some(url=>url.endsWith('/review')),false);
+  assert.equal(add.disabled,false);
+});
+
+
+function descendants(node) {
+  return [node, ...(node.children || []).flatMap(descendants)];
+}
+function editor(ui) {
+  const nodes = descendants(ui.$('recordings'));
+  return {nodes, form:nodes.find(n=>n.listeners.submit), input:nodes.find(n=>n.className==='recording-text').children[1]};
+}
+
+test('dirty badge and count follow edits and reverting them, including unsaved first-time references', async () => {
+  const ui=harness({items:[item],total:1}); await ui.load();
+  const {input,form}=editor(ui);const initial=input.value;
+  input.value='нова чернетка';form.listeners.input();
+  assert.equal(ui.cards()[0].dirty,true);assert.equal(ui.$('archive-drafts-nav').hidden,false);
+  assert.equal(ui.$('archive-drafts-nav').textContent,'1');
+  const event={preventDefault(){this.prevented=true;}};ui.windowEvents.beforeunload(event);assert.equal(event.prevented,true);
+  input.value=initial;form.listeners.input();
+  assert.equal(ui.cards()[0].dirty,false);assert.equal(ui.$('archive-drafts').hidden,true);
+  const clean={preventDefault(){this.prevented=true;}};ui.windowEvents.beforeunload(clean);assert.equal(clean.prevented,undefined);
+});
+
+test('cancelled refresh preserves draft and restores the filters describing the visible cards',async()=>{
+  const ui=harness({items:[item],total:1},{},{discard:false});await ui.load();
+  const {input,form}=editor(ui);input.value='чернетка';form.listeners.input();
+  ui.$('recording-view').value='all';const before=ui.urls.length;await ui.load();
+  assert.equal(input.value,'чернетка');assert.equal(ui.$('recording-view').value,'radio');assert.equal(ui.urls.length,before);
+});
+
+test('typing during save remains dirty after the earlier snapshot is acknowledged',async()=>{
+  let finish;
+  const ui=harness({items:[item],total:1},{},{review:body=>new Promise(resolve=>{finish=()=>resolve({...body,revision:1});})});
+  await ui.load();const {input,form}=editor(ui);
+  input.value='перша правка';form.listeners.input();const saving=ui.save();
+  input.value='друга правка';form.listeners.input();finish();await saving;
+  assert.equal(input.value,'друга правка');assert.equal(ui.cards()[0].dirty,true);
+  input.value='перша правка';form.listeners.input();assert.equal(ui.cards()[0].dirty,false);
+});
+
+test('inline callsign form keeps its values and the reference after a failed addition',async()=>{
+  const ui=harness({items:[item],total:1},{},{addError:'Конфлікт версій'});await ui.load();
+  const {input,nodes}=editor(ui);input.value='береза 57';input.selectionStart=0;input.selectionEnd=input.value.length;
+  nodes.find(n=>n.textContent==='＋ Позивний').listeners.click();
+  const form=nodes.find(n=>n.className==='callsign-inline');
+  const name=form.children.find(n=>n.placeholder==='Назва');
+  const number=form.children.find(n=>n.placeholder?.startsWith('Номер'));
+  assert.equal(name.value,'береза');assert.equal(number.value,'57');
+  await form.children.find(n=>n.textContent==='Додати').listeners.click();
+  assert.equal(form.hidden,false);assert.equal(name.value,'береза');assert.equal(input.value,'береза 57');
+  assert.equal(form.children.find(n=>n.className==='alert small').textContent,'Конфлікт версій');
+  assert.equal(ui.urls.some(url=>url.endsWith('/review')),false);
+});
+
+test('identical hints are grouped without hiding distinct remarks',async()=>{
+  const hint={kind:'info',message:'Перевірте номер',dictionary_entry:'береза: 57'};
+  const ui=harness({items:[{...item,text_check:{issues:[hint,hint,{kind:'format',message:'Пробіли'}]}}],total:1});await ui.load();
+  const nodes=editor(ui).nodes;
+  assert.equal(nodes.filter(n=>n.className?.startsWith('text-check-item')).length,2);
+  assert.equal(nodes.filter(n=>n.textContent==='＋ береза 57').length,1);
+});
+
+
+test('Enter in inline callsign fields adds the entry without submitting the reference',async()=>{
+  const ui=harness({items:[item],total:1});await ui.load();const {input,nodes}=editor(ui);
+  input.value='береза 57';input.selectionStart=0;input.selectionEnd=input.value.length;
+  nodes.find(n=>n.textContent==='＋ Позивний').listeners.click();
+  const inline=nodes.find(n=>n.className==='callsign-inline');
+  const event={key:'Enter',preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}};
+  inline.listeners.keydown(event);for(let i=0;i<8;i++)await Promise.resolve();
+  assert.equal(event.prevented,true);assert.equal(event.stopped,true);assert.deepEqual(ui.added,['береза: 57']);
+  assert.equal(ui.urls.some(url=>url.endsWith('/review')),false);
+});

@@ -31,3 +31,13 @@ def test_only_with_alias_and_allowed_number():
 def test_ordinal_takes_part_in_roles():
     to_found, from_found = split_roles("Береза 56, я другий, прийнято", CALLSIGNS)
     assert (fmt(to_found), fmt(from_found)) == ("береза 56", "дятел 2")
+
+
+def test_number_after_ordinal_is_not_its_callsign_number():
+    """«Другий, 18» — це дятел 2 і окреме число 18, а не «дятел 18»."""
+    from core.template_text import template_text
+    from services.text_check import check_text
+    assert template_text("Другий, 18, прийом", CALLSIGNS) == "Другий, 18, прийом"
+    issues = check_text("Другий, 18, прийом", CALLSIGNS)["issues"]
+    assert not [i for i in issues if "дятел" in i["message"].lower()], issues
+    assert found("Другий, 18, прийом") == [("дятел", "2")]

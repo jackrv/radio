@@ -36,9 +36,6 @@ from services.user_store import PERMISSIONS
 from services.telegram_sync import sync_status
 from services.db_backup import auto_backups, create_backup
 from services.diagnostic_history import DiagnosticsHistory, history_directory
-from services.miniapp_correction_editor import load_edit_draft
-from services.telegram_audio import AudioUnavailable, download_voice
-from services.telegram_media_store import audio_file_id
 from services.user_notify_store import effective_mode
 
 PORT = 8766
@@ -143,12 +140,12 @@ class SettingsUpdate(BaseModel):
     expected_revision: int = Field(ge=0, strict=True)
 
 
+class PauseUpdate(BaseModel):
+    minutes: int = Field(ge=0, le=240, strict=True)
+    expected_revision: int = Field(ge=0, strict=True)
+
+
 class SampleConfirmation(BaseModel):
-    confirmed_isolated: bool = Field(strict=True)
-
-
-class PhraseSample(BaseModel):
-    fix_id: str = Field(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
     confirmed_isolated: bool = Field(strict=True)
 
 
@@ -157,43 +154,6 @@ def spectral_settings():
             "threshold": float(getattr(config, "SPECTRAL_NOTIFICATION_THRESHOLD", 0.85)),
             "max_outside_s": float(getattr(config, "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S", 0.2)),
             "max_extra": float(getattr(config, "SPECTRAL_NOTIFICATION_MAX_EXTRA", 0.02))}
-
-
-def _utc_seconds(text):
-    from datetime import datetime, timezone
-    try:
-        return datetime.strptime(str(text)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
-    except ValueError:
-        return None
-
-
-def attach_spectral(items, recent, tolerance=3.0):
-    """Підписує фразу оцінкою спектрального фільтра, якщо її сегмент є серед недавніх високих.
-
-    Кожен сегмент дістається не більш ніж одній фразі (найближчій у часі).
-    """
-    ready = [row for row in recent or () if isinstance(row, dict)
-             and isinstance(row.get("text_ready_unix_s"), (int, float)) and isinstance(row.get("notification_score"), (int, float))]
-    pairs = []
-    for position, item in enumerate(items):
-        created = _utc_seconds(item.get("created_at"))
-        if created is None:
-            continue
-        for index, row in enumerate(ready):
-            # Подія записується після готовності тексту; ts у базі округлено до секунди.
-            distance = abs(row["text_ready_unix_s"] - created - 0.5)
-            if distance <= tolerance:
-                pairs.append((distance, position, index))
-    taken_items, taken_rows = set(), set()
-    for _, position, index in sorted(pairs):
-        if position in taken_items or index in taken_rows:
-            continue
-        taken_items.add(position); taken_rows.add(index)
-        row = ready[index]
-        items[position]["spectral"] = {"score": row["notification_score"], "outside_s": row.get("notification_outside_s"),
-                                       "extra_ratio": row.get("notification_extra"),
-                                       "candidate": bool(row.get("notification_candidate"))}
-    return items
 
 
 def session_value(capability):
@@ -277,7 +237,7 @@ def diagnostics_view(data):
     return result
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None, experiments_dir=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
@@ -289,6 +249,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
     from services.recordings import RecordingStore
+    experiments_dir = Path(experiments_dir) if experiments_dir else ROOT / ".local-experiments"
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES)
@@ -541,47 +502,6 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             logging.getLogger("radio").exception("Не вдалося перенести еталон у подію %s", fix_id)
             return "failed"
 
-    @app.get("/api/phrases")
-    def phrases(q: str = "", offset: int = 0, limit: int = 30, admin=Depends(actor)):
-        if len(q) > 200 or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100:
-            raise HTTPException(422, "Некоректні параметри пошуку")
-        page = store.list_phrases(db_path, q, offset, limit)
-        try:
-            recent = (read_diagnostics(diagnostics_path).get("notification_spectral") or {}).get("recent")
-        except ValueError:
-            recent = None
-        attach_spectral(page["items"], recent)
-        return page
-
-    def phrase_audio(fix_id):
-        if not re.fullmatch(r"(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})", fix_id):
-            raise HTTPException(422, "Некоректний ідентифікатор фрази")
-        try:
-            load_edit_draft(db_path, fix_id)
-            file_id = audio_file_id(db_path, fix_id)
-        except LookupError as exc:
-            raise HTTPException(404, str(exc)) from None
-        try:
-            return download_voice(bot_token, file_id)
-        except AudioUnavailable:
-            raise HTTPException(502, "Не вдалося отримати аудіо з Telegram") from None
-
-    @app.get("/api/phrases/audio")
-    def audio(fix_id: str, admin=Depends(actor)):
-        return Response(phrase_audio(fix_id), media_type="audio/ogg")
-
-    @app.put("/api/phrases/notification-sample")
-    def phrase_sample(payload: PhraseSample, admin=Depends(actor)):
-        if not payload.confirmed_isolated:
-            raise HTTPException(422, "Підтвердь, що у фрагменті немає мовлення")
-        from services.notification_samples import ogg_to_wav
-        try:
-            return add_sample(samples_dir, ogg_to_wav(phrase_audio(payload.fix_id)), confirmed_isolated=True)
-        except (subprocess.SubprocessError, FileNotFoundError):
-            raise HTTPException(502, "Не вдалося перетворити аудіо") from None
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
-
     @app.post("/api/recordings/{record_id}/notification-sample")
     def recording_sample(record_id: str, payload: SampleConfirmation, admin=Depends(actor)):
         """Чистий звук сповіщення з архіву стає зразком спектрального фільтра (після перезапуску)."""
@@ -774,6 +694,47 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     def learning_approval(rule_id: int, payload: RuleApproval, admin=Depends(actor)):
         return _rule_call(store.approve_rule, admin, rule_id, payload.approved, payload.expected_version)
 
+    @app.get("/api/live")
+    def live(limit: int = 15, admin=Depends(actor)):
+        """Стрічка «Ефір зараз»: останні фрази з тим, що з ними сталося."""
+        return recordings.recent(max(1, min(limit, 50)))
+
+    @app.get("/api/quality")
+    def quality(days: int = 30, admin=Depends(actor)):
+        """Якість розпізнавання по днях за еталонами оператора."""
+        return {"days": recordings.quality_by_day(max(1, min(days, 365)))}
+
+    @app.get("/api/experiments")
+    def experiments(admin=Depends(actor)):
+        from services.experiments import list_runs
+        return {"items": list_runs(experiments_dir)}
+
+    @app.get("/api/experiments/compare")
+    def experiments_compare(a: str, b: str, admin=Depends(actor)):
+        from services.experiments import compare_runs
+        try:
+            return compare_runs(experiments_dir, a, b)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+    @app.get("/api/receiver-pause")
+    def receiver_pause(admin=Depends(actor)):
+        from services.receiver_control import read_pause_state
+        return read_pause_state(db_path)
+
+    @app.put("/api/receiver-pause")
+    def receiver_pause_update(payload: PauseUpdate, admin=Depends(actor)):
+        """Та сама пауза, що в Mini App: мікрофон закривається на N хвилин, 0 — відновити."""
+        from services.receiver_control import PauseVersionConflict, set_pause_minutes
+        try:
+            return set_pause_minutes(db_path, payload.minutes, expected_revision=payload.expected_revision)
+        except PauseVersionConflict:
+            raise HTTPException(409, "Стан приймача змінився. Оновіть сторінку.") from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
     @app.get("/api/attention")
     def attention(admin=Depends(actor)):
         """Що чекає на оператора: коди доби, дозволи замін, збої Telegram, свіжа розмітка."""
@@ -909,6 +870,19 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         score = detector.score_pcm(pcm)
         return {"isolated_match": bool(score and score["candidate"]), "templates": len(detector.templates),
                 "mode": settings["mode"]}
+
+    @app.get("/api/samples/{sample_id}/audio")
+    def sample_audio_file(sample_id: str, admin=Depends(actor)):
+        from services.notification_samples import sample_audio
+        try:
+            return Response(sample_audio(samples_dir, sample_id), media_type="audio/wav")
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+    @app.get("/api/notification-filter/dropped")
+    def notification_dropped(limit: int = 15, admin=Depends(actor)):
+        """Останні записи, які фільтр відкинув як звук сповіщення — для перевірки на слух."""
+        return {"items": recordings.by_status("notification", max(1, min(limit, 50)))}
 
     @app.delete("/api/samples/{sample_id}")
     def sample_delete(sample_id: str,admin=Depends(actor)):

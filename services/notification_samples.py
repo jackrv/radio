@@ -74,6 +74,17 @@ def add_sample(directory, content, *, confirmed_isolated=False):
     return {"id":sample_id,"duration_s":duration,"requires_restart":True}
 
 
+def sample_audio(directory, sample_id):
+    """WAV зразка для прослуховування в панелі; лише файли з каталогу зразків, без посилань."""
+    root = Path(directory)
+    if not isinstance(sample_id, str) or "/" in sample_id or not sample_id.endswith(".wav") or sample_id.startswith("."):
+        raise LookupError("Зразок не знайдено")
+    path = root / sample_id
+    if root.is_symlink() or path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_UPLOAD_BYTES:
+        raise LookupError("Зразок не знайдено")
+    return path.read_bytes()
+
+
 def list_samples(directory):
     root = Path(directory)
     if root.is_symlink():
@@ -88,7 +99,8 @@ def list_samples(directory):
             _, duration = validate_wav(path.read_bytes()) if path.stat().st_size<=MAX_UPLOAD_BYTES else (None,None)
         except (ValueError,OSError):
             duration=None
-        items.append({"id":path.name,"duration_s":duration,"managed":bool(SAMPLE_ID.fullmatch(path.name))})
+        items.append({"id":path.name,"duration_s":duration,"managed":bool(SAMPLE_ID.fullmatch(path.name)),
+                      "created":path.stat().st_mtime})
     return {"items":items,"requires_restart":True}
 
 

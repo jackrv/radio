@@ -123,7 +123,7 @@ def _spelling_issues(text, callsigns, known):
     return issues
 
 
-def _number_issues(text, dictionaries):
+def _number_issues(text, dictionaries, callsign_dictionary=None):
     """Позивний чи команда зі словника з номером, якого в словнику немає."""
     tokens = [m.group() for m in _TOKEN.finditer(text)]
     issues, seen = [], set()
@@ -131,6 +131,8 @@ def _number_issues(text, dictionaries):
         if word.isdigit() or not tokens[i + 1].isdigit():
             continue
         heard = basic_normalize(word)
+        if heard in callsigns_module.ORDINALS:
+            continue    # «четвертий» = дуб 4; число після нього — не номер позивного
         # Алиас — лише для слова, яке саме не є назвою словника (назва команди).
         own = any(heard in dictionary.names for dictionary in dictionaries)
         name = heard if own else callsigns_module.CALLSIGN_ALIASES.get(heard, heard)
@@ -145,8 +147,13 @@ def _number_issues(text, dictionaries):
         if any(c in allowed for c in candidates) or (name, candidates[0]) in seen:
             continue
         seen.add((name, candidates[0]))
-        issues.append(_issue("info", f"«{name} {tokens[i + 1]}»: номера {tokens[i + 1]} немає у словнику «{name}». "
-                                     "Перевірте на слух; якщо номер правильний — додайте його в словник."))
+        issue = _issue("info", f"«{name} {tokens[i + 1]}»: номера {tokens[i + 1]} немає у словнику «{name}». "
+                              "Перевірте на слух; якщо номер правильний — додайте його в словник.")
+        # Кнопка лише для позивного: не перетворюємо код команди на новий позивний.
+        if (callsign_dictionary is not None and name in callsign_dictionary.names
+                and not any(name in d.names for d in dictionaries if d is not callsign_dictionary)):
+            issue["dictionary_entry"] = f"{name}: {tokens[i + 1]}"
+        issues.append(issue)
     return issues
 
 
@@ -286,8 +293,9 @@ def _message_pairs(text, names):
         if not token.isdigit():
             i += 1
             folded = basic_normalize(token).translate(FOLD)
-            if (folded in names or callsigns_module.CALLSIGN_ALIASES.get(basic_normalize(token))) \
-                    and i < len(tokens) and tokens[i][0].isdigit():
+            alias = callsigns_module.CALLSIGN_ALIASES.get(basic_normalize(token))
+            ordinal = basic_normalize(token) in callsigns_module.ORDINALS
+            if (folded in names or (alias and not ordinal)) and i < len(tokens) and tokens[i][0].isdigit():
                 i += 1
             continue
         if len(token) == 4:
@@ -319,7 +327,7 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     known = tuple((commands.names if commands else ())) + tuple((watch.names if watch else ()))
     issues = _format_issues(text)
     issues += _spelling_issues(text, callsigns, known)
-    issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None])
+    issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None], callsigns)
     names = {n.translate(FOLD) for d in (callsigns, commands, watch) if d is not None for n in d.names}
     issues += _code_issues(text, codes, names)
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):

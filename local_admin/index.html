@@ -5,34 +5,57 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Radio 345 · локальна панель</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Ccircle%20cx%3D%2732%27%20cy%3D%2732%27%20r%3D%2729%27%20fill%3D%27%230b111a%27%20stroke%3D%27%2388bd65%27%20stroke-width%3D%274%27/%3E%3Ctext%20x%3D%2732%27%20y%3D%2741%27%20text-anchor%3D%27middle%27%20font-size%3D%2722%27%20font-weight%3D%27900%27%20font-style%3D%27italic%27%20font-family%3D%27Arial%20Black%2Csans-serif%27%20fill%3D%27%23f4f7fb%27%3E345%3C/text%3E%3C/svg%3E">
   <script src="/admin.js" defer></script>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand"><span class="logo">345</span><div><div class="overline">ЛОКАЛЬНА ПАНЕЛЬ</div><div class="title">RADIO <b>345</b></div></div></div>
+    <div class="brand"><svg class="emblem" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <radialGradient id="emblem-bg" cx="50%" cy="42%" r="60%"><stop offset="0" stop-color="#1b2f2a"/><stop offset="1" stop-color="#0b111a"/></radialGradient>
+          <filter id="emblem-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.1" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <circle cx="32" cy="32" r="29.5" fill="url(#emblem-bg)" stroke="#88bd65" stroke-width="2.4" filter="url(#emblem-glow)"/>
+        <circle cx="32" cy="32" r="25.8" fill="none" stroke="#8cc4ff" stroke-opacity=".45" stroke-width=".9"/>
+        <g fill="none" stroke="#b8ef86" stroke-width="1.9" stroke-linecap="round" filter="url(#emblem-glow)">
+          <path d="M26.5 9.5a8 8 0 0 0 0 11"/><path d="M22.5 6.5a12.5 12.5 0 0 0 0 17"/>
+          <path d="M37.5 9.5a8 8 0 0 1 0 11"/><path d="M41.5 6.5a12.5 12.5 0 0 1 0 17"/>
+          <path d="M32 14.5 28.6 28.5M32 14.5 35.4 28.5M29.6 24.5h4.8M30.5 20.5h3"/>
+        </g>
+        <circle cx="32" cy="13.4" r="1.8" fill="#e3f7d2" filter="url(#emblem-glow)"/>
+        <text x="32" y="42.5" text-anchor="middle" font-size="15.5" font-weight="900" font-style="italic" font-family="Arial Black, Helvetica, sans-serif" fill="#f4f7fb" stroke="#88bd65" stroke-width=".55" filter="url(#emblem-glow)">345</text>
+        <g stroke="#b8ef86" stroke-width="1.2" stroke-linecap="round" filter="url(#emblem-glow)">
+          <path d="M21 49v1M23 48.2v2.6M25 47.5v4M27 48.5v2M29 46v7M31 47v5M33 45v9M35 47.2v4.6M37 48v3M39 47.6v3.8M41 48.6v1.8M43 49v1"/>
+        </g>
+      </svg>
+      <div><div class="title">RADIO <b>345</b></div><div class="overline">ЛОКАЛЬНА ПАНЕЛЬ</div></div></div>
     <nav id="nav">
       <button data-group="overview" class="active"><span>◎</span>Огляд</button>
-      <button data-group="recordings"><span>▶</span>Аудіоархів</button>
+      <button data-group="recordings"><span>▶</span>Аудіоархів <b id="archive-drafts-nav" class="draft-count" hidden></b></button>
       <button data-group="recognition"><span>☰</span>Розпізнавання</button>
       <button data-group="signals"><span>🔔</span>Сигнали</button>
       <button data-group="people"><span>♙</span>Люди</button>
+      <button data-group="analysis"><span>📈</span>Аналіз</button>
       <button data-group="system"><span>▤</span>Система</button>
     </nav>
     <div class="launcher-box">
-      <div class="small muted">Лаунчер: <b id="launcher-state">—</b></div>
-      <div class="launcher-actions"><button id="receiver-toggle" class="ghost" title="Лише приймач: панель, API й Mini App працюють далі">⏸ Приймач</button></div>
-      <div class="launcher-actions"><button id="launcher-restart" class="ghost" title="Штатно зупинити всі служби й одразу запустити знову">⟳ Перезапустити</button><button id="launcher-stop" class="ghost danger" title="Зупинити приймач, бота, Mini App і цю панель">⏻ Зупинити</button></div>
+      <div class="launcher-line"><span class="small muted">Лаунчер: <b id="launcher-state">—</b></span>
+        <span class="launcher-icons"><button id="receiver-toggle" class="ghost icon" title="Зупинити лише приймач (панель, API й Mini App працюють далі)" aria-label="Зупинити лише приймач"><svg class="ico solid" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button></span></div>
+      <div class="pause-slider">
+        <div class="pause-head">⏸ Пауза мікрофона</div>
+        <div class="pause-bar"><input id="pause-range" type="range" min="0" max="60" step="any" value="0" aria-label="Пауза мікрофона, хвилин"><b id="pause-label" class="pause-value">—</b></div>
+        <div class="pause-scale"><span>0</span><span>15</span><span>30</span><span>45</span><span>60 хв</span></div>
+      </div>
     </div>
-    <p class="aside-note">Лише 127.0.0.1. Не публікується через ngrok.</p>
+    <p class="aside-note"><span class="tagline">від сигналу до інформації</span>Лише 127.0.0.1. Не публікується через ngrok.</p>
   </aside>
 
   <main>
     <header class="topbar">
-      <div><h1 id="view-title">Огляд</h1><p id="feedback" class="muted" role="status">Перевіряємо доступ…</p></div>
-      <div class="top-actions"><span id="receiver-pill" class="pill">—</span><span id="updated" class="muted small"></span>
-        <label class="switch" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked> 🎧 Мікрофон на паузі під час відтворення</label>
-        <label class="switch" title="Оновлювати сторінку кожні кілька секунд"><input id="auto" type="checkbox" checked> ⟳ Автооновлення</label><button id="refresh" class="ghost">Оновити</button></div>
+      <div class="title-row"><h1 id="view-title">Огляд</h1><input id="global-search" type="search" placeholder="Пошук: 1a2b3c4d, №253 або текст" aria-label="Пошук в аудіоархіві"></div>
+      <p id="feedback" class="toast" role="status">Перевіряємо доступ…</p>
+      <div class="top-actions"><button id="receiver-pill" class="pill pill-button" type="button" title="Натисніть, щоб поставити приймач на паузу чи відновити">—</button><span id="updated" class="muted small"></span></div>
     </header>
     <div id="tabs" class="tabs" role="tablist" hidden></div>
 
@@ -45,7 +68,7 @@
           <article class="panel"><div class="panel-head"><h2>Події за 24 години</h2><span id="events-total" class="muted small"></span></div><div id="events-chart" class="chart"></div></article>
           <article class="panel"><div class="panel-head"><h2>Що сталося із сегментами</h2><span class="muted small">поточний запуск</span></div><div id="funnel"></div></article>
         </div>
-        <article class="panel"><div class="panel-head"><h2>Останні сегменти</h2><span class="muted small">висота — тривалість, колір — результат</span></div><div id="timeline" class="chart"></div><div id="timeline-legend" class="legend"></div></article>
+        <article class="panel"><div class="panel-head"><h2>Ефір зараз</h2><span id="live-note" class="muted small"></span></div><div id="live" class="live-feed"></div></article>
         <div class="grid two">
           <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
           <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
@@ -68,9 +91,6 @@
                   <option value="telegram">Надіслано в Telegram</option>
                   <option value="all">Усі записи</option>
                 </optgroup>
-                <optgroup label="Інше">
-                  <option value="shadow">Експеримент: новий фільтр тексту</option>
-                </optgroup>
               </select></label>
             <label class="field-inline">Період
               <select id="recording-period" aria-label="Період">
@@ -80,8 +100,9 @@
             <select id="recording-edits" aria-label="Правки"><option value="">Будь-хто правив або ні</option><option value="miniapp">Лише правки з Mini App</option></select>
             <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
           </div>
-          <div class="toolbar"><select id="recording-speed" aria-label="Швидкість відтворення"><option value="1">1×</option><option value="0.85">0,85×</option><option value="0.75">0,75×</option></select><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
+          <div class="toolbar archive-tools"><button id="recording-refresh">Оновити записи</button><span id="archive-drafts" class="draft-indicator" role="status" hidden></span><details class="archive-options"><summary>Відтворення й вигляд</summary><div class="toolbar">          <select id="recording-speed" aria-label="Швидкість відтворення"><option value="1">1×</option><option value="0.85">0,85×</option><option value="0.75">0,75×</option></select><label class="switch" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked> 🎧 Мікрофон на паузі під час відтворення</label><label class="switch" title="Ховати розбір і метрики, менші відступи — для швидкої розмітки"><input id="recording-compact" type="checkbox"> ▤ Компактно</label><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label></div></details><details class="archive-options"><summary>Додатково</summary><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></details></div>
           <p class="muted small keys">Клавіші: <kbd>Пробіл</kbd> грати / пауза · <kbd>1</kbd>–<kbd>5</kbd> тип (2, 3 і 5 — одразу зберегти) · <kbd>Enter</kbd> до тексту · <kbd>⌘/Ctrl+Enter</kbd> зберегти й далі · <kbd>J</kbd>/<kbd>K</kbd> або <kbd>↓</kbd>/<kbd>↑</kbd> наступний / попередній · <kbd>R</kbd> з початку · <kbd>Esc</kbd> вийти з поля.</p>
+          <p id="archive-update-note" class="muted small" role="status"></p>
           <p id="recording-summary" class="muted small"></p>
           <p id="recording-shadow-summary" class="muted small" hidden></p>
           <details class="small"><summary>Підказки та статистика</summary>
@@ -105,34 +126,33 @@
       </section>
 
 
-      <!-- Звуки -->
-      <section data-panel="sounds" hidden>
-        <article class="panel">
-          <h2>Зразки звуків сповіщень</h2>
-          <p class="muted">Чистий звук без мовлення: моно WAV PCM16, 16000 Гц, до 5 с; сам сигнал — до 2 с. До 16 зразків. Зміни діють після перезапуску (кнопка «Перезапустити» внизу меню).</p>
-          <div class="toolbar"><input id="sample-file" type="file" accept=".wav,audio/wav"><label class="check"><input id="sample-confirm" type="checkbox"> Прослухав: мовлення немає</label>
-            <button id="sample-add">Додати зразок</button><button id="sample-test" class="ghost">Перевірити WAV</button></div>
-          <div id="samples" class="list"></div>
-        </article>
-      </section>
 
       <!-- Фільтр сповіщень -->
       <section data-panel="filter" hidden>
         <div class="cards" id="filter-cards"></div>
         <div class="grid two">
-          <article class="panel"><div class="panel-head"><h2>Розподіл оцінок</h2><span class="muted small">поточний запуск приймача</span></div>
-            <div id="filter-hist" class="chart"></div>
-            <p class="muted small">Оцінка — спектральна схожість сегмента з найближчим зразком (1 — той самий звук). Пунктир — поточний поріг.</p></article>
-          <article class="panel"><h2>Як працює фільтр</h2>
+          <article class="panel" id="dropped-panel"><div class="panel-head"><h2>Останні відкинуті як сигнал</h2><span class="muted small">прослухайте й підтвердіть</span></div>
+            <div id="dropped" class="live-feed"></div></article>
+          <article class="panel" id="samples-panel"><div class="panel-head"><h2>Зразки звуків</h2><span id="samples-count" class="muted small"></span></div>
+            <div id="samples" class="sample-list"></div>
+            <p class="muted small">Новий зразок з архіву — кнопка «＋ До зразків» у картці запису. Зразки діють після перезапуску (кнопка внизу меню).</p>
+            <details><summary>Додати зразок з файлу WAV</summary>
+              <p class="muted small">Чистий звук без мовлення: моно WAV PCM16, 16000 Гц, до 5 с; сам сигнал — до 2 с. До 16 зразків.</p>
+              <div class="toolbar"><input id="sample-file" type="file" accept=".wav,audio/wav"><label class="check"><input id="sample-confirm" type="checkbox"> Прослухав: мовлення немає</label>
+                <button id="sample-add">Додати зразок</button><button id="sample-test" class="ghost">Перевірити WAV</button></div></details></article>
+        </div>
+        <article class="panel"><details id="filter-how"><summary>Як працює фільтр</summary>
             <ol class="steps">
               <li>Фільтр увімкнено (режим <code>active</code>): сегмент, схожий на зразок сповіщення, відкидається ще до Whisper. Поточний поріг і режим — угорі цієї сторінки.</li>
-              <li>Зразки — у вкладці «Зразки звуків» або кнопкою «＋ До зразків» у картці запису «Аудіоархіву». Нові зразки діють після перезапуску (кнопка «Перезапустити» внизу меню).</li>
+              <li>Зразки — у блоці «Зразки звуків» на цій сторінці або кнопкою «＋ До зразків» у картці запису «Аудіоархіву». Нові зразки діють після перезапуску (кнопка «Перезапустити» внизу меню).</li>
               <li>У «Аудіоархіві» позначайте записи: <b>«Сигнал»</b>, <b>«Мовлення»</b>, «Нерозбірливо», «Шум ефіру» чи «Кімната / клавіатура». Там справжній звук приймача, зокрема відкинуті сегменти.</li>
               <li>«Оцінити розмітку» покаже, скільки сповіщень знайде кожен поріг і чи зачепить він мовлення. Поріг змінюється в <code>config.py</code>.</li>
-            </ol></article>
-        </div>
-        <article class="panel"><div class="panel-head"><h2>Високі збіги</h2><span class="muted small">оцінка ≥ 0,5 · найновіші вгорі</span></div>
-          <div class="table-wrap"><table id="filter-recent"></table></div></article>
+            </ol></details>
+          <details><summary>Розподіл оцінок поточного запуску</summary>
+            <div id="filter-hist" class="chart"></div>
+            <p class="muted small">Оцінка — спектральна схожість сегмента з найближчим зразком (1 — той самий звук). Пунктир — поточний поріг.</p></details>
+          <details><summary>Високі збіги (оцінка ≥ 0,5, найновіші вгорі)</summary>
+            <div class="table-wrap"><table id="filter-recent"></table></div></details></article>
         <article class="panel"><div class="panel-head"><h2>Перевірка на розмічених записах</h2><button id="filter-eval">Оцінити розмітку</button></div>
           <p id="filter-labels" class="muted"></p><div id="filter-summary"></div>
           <div class="grid eval"><div class="table-wrap"><table id="filter-table"></table></div><div class="table-wrap nowrap"><table id="filter-items"></table></div></div></article>
@@ -186,6 +206,7 @@
             <label>Роль<select id="new-user-role"><option value="viewer">Спостерігач</option><option value="editor" selected>Редактор</option><option value="admin">Адміністратор</option></select></label>
             <label>Сповіщення<select id="new-user-mode"><option value="commands">команди й позивні</option><option value="watch">спостереження</option><option value="off">вимкнено</option><option value="all">усі фрази</option></select></label>
           </div><button>Надати доступ</button></form></article>
+
       </section>
 
       <!-- Навчання за правками -->
@@ -198,15 +219,37 @@
       </section>
 
       <!-- Активність користувачів -->
+      <section data-panel="preview" hidden>
+        <article class="panel"><h2>Mini App очима ролі</h2>
+          <div class="toolbar"><select id="role" aria-label="Роль"><option value="viewer">Спостерігач</option><option value="editor">Редактор</option><option value="admin">Адміністратор</option></select>
+            <span id="permissions" class="muted small"></span></div>
+          <p class="muted small">Справжні дані з правами вибраної ролі; будь-який запис тут заборонено сервером.</p>
+          <iframe id="preview" class="phone-preview" title="Перегляд Mini App" src="about:blank"></iframe></article>
+      </section>
+
       <section data-panel="activity" hidden>
-        <article class="panel"><div class="panel-head"><h2>Дії користувача</h2><select id="activity-user" aria-label="Користувач"></select></div>
+        <article class="panel"><div class="panel-head"><h2>Дії користувача</h2><div id="activity-user" class="activity-users" role="group" aria-label="Користувач"></div></div>
           <p class="muted small">Дії в Mini App і боті записуються з 16.11.2026: раніше база не зберігала, хто саме виправив текст чи змінив налаштування. Доставлені сповіщення, роль і режим відомі й за попередній час.</p>
           <div class="cards" id="activity-cards"></div></article>
         <article class="panel"><h2>Останні дії</h2><div class="table-wrap"><table id="activity-items"></table></div></article>
       </section>
 
       <!-- Система -->
+      <section data-panel="quality" hidden>
+        <article class="panel"><div class="panel-head"><h2>Якість розпізнавання по днях</h2><span class="muted small">за вашими еталонами мовлення</span></div>
+          <p class="muted small page-note">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». «Помилка в словах» — частка слів, які Whisper записав не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після автокорекції й Qwen. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p>
+          <div class="table-wrap"><table id="quality-days" class="compact"></table></div></article>
+      </section>
+
+      <section data-panel="experiments" hidden>
+        <article class="panel"><div class="panel-head"><h2>Офлайн-прогони</h2><button id="experiments-compare" class="ghost" disabled>Порівняти вибрані</button></div>
+          <p class="muted small page-note">Перевірки змін на розмічених записах архіву (без приймача й Telegram). Позначте два прогони, щоб порівняти їх на спільних записах.</p>
+          <div id="experiments-result"></div>
+          <div class="table-wrap"><table id="experiments-list" class="compact"></table></div></article>
+      </section>
+
       <section data-panel="system" hidden>
+        <article class="panel"><h2>Керування службами</h2><p class="muted small">Повна зупинка також закриває доступ до цієї панелі. Пауза мікрофона й стан приймача доступні в боковому меню.</p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
         <div class="sys-grid">
           <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>
           <article class="panel sys"><h3>Telegram</h3><div id="telegram"></div></article>
@@ -228,12 +271,6 @@
         </article>
       </section>
 
-      <!-- Ролі -->
-      <section data-panel="roles" hidden>
-        <article class="panel"><div class="panel-head"><h2>Mini App очима ролі</h2><select id="role"><option value="viewer">Спостерігач</option><option value="editor">Редактор</option><option value="admin">Адміністратор</option></select></div>
-          <p id="permissions" class="muted"></p><p class="muted small">Справжні дані з правами вибраної ролі; будь-який запис тут заборонено сервером.</p>
-          <iframe id="preview" title="Перегляд Mini App" src="about:blank"></iframe></article>
-      </section>
     </div>
   </main>
 </div>

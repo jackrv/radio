@@ -1,6 +1,6 @@
 from core.llm_safety import is_conservative_llm_rewrite
 from core.diagnostics import runtime
-from services.recordings import note
+from core.recording_trace import note
 
 
 def build_text_pipeline(

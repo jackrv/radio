@@ -5,7 +5,9 @@ from typing import Literal
 from fastapi import Depends, HTTPException
 
 import config
-from services import miniapp_management as store
+from services.management.learning import learning_queue
+from services.management.overview import overview
+from services.management.settings import read_settings
 from services.notification_samples import list_samples
 from services.receiver_status import read_receiver_status
 from services.sqlite_connection import get_db
@@ -28,14 +30,14 @@ def register(app, ctx):
 
     @app.get("/api/summary")
     def summary(admin=Depends(actor)):
-        return {"receiver":read_receiver_status(db_path),"overview":store.overview(db_path),
-            "settings":store.read_settings(db_path),"roles":{k:sorted(v) for k,v in PERMISSIONS.items()},
+        return {"receiver":read_receiver_status(db_path),"overview":overview(db_path),
+            "settings":read_settings(db_path),"roles":{k:sorted(v) for k,v in PERMISSIONS.items()},
             "telegram_sync":sync_status(db_path)}
 
     @app.get("/api/overview")
     def overview_page(admin=Depends(actor)):
         """Усе для головної сторінки одним запитом (автооновлення кожні кілька секунд)."""
-        return {"receiver": read_receiver_status(db_path), "overview": store.overview(db_path),
+        return {"receiver": read_receiver_status(db_path), "overview": overview(db_path),
                 "events_by_hour": events_by_hour(db_path), "users": users_overview(db_path),
                 "backups": backups_overview(backup_dir), "telegram_sync": sync_status(db_path),
                 "spectral": spectral_settings(),
@@ -75,7 +77,7 @@ def register(app, ctx):
         day = daily_codes.local_day()
         with get_db(db_path) as db:
             codes = daily_codes.read_day(db, day)
-        learning = store.learning_queue(db_path)["counts"]
+        learning = learning_queue(db_path)["counts"]
         fresh = recordings.view_counts(time.time() - 86400)
         from services import suggestions as suggestion_service
         found = suggestion_service.overview(db_path)

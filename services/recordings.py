@@ -10,13 +10,11 @@ import threading
 import time
 import uuid
 import wave
-from contextvars import ContextVar
 from contextlib import contextmanager
 
 import numpy as np
 from core.text_metrics import error_rates, metric_words
 
-_trace = ContextVar("recording_trace", default=None)
 UNSET = object()
 # Звук із кімнати (клавіатура, кроки) — не радіоефір: окремо від шуму ефіру в метриках.
 NON_SPEECH = ("noise", "notification", "room")
@@ -63,12 +61,6 @@ VIEWS = {
 }
 _REVIEW_SQL = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}
 ID = re.compile(r"[0-9a-f]{32}\Z")
-
-
-def note(**fields):
-    trace = _trace.get()
-    if trace is not None:
-        trace.update(fields)
 
 
 

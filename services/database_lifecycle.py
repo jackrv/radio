@@ -13,7 +13,7 @@ from database import (
     import_dictionaries, parse_dictionary_file,
 )
 from services.event_store import init_db as init_events
-from services.miniapp_management import validate_dictionary
+from services.management.dictionaries import validate_dictionary
 from services.sqlite_connection import get_db, read_only
 from services.user_store import init_users_db
 

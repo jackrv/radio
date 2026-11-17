@@ -10,10 +10,11 @@ from fastapi.testclient import TestClient
 from api.app import create_app
 from database import init_db
 from services.event_store import init_db as init_events, save_event
-from services.miniapp_management import (
-    apply_startup_settings, list_phrases, read_dictionary, write_dictionary,
-    ManagementConflict, list_users, write_user, read_settings, write_settings,
-)
+from services.management.common import ManagementConflict
+from services.management.dictionaries import read_dictionary, write_dictionary
+from services.management.phrases import list_phrases
+from services.management.settings import apply_startup_settings, read_settings, write_settings
+from services.management.users import list_users, write_user
 from services.telegram_phrase_store import register_phrase
 from services.user_store import init_users_db, bootstrap_admin, create_user
 from services.word_store import save_word_feedback, load_active_word_rules
@@ -161,7 +162,7 @@ def test_phrases_unifies_db_and_mem_and_excludes_expired(setup):
 
 
 def _rule(path):
-    from services.miniapp_management import learning_queue
+    from services.management.learning import learning_queue
     return learning_queue(path)["items"][0]
 
 
@@ -182,7 +183,7 @@ def test_rules_disable_and_reenable_respect_confirmations(panel):
 
 def test_rule_toggle_forbidden_to_viewer(setup):
     _, db = setup
-    from services.miniapp_management import toggle_rule
+    from services.management.learning import toggle_rule
     save_word_feedback(db, "first", "Вира 68", "Віра 68")
     item = _rule(db)
     with pytest.raises(PermissionError):
@@ -270,7 +271,7 @@ def test_non_admin_cannot_save_settings(setup):
 
 def test_management_sqlite_error_is_503(setup):
     client, _ = setup
-    with patch("services.miniapp_management.list_phrases", side_effect=sqlite3.OperationalError("private details")):
+    with patch("api.management.list_phrases", side_effect=sqlite3.OperationalError("private details")):
         response = client.get("/api/phrases", headers=auth_header(1001))
     assert response.status_code == 503
     assert "private details" not in response.text
@@ -285,7 +286,7 @@ def test_new_routes_reject_disabled_user(setup):
 
 def test_overview_reports_actual_counts(setup):
     _, db = setup
-    from services.miniapp_management import overview
+    from services.management.overview import overview
     save_event("", "", "", "", "Віра 68", db)
     data = overview(db)
     assert data["events"] == 1

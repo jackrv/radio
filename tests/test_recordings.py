@@ -208,7 +208,7 @@ def test_role_review_api_export_validation_and_no_training(setup,tmp_path):
 
 
 def test_event_processor_captures_actual_role_prediction():
-    from services.recordings import _trace
+    from core.recording_trace import _trace
     from tests.test_event_processor import make_processor
     from callsigns import Callsigns
     processor,_,_,_=make_processor(callsigns=Callsigns.from_lines(['Віра: 68', 'Вовк: 3']))

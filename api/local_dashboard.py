@@ -21,7 +21,7 @@ import config
 from api.app import create_app
 from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
-from services.diagnostic_history import DiagnosticsHistory, history_directory
+from core.diagnostic_history import DiagnosticsHistory, history_directory
 from api.panel import overview, people, recognition, signals, system
 from api.panel import recordings as recordings_api
 from api.panel.common import session_value

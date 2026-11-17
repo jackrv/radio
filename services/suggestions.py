@@ -185,7 +185,7 @@ def collect(db_path, store, *, patterns=None):
     from callsigns import normalize
     from services.alias_candidates import collect as alias_collect
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
-    from services.miniapp_management import learning_queue
+    from services.management.learning import learning_queue
     from services.noise_candidates import collect as noise_collect, key as noise_key
     from services.text_lists import _dictionary_names, ensure_tables, load_active, sync_aliases
 

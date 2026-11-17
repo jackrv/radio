@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from api.local_dashboard import create_dashboard
-from services.miniapp_management import list_users
+from services.management.users import list_users
 from services.notification_samples import add_sample, delete_sample, list_samples
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header

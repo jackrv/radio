@@ -9,10 +9,12 @@ import pytest
 
 from callsigns import Callsigns
 from core.word_learning import analyze_word_changes
-from core.word_rule_engine import apply_verified_word_rules
+from services.word_rule_engine import apply_verified_word_rules
 from services.event_store import save_event
 from services.miniapp_correction_editor import save_edit_draft, decide_learning
-from services.miniapp_management import ManagementConflict, approve_rule, learning_queue, overview as management_overview
+from services.management.common import ManagementConflict
+from services.management.learning import approve_rule, learning_queue
+from services.management.overview import overview as management_overview
 from services.telegram_phrase_store import register_phrase
 from services.word_store import init_word_db, load_active_word_rules
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура)

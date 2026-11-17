@@ -1,7 +1,9 @@
 """Розпізнавання: словники, коди доби, фільтри тексту, навчання, налаштування."""
 from fastapi import Depends, HTTPException
 
-from services import miniapp_management as store
+from services.management.common import ManagementConflict
+from services.management.learning import approve_rule, learning_queue, toggle_rule
+from services.management.settings import write_settings
 from services.receiver_status import read_receiver_status
 from services.sqlite_connection import get_db
 from api.panel.models import DailyCodesUpdate, RuntimeSettingsUpdate, TextListCheck, TextListUpdate, DictionaryUpdate, RuleApproval, RuleUpdate, SettingsUpdate
@@ -121,7 +123,7 @@ def register(app, ctx):
     @app.put("/api/dictionaries/{kind}/check")
     def dictionary_check(kind: str, payload: TextListCheck, admin=Depends(actor)):
         """Перевірка рядків словника без збереження: помилка, яку покаже «Зберегти»."""
-        from services.miniapp_management import validate_dictionary
+        from services.management.dictionaries import validate_dictionary
         if kind not in ("callsigns", "commands", "telegram"):
             raise HTTPException(404, "Невідомий словник")
         try:
@@ -174,13 +176,14 @@ def register(app, ctx):
     @app.get("/api/dictionaries")
     def dictionaries(admin=Depends(actor)):
         """Словники позивних, команд і Telegram — ті самі, що в Mini App."""
-        from services.miniapp_management import read_dictionary
+        from services.management.dictionaries import read_dictionary
         return {kind: read_dictionary(db_path, kind) for kind in ("callsigns", "commands", "telegram")}
 
     @app.put("/api/dictionaries/{kind}")
     def dictionary_update(kind: str, payload: DictionaryUpdate, admin=Depends(actor)):
         """Збереження з тією самою перевіркою рядків і захистом від одночасної правки, що й у Mini App."""
-        from services.miniapp_management import ManagementConflict, write_dictionary
+        from services.management.common import ManagementConflict
+        from services.management.dictionaries import write_dictionary
         if kind not in ("callsigns", "commands", "telegram"):
             raise HTTPException(404, "Невідомий словник")
         try:
@@ -196,12 +199,12 @@ def register(app, ctx):
     @app.get("/api/learning")
     def learning(admin=Depends(actor)):
         """Навчені заміни слів: що вже діє в розпізнаванні і чого бракує решті."""
-        return store.learning_queue(db_path)
+        return learning_queue(db_path)
 
     def _rule_call(function, admin, rule_id, *args):
         try:
             return function(db_path, admin, rule_id, *args)
-        except store.ManagementConflict as exc:
+        except ManagementConflict as exc:
             raise HTTPException(409, str(exc)) from None
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
@@ -212,15 +215,15 @@ def register(app, ctx):
 
     @app.put("/api/learning/{rule_id}")
     def learning_toggle(rule_id: int, payload: RuleUpdate, admin=Depends(actor)):
-        return _rule_call(store.toggle_rule, admin, rule_id, payload.disabled, payload.expected_version)
+        return _rule_call(toggle_rule, admin, rule_id, payload.disabled, payload.expected_version)
 
     @app.put("/api/learning/{rule_id}/approval")
     def learning_approval(rule_id: int, payload: RuleApproval, admin=Depends(actor)):
-        return _rule_call(store.approve_rule, admin, rule_id, payload.approved, payload.expected_version)
+        return _rule_call(approve_rule, admin, rule_id, payload.approved, payload.expected_version)
 
     @app.put("/api/settings")
     def settings(payload: SettingsUpdate, admin=Depends(actor)):
         try:
-            return store.write_settings(db_path,admin,payload.values.model_dump(),payload.expected_revision)
-        except store.ManagementConflict as exc:
+            return write_settings(db_path,admin,payload.values.model_dump(),payload.expected_revision)
+        except ManagementConflict as exc:
             raise HTTPException(409,str(exc)) from None

@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from core.diagnostics import RuntimeDiagnostics
-from services.diagnostic_history import (
+from core.diagnostic_history import (
     DiagnosticsHistory, atomic_write, history_directory, snapshot_filename,
 )
 
@@ -137,7 +137,7 @@ def test_corrupt_latest_is_replaced_without_importing_private_fields(tmp_path):
 def test_atomic_write_failure_leaves_valid_old_snapshot_and_cleans_temporary(tmp_path):
     target = tmp_path / "snapshot.json"
     atomic_write(target, {"counter": 1})
-    with patch("services.diagnostic_history.os.replace", side_effect=OSError("synthetic failure")):
+    with patch("core.diagnostic_history.os.replace", side_effect=OSError("synthetic failure")):
         with pytest.raises(OSError):
             atomic_write(target, {"counter": 2})
     assert json.loads(target.read_text()) == {"counter": 1}

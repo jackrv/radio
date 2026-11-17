@@ -313,7 +313,7 @@ def test_bare_callsign_with_command_or_watch_word_stays():
 
 
 def test_event_and_message_ids_are_noted_for_the_archive():
-    from services.recordings import _trace
+    from core.recording_trace import _trace
 
     processor, _, telegram, _ = make_processor(
         mode="commands",

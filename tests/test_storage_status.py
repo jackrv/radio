@@ -3,7 +3,7 @@ import hashlib
 import sqlite3
 from types import SimpleNamespace
 
-from services.diagnostic_history import DiagnosticsHistory
+from core.diagnostic_history import DiagnosticsHistory
 from services.recordings import RecordingStore
 from services.storage_status import audio_status, log_status, storage_status
 

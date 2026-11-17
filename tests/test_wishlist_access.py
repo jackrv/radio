@@ -5,7 +5,9 @@ import pytest
 
 from services.event_store import save_event
 from services.miniapp_correction_editor import save_edit_draft
-from services.miniapp_management import ManagementConflict, list_users, write_user, overview
+from services.management.common import ManagementConflict
+from services.management.overview import overview
+from services.management.users import list_users, write_user
 from services.user_notify_store import load_user_mode, save_user_mode
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header

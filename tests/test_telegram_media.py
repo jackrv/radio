@@ -6,7 +6,7 @@ import pytest
 import requests
 
 from services.event_store import save_event
-from services.miniapp_management import list_phrases
+from services.management.phrases import list_phrases
 from services.telegram_media_store import (
     remember_voice, is_hidden, audio_file_id, deletion_intent, deletion_result,
 )

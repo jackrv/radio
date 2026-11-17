@@ -1,7 +1,8 @@
 """Люди: користувачі й активність."""
 from fastapi import Depends, HTTPException
 
-from services import miniapp_management as store
+from services.management.common import ManagementConflict
+from services.management.users import list_users, write_user
 from api.panel.models import UserUpdate
 
 def register(app, ctx):
@@ -11,15 +12,15 @@ def register(app, ctx):
     @app.get("/api/users")
     def users_list(admin=Depends(actor)):
         """Користувачі з версіями для правки (ролі, доступ, назва, режим сповіщень)."""
-        return store.list_users(db_path, admin)
+        return list_users(db_path, admin)
 
     @app.put("/api/users/{user_id}")
     def user_update(user_id: int, payload: UserUpdate, admin=Depends(actor)):
         """Ті самі перевірки, що були в Mini App: версія, останній адміністратор, дозволені режими."""
         try:
-            return store.write_user(db_path, admin, user_id, payload.role, payload.enabled,
+            return write_user(db_path, admin, user_id, payload.role, payload.enabled,
                                     payload.expected_version, payload.display_name, payload.notify_mode)
-        except store.ManagementConflict as exc:
+        except ManagementConflict as exc:
             raise HTTPException(409, str(exc)) from None
         except PermissionError:
             raise HTTPException(403, "Недостатньо прав") from None

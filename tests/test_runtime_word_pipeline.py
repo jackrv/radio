@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from callsigns import Callsigns
-from core.transcriber_factory import build_transcriber
+from services.transcriber_factory import build_transcriber
 from services.event_store import init_db as init_event_db
 from services.word_store import init_word_db, save_word_feedback
 
@@ -103,7 +103,7 @@ def test_word_correction_has_priority_over_qwen(
     llm = Mock(return_value="Неправильный результат")
 
     monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
+        "services.transcriber_factory.build_llm_corrector",
         lambda *args: llm,
     )
 
@@ -120,7 +120,7 @@ def test_qwen_works_without_word_rule(db_path, monkeypatch):
     llm = Mock(return_value="Віра 68")
 
     monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
+        "services.transcriber_factory.build_llm_corrector",
         lambda *args: llm,
     )
 
@@ -134,7 +134,7 @@ def test_qwen_cannot_change_numbers(
     db_path, monkeypatch
 ):
     monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
+        "services.transcriber_factory.build_llm_corrector",
         lambda *args: lambda text: "Сигнал 69",
     )
 
@@ -153,7 +153,7 @@ def test_qwen_complements_learned_callsign(
     llm = Mock(return_value="Вишня 700, я Віра 68")
 
     monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
+        "services.transcriber_factory.build_llm_corrector",
         lambda *args: llm,
     )
 
@@ -186,7 +186,7 @@ def test_unconfirmed_llm_rewrite_is_rejected(
     llm = Mock(return_value=proposed)
 
     monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
+        "services.transcriber_factory.build_llm_corrector",
         lambda *args: llm,
     )
 
@@ -204,7 +204,7 @@ def test_rejected_llm_preserves_learned_correction(
     llm = Mock(return_value="Вишня 700, я там")
 
     monkeypatch.setattr(
-        "core.transcriber_factory.build_llm_corrector",
+        "services.transcriber_factory.build_llm_corrector",
         lambda *args: llm,
     )
 

@@ -156,7 +156,7 @@ def test_import_uses_mini_app_rules(tmp_path, line):
 
 
 def test_imported_dictionary_saves_unchanged_in_mini_app(setup):
-    from services.miniapp_management import read_dictionary, write_dictionary
+    from services.management.dictionaries import read_dictionary, write_dictionary
 
     db, _ = setup
     for kind in ("callsigns", "commands", "telegram"):
@@ -165,7 +165,7 @@ def test_imported_dictionary_saves_unchanged_in_mini_app(setup):
 
 
 def test_import_and_api_share_entry_limit(tmp_path):
-    from services.miniapp_management import MAX_DICTIONARY_ENTRIES
+    from services.management.dictionaries import MAX_DICTIONARY_ENTRIES
 
     source = tmp_path / "dictionaries.txt"
     rows = "\n".join(f"Віра: {n}" for n in range(1, MAX_DICTIONARY_ENTRIES + 2))

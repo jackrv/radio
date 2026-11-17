@@ -48,7 +48,7 @@ class EventProcessor:
         to_str = fmt(to_found)
         from_str = fmt(from_found)
 
-        from services.recordings import note
+        from core.recording_trace import note
         note(predicted_recipient=to_str, predicted_sender=from_str, roles_parsed=True)
         if text != original:
             note(final_text=text)

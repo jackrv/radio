@@ -10,7 +10,7 @@ from core.notification_spectral import (
 )
 
 from services.event_store import save_event
-from core.word_rule_engine import apply_verified_word_rules
+from services.word_rule_engine import apply_verified_word_rules
 
 
 def build_transcriber(

@@ -5,7 +5,7 @@ from services.word_store import (
     init_word_db,
     save_word_feedback,
 )
-from core.word_rule_engine import apply_verified_word_rules
+from services.word_rule_engine import apply_verified_word_rules
 
 
 @pytest.fixture

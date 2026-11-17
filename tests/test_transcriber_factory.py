@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import config as project_config
-from core.transcriber_factory import build_transcriber
+from services.transcriber_factory import build_transcriber
 
 config = None
 
@@ -33,11 +33,11 @@ def make_dependencies():
     }
 
 
-@patch("core.transcriber_factory.Transcriber")
-@patch("core.transcriber_factory.WhisperRecognizer")
-@patch("core.transcriber_factory.EventProcessor")
-@patch("core.transcriber_factory.build_text_pipeline")
-@patch("core.transcriber_factory.build_llm_corrector")
+@patch("services.transcriber_factory.Transcriber")
+@patch("services.transcriber_factory.WhisperRecognizer")
+@patch("services.transcriber_factory.EventProcessor")
+@patch("services.transcriber_factory.build_text_pipeline")
+@patch("services.transcriber_factory.build_llm_corrector")
 def test_build_transcriber(
     mock_llm,
     mock_pipeline,
@@ -97,9 +97,9 @@ def test_factory_does_not_start_models():
     deps = make_dependencies()
 
     with (
-        patch("core.transcriber_factory.WhisperRecognizer") as whisper,
-        patch("core.transcriber_factory.build_llm_corrector") as llm,
-        patch("core.transcriber_factory.Transcriber") as worker,
+        patch("services.transcriber_factory.WhisperRecognizer") as whisper,
+        patch("services.transcriber_factory.build_llm_corrector") as llm,
+        patch("services.transcriber_factory.Transcriber") as worker,
     ):
         build_transcriber(**deps)
 

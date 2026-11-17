@@ -16,7 +16,7 @@ from core.log_security import configure_logging
 from core.diagnostics import runtime as diagnostics
 import shutil
 
-from core.transcriber_factory import build_transcriber
+from services.transcriber_factory import build_transcriber
 
 from core.audio import apply_gain
 from core.segment_timing import capture_frame
@@ -29,7 +29,7 @@ from services.receiver_status import (
     ReceiverRuntimeState,
 )
 from services.receiver_control import reception_request
-from services.miniapp_management import apply_startup_settings
+from services.management.settings import apply_startup_settings
 from dotenv import load_dotenv
 
 

@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from services import miniapp_management as store
+from services.management.phrases import list_phrases
 from services.miniapp_correction_editor import load_edit_draft
 from services.telegram_media_store import audio_file_id
 from services.telegram_audio import download_voice, AudioUnavailable
@@ -36,7 +36,7 @@ def management_router(db_path, current_user, check_permission, bot_token):
     def phrases(q: str = Query(default="", max_length=200),
                 offset: int = Query(default=0, ge=0, le=1000000),
                 limit: int = Query(default=20, ge=1, le=100), user=Depends(current_user)):
-        return call(user, "events.read", store.list_phrases, q, offset, limit)
+        return call(user, "events.read", list_phrases, q, offset, limit)
 
     @router.get("/phrases/audio")
     def audio(fix_id: str = Query(pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$"),

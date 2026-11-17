@@ -7,7 +7,7 @@ from services.event_store import (
     save_event,
 )
 from services.miniapp_correction_editor import save_edit_draft
-from core.word_rule_engine import apply_verified_word_rules
+from services.word_rule_engine import apply_verified_word_rules
 
 
 def test_two_editor_corrections_activate_word_rule(tmp_path):

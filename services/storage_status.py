@@ -8,7 +8,7 @@ import time
 
 from core.log_security import LOG_MAX_BYTES, LOG_BACKUP_COUNT
 from services.db_backup import DEFAULT_KEEP, AUTO_RE
-from services.diagnostic_history import FILE_RE
+from core.diagnostic_history import FILE_RE
 from services.sqlite_connection import read_only
 
 

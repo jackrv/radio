@@ -78,7 +78,7 @@ class Transcriber:
         return bool(key) and key in keys
 
     def process_segment(self, pcm, generation=None):
-        from services.recordings import _trace
+        from core.recording_trace import _trace
         trace = {"predicted_recipient": "", "predicted_sender": "", "roles_parsed": False} if self.recorder is not None else None
         token = _trace.set(trace)
         span = {}
@@ -143,7 +143,7 @@ class Transcriber:
             pcm, self.min_rms, self.normalize_audio
         )
 
-        from services.recordings import note
+        from core.recording_trace import note
         note(prepared_peak=float(abs(audio).max()) if audio.size else 0.0)
         if self.debug_rms:
             self.log.info("rms=%.4f", rms)
@@ -186,7 +186,7 @@ class Transcriber:
             with runtime.timed("asr.whisper"):
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
-            from services.recordings import note
+            from core.recording_trace import note
             whisper_segments = [{k: segment[k] for k in (
                 "start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "temperature") if k in segment}
                 for segment in (result.get("segments", []) if isinstance(result, dict) else [])]
@@ -268,7 +268,7 @@ class Transcriber:
         if not is_current():
             runtime.asr_status("stale")
             return
-        from services.recordings import note
+        from core.recording_trace import note
         note(final_text=text)
         runtime.asr_text_ready(fallback=fallback)
 

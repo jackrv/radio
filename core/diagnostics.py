@@ -11,7 +11,7 @@ from collections import Counter, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from services.diagnostic_history import (
+from core.diagnostic_history import (
     DiagnosticsHistory, atomic_write, history_directory,
     DEFAULT_RETENTION_DAYS, DEFAULT_MAX_SESSIONS, DEFAULT_MAX_BYTES,
 )

@@ -13,13 +13,14 @@ import platform
 import shutil
 import tempfile
 import time
+from services.sqlite_connection import read_only
 
 ROOT = Path(__file__).resolve().parent
 
 
 def audit_database(path, *, verify_backup=False):
     # mode=ro also prevents accidentally creating a new empty production DB.
-    with closing(sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=3)) as db:
+    with closing(read_only(path, timeout=3)) as db:
         db.execute("PRAGMA query_only=ON")
         db.execute("BEGIN")
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}

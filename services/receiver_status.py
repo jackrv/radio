@@ -7,7 +7,7 @@ import time
 import uuid
 from contextlib import contextmanager
 
-from services.sqlite_connection import get_db
+from services.sqlite_connection import get_db, read_only
 from core.diagnostics import runtime
 
 
@@ -150,11 +150,10 @@ def read_console_heartbeat(db_path):
     """Read heartbeat without creating or changing the receiver database."""
     from contextlib import closing
     from pathlib import Path
-    from urllib.parse import quote
     path = Path(db_path).resolve()
     if not path.exists():
         return None
-    with closing(sqlite3.connect("file:" + quote(str(path)) + "?mode=ro", uri=True, timeout=0.2)) as db:
+    with closing(read_only(path, timeout=0.2)) as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='receiver_runtime'").fetchone():
             return None
         row = db.execute("SELECT state,updated_at FROM receiver_runtime WHERE id=1").fetchone()

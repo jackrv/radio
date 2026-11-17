@@ -18,6 +18,7 @@ import urllib.request
 from services.dictionary_setup import has_active_admin
 from services.user_profiles import remember_verified_profile
 from services.user_store import bootstrap_admin, init_users_db
+from services.sqlite_connection import read_only
 
 YES_ANSWERS = {"y", "yes"}
 
@@ -71,7 +72,7 @@ def _user_count(db_path):
     if not path.is_file():
         return 0
     try:
-        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=15.0)) as db:
+        with closing(read_only(path)) as db:
             return db.execute("SELECT COUNT(*) FROM telegram_users").fetchone()[0]
     except sqlite3.Error:
         return 0

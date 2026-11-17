@@ -7,26 +7,15 @@
 ті самі записи, ті самі словники. Архів і events.db відкриваються лише для читання.
 """
 import json
-import re
-import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
 
-from callsigns import normalize
 
 
-def words(text):
-    return re.findall(r"[^\W_]+", normalize(text or ""))
-
-
-def distance(a, b):
-    row = list(range(len(b) + 1))
-    for i, x in enumerate(a, 1):
-        prev, row[0] = row[0], i
-        for j, y in enumerate(b, 1):
-            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (x != y))
-    return row[-1]
+# WER — та сама метрика, що в архіві й лабораторії (без алиасів і виправлень).
+from core.text_metrics import edit_distance as distance, metric_words as words  # noqa: E402
+from services.sqlite_connection import read_only
 
 
 def load_records(archive):
@@ -34,7 +23,7 @@ def load_records(archive):
     index = Path(archive) / "index.sqlite3"
     if not index.is_file():
         return []
-    db = sqlite3.connect(f"file:{index}?mode=ro", uri=True)
+    db = read_only(index)
     try:
         rows = []
         for record_id, reference, data in db.execute(
@@ -53,7 +42,7 @@ def load_setup(db_path):
     """(словники, короткий шум, чинні значення списків) з events.db лише для читання."""
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     from services.text_lists import load_active
-    db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    db = read_only(db_path)
     try:
         dictionaries = dictionaries_from_lines(read_dictionary_lines(db))
         values = {}

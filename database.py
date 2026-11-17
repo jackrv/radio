@@ -87,6 +87,8 @@ def init_db(db_path=DB_PATH):
             CREATE INDEX IF NOT EXISTS idx_dictionary_type_enabled
             ON dictionary_entries(dictionary_type, enabled)
         """)
+        # Старий загальний режим сповіщень: з переходом на особисті режими не читається.
+        db.execute("DROP TABLE IF EXISTS bot_settings")
 
 
 def import_dictionaries(source_path=DICTIONARIES_PATH, db_path=DB_PATH, *, delete_source=False):
@@ -147,22 +149,3 @@ def import_dictionaries(source_path=DICTIONARIES_PATH, db_path=DB_PATH, *, delet
             remaining.append(source_path.name)
     return {"imported": {kind: len(rows) for kind, rows in sections.items()},
             "cleanup_remaining": remaining}
-
-
-def get_dictionary_lines(dictionary_type, db_path=DB_PATH):
-    """Возвращает включённые строки в исходном порядке."""
-    if dictionary_type not in DICTIONARY_TYPES:
-        raise ValueError(f"Невідомий словник: {dictionary_type}")
-
-    with get_db(db_path) as db:
-        rows = db.execute(
-            """
-            SELECT raw_line
-            FROM dictionary_entries
-            WHERE dictionary_type = ? AND enabled = 1
-            ORDER BY line_number
-            """,
-            (dictionary_type,),
-        ).fetchall()
-
-    return [row[0] for row in rows]

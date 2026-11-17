@@ -14,6 +14,7 @@ import subprocess
 import sys
 
 from database import DICTIONARY_TYPES, parse_dictionary_file
+from services.sqlite_connection import read_only
 
 YES_ANSWERS = {"y", "yes"}
 
@@ -27,7 +28,7 @@ def dictionary_status(db_path) -> dict | None:
     path = Path(db_path).resolve()
     if not path.is_file():
         return None
-    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=15.0)) as db:
+    with closing(read_only(path)) as db:
         exists = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entries'"
         ).fetchone()
@@ -143,7 +144,7 @@ def has_active_admin(db_path) -> bool:
     if not path.is_file():
         return False
     try:
-        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=15.0)) as db:
+        with closing(read_only(path)) as db:
             row = db.execute(
                 "SELECT COUNT(*) FROM telegram_users WHERE role='admin' AND enabled=1"
             ).fetchone()

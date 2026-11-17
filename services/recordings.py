@@ -14,6 +14,7 @@ from contextvars import ContextVar
 from contextlib import contextmanager
 
 import numpy as np
+from core.text_metrics import error_rates, metric_words
 
 _trace = ContextVar("recording_trace", default=None)
 UNSET = object()
@@ -56,7 +57,6 @@ VIEWS = {
     "radio": ("pending", RADIO_GROUP),
     "speech": ("pending", f"({SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "filtered": ("pending", f"(NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
-    "shadow": ("pending", "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"),
     "reviewed": ("reviewed", "1"),
     "telegram": ("all", "json_extract(data,'$.fix_id') IS NOT NULL"),   # усе, що надіслано в Telegram
     "all": ("all", "1"),
@@ -96,24 +96,10 @@ def signal_metrics(pcm, sr):
             "frame_rms_p10": float(np.percentile(frames, 10)), "frame_rms_p90": float(np.percentile(frames, 90))}
 
 
-def words(text):
-    return re.findall(r"[^\W_]+", text.casefold())
-
-
-def distance(a, b):
-    from rapidfuzz.distance import Levenshtein
-    return Levenshtein.distance(a, b)
-
-
 def scores(reference, hypothesis):
-    a, b = words(reference), words(hypothesis)
     # Non-speech references have no WER denominator; report false text separately.
-    chars_a, chars_b = " ".join(a), " ".join(b)
     from core.word_learning import number_groups
-    return {"char_errors": distance(chars_a, chars_b), "reference_chars": len(chars_a),
-            "cer": distance(chars_a, chars_b) / len(chars_a) if chars_a else None,
-            "word_errors": distance(a, b), "reference_words": len(a),
-            "wer": distance(a, b) / len(a) if a else None,
+    return {**error_rates(reference, hypothesis),
             "number_match": number_groups(reference) == number_groups(hypothesis)}
 
 
@@ -238,7 +224,7 @@ class RecordingStore:
             predicted = result["data"].get(f"predicted_{role}")
             result["role_quality"][role] = {
                 "reference": reference, "predicted": predicted,
-                "match": (words(reference) == words(predicted)) if reference is not None and predicted is not None else None,
+                "match": (metric_words(reference) == metric_words(predicted)) if reference is not None and predicted is not None else None,
             }
         return result
 
@@ -440,15 +426,8 @@ class RecordingStore:
             statuses = dict(db.execute("SELECT status,COUNT(*) FROM recordings GROUP BY status").fetchall())
             rows = db.execute("SELECT * FROM recordings WHERE reference IS NOT NULL").fetchall()
             size = db.execute("SELECT COALESCE(SUM(bytes),0) FROM recordings").fetchone()[0]
-            shadow_counts = db.execute("SELECT "
-                "COALESCE(SUM(json_extract(data,'$.text_filter_shadow.evaluated')=1),0), "
-                "COALESCE(SUM(json_extract(data,'$.text_filter_shadow.additional')=1),0) FROM recordings").fetchone()
         quality = {}
         decoded = [self.decode(row) for row in rows]
-        shadow_reviewed = [r for r in decoded if r['data'].get('text_filter_shadow', {}).get('additional')]
-        shadow = {"evaluated": shadow_counts[0], "candidates": shadow_counts[1], "reviewed": len(shadow_reviewed),
-                  **{label: sum(r['label'] == label for r in shadow_reviewed)
-                     for label in ("speech", "noise", "notification", "room", "unclear")}}
         for stage in ("raw_text", "final_text"):
             speech = [r for r in decoded if r["label"] == "speech"]
             errors = sum(r["quality"][stage]["word_errors"] for r in speech)
@@ -464,7 +443,6 @@ class RecordingStore:
             roles[role] = {"evaluated": len(matches), "correct": sum(matches),
                            "accuracy": sum(matches) / len(matches) if matches else None}
         return {"roles": roles, "statuses": statuses, "reviewed": len(rows), "bytes": size, "quality": quality,
-                "text_filter_shadow": shadow,
                 "retention_days": self.retention_days, "max_bytes": self.max_bytes,
                 "reviewed_protected": True,
                 "missed_speech": sum(r["label"] == "speech" and not r["data"].get("raw_text") for r in decoded),

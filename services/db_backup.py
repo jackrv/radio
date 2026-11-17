@@ -18,6 +18,7 @@ import threading
 import time
 
 from core.diagnostics import runtime
+from services.sqlite_connection import read_only
 
 AUTO_PREFIX = "events-auto-"
 AUTO_RE = re.compile(r"events-auto-(\d{8}T\d{6}Z)\.db\Z")
@@ -47,7 +48,7 @@ def create_backup(db_path, backup_dir, *, keep=DEFAULT_KEEP, now=None):
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
     try:
-        with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True, timeout=15.0)) as source:
+        with closing(read_only(db_path)) as source:
             source.execute("PRAGMA busy_timeout=10000")
             source.execute("BEGIN")  # один знімок і для копії, і для звірки
             tables = [row[0] for row in source.execute(

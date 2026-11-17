@@ -256,30 +256,6 @@ def test_recording_view_api_validation(setup, tmp_path):
 
 
 
-def test_shadow_review_selection_metrics_and_legacy_records(tmp_path):
-    store=RecordingStore(tmp_path/'archive')
-    candidates={label:store.save(pcm(),16000,{'status':'ready','raw_text':'дякую',
-        'text_filter_shadow':{'evaluated':True,'would_filter':True,'additional':True,'phrase':'дякую'}})
-        for label in ('speech','noise','notification','room','unclear')}
-    store.save(pcm(),16000,{'status':'ready','text_filter_shadow':{'evaluated':True,'additional':False}})
-    legacy=store.save(pcm(),16000,{'status':'ready','raw_text':'старий запис'})
-    store.review(legacy,'старий запис','speech',0)
-    page=store.listing(view='shadow',limit=1)
-    assert page['total']==5 and len(page['items'])==1
-    assert {r['id'] for r in store.listing(view='shadow')['items']}==set(candidates.values())
-    for label,record_id in candidates.items():
-        if label!='unclear':
-            store.review(record_id,'дякую' if label=='speech' else '',label,0)
-    assert store.listing(view='shadow')['total']==1
-    assert store.listing(view='reviewed')['total']==5
-    assert store.summary()['text_filter_shadow']=={
-        'evaluated':6,'candidates':5,'reviewed':4,'speech':1,'noise':1,'notification':1,'room':1,'unclear':0}
-    store.review(candidates['unclear'],'','unclear',0)
-    assert store.summary()['text_filter_shadow']['unclear']==1
-    assert store.get(candidates['speech'])['data']['raw_text']=='дякую'
-    assert store.audio(candidates['speech'])
-
-
 def test_filtered_view_is_live_and_has_no_sample_limit(tmp_path):
     store = RecordingStore(tmp_path/'archive')
     ids = [store.save(pcm(), 16000, {'status':'vad_short'}) for _ in range(22)]

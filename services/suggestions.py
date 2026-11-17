@@ -100,8 +100,8 @@ def _suggestion(kind, key, title, count=1, record=None):
 
 
 def _words(text):
-    from callsigns import normalize
-    return re.findall(r"[^\W_]+", normalize(text or ""))
+    from services.text_lists import blacklist_key
+    return blacklist_key(text or "").split()
 
 
 def reference_checks(db_path, store, *, now=None):
@@ -182,7 +182,7 @@ def dictionary_conflicts(db_path):
 
 def collect(db_path, store, *, patterns=None):
     """Поточні пропозиції. ``patterns`` — готовий результат глибокої перевірки шаблонів (або None)."""
-    from callsigns import Callsigns, normalize
+    from callsigns import normalize
     from services.alias_candidates import collect as alias_collect
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     from services.miniapp_management import learning_queue

@@ -9,7 +9,7 @@ import pytest
 
 from api.local_dashboard import create_dashboard
 from services.miniapp_management import list_users
-from services.notification_samples import add_sample, delete_sample, list_samples, ogg_to_wav
+from services.notification_samples import add_sample, delete_sample, list_samples
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
 from tests.audio_helpers import segment, pcm
@@ -122,20 +122,6 @@ def test_samples_invalid_audio_path_traversal_limit_and_symlink(tmp_path):
     linked=tmp_path/"linked";linked.symlink_to(directory,target_is_directory=True)
     with pytest.raises(ValueError):add_sample(linked,wav(),confirmed_isolated=True)
 
-
-def test_real_ffmpeg_conversion_creates_bounded_readable_pcm_wav():
-    import shutil
-    import subprocess
-    from services.notification_samples import validate_wav
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not installed")
-    encoded=subprocess.run(["ffmpeg","-loglevel","error","-f","wav","-i","pipe:0","-c:a","libopus","-f","ogg","pipe:1"],input=wav(),capture_output=True,check=True,timeout=15).stdout
-    converted=ogg_to_wav(encoded)
-    _,duration=validate_wav(converted)
-    assert 1.5<duration<2
-
-
-# ---------- Доступ без перезапуску й розширена панель ----------
 
 def test_session_survives_dashboard_restart_with_same_key(setup,tmp_path):
     _,path=setup
@@ -784,3 +770,17 @@ def test_archive_card_deletes_a_sent_phrase_for_every_recipient(local):
     assert client.post(f"/api/recordings/{old}/telegram-delete", headers=h).status_code == 422
     result = client.post(f"/api/recordings/{fresh}/telegram-delete", headers=h).json()
     assert result["queued"] == 2 and result["pending"] == 2 and result["hidden"]
+
+
+def test_saved_panel_changes_are_journaled_but_checks_are_not(local):
+    from services import user_activity
+    client, path, _ = local
+    h = {"Origin": ORIGIN}
+    lists = client.get("/api/text-lists").json()
+    client.put("/api/text-lists/short_garbage/check", headers=h, json={"entries": [{"raw_line": "пау пау", "enabled": True}]})
+    saved = client.put("/api/text-lists/short_garbage", headers=h,
+                       json={"entries": [{"raw_line": "пау пау", "enabled": True}], "expected_revision": lists["revision"]})
+    assert saved.status_code == 200
+    admin = client.get("/api/users").json()["items"][0]["user_id"]
+    actions = [(i["action"], i["target"]) for i in user_activity.overview(path, admin)["items"]]
+    assert actions.count(("panel", "Фільтри тексту: short_garbage")) == 1

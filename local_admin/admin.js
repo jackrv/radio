@@ -1360,7 +1360,7 @@
     rule: "Правило слів", rule_approval: "Дозвіл правила", user: "Зміна користувача",
     settings: "Налаштування розпізнавання", sample: "Зразок сигналу",
     delete: "Видалено повідомлення в себе", hide: "Приховано фразу для всіх",
-    recall: "Видалено в Telegram у всіх (панель)",
+    recall: "Видалено в Telegram у всіх (панель)", panel: "Дія в локальній панелі",
   };
   const DECISIONS_UA = { confirmed: "навчати", rejected: "не навчати", pending: "без рішення" };
   const when = ts => ts ? new Date(ts * 1000).toLocaleString("uk-UA") : "—";
@@ -1782,7 +1782,6 @@
     const quality = summary.quality;
     $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі ефіру/сигналі: ${summary.false_text} · кімнатний шум: ${summary.room ?? 0} (з текстом: ${summary.room_false_text ?? 0}) · кілька передач у записі: ${summary.multiple_messages ?? 0} з ${summary.speech_reviewed ?? 0} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
     $("recording-summary").textContent = `Записів: ${page.total} · перевірено: ${summary.reviewed} · WER до / після: ${pct(quality.raw_text.wer)} / ${pct(quality.final_text.wer)}`;
-    $("recording-shadow-summary").hidden = true;
     if (!page.total && searchQuery()) $("recordings").append(el("p", "muted", "Нічого не знайдено. Шукайте за початком ID (від 4 знаків), №події або шматком тексту."));
     else if (!page.total) $("recordings").append(el("p", "muted", TODO_VIEWS.includes($("recording-view").value)
       ? "Тут усе розмічено. Оберіть інший вид або довший період."

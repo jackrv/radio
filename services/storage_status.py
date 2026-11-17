@@ -9,6 +9,7 @@ import time
 from core.log_security import LOG_MAX_BYTES, LOG_BACKUP_COUNT
 from services.db_backup import DEFAULT_KEEP, AUTO_RE
 from services.diagnostic_history import FILE_RE
+from services.sqlite_connection import read_only
 
 
 def _files(paths):
@@ -30,7 +31,7 @@ def audio_status(store, now):
         return empty
     from services.recordings import PRUNE_TIER_SQL, PRUNE_TIERS, plan_prune
     try:
-        with closing(sqlite3.connect(index.resolve().as_uri()+'?mode=ro', uri=True, timeout=2)) as db:
+        with closing(read_only(index, timeout=2)) as db:
             records = db.execute(f'SELECT id,created,bytes,reference IS NOT NULL,{PRUNE_TIER_SQL} FROM recordings').fetchall()
     except sqlite3.Error:
         return empty

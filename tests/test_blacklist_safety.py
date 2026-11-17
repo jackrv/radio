@@ -89,27 +89,7 @@ def test_normal_radio_words_not_in_blacklist():
         assert word not in BLACKLIST
 
 
-@pytest.mark.parametrize("text,additional", [
-    ("Дякую!", True),
-    ("Па-па!", True),
-    ("Папа", True),
-    ("Слабо чую, повторіть", False),
-    ("Ліна 31, дякую, прийом", False),
-])
-def test_shadow_proposals_are_archived_without_changing_processing(text, additional):
-    worker, processor = make_worker(text)
-    worker.recorder = Mock()
-    pcm = (10000).to_bytes(2, "little", signed=True) * 16000
-    worker.process_segment(pcm)
-    processor.process.assert_called_once_with(text, pcm, raw_text=text)
-    trace = worker.recorder.submit.call_args.args[2]
-    assert trace['status'] == 'ready'
-    assert trace['final_text'] == text
-    assert trace['text_filter_shadow']['additional'] is additional
-    assert trace['text_filter_shadow']['evaluated'] is True
-
-
-def test_shadow_separates_active_filters_and_unprocessed_audio():
+def test_live_blacklist_is_archived_and_trace_does_not_leak_to_next_segment():
     from types import SimpleNamespace
     worker, processor = make_worker('Папа')
     worker.recorder = Mock()
@@ -118,11 +98,9 @@ def test_shadow_separates_active_filters_and_unprocessed_audio():
     worker.process_segment(pcm)
     trace = worker.recorder.submit.call_args.args[2]
     assert trace['status'] == 'blacklist'
-    assert trace['text_filter_shadow']['would_filter'] is True
-    assert trace['text_filter_shadow']['additional'] is False
     processor.process.assert_not_called()
     # A subsequent unrecognised quiet fragment must not inherit the earlier flag.
     worker.process_segment(b'\0' * 32000)
     trace = worker.recorder.submit.call_args.args[2]
     assert trace['status'] == 'low_rms'
-    assert 'text_filter_shadow' not in trace
+    assert 'raw_text' not in trace

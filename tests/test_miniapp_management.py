@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from database import init_db, get_dictionary_lines
+from database import init_db
 from services.event_store import init_db as init_events, save_event
 from services.miniapp_management import (
     apply_startup_settings, list_phrases, read_dictionary, write_dictionary,
@@ -81,7 +81,10 @@ def test_dictionary_edit_preserves_order_disabled_rows_and_conflicts(panel):
     response = client.put("/api/dictionaries/callsigns", headers=WRITE, json=payload)
     assert response.status_code == 200
     assert response.json()["entries"] == entries
-    assert get_dictionary_lines("callsigns", db) == ["Віра: 68 69", "Вовк: *"]
+    import sqlite3
+    from services.dictionary_loader import read_dictionary_lines
+    with sqlite3.connect(db) as conn:
+        assert read_dictionary_lines(conn)["callsigns"] == ["Віра: 68 69", "Вовк: *"]
     assert client.put("/api/dictionaries/callsigns", headers=WRITE, json=payload).status_code == 409
 
 

@@ -14,7 +14,7 @@ from database import (
 )
 from services.event_store import init_db as init_events
 from services.miniapp_management import validate_dictionary
-from services.sqlite_connection import get_db
+from services.sqlite_connection import get_db, read_only
 from services.user_store import init_users_db
 
 
@@ -75,7 +75,7 @@ def _export(db, destination):
 
 
 def export_dictionaries(db_path, destination):
-    with closing(sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True)) as db:
+    with closing(read_only(db_path)) as db:
         db.execute("BEGIN")
         return _export(db, destination)
 
@@ -99,7 +99,7 @@ def reset_database(db_path, destination, backup_dir, *, keep_admins=True):
         os.close(fd)
         # A separate read-only connection can back up while this writer reserves
         # the DB. No writes have occurred yet; concurrent writers cannot race reset.
-        with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as source:
+        with closing(read_only(db_path)) as source:
             with closing(sqlite3.connect(backup)) as target:
                 source.backup(target)
                 if list(target.execute("PRAGMA integrity_check")) != [("ok",)]:
@@ -167,7 +167,7 @@ def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=No
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = db_path.parent / f".events-restore-{stamp}.tmp"
     try:
-        with closing(sqlite3.connect(backup_path.as_uri() + "?mode=ro", uri=True)) as source:
+        with closing(read_only(backup_path)) as source:
             if source.execute("PRAGMA integrity_check").fetchone() != ("ok",):
                 raise RuntimeError("Резервна копія пошкоджена")
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -179,7 +179,7 @@ def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=No
         live_readable = False
         if db_path.is_file():
             try:
-                with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as live:
+                with closing(read_only(db_path)) as live:
                     if live.execute("PRAGMA quick_check").fetchone() == ("ok",):
                         live_floor, live_offset = _floors(live)
                         live_readable = True
@@ -206,7 +206,7 @@ def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=No
         if db_path.is_file():
             if live_readable:
                 previous = folder / f"events-before-restore-{stamp}.db"
-                with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as live:
+                with closing(read_only(db_path)) as live:
                     fd = os.open(previous, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                     os.close(fd)
                     with closing(sqlite3.connect(previous)) as copy:

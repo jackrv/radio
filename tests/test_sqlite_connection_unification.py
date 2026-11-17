@@ -89,7 +89,6 @@ def test_default_paths_are_project_absolute(
         shared.get_db,
         database.init_db,
         database.import_dictionaries,
-        database.get_dictionary_lines,
         event_store.init_db,
         event_store.save_correction,
         event_store.save_event,
@@ -105,3 +104,15 @@ def test_default_paths_are_project_absolute(
 
     # В постороннем каталоге ничего не создаётся.
     assert not (tmp_path / "events.db").exists()
+
+
+def test_init_drops_the_unused_shared_notify_mode_table(tmp_path):
+    import sqlite3
+    import database
+    path = tmp_path / "events.db"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE bot_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)")
+        db.execute("INSERT INTO bot_settings VALUES ('notify_mode', 'off')")
+    database.init_db(path)
+    with sqlite3.connect(path) as db:
+        assert not db.execute("SELECT 1 FROM sqlite_master WHERE name='bot_settings'").fetchone()

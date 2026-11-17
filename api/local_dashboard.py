@@ -8,7 +8,6 @@ import logging
 import math
 import os
 import socket
-import subprocess
 import threading
 import time
 import webbrowser
@@ -95,11 +94,6 @@ class TextListCheck(BaseModel):
 class TextListUpdate(BaseModel):
     entries: list[TextListEntry] = Field(max_length=500)
     expected_revision: int = Field(ge=0)
-
-
-class DictionaryEntry(BaseModel):
-    raw_line: str = Field(max_length=500)
-    enabled: bool = Field(strict=True)
 
 
 class DictionaryUpdate(BaseModel):
@@ -263,6 +257,34 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         from services.suggestions import SuggestionWorker
         suggestion_worker = SuggestionWorker(db_path, recordings, logging.getLogger("radio.suggestions")).start()
     # Збережені правки, після яких пропозиції перевіряються знову (перевірки тексту й пауза — ні).
+    # Збережені правки панелі — у «Активність» (розмітка записів — ні: її сотні на день).
+    panel_actions = (
+        (re.compile(r"/api/suggestions/sync-events"), "Оновлено події за еталонами"),
+        (re.compile(r"/api/suggestions/(dismiss|restore)"), "Пропозиції: приховано / повернуто"),
+        (re.compile(r"/api/text-lists/([a-z_]+)"), "Фільтри тексту: {0}"),
+        (re.compile(r"/api/dictionaries/([a-z_]+)"), "Словник: {0}"),
+        (re.compile(r"/api/learning/[^/]+(/approval)?"), "Навчання: правило"),
+        (re.compile(r"/api/users/([0-9]+)"), "Користувач {0}"),
+        (re.compile(r"/api/(runtime-settings|settings)"), "Налаштування розпізнавання"),
+        (re.compile(r"/api/daily-codes/(.+)"), "Коди доби: {0}"),
+        (re.compile(r"/api/samples(/(?!test$)[^/]+)?|/api/recordings/[^/]+/notification-sample"), "Зразки сигналів"),
+        (re.compile(r"/api/backups"), "Копія бази"),
+        (re.compile(r"/api/receiver-pause"), "Пауза приймача"),
+        (re.compile(r"/api/launcher/([a-z-]+)"), "Лаунчер: {0}"),
+    )
+
+    def log_panel_action(path):
+        for pattern, label in panel_actions:
+            match = pattern.fullmatch(path)
+            if match:
+                from services import user_activity
+                try:
+                    admin = actor()
+                except HTTPException:
+                    return
+                user_activity.record(db_path, admin, "panel", label.format(*[g or "" for g in match.groups()]))
+                return
+
     recheck_after = re.compile(r"/api/(recordings/[^/]+/review|text-lists/[a-z_]+|dictionaries/[a-z_]+|learning/.+|daily-codes/.+)")
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
     backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
@@ -287,9 +309,11 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             response = await call_next(request)
         except (sqlite3.Error,OSError,ValueError):
             response = Response("Локальні дані тимчасово недоступні",status_code=503)
-        if (suggestion_worker and request.method not in ("GET","HEAD") and response.status_code < 400
-                and recheck_after.fullmatch(request.url.path)):
-            suggestion_worker.poke()
+        if request.method not in ("GET","HEAD") and response.status_code < 400:
+            if suggestion_worker and recheck_after.fullmatch(request.url.path):
+                suggestion_worker.poke()
+            if not request.url.path.endswith("/check") and not request.url.path.endswith("/evaluate"):
+                log_panel_action(request.url.path)
         response.headers.update({"Cache-Control":"no-store", "Referrer-Policy":"no-referrer",
             "X-Content-Type-Options":"nosniff",
             "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'"})

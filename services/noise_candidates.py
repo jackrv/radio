@@ -11,7 +11,7 @@ from collections import defaultdict
 
 from rapidfuzz import fuzz
 
-from callsigns import FOLD, normalize
+from callsigns import FOLD
 
 NON_SPEECH = ("noise", "room", "notification")
 SPEECH = ("speech", "unclear")
@@ -22,7 +22,8 @@ MIN_COUNT = 2
 
 def key(text):
     """Ключ, як у приймача: слова нормалізованого тексту без розділових знаків."""
-    return " ".join(re.findall(r"[^\W_]+", normalize(text or ""), flags=re.UNICODE))
+    from services.text_lists import blacklist_key
+    return blacklist_key(text or "")
 
 
 def collect(records, active_keys, dictionary_names, *, min_count=MIN_COUNT):

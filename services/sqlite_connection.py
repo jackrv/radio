@@ -32,3 +32,13 @@ def get_db(db_path=DB_PATH):
 
     finally:
         conn.close()
+
+
+def read_only(db_path, *, timeout=15.0):
+    """Підключення лише для читання: не створює відсутню базу й не змінює її.
+
+    Шлях передається як file: URI з екрануванням (пробіли, «?» і «#» у шляху безпечні).
+    Закривати — викликачу (``contextlib.closing``).
+    """
+    from pathlib import Path
+    return sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout)

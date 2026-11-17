@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+from services.sqlite_connection import read_only
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / ".local-recordings"
@@ -65,10 +66,6 @@ VARIANTS = ("whisper", "rules", "qwen", "pipeline")
 
 
 # ---------- Дані архіву (лише читання) ----------
-
-def read_only(path):
-    return sqlite3.connect(f"file:{Path(path).resolve()}?mode=ro", uri=True)
-
 
 def split_of(created):
     """Відкладений набір — кожен третій 20-хвилинний блок ефіру (за хешем).
@@ -112,19 +109,9 @@ def read_pcm(archive, record_id):
 
 # ---------- Метрики ----------
 
-def words(text):
-    """Слова для WER: апостроф будь-якого виду не ділить і не змінює слово."""
-    return re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", (text or "").casefold()))
-
-
-def edit_distance(a, b):
-    from rapidfuzz.distance import Levenshtein
-    return Levenshtein.distance(a, b)
-
-
-def plain_tokens(text):
-    """Слова без апострофів: «зв’язку», «звʼязку» і «звязку» — одне й те саме."""
-    return re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", (text or "").casefold()))
+# Слова для WER і сімейств зворотів — спільні з архівом (core/text_metrics.py).
+from core.text_metrics import edit_distance, metric_words as words  # noqa: E402
+plain_tokens = words
 
 
 def has_family(tokens, pattern):

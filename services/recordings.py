@@ -311,11 +311,15 @@ class RecordingStore:
                           or d.get("audio_duration_s"), "notification_candidate": d.get("notification_candidate")})
         return {"items": items, "skipped_quiet": skipped}
 
-    def by_status(self, status, limit=15):
-        """Останні записи з цим статусом (напр. відкинуті як сигнал) для швидкої перевірки."""
+    def by_status(self, status, limit=15, *, unreviewed=False):
+        """Останні записи з цим статусом (напр. відкинуті як сигнал) для швидкої перевірки.
+
+        ``unreviewed`` — лише ще не розмічені: розмічене зникає зі списку перевірки.
+        """
         with self.connect() as db:
             rows = db.execute("SELECT id, created, label, reference, revision, data FROM recordings "
-                              "WHERE status=? ORDER BY created DESC LIMIT ?", (status, limit)).fetchall()
+                              f"WHERE status=?{' AND reference IS NULL' if unreviewed else ''} "
+                              "ORDER BY created DESC LIMIT ?", (status, limit)).fetchall()
         items = []
         for row in rows:
             d = json.loads(row["data"])
@@ -325,6 +329,11 @@ class RecordingStore:
                           "score": d.get("notification_score"), "outside_s": d.get("notification_outside_s"),
                           "extra": d.get("notification_extra")})
         return items
+
+    def count_status(self, status, *, unreviewed=False):
+        with self.connect() as db:
+            return db.execute("SELECT COUNT(*) FROM recordings WHERE status=?"
+                              f"{' AND reference IS NULL' if unreviewed else ''}", (status,)).fetchone()[0]
 
     def quality_by_day(self, days=30):
         """Якість за еталонами оператора по днях запису: слова, номери, адресат."""

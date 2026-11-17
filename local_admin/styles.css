@@ -398,3 +398,9 @@ nav button.active { box-shadow: none; }
 .eval-item.ok { border-left-color: var(--ok); } .eval-item.bad { border-left-color: var(--bad); }
 .eval-item div { overflow-wrap: anywhere; }
 .attention-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.attention-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.attention-hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.attention-footer { display: flex; justify-content: flex-end; }
+.link-button { background: none; border: none; padding: 2px 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; }
+.link-button:hover { color: var(--text); }
+.danger-text { color: var(--bad); }

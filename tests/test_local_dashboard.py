@@ -636,6 +636,10 @@ def test_signals_page_lists_dropped_segments_and_plays_samples(setup, tmp_path):
         client.post('/session', json={'token': KEY}, headers={'Origin': ORIGIN})
         items = client.get('/api/notification-filter/dropped').json()['items']
         assert [i['id'] for i in items] == [dropped] and items[0]['score'] == 0.93 and items[0]['reviewed'] is False
+        store.review(dropped, '', 'notification', 0)
+        result = client.get('/api/notification-filter/dropped').json()
+        assert result['items'] == [] and result['unreviewed'] == 0 and result['total'] == 1, "розмічене зникає"
+        assert client.get('/api/notification-filter/dropped?reviewed=true').json()['items'][0]['reviewed'] is True
         sample = client.get('/api/samples').json()['items'][0]
         assert sample['created'] > 0
         audio = client.get(f"/api/samples/{sample['id']}/audio")
@@ -739,3 +743,44 @@ def test_stale_events_are_updated_from_references_on_request(setup, tmp_path):
         with sqlite3.connect(path) as db:
             assert db.execute("SELECT text FROM radio_events WHERE id=?", (event,)).fetchone()[0] == 'Віра 68, прийом'
         assert client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}).json()['updated'] == 0
+
+
+def test_done_button_hides_a_suggestion_kind_and_can_be_undone(local):
+    from services.recordings import RecordingStore
+    from services.suggestions import refresh
+    client, path, tmp_path = local
+    store = RecordingStore(tmp_path / "recordings")
+    for label in ("room", "noise"):
+        rid = store.save(pcm(segment()), 16000, {"status": "ready", "raw_text": "та па", "before_llm": "та па"})
+        store.review(rid, "", label, 0)
+    refresh(path, store)
+    assert [g["kind"] for g in client.get("/api/attention").json()["suggestions"]] == ["noise"]
+    assert client.post("/api/suggestions/dismiss", headers={"Origin": ORIGIN}, json={"kind": "bogus"}).status_code == 422
+    assert client.post("/api/suggestions/dismiss", headers={"Origin": ORIGIN}, json={"kind": "noise"}).json() == {"dismissed": 1}
+    data = client.get("/api/attention").json()
+    assert data["suggestions"] == [] and data["suggestions_hidden"] == 1
+    assert client.post("/api/suggestions/restore", headers={"Origin": ORIGIN}).json() == {"restored": 1}
+    assert client.get("/api/attention").json()["suggestions_hidden"] == 0
+
+
+def test_archive_card_deletes_a_sent_phrase_for_every_recipient(local):
+    import time
+    from services.event_store import save_event
+    from services.recordings import RecordingStore
+    from services.telegram_sync import remember_delivery
+    client, path, tmp_path = local
+    store = RecordingStore(tmp_path / "recordings")
+    fix = f'db:{save_event("", "", "", "", "Вишня 12, прийом", path)}'
+    for chat in (1001, 2002):
+        remember_delivery(path, fix, {"message_id": chat + 1, "chat": {"id": chat}}, "voice")
+    fresh = store.save(pcm(segment()), 16000, {"status": "ready", "fix_id": fix})
+    old = store.save(pcm(segment()), 16000, {"status": "ready", "fix_id": fix})
+    with store.connect() as db:
+        db.execute("UPDATE recordings SET created=? WHERE id=?", (time.time() - 49 * 3600, old))
+    items = {i["id"]: i for i in client.get("/api/recordings?view=telegram").json()["items"]}
+    assert items[fresh]["telegram"]["copies"] == 2 and items[fresh]["telegram"]["deletable"]
+    assert not items[old]["telegram"]["deletable"]
+    h = {"Origin": ORIGIN}
+    assert client.post(f"/api/recordings/{old}/telegram-delete", headers=h).status_code == 422
+    result = client.post(f"/api/recordings/{fresh}/telegram-delete", headers=h).json()
+    assert result["queued"] == 2 and result["pending"] == 2 and result["hidden"]

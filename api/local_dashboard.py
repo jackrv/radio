@@ -53,6 +53,10 @@ class RecordingReview(BaseModel):
     multiple_messages: bool | None = None
 
 
+class SuggestionDismiss(BaseModel):
+    kind: str = Field(max_length=40)
+
+
 class SessionInput(BaseModel):
     token: str = Field(max_length=128)
 
@@ -253,10 +257,13 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES)
+    suggestion_worker = None
     if suggestions:
         # Фонова перевірка списків у процесі панелі: приймач не навантажується.
         from services.suggestions import SuggestionWorker
-        SuggestionWorker(db_path, recordings, logging.getLogger("radio.suggestions")).start()
+        suggestion_worker = SuggestionWorker(db_path, recordings, logging.getLogger("radio.suggestions")).start()
+    # Збережені правки, після яких пропозиції перевіряються знову (перевірки тексту й пауза — ні).
+    recheck_after = re.compile(r"/api/(recordings/[^/]+/review|text-lists/[a-z_]+|dictionaries/[a-z_]+|learning/.+|daily-codes/.+)")
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
     backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
     host = f"127.0.0.1:{port}"
@@ -280,6 +287,9 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             response = await call_next(request)
         except (sqlite3.Error,OSError,ValueError):
             response = Response("Локальні дані тимчасово недоступні",status_code=503)
+        if (suggestion_worker and request.method not in ("GET","HEAD") and response.status_code < 400
+                and recheck_after.fullmatch(request.url.path)):
+            suggestion_worker.poke()
         response.headers.update({"Cache-Control":"no-store", "Referrer-Policy":"no-referrer",
             "X-Content-Type-Options":"nosniff",
             "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'"})
@@ -433,7 +443,33 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                     if day not in codes_by_day:
                         codes_by_day[day] = daily_codes.read(db, day)
                     item["text_check"] = check_with_db(db, item["reference"], codes_by_day[day])
+        # Скільки копій фрази лишилося в чатах і чи ще можна видалити їх у всіх.
+        from services import telegram_recall
+        sent = telegram_recall.state(db_path, linked)
+        for item in page["items"]:
+            fix_id = item["data"].get("fix_id")
+            if fix_id in sent:
+                item["telegram"] = {**sent[fix_id], "deletable": telegram_recall.deletable(item["created"]),
+                                    "deletable_until": item["created"] + telegram_recall.DELETE_WINDOW_S - telegram_recall.SAFETY_S}
         return page
+
+    @app.post("/api/recordings/{record_id}/telegram-delete")
+    def recording_telegram_delete(record_id: str, admin=Depends(actor)):
+        """Видалити надіслану фразу в Telegram в усіх отримувачів (протягом 48 год після надсилання)."""
+        from services import telegram_recall, user_activity
+        from services.telegram_media_store import FIX_RE
+        try:
+            record = recordings.get(record_id)
+        except (LookupError, ValueError):
+            raise HTTPException(404, "Запис не знайдено") from None
+        fix_id = (record.get("data") or {}).get("fix_id") or ""
+        if not FIX_RE.fullmatch(fix_id):
+            raise HTTPException(422, "Цей запис не надсилався в Telegram")
+        if not telegram_recall.deletable(record["created"]):
+            raise HTTPException(422, "Telegram дозволяє ботові видаляти повідомлення лише протягом 48 годин")
+        count = telegram_recall.request_delete(db_path, fix_id)
+        user_activity.record(db_path, admin, "recall", fix_id, {"copies": count})
+        return {**telegram_recall.state(db_path, [fix_id])[fix_id], "queued": count}
 
     @app.get("/api/recordings/summary")
     def recording_summary(admin=Depends(actor)):
@@ -778,7 +814,9 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         learning = store.learning_queue(db_path)["counts"]
         fresh = recordings.view_counts(time.time() - 86400)
         from services import suggestions as suggestion_service
-        return {"suggestions": suggestion_service.overview(db_path)["groups"],
+        found = suggestion_service.overview(db_path)
+        return {"suggestions": found["groups"], "suggestions_hidden": found["hidden"],
+                "suggestions_pending": bool(suggestion_worker and suggestion_worker.pending),
                 "codes_day": day, "codes_missing": not codes,
                 "approvals": learning.get("needs_approval", 0), "conflicts": learning.get("conflict", 0),
                 "telegram_failed": sync_status(db_path)["exhausted"],
@@ -799,6 +837,19 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             result[outcome or "none"] += 1
         suggestion_service.refresh(db_path, recordings)
         return result
+
+    @app.post("/api/suggestions/dismiss")
+    def suggestions_dismiss(payload: SuggestionDismiss, admin=Depends(actor)):
+        """«Готово»: оператор бачив пропозиції цього виду й лишає як є."""
+        from services import suggestions as suggestion_service
+        if payload.kind not in suggestion_service.KINDS:
+            raise HTTPException(422, "Невідомий вид пропозицій")
+        return {"dismissed": suggestion_service.dismiss(db_path, payload.kind)}
+
+    @app.post("/api/suggestions/restore")
+    def suggestions_restore(admin=Depends(actor)):
+        from services import suggestions as suggestion_service
+        return {"restored": suggestion_service.restore(db_path)}
 
     @app.post("/api/suggestions/refresh")
     def suggestions_refresh(admin=Depends(actor)):
@@ -943,9 +994,15 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(404, str(exc)) from None
 
     @app.get("/api/notification-filter/dropped")
-    def notification_dropped(limit: int = 15, admin=Depends(actor)):
-        """Останні записи, які фільтр відкинув як звук сповіщення — для перевірки на слух."""
-        return {"items": recordings.by_status("notification", max(1, min(limit, 50)))}
+    def notification_dropped(limit: int = 15, reviewed: bool = False, admin=Depends(actor)):
+        """Відкинуті фільтром як звук сповіщення — для перевірки на слух.
+
+        Типово лише ще не розмічені (розмічене зникає); reviewed=true — усі останні.
+        """
+        limit = max(1, min(limit, 50))
+        return {"items": recordings.by_status("notification", limit, unreviewed=not reviewed),
+                "unreviewed": recordings.count_status("notification", unreviewed=True),
+                "total": recordings.count_status("notification")}
 
     @app.delete("/api/samples/{sample_id}")
     def sample_delete(sample_id: str,admin=Depends(actor)):

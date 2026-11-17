@@ -27,6 +27,9 @@ def ensure_tables(db):
         PRIMARY KEY(fix_id,chat_id,message_id)
     )""")
     db.execute("CREATE INDEX IF NOT EXISTS telegram_deliveries_due ON telegram_deliveries(next_try)")
+    # Видалення в усіх отримувачів, запитане з панелі (services/telegram_recall.py).
+    if "delete_requested" not in {row[1] for row in db.execute("PRAGMA table_info(telegram_deliveries)")}:
+        db.execute("ALTER TABLE telegram_deliveries ADD COLUMN delete_requested REAL")
 
 
 def migrate_legacy(db_path):
@@ -140,7 +143,8 @@ def sync_corrections(service, *, limit=5, now=None):
                 (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:'||p.token=fix_id AND created_at>?)""", (now-86400,))
         jobs = db.execute("""SELECT d.fix_id,d.chat_id,d.message_id,d.kind,c.revision
             FROM telegram_deliveries d JOIN correction_sources c ON c.fix_id=d.fix_id
-            WHERE d.unavailable=0 AND d.applied_revision<c.revision AND d.next_try<=? AND d.attempts<8
+            WHERE d.unavailable=0 AND d.delete_requested IS NULL
+              AND d.applied_revision<c.revision AND d.next_try<=? AND d.attempts<8
             ORDER BY d.next_try,d.rowid LIMIT ?""", (now, limit)).fetchall()
     for fix_id, chat, message, kind, revision in jobs:
         if getattr(service,"_maintenance_stop",None) is not None and service._maintenance_stop.is_set():

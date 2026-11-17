@@ -10,6 +10,7 @@ import requests
 from core.diagnostics import runtime
 from services.sqlite_connection import get_db
 from services.telegram_sync import sync_corrections
+from services.telegram_recall import process_deletions
 
 managed_key = ContextVar("telegram_managed_key", default=None)
 
@@ -106,6 +107,7 @@ class MaintenanceMixin:
             db.execute("UPDATE telegram_service_messages SET expires_at=0 WHERE slot=?", (f"access:{user_id}",))
 
     def maintenance_once(self):
+        process_deletions(self)
         sync_corrections(self)
         with get_db(self.db_path) as db:
             ensure_table(db)

@@ -78,8 +78,8 @@ def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):
     assert ("ref_label", empty) in found and ("ref_label", noisy) in found
     assert ("ref_roles", roles) in found, "«кому: дуб 4» у тексті немає"
     assert ("ref_event", stale) in found and ("ref_text", typo) in found
-    overlap = [i["title"] for i in dictionary_conflicts(path) if i["kind"] == "dict_overlap"]
-    assert overlap == ["номер 15 є в позивних дуб, клен"]
+    assert not [i for i in dictionary_conflicts(path) if i["kind"] == "dict_overlap"], \
+        "один номер у кількох позивних — звичайна справа, не нагадуємо"
 
 
 def test_ordinal_role_is_understood_through_the_dictionary(tmp_path, monkeypatch):
@@ -95,3 +95,71 @@ def test_ordinal_role_is_understood_through_the_dictionary(tmp_path, monkeypatch
     rid = store.save(pcm(segment()), 16000, {"status": "ready"})
     store.review(rid, "Клен 15, я четвертий, прийнято, прийом", "speech", 0, reference_recipient="клен 15", reference_sender="дуб 4")
     assert not [i for i in reference_checks(path, store) if i["kind"] == "ref_roles"]
+
+
+def test_reference_text_check_ignores_codes_and_names_outside_the_dictionary(tmp_path):
+    from services import daily_codes
+    from services.suggestions import reference_checks
+    path = base_db(tmp_path)
+    daily_codes.write(path, daily_codes.local_day(), "48 62")
+    store = RecordingStore(tmp_path / "recordings")
+    for text in ("Клен 15, 48 63, прийом", "Злива 42, прийом", "Клен 99, прийом"):
+        rid = store.save(pcm(segment()), 16000, {"status": "ready"})
+        store.review(rid, text, "speech", 0)
+    assert not [i for i in reference_checks(path, store) if i["kind"] == "ref_text"], \
+        "неповна сітка кодів, позивні й номери поза словником — не помилки еталона"
+
+
+def test_done_hides_current_suggestions_until_a_new_one_appears(tmp_path):
+    from services.suggestions import dismiss, restore
+    path = base_db(tmp_path)
+    store = archive(tmp_path, [("та па", "", "room"), ("та па", "", "noise")])
+    refresh(path, store)
+    assert dismiss(path, "noise") == 1
+    found = overview(path)
+    assert "noise" not in {g["kind"] for g in found["groups"]} and found["hidden"] == 1
+    refresh(path, store)
+    assert "noise" not in {g["kind"] for g in overview(path)["groups"]}, "фонова перевірка не повертає прихованого"
+    for _ in range(2):
+        rid = store.save(pcm(segment()), 16000, {"status": "ready", "raw_text": "пау пау", "before_llm": "пау пау"})
+        store.review(rid, "", "noise", 0)
+    refresh(path, store)
+    assert overview(path)["groups"][0]["examples"] == ["«пау пау» (×2)"], "нова пропозиція того ж виду видна"
+    assert restore(path) == 1 and overview(path)["hidden"] == 0
+
+
+def test_enabled_pattern_disappears_without_deep_check(tmp_path):
+    path = base_db(tmp_path)
+    store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])
+    data = read_lists(path)
+    write_list(path, "phrase_patterns", [{"raw_line": "{П}, прийнято, прийом", "enabled": False}], data["revision"])
+    refresh(path, store, deep=True)
+    data = read_lists(path)
+    write_list(path, "phrase_patterns", [{"raw_line": "{П}, прийнято, прийом", "enabled": True}], data["revision"])
+    refresh(path, store)
+    assert "pattern" not in {g["kind"] for g in overview(path)["groups"]}
+
+
+def test_worker_rechecks_soon_after_a_poke(tmp_path):
+    import logging
+    import time
+    from services.suggestions import SuggestionWorker
+    calls = []
+    worker = SuggestionWorker(tmp_path / "x.db", None, logging.getLogger("t"), interval=3600, poke_delay=0.05)
+    import services.suggestions as module
+    original = module.refresh
+    module.refresh = lambda *a, **k: calls.append(1)
+    try:
+        worker._stop.wait = lambda timeout=None, _w=worker._stop.wait: _w(min(timeout or 0, 0.05))
+        worker.start()
+        deadline = time.monotonic() + 2
+        while len(calls) < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        worker.poke()
+        assert worker.pending
+        while len(calls) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(calls) == 2
+    finally:
+        worker.stop()
+        module.refresh = original

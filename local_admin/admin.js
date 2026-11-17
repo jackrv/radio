@@ -201,7 +201,7 @@
         play.replaceWith(audio); audio.play().catch(() => {});
       });
       const open = el("button", "ghost small-button", "Розмітити"); open.type = "button";
-      open.addEventListener("click", () => { $("recording-search").value = item.id.slice(0, 8); show("recordings"); action(() => recordings(true)); });
+      open.addEventListener("click", () => openRecordings({search: item.id.slice(0, 8)}));
       meta.append(play, open);
       row.append(main, meta);
       return row;
@@ -352,19 +352,23 @@
   $("global-search").addEventListener("keydown", event => {
     if (event.key !== "Enter" || !event.target.value.trim()) return;
     event.preventDefault();
-    $("recording-search").value = event.target.value.trim().slice(0, 200);
+    openRecordings({search: event.target.value.trim().slice(0, 200)});
     event.target.value = "";
-    if (view === "recordings" || loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
   });
+  // Перехід в архів з чітко заданими фільтрами: попередній пошук чи вид не ховають потрібне.
+  function openRecordings({view: kind = "all", period = "", search = ""} = {}) {
+    $("recording-view").value = kind; $("recording-period").value = period;
+    $("recording-edits").value = ""; $("recording-search").value = search;
+    if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
+  }
 
   // ---------- Огляд: що потребує уваги ----------
   // «texts:callsign_aliases» — вкладка «Фільтри тексту» з потрібним списком; інакше — назва вкладки.
   function openTarget(target) {
     const [view, list] = target.split(":");
     if (view === "recordings" && list) {
-      // Записи для перевірки — пошуком за номерами в усьому архіві.
-      $("recording-search").value = list.split(",").join(", ");
-      if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
+      // Записи для перевірки — пошуком за номерами в усьому архіві, без інших фільтрів.
+      openRecordings({search: list.split(",").join(", ")});
       return;
     }
     if (view === "texts" && list) {
@@ -384,15 +388,21 @@
       await attention(true);
     } finally { $("suggestions-refresh").disabled = false; }
   }));
+  let attentionRetry = null;
   async function attention(force = false) {
-    if (!force && Date.now() - attentionAt < 60000) return;
+    if (!force && Date.now() - attentionAt < 15000) return;
     attentionAt = Date.now();
     let a;
     try { a = await request("/api/attention"); } catch (_) { return; }
+    // Після правки перевірка йде у фоні кілька секунд — тоді оновлюємо список ще раз.
+    clearTimeout(attentionRetry);
+    if (a.suggestions_pending && view === "overview") attentionRetry = setTimeout(() => attention(true), 6000);
     const items = [];
-    const item = (tone, text, label, go, extra) => {
+    const item = (tone, text, label, go, extra, hint) => {
       const row = el("div", `attention-item ${tone}`);
-      row.append(el("span", "", text));
+      const body = el("span", "attention-text", text);
+      if (hint) body.append(el("small", "attention-hint", hint));
+      row.append(body);
       const buttons = el("span", "attention-actions");
       for (const [title, handler] of [[label, go], ...(extra || [])]) {
         if (!title) continue;
@@ -409,18 +419,29 @@
     for (const g of a.suggestions || []) {
       const fresh = g.new ? ` · нових ${g.new}` : "";
       const extra = g.kind === "ref_event" ? [["Оновити всі", () => action(async () => {
-        if (!confirm(`Перенести еталони в ${g.count} подій? Оновляться журнал, підписи повідомлень у Telegram і навчання — як після правки в Mini App.`)) return;
+        if (!confirm(`Замінити текст ${g.count} подій вашими еталонами? Зміняться журнал подій і підписи цих повідомлень у Telegram в усіх отримувачів.`)) return;
         const r = await request("/api/suggestions/sync-events", "POST");
         note(`Оновлено подій: ${r.updated}${r.failed ? `, не вдалося: ${r.failed}` : ""}${r.hidden ? `, приховані: ${r.hidden}` : ""}.`);
         await attention(true);
       })]] : [];
+      // «Готово» — бачив, лишаю як є: зникає без підтвердження, нові пропозиції цього виду покажуться.
+      extra.push(["✓ Готово", () => action(async () => {
+        const r = await request("/api/suggestions/dismiss", "POST", {kind: g.kind});
+        note(`Приховано: ${r.dismissed}. Повернути — «Показати приховані» внизу списку.`);
+        await attention(true);
+      })]);
       item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
-        "Переглянути", () => openTarget(g.target), extra);
+        "Переглянути", () => openTarget(g.target), extra, g.hint);
     }
-    if (a.unlabeled_radio_24h) item("info", `Нерозмічених записів «Ефіру» за добу: ${a.unlabeled_radio_24h}.`, "Розмітити", () => {
-      $("recording-view").value = "radio"; $("recording-period").value = "24";
-      if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
-    });
+    if (a.unlabeled_radio_24h) item("info", `Нерозмічених записів «Ефіру» за добу: ${a.unlabeled_radio_24h}.`, "Розмітити",
+      () => openRecordings({view: "radio", period: "24"}));
+    if (a.suggestions_hidden) {
+      const row = el("div", "attention-footer");
+      const b = el("button", "link-button", `Показати приховані (${a.suggestions_hidden})`); b.type = "button";
+      b.addEventListener("click", () => action(async () => { await request("/api/suggestions/restore", "POST"); await attention(true); }));
+      row.append(b);
+      items.push(row);
+    }
     $("attention").replaceChildren(...items);
     $("attention-panel").hidden = !items.length;
   }
@@ -439,10 +460,7 @@
     c.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); } });
     return c;
   }
-  const openRadioRecords = () => {
-    $("recording-view").value = "radio";
-    if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
-  };
+  const openRadioRecords = () => openRecordings({view: "radio"});
   function receiverTone(state) { return state === "listening" ? "ok" : state === "paused" ? "warn" : "bad"; }
 
   async function overview() {
@@ -585,10 +603,21 @@
   }
   // Що фільтр відкинув як сигнал: прослухати, підтвердити або відкрити в архіві.
   const LABEL_UA = { speech: "мовлення", noise: "шум ефіру", notification: "сигнал", unclear: "нерозбірливо", room: "кімната" };
+  // Типово — лише нерозмічені: позначене зникає зі списку. «Показати й розмічені» — для перегляду.
+  let droppedReviewed = false;
   async function dropped() {
-    const r = await request("/api/notification-filter/dropped?limit=12");
+    const r = await request(`/api/notification-filter/dropped?limit=12${droppedReviewed ? "&reviewed=true" : ""}`);
     const box = $("dropped");
-    if (!r.items.length) { box.replaceChildren(el("p", "muted", "Фільтр ще нічого не відкидав.")); return; }
+    const toggle = el("button", "link-button", droppedReviewed ? "Лише нерозмічені" : `Показати й розмічені (${r.total - r.unreviewed})`);
+    toggle.type = "button";
+    toggle.addEventListener("click", () => { droppedReviewed = !droppedReviewed; action(dropped); });
+    const footer = el("div", "attention-footer");
+    if (r.total > r.unreviewed || droppedReviewed) footer.append(toggle);
+    $("dropped-count").textContent = r.unreviewed ? `нерозмічених: ${r.unreviewed}` : "усе розмічено";
+    if (!r.items.length) {
+      box.replaceChildren(el("p", "muted", r.total ? "Усе відкинуте вже розмічено." : "Фільтр ще нічого не відкидав."), footer);
+      return;
+    }
     box.replaceChildren(...r.items.map(item => {
       const row = el("div", `live-row ${item.reviewed ? (item.label === "notification" ? "ok" : "bad") : "info"}`);
       const time = new Date(item.created * 1000).toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -603,16 +632,16 @@
         const yes = el("button", "ghost small-button", "✓ Сигнал"); yes.type = "button"; yes.title = "Так, це звук сповіщення без мовлення";
         yes.addEventListener("click", () => action(async () => {
           await request(`/api/recordings/${item.id}/review`, "PUT", { reference: "", label: "notification", expected_revision: item.revision });
-          note("Позначено як сигнал."); await dropped();
+          note("Позначено як сигнал."); await dropped();   // розмічене зникає зі списку
         }));
         meta.append(yes);
       }
       const open = el("button", "ghost small-button", "Розмітити"); open.type = "button"; open.title = "Відкрити в «Аудіоархіві» (якщо там мовлення)";
-      open.addEventListener("click", () => { $("recording-search").value = item.id.slice(0, 8); show("recordings"); action(() => recordings(true)); });
+      open.addEventListener("click", () => openRecordings({search: item.id.slice(0, 8)}));
       meta.append(open);
       row.append(main, meta);
       return row;
-    }));
+    }), footer);
   }
   function selected() { const f = $("sample-file").files[0]; if (!f) throw new Error("Вибери WAV-файл."); if (f.size > 200000) throw new Error("Файл завеликий."); return f; }
   $("sample-add").addEventListener("click", () => action(async () => {
@@ -697,9 +726,15 @@
     const s = r.summary, box = el("div", "summary");
     if (!r.templates) { box.classList.add("bad"); box.textContent = "Немає зразків — нема з чим порівнювати."; }
     else if (s.status === "ok") {
-      box.classList.add("ok");
-      box.textContent = `Рекомендований поріг ${fix(s.recommended_threshold)}: знайде ${s.recommended.notifications_found} з ${s.notifications} сповіщень, мовлення не зачепить (0 з ${s.speech}). ` +
-        `Поточний ${fix(s.current_threshold)}: знайде ${s.current.notifications_found}, хибних на мовленні — ${s.current.speech_dropped}.`;
+      // Висновок простими словами: чи варто щось міняти. Зміна — у config.py (попросіть Claude).
+      const now = s.current.notifications_found, best = s.best;
+      const better = best && best.notifications_found - now >= Math.max(3, now * 0.1);
+      box.classList.add(s.current.speech_dropped ? "bad" : better ? "warn" : "ok");
+      const head = `Зараз фільтр ловить ${now} з ${s.notifications} розмічених сигналів` +
+        (s.current.speech_dropped ? ` і помилково відкидає мовлення: ${s.current.speech_dropped} з ${s.speech}.` : `, мовлення не зачіпає (0 з ${s.speech}).`);
+      box.textContent = better
+        ? `${head} Можна ловити ${best.notifications_found}: поріг ${fix(best.threshold)} і стороння енергія до ${pct(best.max_extra)} — мовлення теж не зачепить. Щоб застосувати, попросіть Claude змінити config.py.`
+        : `${head} Налаштування близькі до найкращих для цієї розмітки — нічого міняти не треба.`;
     } else if (s.status === "need_more") {
       box.classList.add("warn");
       box.textContent = `Замало розмітки для рекомендації: потрібно щонайменше 3 сповіщення й 10 фраз мовлення (зараз ${s.notifications} / ${s.speech}). Таблиця нижче — попередня.`;
@@ -720,6 +755,20 @@
       grid.append(row);
     }
     $("filter-table").replaceChildren(grid);
+    if (s.extras?.length) {
+      // Ліміт сторонньої енергії: шум ефіру під сигналом. Для кожного — найкращий безпечний поріг.
+      const ex = el("table"), eh = el("tr");
+      for (const h of ["Стороння енергія до", "Поріг", `Сигналів знайдено (з ${s.notifications})`]) eh.append(el("th", "", h));
+      ex.append(eh);
+      for (const e of s.extras) {
+        const row = el("tr");
+        if (s.best && e.max_extra === s.best.max_extra) row.classList.add("pick");
+        if (Math.abs(e.max_extra - s.current_max_extra) < 1e-9) row.classList.add("now");
+        row.append(el("td", "", pct(e.max_extra)), el("td", "", fix(e.threshold)), el("td", "", num(e.notifications_found)));
+        ex.append(row);
+      }
+      $("filter-table").append(el("p", "muted small", "Мовлення на всіх варіантах нижче — 0. Під сигналом в ефірі буває шум: суворий ліміт сторонньої енергії відкидає такі сигнали."), ex);
+    }
 
     const items = el("table"), ih = el("tr");
     for (const h of ["Запис", "Позначка", "Оцінка", "Поза", "Стороннє", "Спектр"]) ih.append(el("th", "", h));
@@ -1311,6 +1360,7 @@
     rule: "Правило слів", rule_approval: "Дозвіл правила", user: "Зміна користувача",
     settings: "Налаштування розпізнавання", sample: "Зразок сигналу",
     delete: "Видалено повідомлення в себе", hide: "Приховано фразу для всіх",
+    recall: "Видалено в Telegram у всіх (панель)",
   };
   const DECISIONS_UA = { confirmed: "навчати", rejected: "не навчати", pending: "без рішення" };
   const when = ts => ts ? new Date(ts * 1000).toLocaleString("uk-UA") : "—";
@@ -1673,6 +1723,30 @@
   });
   // Пошук за ID («1a2b3c4d, 5e6f7a8b»), номером події («№82») або текстом — по всьому архіву.
   const searchQuery = () => $("recording-search").value.trim();
+  // Видалити надіслану фразу в усіх отримувачів (Telegram дозволяє лише протягом 48 год).
+  function telegramRecall(item) {
+    const t = item.telegram;
+    if (t.pending) return el("span", "badge", `видаляється в Telegram… (${t.pending})`);
+    if (t.requested || (t.hidden && !t.copies)) return el("span", "badge", "видалено в Telegram");
+    if (!t.copies) return el("span", "badge", "у чатах копій немає");
+    if (!t.deletable) {
+      const old = el("span", "badge", `у чатах: ${t.copies}`);
+      old.title = "Минуло понад 48 год — Telegram не дозволяє ботові видалити повідомлення";
+      return old;
+    }
+    const hours = Math.max(1, Math.floor((t.deletable_until * 1000 - Date.now()) / 3600000));
+    const b = el("button", "ghost small-button danger-text", `🗑 Видалити в Telegram у всіх (${t.copies})`); b.type = "button";
+    b.title = `Повідомлення зникне в усіх ${t.copies} отримувачів і в журналі. Можна ще ≈${hours} год.`;
+    b.addEventListener("click", () => action(async () => {
+      if (!confirm(`Видалити це повідомлення в Telegram в усіх отримувачів (${t.copies})? Фраза також зникне з журналу й Mini App. Скасувати не можна.`)) return;
+      const r = await request(`/api/recordings/${item.id}/telegram-delete`, "POST");
+      item.telegram = {...item.telegram, ...r};
+      b.replaceWith(telegramRecall(item));
+      note(r.queued ? `Видаляється в ${r.queued} чатах — бот зробить це за кілька секунд (якщо приймач запущено).` : "Фразу приховано; копій у чатах не лишилося.");
+    }));
+    return b;
+  }
+
   async function recordings(reset = true) {
     if (reset && reviewCards.some(card => card.dirty) && !confirm("Є незбережені зміни. Оновити список і відкинути їх?")) {
       if (loadedRecordingFilters) for (const id of recordingFilterIds) $(id).value = loadedRecordingFilters[id];
@@ -1725,6 +1799,7 @@
         // Надіслане в Telegram і оцінка спектрального фільтра; чистий сигнал можна зробити зразком.
         const tags = el("div", "recording-tags");
         if (d.fix_id) tags.append(el("span", "badge", eventNo ? `надіслано в Telegram · подія №${eventNo[1]}` : "надіслано в Telegram"));
+        if (item.telegram) tags.append(telegramRecall(item));
         if (typeof d.notification_score === "number") {
           const badge = el("span", `badge ${d.notification_candidate ? "cand" : ""}`, `спектр ${fix(d.notification_score)}${d.notification_candidate ? " · кандидат" : ""}`);
           badge.title = `Схожість на зразок сигналу. Поза збігом: ${fix(d.notification_outside_s)} с · стороння енергія: ${pct(d.notification_extra)}`;

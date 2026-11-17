@@ -6,7 +6,10 @@
 вимкнені шаблони фраз, які на еталонах лише покращують текст. Усе це видно в
 «Огляд → Потребує уваги»; нові (за останню добу) позначені окремо.
 
-Нічого не застосовується автоматично: оператор вирішує в панелі.
+Нічого не застосовується автоматично: оператор вирішує в панелі. Після будь-якої зміни
+в панелі перевірка повторюється за кілька секунд, тож виконане зникає саме. Те, що
+оператор вирішив лишити як є, прибирається кнопкою «Готово» (без підтверджень) і
+не повертається, доки не з’явиться нова пропозиція.
 """
 import re
 import sqlite3
@@ -17,24 +20,36 @@ from collections import Counter
 from services.sqlite_connection import get_db
 
 CHECK_MINUTES = 30
+POKE_DELAY_S = 5               # після правки в панелі — коротка пауза, щоб зібрати кілька змін разом
 DEEP_CHECK_HOURS = 3           # шаблони фраз вимагають повтору обробки на архіві
 NEW_HOURS = 24                 # «нова» пропозиція — що з’явилася за останню добу
 MIN_REPEATS = 2                # кандидат — те, що повторилося хоча б двічі
 MIN_ALIAS_SIMILARITY = 50      # слабко схоже звичайне слово (≈40 %) як алиас не пропонуємо
 
+# Вид: (назва, куди веде «Переглянути», пояснення під рядком).
 KINDS = {
-    "alias": ("Алиаси позивних", "texts:callsign_aliases"),
-    "noise": ("Короткий шум і галюцинації", "texts:short_garbage"),
-    "approval": ("Заміни чекають дозволу", "learning"),
-    "conflict": ("Конфлікти навчання", "learning"),
-    "dictionary": ("Номери й позивні для словника", "dictionaries"),
-    "pattern": ("Шаблони фраз, що покращують текст", "texts:phrase_patterns"),
-    "ref_text": ("Можливі помилки в еталонах", "recordings"),
-    "ref_label": ("Тип запису суперечить тексту", "recordings"),
-    "ref_roles": ("Ролі не збігаються з текстом", "recordings"),
-    "ref_event": ("Подія й Telegram не оновлені за еталоном", "recordings"),
-    "dict_overlap": ("Один номер у кількох позивних", "dictionaries"),
-    "list_conflict": ("Рядки списків суперечать словникам", "texts"),
+    "alias": ("Алиаси позивних", "texts:callsign_aliases",
+              "Так Whisper кілька разів почув позивний. Додайте рядок у список — і пропозиція зникне."),
+    "noise": ("Короткий шум і галюцинації", "texts:short_garbage",
+              "Цей текст повторюється на записах, які ви позначили як шум. Додайте його в список, щоб він не доходив до чату."),
+    "approval": ("Заміни чекають дозволу", "learning", ""),
+    "conflict": ("Конфлікти навчання", "learning", ""),
+    "dictionary": ("Номери позивних для словника", "dictionaries",
+                   "Ці номери кілька разів є у ваших еталонах, але не у словнику. Якщо вони не потрібні — «Готово»."),
+    "pattern": ("Шаблони фраз, що покращують текст", "texts:phrase_patterns",
+                "Вимкнений шаблон на ваших еталонах лише покращує текст. Увімкніть його або «Готово»."),
+    "ref_text": ("Можливі описки в еталонах", "recordings",
+                 "Слово в еталоні схоже на назву зі словника, але написане інакше."),
+    "ref_label": ("Тип запису суперечить тексту", "recordings",
+                  "«Мовлення» без тексту: впишіть текст або, якщо слів не розібрати, змініть тип на шум чи кімнату."),
+    "ref_roles": ("Ролі не збігаються з текстом", "recordings",
+                  "Для запису з кількома передачами ролі «кому/від» не заповнюють — очистіть їх."),
+    "ref_event": ("Подія не оновлена за еталоном", "recordings",
+                  "Ці записи ви виправили в архіві раніше, ніж з’явилося автоматичне оновлення подій. Журнал подій "
+                  "і повідомлення в Telegram ще з текстом Whisper. «Оновити всі» замінить їхній текст вашим еталоном "
+                  "(підпис повідомлення в Telegram зміниться в усіх, кому воно надійшло; правка піде в навчання, як "
+                  "після редагування в Mini App). Аудіо й ролі не змінюються."),
+    "list_conflict": ("Рядки списків суперечать словникам", "texts", ""),
 }
 REFERENCE_CHECK_DAYS = 14       # перепровірка тексту еталонів — за останні два тижні розмітки
 NON_SPEECH = ("noise", "room", "notification")
@@ -54,6 +69,32 @@ def ensure_table(db):
                "last_deep REAL, deep_json TEXT)")
 
 
+def ensure_dismissed(db):
+    db.execute("""CREATE TABLE IF NOT EXISTS suggestion_dismissed (
+        key TEXT PRIMARY KEY, kind TEXT NOT NULL, dismissed_at REAL NOT NULL)""")
+
+
+def dismiss(db_path, kind, keys=None, *, now=None):
+    """«Готово»: прибрати поточні пропозиції виду (або лише ``keys``). Повертає кількість."""
+    now = time.time() if now is None else now
+    with get_db(db_path) as db:
+        ensure_table(db)
+        ensure_dismissed(db)
+        rows = db.execute("SELECT key FROM suggestion_state WHERE kind=?", (kind,)).fetchall()
+        chosen = [k for (k,) in rows if keys is None or k in set(keys)]
+        db.executemany("INSERT OR REPLACE INTO suggestion_dismissed (key, kind, dismissed_at) VALUES (?,?,?)",
+                       [(k, kind, now) for k in chosen])
+    return len(chosen)
+
+
+def restore(db_path, kind=None):
+    """Повернути приховані пропозиції (усі або одного виду)."""
+    with get_db(db_path) as db:
+        ensure_dismissed(db)
+        cursor = db.execute("DELETE FROM suggestion_dismissed WHERE ?1 IS NULL OR kind=?1", (kind,))
+        return cursor.rowcount
+
+
 def _suggestion(kind, key, title, count=1, record=None):
     return {"kind": kind, "key": f"{kind}:{key}", "title": title, "count": count, "record": record}
 
@@ -65,7 +106,6 @@ def _words(text):
 
 def reference_checks(db_path, store, *, now=None):
     """Перепровірка розмітки: можливі помилки в еталонах і суперечності з подіями та ролями."""
-    from services import daily_codes
     from services.telegram_media_store import is_hidden
     from services.text_check import check_with_db
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
@@ -113,8 +153,9 @@ def reference_checks(db_path, store, *, now=None):
                 if event and _words(event[0]) != _words(reference) and not is_hidden(db_path, fix, db=db):
                     out.append(_suggestion("ref_event", rid, f"{short}: подія «{event[0][:40]}»", record=rid))
             if speech and reference and (r["reviewed_at"] or 0) >= now - REFERENCE_CHECK_DAYS * 86400:
-                codes = daily_codes.read(db, daily_codes.local_day(r["created"]))
-                issues = [i for i in check_with_db(db, reference, codes)["issues"] if i["kind"] != "format"]
+                # Лише описки назв зі словника. Коди доби задано не всі, а позивні й номери поза
+                # словником — звичайна справа: про них не нагадуємо.
+                issues = [i for i in check_with_db(db, reference, ())["issues"] if i["kind"] == "spelling"]
                 if issues:
                     more = f" (+{len(issues) - 1})" if len(issues) > 1 else ""
                     out.append(_suggestion("ref_text", rid, f"{short}: {issues[0]['message']}{more}", record=rid))
@@ -122,19 +163,14 @@ def reference_checks(db_path, store, *, now=None):
 
 
 def dictionary_conflicts(db_path):
-    """Номери, дозволені кільком позивним, і рядки списків, що суперечать словникам."""
+    """Рядки списків, що суперечать словникам.
+
+    Один номер у кількох позивних — звичайна справа в ефірі, про це не нагадуємо.
+    """
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     from services.text_lists import LIST_TYPES, check_against_dictionaries, ensure_tables, load_active
     out = []
     with get_db(db_path) as db:
-        callsigns, _, _ = dictionaries_from_lines(read_dictionary_lines(db))
-        owners = {}
-        for name in callsigns.names:
-            for number in callsigns.numbers.get(name) or ():
-                owners.setdefault(number, []).append(name)
-        for number, names in sorted(owners.items()):
-            if len(names) > 1:
-                out.append(_suggestion("dict_overlap", number, f"номер {number} є в позивних {', '.join(sorted(names))}"))
         ensure_tables(db)
         _, active = load_active(db)
         for list_type in LIST_TYPES:
@@ -239,6 +275,11 @@ def refresh(db_path, store, *, deep=False, now=None):
     if deep or last_deep is None or now - last_deep >= DEEP_CHECK_HOURS * 3600:
         patterns = deep_patterns(db_path, store)
         last_deep = now
+    else:
+        # Шаблон, який уже ввімкнули чи видалили, зникає одразу, без глибокої перевірки.
+        from services.text_lists import read_lists
+        disabled = {e["raw_line"] for e in read_lists(db_path)["lists"]["phrase_patterns"]["entries"] if not e["enabled"]}
+        patterns = [p for p in patterns if p["pattern"] in disabled]
     current = collect(db_path, store, patterns=patterns)
     keys = {s["key"]: s for s in current}
     with get_db(db_path) as db:
@@ -247,6 +288,10 @@ def refresh(db_path, store, *, deep=False, now=None):
         known = {row[0] for row in db.execute("SELECT key FROM suggestion_state")}
         # Застосовані чи зниклі пропозиції прибираються; нові — запам’ятовуються з часом появи.
         db.executemany("DELETE FROM suggestion_state WHERE key=?", [(k,) for k in known if k not in keys])
+        # «Готово» пам’ятається, поки пропозиція існує; зникла й з’явилася знову — покажеться.
+        ensure_dismissed(db)
+        dismissed = {row[0] for row in db.execute("SELECT key FROM suggestion_dismissed")}
+        db.executemany("DELETE FROM suggestion_dismissed WHERE key=?", [(k,) for k in dismissed if k not in keys])
         fresh = [s for k, s in keys.items() if k not in known]
         db.executemany("INSERT INTO suggestion_state (key, kind, title, first_seen, record) VALUES (?,?,?,?,?)",
                        [(s["key"], s["kind"], s["title"], now, s.get("record")) for s in fresh])
@@ -263,13 +308,19 @@ def overview(db_path, now=None):
     now = time.time() if now is None else now
     with get_db(db_path) as db:
         ensure_table(db)
-        rows = db.execute("SELECT kind, title, first_seen, record FROM suggestion_state ORDER BY first_seen DESC").fetchall()
+        ensure_dismissed(db)
+        rows = db.execute("""SELECT kind, title, first_seen, record FROM suggestion_state
+            WHERE key NOT IN (SELECT key FROM suggestion_dismissed) ORDER BY first_seen DESC""").fetchall()
+        hidden = db.execute("""SELECT COUNT(*) FROM suggestion_state
+            WHERE key IN (SELECT key FROM suggestion_dismissed)""").fetchone()[0]
         meta = db.execute("SELECT last_deep FROM suggestion_meta WHERE id=1").fetchone()
     groups = {}
     for kind, title, first_seen, record in rows:
-        group = groups.setdefault(kind, {"kind": kind, "title": KINDS.get(kind, (kind, ""))[0],
-                                         "target": KINDS.get(kind, ("", "overview"))[1], "count": 0, "new": 0,
-                                         "examples": [], "records": []})
+        if kind not in KINDS:      # вид, якого вже немає (старий запис стану)
+            continue
+        name, target, hint = KINDS[kind]
+        group = groups.setdefault(kind, {"kind": kind, "title": name, "target": target, "hint": hint,
+                                         "count": 0, "new": 0, "examples": [], "records": []})
         if record and len(group["records"]) < 20:
             group["records"].append(record[:8])
         group["count"] += 1
@@ -280,16 +331,28 @@ def overview(db_path, now=None):
         # Записи архіву відкриваються пошуком за номерами (до 20 за раз).
         if group["records"]:
             group["target"] = "recordings:" + ",".join(group["records"])
-    return {"groups": [groups[k] for k in KINDS if k in groups], "checked": meta is not None}
+    return {"groups": [groups[k] for k in KINDS if k in groups], "checked": meta is not None, "hidden": hidden}
 
 
 class SuggestionWorker:
-    """Фонова перевірка в процесі панелі: раз на CHECK_MINUTES, без впливу на приймач."""
+    """Фонова перевірка в процесі панелі: раз на CHECK_MINUTES і за кілька секунд після
+    правки в панелі (``poke``), без впливу на приймач."""
 
-    def __init__(self, db_path, store, log, *, interval=CHECK_MINUTES * 60):
+    def __init__(self, db_path, store, log, *, interval=CHECK_MINUTES * 60, poke_delay=POKE_DELAY_S):
         self.db_path, self.store, self.log, self.interval = db_path, store, log, interval
-        self._stop = threading.Event()
+        self.poke_delay = poke_delay
+        self._stop, self._poked = threading.Event(), threading.Event()
+        self.busy = False
         self.thread = threading.Thread(target=self._loop, name="suggestions", daemon=True)
+
+    def poke(self):
+        """Щось змінилося в панелі — перевірити найближчим часом (без глибокої перевірки шаблонів)."""
+        self._poked.set()
+
+    @property
+    def pending(self):
+        """Перевірка ще йде або запланована: панель покаже актуальне трохи згодом."""
+        return self.busy or self._poked.is_set()
 
     def start(self):
         self.thread.start()
@@ -303,11 +366,18 @@ class SuggestionWorker:
         if self._stop.wait(60):
             return
         while not self._stop.is_set():
+            self._poked.clear()
+            self.busy = True
             try:
                 refresh(self.db_path, self.store)
             except (sqlite3.Error, OSError, ValueError) as exc:
                 self.log.warning("Пропозиції з розмітки не оновлено: %s", type(exc).__name__)
             except Exception:
                 self.log.exception("Помилка перевірки пропозицій з розмітки")
-            if self._stop.wait(self.interval):
+            finally:
+                self.busy = False
+            deadline = time.monotonic() + self.interval
+            while not self._stop.is_set() and not self._poked.is_set() and time.monotonic() < deadline:
+                self._poked.wait(min(5, max(0, deadline - time.monotonic())))
+            if self._stop.is_set() or (self._poked.is_set() and self._stop.wait(self.poke_delay)):
                 return

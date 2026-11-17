@@ -25,6 +25,11 @@ POSITIVE = ("notification",)
 NEGATIVE = ("speech", "unclear")
 NEUTRAL = ("noise", "room")  # шум ефіру й кімнати: відкинути його не шкодить
 GRID = tuple(round(0.60 + 0.02 * step, 2) for step in range(20))
+# Ліміт сторонньої енергії під сигналом: шум ефіру під сигналом його підвищує. Мовлення
+# відсікає передусім «звук поза збігом» (у мовлення — секунди), тож ліміт можна послаблювати,
+# але не далі 20 %.
+EXTRA_GRID = (0.02, 0.04, 0.06, 0.08, 0.10, 0.15, 0.20)
+NEAR_BEST = 0.9      # найсуворіший ліміт, що дає щонайменше 90 % найкращого результату
 MIN_NOTIFICATIONS = 3
 MIN_SPEECH = 10
 MAX_ITEMS = 2000
@@ -69,32 +74,56 @@ def _summary(items, matcher):
               "speech": [i for i in items if i["label"] in NEGATIVE and i.get("score") is not None],
               "noise": [i for i in items if i["label"] in NEUTRAL and i.get("score") is not None]}
 
-    def found(group, threshold):
-        return sum(matcher.is_candidate(i["score"], i["outside_s"], i["extra_ratio"], threshold) for i in group)
+    def found(group, threshold, max_extra=None):
+        extra = matcher.max_extra if max_extra is None else max_extra
+        return sum(i["score"] >= threshold and i["outside_s"] <= matcher.max_outside_s and i["extra_ratio"] <= extra
+                   for i in group)
 
     table = [{"threshold": t, "notifications_found": found(groups["notification"], t),
               "speech_dropped": found(groups["speech"], t), "noise_dropped": found(groups["noise"], t)} for t in GRID]
+    # Той самий підбір порогу для кожного ліміту сторонньої енергії.
+    extras = []
+    for extra in EXTRA_GRID:
+        rows = [{"threshold": t, "notifications_found": found(groups["notification"], t, extra),
+                 "speech_dropped": found(groups["speech"], t, extra)} for t in GRID]
+        pick = _pick(rows)
+        if pick:
+            extras.append({"max_extra": extra, "threshold": pick["threshold"],
+                           "notifications_found": pick["notifications_found"]})
     result = {"notifications": len(groups["notification"]), "speech": len(groups["speech"]),
               "noise": len(groups["noise"]), "table": table,
               "current_threshold": matcher.threshold, "recommended_threshold": None,
               "current": {"notifications_found": found(groups["notification"], matcher.threshold),
                           "speech_dropped": found(groups["speech"], matcher.threshold),
-                          "noise_dropped": found(groups["noise"], matcher.threshold)}}
+                          "noise_dropped": found(groups["noise"], matcher.threshold)},
+              "current_max_extra": matcher.max_extra, "extras": extras, "best": None}
     if result["notifications"] < MIN_NOTIFICATIONS or result["speech"] < MIN_SPEECH:
         result["status"] = "need_more"
         return result
-    safe = [row for row in table if row["speech_dropped"] == 0]
-    best = max((row["notifications_found"] for row in safe), default=0)
-    if not safe or best == 0:
+    recommended = _pick(table)
+    if recommended is None:
         result["status"] = "not_separable"
         return result
-    # Безпечний діапазон: від найнижчого порогу без жодного відкинутого мовлення
-    # до найвищого, що ще знаходить максимум сповіщень. Середина — запас з обох боків.
-    low = GRID.index(safe[0]["threshold"])
-    high = max(GRID.index(row["threshold"]) for row in safe if row["notifications_found"] == best)
-    recommended = table[(low + high + 1) // 2]
     result.update(status="ok", recommended_threshold=recommended["threshold"], recommended=recommended)
+    # Найкраще поєднання порогу й ліміту: найсуворіший ліміт, що дає ≥ 90 % максимуму.
+    top = max((e["notifications_found"] for e in extras), default=0)
+    if top:
+        result["best"] = next(e for e in extras if e["notifications_found"] >= NEAR_BEST * top)
     return result
+
+
+def _pick(table):
+    """Поріг із безпечного діапазону (жодного відкинутого мовлення) або None.
+
+    Діапазон — від найнижчого безпечного порогу до найвищого, що ще знаходить
+    максимум сповіщень. Середина — запас з обох боків.
+    """
+    safe = [i for i, row in enumerate(table) if row["speech_dropped"] == 0]   # вищий поріг — менше відкинутого
+    best = max((table[i]["notifications_found"] for i in safe), default=0)
+    if not safe or best == 0:
+        return None
+    high = max(i for i in safe if table[i]["notifications_found"] == best)
+    return table[(safe[0] + high + 1) // 2]
 
 
 def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=None):

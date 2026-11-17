@@ -54,13 +54,34 @@
       <section data-panel="recordings" hidden>
         <article class="panel"><h2>Перевірка розпізнавання</h2>
 
-          <div class="toolbar"><input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200"><select id="recording-edits" aria-label="Правки"><option value="">Усі записи</option><option value="miniapp">Будь-які правки з Mini App</option></select><select id="recording-queue" aria-label="Черга розмітки"><option value="">Без черги</option></select><select id="recording-group" aria-label="Група записів"><option value="normal">Основні</option><option value="speech">Мовлення</option><option value="radio">Ефір: позивні або подія</option><option value="short">Короткі</option><option value="all">Усі разом</option><option value="shadow">Перевірка фільтра</option></select><select id="recording-filter" aria-label="Стан перевірки"><option value="all">Усі записи</option><option value="pending">Без перевірки</option><option value="reviewed">Перевірені</option></select><select id="recording-speed" aria-label="Швидкість відтворення"><option value="1">1×</option><option value="0.85">0,85×</option><option value="0.75">0,75×</option></select><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
-          <p id="recording-queue-progress" class="muted small"></p>
+          <div class="toolbar">
+            <label class="field-inline">Що показати
+              <select id="recording-view" aria-label="Що показати">
+                <optgroup label="Розмітка — ще не розмічені, нові першими">
+                  <option value="radio">Ефір: є позивний або подія</option>
+                  <option value="speech">Інше мовлення (часто розмови в кімнаті)</option>
+                  <option value="filtered">Шум, сигнали й короткі (відсіяне програмою)</option>
+                </optgroup>
+                <optgroup label="Перегляд">
+                  <option value="reviewed">Розмічені</option>
+                  <option value="all">Усі записи</option>
+                  <option value="shadow">Перевірка нового фільтра тексту</option>
+                </optgroup>
+              </select></label>
+            <label class="field-inline">Період
+              <select id="recording-period" aria-label="Період">
+                <option value="">увесь час</option><option value="today">сьогодні</option>
+                <option value="24">останні 24 год</option><option value="168">останні 7 днів</option>
+              </select></label>
+            <select id="recording-edits" aria-label="Правки"><option value="">Будь-хто правив або ні</option><option value="miniapp">Лише правки з Mini App</option></select>
+            <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
+          </div>
+          <div class="toolbar"><select id="recording-speed" aria-label="Швидкість відтворення"><option value="1">1×</option><option value="0.85">0,85×</option><option value="0.75">0,75×</option></select><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label><button id="recording-refresh">Оновити записи</button><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></div>
           <p class="muted small keys">Клавіші: <kbd>Пробіл</kbd> грати / пауза · <kbd>1</kbd>–<kbd>5</kbd> тип (2, 3 і 5 — одразу зберегти) · <kbd>Enter</kbd> до тексту · <kbd>⌘/Ctrl+Enter</kbd> зберегти й далі · <kbd>J</kbd>/<kbd>K</kbd> або <kbd>↓</kbd>/<kbd>↑</kbd> наступний / попередній · <kbd>R</kbd> з початку · <kbd>Esc</kbd> вийти з поля.</p>
           <p id="recording-summary" class="muted small"></p>
           <p id="recording-shadow-summary" class="muted small" hidden></p>
           <details class="small"><summary>Підказки та статистика</summary>
-            <p class="muted">Прослухайте запис і введіть почутий текст. Правка — окремий еталон, без зміни Telegram чи правил. «Короткі» — записи до 2 с включно, короткі відхилення VAD, тихі записи та чорний список незалежно від тривалості; вони зберігаються окремо від основного списку. У ролях розрізняйте «невідомо» і «не вказано у фразі». Перевірені записи захищені від очищення.</p>
+            <p class="muted">Прослухайте запис і введіть почутий текст. Правка — окремий еталон, без зміни Telegram чи правил. Архів ділиться на три частини: «Ефір» — програма знайшла позивний або створила подію; «Інше мовлення» — Whisper щось почув (довше 2 с), але позивного немає; «Шум, сигнали й короткі» — усе, що програма відсіяла (тиша, сигнали, чорний список, коротке). У ролях розрізняйте «невідомо» і «не вказано у фразі». Перевірені записи захищені від очищення.</p>
             <p class="muted"><b>Як розмічати:</b></p>
             <ul class="muted rules">
               <li>Пишіть усе, що чутно, по порядку, навіть якщо в записі кілька передач. Розділові знаки на оцінку не впливають.</li>

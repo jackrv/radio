@@ -35,6 +35,17 @@ SPEECH_GROUP = ("(status IN ('ready','empty_text') "
 RADIO_GROUP = ("(json_extract(data,'$.fix_id') IS NOT NULL "
                "OR COALESCE(json_extract(data,'$.predicted_recipient'),'') <> '' "
                "OR COALESCE(json_extract(data,'$.predicted_sender'),'') <> '')")
+# Види для панелі: архів ділиться на три частини без перетину — ефір (позивний чи
+# подія), інше мовлення, усе відсіяне. Ключ -> (стан перевірки, умова).
+VIEWS = {
+    "radio": ("pending", RADIO_GROUP),
+    "speech": ("pending", f"({SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
+    "filtered": ("pending", f"(NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
+    "shadow": ("pending", "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"),
+    "reviewed": ("reviewed", "1"),
+    "all": ("all", "1"),
+}
+_REVIEW_SQL = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -222,7 +233,17 @@ class RecordingStore:
             }
         return result
 
-    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue="", search="", edits=None):
+    def view_counts(self, since=None):
+        """Скільки записів у кожному виді (за період ``since`` — unix-час, або весь архів)."""
+        period = "created >= ?" if since else "1"
+        sums = ", ".join(f"COALESCE(SUM(CASE WHEN ({_REVIEW_SQL[review]}) AND ({condition}) THEN 1 ELSE 0 END),0)"
+                         for review, condition in VIEWS.values())
+        with self.connect() as db:
+            row = db.execute(f"SELECT {sums} FROM recordings WHERE {period}", (since,) if since else ()).fetchone()
+        return dict(zip(VIEWS, row))
+
+    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue="", search="", edits=None,
+                view=None, since=None):
         """``edits``: None — без фільтра; "miniapp" — еталони з Mini App; список fix_id —
         записи, пов'язані з цими подіями (правки конкретного користувача)."""
         reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
@@ -242,6 +263,9 @@ class RecordingStore:
         elif ids is not None:
             # Optional frozen ID list used by offline callers.
             grouped, params = "id IN (SELECT value FROM json_each(?))", (json.dumps(sorted(ids)),)
+        if view and not search.strip() and not queue:
+            view_review, grouped = VIEWS[view]
+            reviewed = _REVIEW_SQL[view_review]
         where = f"({reviewed}) AND ({grouped})"
         if edits == "miniapp":
             where += " AND reference_source='miniapp'"
@@ -251,6 +275,9 @@ class RecordingStore:
                 where, params = f"({reviewed})", ()
             where += " AND json_extract(data,'$.fix_id') IN (SELECT value FROM json_each(?))"
             params = (*params, json.dumps(sorted(set(edits))))
+        if since:
+            where += " AND created >= ?"
+            params = (*params, float(since))
         with self.connect() as db:
             db.execute("BEGIN")
             counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0), "

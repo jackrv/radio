@@ -365,7 +365,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     @app.get("/api/recordings")
     def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
-                       q: str = "", edits: str = "", admin=Depends(actor)):
+                       q: str = "", edits: str = "", view: str = "", since: float | None = None,
+                       admin=Depends(actor)):
         if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
                 or group not in ("all", "normal", "short", "shadow", "speech", "radio") or not re.fullmatch(r"(?:|all|[A-Z])", queue)
                 or len(q) > 200):
@@ -374,13 +375,18 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(404, "Такої групи в черзі немає")
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
             raise HTTPException(422, "Некоректні параметри")
+        from services.recordings import VIEWS
+        if (view and view not in VIEWS) or (since is not None and not 0 <= since <= 4e9):
+            raise HTTPException(422, "Некоректні параметри")
         from services import user_activity
         selected = None
         if edits == "miniapp":
             selected = "miniapp"
         elif edits:
             selected = list(user_activity.corrections(db_path, user_id=int(edits)))
-        page = recordings.listing(offset, limit, review, group, queue=queue, search=q, edits=selected)
+        page = recordings.listing(offset, limit, review, group, queue=queue, search=q, edits=selected,
+                                  view=view or None, since=since)
+        page["views"] = recordings.view_counts(since)
         # Хто й коли правив запис у Mini App (журнал дій з 16.11.2026).
         linked = [item["data"].get("fix_id") for item in page["items"] if item["data"].get("fix_id")]
         if linked:

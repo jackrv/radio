@@ -778,45 +778,24 @@
   $("role").addEventListener("change", roles);
 
   // ---------- Черги розмітки з поточного архіву ----------
-  async function loadQueue() {
-    const select = $("recording-queue");
-    let queue;
-    try { queue = await request("/api/recordings/queue"); }
-    catch (_) { select.title = "Не вдалося оновити лічильники. Спробуємо знову."; return; }
-    // Read selection after the request: the user may have changed it while waiting.
-    const chosen = select.value;
-    select.replaceChildren(el("option", "", "Без черги"));
-    select.firstChild.value = "";
-    if (!queue.available) {
-      select.disabled = true; select.title = queue.hint || "";
-      $("recording-queue-progress").textContent = "";
-      return;
-    }
-    select.disabled = false; select.title = "";
-    const groups = queue.groups || [];
-    const total = groups.reduce((a, g) => a + g.present, 0), reviewed = groups.reduce((a, g) => a + g.reviewed, 0);
-    const all = el("option", "", `Черга: усі групи · ${reviewed}/${total}`); all.value = "all"; select.append(all);
-    for (const g of groups) {
-      const option = el("option", "", `Черга ${g.key}: ${g.title} · ${g.reviewed}/${g.present}`);
-      option.value = g.key; select.append(option);
-    }
-    select.value = [...select.options].some(o => o.value === chosen) ? chosen : "";
-    const lost = groups.reduce((a, g) => a + (g.total - g.present), 0);
-    $("recording-queue-progress").textContent = `Черга розмітки: перевірено ${reviewed} з ${total}` +
-      (lost ? ` · ${lost} записів уже видалено за терміном зберігання` : "") +
-      `. Залишилось ${total - reviewed}. Почніть із групи A; оберіть «Без перевірки».` +
-      (queue.live ? " Черги поповнюються з архіву. Нові картки — кнопкою «Оновити записи»." : "");
+  // Види «розмітки» показують лише нерозмічене: розмічений запис зникає зі списку.
+  const TODO_VIEWS = ["radio", "speech", "filtered", "shadow"];
+  function periodSince() {
+    const value = $("recording-period").value;
+    if (!value) return null;
+    if (value === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return Math.floor(d.getTime() / 1000); }
+    return Math.floor(Date.now() / 1000) - Number(value) * 3600;
   }
-
   let recordingOffset = 0;
   const reviewCards = [];
   // Пошук за ID («1a2b3c4d, 5e6f7a8b»), номером події («№82») або текстом — по всьому архіву.
   const searchQuery = () => $("recording-search").value.trim();
   async function recordings(reset = true) {
     if (reset) { recordingOffset = 0; reviewCards.length = 0; $("recordings").replaceChildren(); }
+    const since = periodSince();
     const [page, summary] = await Promise.all([
-      request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}` +
-        ($("recording-queue").value ? `&queue=${$("recording-queue").value}` : "") +
+      request(`/api/recordings?offset=${recordingOffset}&view=${$("recording-view").value}` +
+        (since ? `&since=${since}` : "") +
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
         ($("recording-edits").value ? `&edits=${encodeURIComponent($("recording-edits").value)}` : "")),
       request("/api/recordings/summary")
@@ -829,28 +808,23 @@
       option.value = String(person.user_id); editsSelect.append(option);
     }
     if ([...editsSelect.options].some(o => o.value === chosenEdits)) editsSelect.value = chosenEdits;
-    const groups = page.groups;
-    const grouped = groups && ["all", "normal", "short"].every(key => typeof groups[key] === "number");
-    const groupSelect = $("recording-group");
-    // Queues have their own criteria instead of ordinary duration groups.
-    const queued = Boolean($("recording-queue").value);
-    groupSelect.disabled = !grouped || queued;
-    groupSelect.title = grouped ? "" : "Перезапустіть локальну панель, щоб увімкнути групи";
-    if (!grouped) groupSelect.value = "all";
-    for (const option of groupSelect.options) {
-      const count = grouped ? groups[option.value] : option.value === "all" ? page.total : null;
-      option.disabled = ["shadow", "speech", "radio"].includes(option.value) && typeof count !== "number";
-      option.textContent = `${{normal: "Основні", speech: "Мовлення", radio: "Ефір: позивні або подія", short: "Короткі / відсіяні", all: "Усі разом", shadow: "Перевірка фільтра"}[option.value]}${count == null ? "" : ` · ${count}`}`;
+    // Кількість записів у кожному виді — за обраний період.
+    for (const option of $("recording-view").options) {
+      option.dataset.title ||= option.textContent;
+      const count = page.views?.[option.value];
+      option.textContent = `${option.dataset.title}${typeof count === "number" ? ` · ${count}` : ""}`;
+      option.hidden = option.value === "shadow" && !count;
     }
-    if (!grouped) note("Записи відкрито без груп. Перезапустіть локальну адмінпанель і оновіть список, щоб відокремити короткі фрази. Приймач зупиняти не потрібно.");
     const quality = summary.quality;
     $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі ефіру/сигналі: ${summary.false_text} · кімнатний шум: ${summary.room ?? 0} (з текстом: ${summary.room_false_text ?? 0}) · кілька передач у записі: ${summary.multiple_messages ?? 0} з ${summary.speech_reviewed ?? 0} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
     $("recording-summary").textContent = `Записів: ${page.total} · перевірено: ${summary.reviewed} · WER до / після: ${pct(quality.raw_text.wer)} / ${pct(quality.final_text.wer)}`;
     const shadow = summary.text_filter_shadow;
     $("recording-shadow-summary").hidden = !shadow;
-    if (shadow) $("recording-shadow-summary").textContent = `Перевірка фільтра: позначено ${shadow.candidates} з ${shadow.evaluated} оцінених записів · перевірено ${shadow.reviewed}: мовлення ${shadow.speech}, шум ${shadow.noise}, сигнал ${shadow.notification}, кімната ${shadow.room}, нерозбірливо ${shadow.unclear}. Новий фільтр лише ставить позначки. Оберіть «Перевірка фільтра» та прослухайте записи.`;
+    if (shadow) $("recording-shadow-summary").textContent = `Перевірка фільтра: позначено ${shadow.candidates} з ${shadow.evaluated} оцінених записів · перевірено ${shadow.reviewed}: мовлення ${shadow.speech}, шум ${shadow.noise}, сигнал ${shadow.notification}, кімната ${shadow.room}, нерозбірливо ${shadow.unclear}. Новий фільтр лише ставить позначки. Оберіть «Перевірка нового фільтра тексту» та прослухайте записи.`;
     if (!page.total && searchQuery()) $("recordings").append(el("p", "muted", "Нічого не знайдено. Шукайте за початком ID (від 4 знаків), №події або шматком тексту."));
-    else if (!page.total) $("recordings").append(el("p", "muted", (grouped ? groups.all : page.total) ? "У цій групі записів немає. Оберіть іншу групу або стан перевірки." : "Записів за цим фільтром ще немає. Нові з’являться після запуску оновленого приймача."));
+    else if (!page.total) $("recordings").append(el("p", "muted", TODO_VIEWS.includes($("recording-view").value)
+      ? "Тут усе розмічено. Оберіть інший вид або довший період."
+      : "Записів за цим вибором немає. Оберіть інший вид або довший період."));
     for (const item of page.items) {
       const d = item.data, signal = d.signal || {};
       const card = el("article", "panel recording-card");
@@ -1052,7 +1026,7 @@
           const speechLike = ["speech", "unclear"].includes(category.value);
           const result = await request(`/api/recordings/${item.id}/review`, "PUT", {reference: input.value, label: category.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read(), multiple_messages: speechLike ? multiBox.checked : null});
           // Reviewed rows leave the pending query; keep the next page's offset aligned.
-          if (item.reference === null && $("recording-filter").value === "pending") recordingOffset = Math.max(0, recordingOffset - 1);
+          if (item.reference === null && TODO_VIEWS.includes($("recording-view").value)) recordingOffset = Math.max(0, recordingOffset - 1);
           item.revision = result.revision; item.reference = result.reference; item.label = result.label;
           showQuality(result);
           controller.done = true;
@@ -1060,7 +1034,6 @@
           save.textContent = "Оновити еталон";
           showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}`, "ok");
           note("Еталон збережено. Початкові тексти й правила не змінено.");
-          if (typeof loadQueue === "function" && $("recording-queue").value) await loadQueue().catch(() => {});
           if (typeof advanceReview === "function") advanceReview(controller);
         } catch (error) {
           showSave(`Не збережено: ${error.message}`, "alert"); note(error.message);
@@ -1083,20 +1056,27 @@
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
   }
-  $("recording-refresh").addEventListener("click", () => action(async () => {
-    if (typeof loadQueue === "function") await loadQueue();
-    await recordings(true);
-  }));
-  $("recording-filter").addEventListener("change", () => action(() => recordings(true)));
+  $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
+  // Обраний вид і період запам’ятовуються в цьому браузері.
+  const VIEW_KEY = "radio345:archive-view";
+  try {
+    const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}");
+    if ([...$("recording-view").options].some(o => o.value === saved.view)) $("recording-view").value = saved.view;
+    if ([...$("recording-period").options].some(o => o.value === saved.period)) $("recording-period").value = saved.period;
+  } catch (_) { /* типовий вибір */ }
+  for (const id of ["recording-view", "recording-period"]) {
+    $(id).addEventListener("change", () => {
+      try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value })); } catch (_) { /* лише поточна сесія */ }
+      action(() => recordings(true));
+    });
+  }
   $("recording-edits").addEventListener("change", () => action(() => recordings(true)));
-  $("recording-group").addEventListener("change", () => action(() => recordings(true)));
-  $("recording-queue").addEventListener("change", () => action(() => recordings(true)));
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));
   // Enter — шукати; очищене поле (зокрема хрестиком) — знову звичайний список.
   $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });
   $("recording-search").addEventListener("input", event => { if (!event.target.value) action(() => recordings(true)); });
 
-  const loaders = { recordings: async () => { await loadQueue(); await recordings(true); }, overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
+  const loaders = { recordings: () => recordings(true), overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, texts, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";
@@ -1200,7 +1180,6 @@
       if (!$("auto").checked || document.visibilityState !== "visible" || busy) return;
       if (view === "overview" || view === "system" || view === "users") action(overview);
       else if (view === "filter") action(filterView);
-      else if (view === "recordings" && document.activeElement !== $("recording-queue")) action(loadQueue);
     }, REFRESH_MS);
   }
   $("auto").addEventListener("change", schedule);

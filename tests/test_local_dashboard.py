@@ -486,3 +486,34 @@ def test_archive_speech_and_radio_groups(setup, tmp_path):
         groups=page("speech")["groups"]
         assert (groups["speech"],groups["radio"])==(4,2)
         assert short not in {i["id"] for i in page("speech")["items"]}
+
+
+def test_archive_views_split_archive_and_period_limits(setup, tmp_path):
+    _,path=setup
+    import sqlite3, time
+    from services.recordings import RecordingStore
+    store=RecordingStore(tmp_path/"recordings")
+    def rec(status, duration, age_h=0, **data):
+        rid=store.save(pcm(segment()),16000,{"status":status,**data})
+        with sqlite3.connect(tmp_path/"recordings"/"index.sqlite3") as db:
+            db.execute("UPDATE recordings SET created=?, data=json_set(data,'$.signal.duration_s',?) WHERE id=?",
+                       (time.time()-age_h*3600, duration, rid))
+        return rid
+    radio=rec("ready",3.0,predicted_recipient="береза 56")
+    old_radio=rec("ready",3.0,age_h=48,fix_id="db:7")
+    room=rec("ready",4.0,raw_text="розмова")
+    noise=rec("vad_short",0.4)
+    done=rec("ready",3.0,predicted_sender="клен 15")
+    store.review(done,"Клен 15, прийом","speech",0)
+    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
+    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
+        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
+        ids=lambda **p: [i["id"] for i in client.get("/api/recordings",params=p).json()["items"]]
+        assert ids(view="radio")==[radio,old_radio], "нерозмічений ефір, нові першими"
+        assert ids(view="speech")==[room] and ids(view="filtered")==[noise]
+        assert ids(view="reviewed")==[done] and set(ids(view="all"))=={radio,old_radio,room,noise,done}
+        day=time.time()-24*3600
+        assert ids(view="radio",since=day)==[radio], "період"
+        counts=client.get("/api/recordings",params={"view":"radio","since":day}).json()["views"]
+        assert (counts["radio"],counts["speech"],counts["filtered"],counts["reviewed"],counts["all"])==(1,1,1,1,4)
+        assert client.get("/api/recordings",params={"view":"nope"}).status_code==422

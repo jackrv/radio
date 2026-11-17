@@ -153,8 +153,8 @@ def test_recent_phrase_limit_prunes_oldest(setup):
     s = service(db)
     s.recent_phrases_max = 2
     first = s.register_phrase_for_fix("Вира 68", None)
-    second = s.register_phrase_for_fix("На ган 110", None)
-    third = s.register_phrase_for_fix("На ган 112", None)
+    second = s.register_phrase_for_fix("На бат 110", None)
+    third = s.register_phrase_for_fix("На бат 112", None)
     assert load_phrase(db, first[4:]) is None
     assert load_phrase(db, second[4:]) is not None
     assert load_phrase(db, third[4:]) is not None

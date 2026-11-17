@@ -14,9 +14,9 @@ def environment(tmp_path):
     init_word_db(db_path)
 
     callsigns = Callsigns.from_lines([
-        "липка: 700 720",
-        "наган: 110 112",
-        "ліра: 68",
+        "калина: 700 720",
+        "набат: 110 112",
+        "ліна: 68",
     ])
 
     commands = Callsigns.from_lines([])
@@ -32,39 +32,39 @@ def teach(db_path, source_id, old, new):
 def test_active_rule_and_valid_number(environment):
     path, dictionaries = environment
 
-    teach(path, "db:1", "Улыбка 700", "Липка 700")
-    teach(path, "db:2", "Улыбка 720", "Липка 720")
+    teach(path, "db:1", "Калиниця 700", "Калина 700")
+    teach(path, "db:2", "Калиниця 720", "Калина 720")
 
     assert apply_verified_word_rules(
-        "Улыбка 700, я на связи",
+        "Калиниця 700, я на связи",
         path,
         dictionaries,
-    ) == "Липка 700, я на связи"
+    ) == "Калина 700, я на связи"
 
 
 def test_invalid_number_is_not_replaced(environment):
     path, dictionaries = environment
 
-    teach(path, "db:1", "Улыбка 700", "Липка 700")
-    teach(path, "db:2", "Улыбка 720", "Липка 720")
+    teach(path, "db:1", "Калиниця 700", "Калина 700")
+    teach(path, "db:2", "Калиниця 720", "Калина 720")
 
     assert apply_verified_word_rules(
-        "Улыбка 999",
+        "Калиниця 999",
         path,
         dictionaries,
-    ) == "Улыбка 999"
+    ) == "Калиниця 999"
 
 
 def test_single_confirmation_is_not_enough(environment):
     path, dictionaries = environment
 
-    teach(path, "db:1", "На ган 110", "Наган 110")
+    teach(path, "db:1", "На бат 110", "Набат 110")
 
     assert apply_verified_word_rules(
-        "На ган 112",
+        "На бат 112",
         path,
         dictionaries,
-    ) == "На ган 112"
+    ) == "На бат 112"
 
 
 def test_unknown_target_is_not_applied(environment):
@@ -83,11 +83,11 @@ def test_unknown_target_is_not_applied(environment):
 def test_each_number_is_checked_separately(environment):
     path, dictionaries = environment
 
-    teach(path, "db:1", "Улыбка 700", "Липка 700")
-    teach(path, "db:2", "Улыбка 720", "Липка 720")
+    teach(path, "db:1", "Калиниця 700", "Калина 700")
+    teach(path, "db:2", "Калиниця 720", "Калина 720")
 
     assert apply_verified_word_rules(
-        "Улыбка 700, улыбка 999",
+        "Калиниця 700, калиниця 999",
         path,
         dictionaries,
-    ) == "Липка 700, улыбка 999"
+    ) == "Калина 700, калиниця 999"

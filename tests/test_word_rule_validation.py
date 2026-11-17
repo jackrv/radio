@@ -8,7 +8,7 @@ from core.word_rule_validation import (
 def make_dictionaries():
     return (
         SimpleNamespace(
-            names=["липка", "наган", "ліра"]
+            names=["калина", "набат", "ліна"]
         ),
         SimpleNamespace(names=["прийом"]),
         SimpleNamespace(names=[]),
@@ -17,9 +17,9 @@ def make_dictionaries():
 
 def test_valid_callsign_corrections():
     rules = [
-        ("улыбка", "липка"),
-        ("на ган", "наган"),
-        ("лира", "ліра"),
+        ("калиниця", "калина"),
+        ("на бат", "набат"),
+        ("лина", "ліна"),
     ]
 
     assert filter_dictionary_word_rules(
@@ -36,7 +36,7 @@ def test_unknown_target_is_rejected():
 
 def test_existing_callsign_is_protected():
     assert filter_dictionary_word_rules(
-        [("липка", "наган")],
+        [("калина", "набат")],
         make_dictionaries(),
     ) == []
 
@@ -45,16 +45,16 @@ def test_numbers_cannot_be_rules():
     assert filter_dictionary_word_rules(
         [
             ("110", "112"),
-            ("на ган", "наган"),
+            ("на бат", "набат"),
         ],
         make_dictionaries(),
     ) == [
-        ("на ган", "наган")
+        ("на бат", "набат")
     ]
 
 
 def test_empty_dictionaries_reject_rules():
     assert filter_dictionary_word_rules(
-        [("улыбка", "липка")],
+        [("калиниця", "калина")],
         (SimpleNamespace(names=[]),),
     ) == []

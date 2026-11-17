@@ -11,16 +11,16 @@ from rapidfuzz import fuzz, process
 DEFAULT_ALIASES = {
     "пзрк": ["пе зе ер ка", "пэ зэ эр ка", "пзерка"],
     "вовк": ["волк"],
-    "наган": [
-        "на ган",
-        "ган",
-        "на han",
-        "на ганд",
+    "набат": [
+        "на бат",
+        "бат",
+        "на bat",
+        "на бату",
     ],
 }
 
 DEFAULT_CALLSIGN_ALIASES = {
-    "улыбка": "липка",
+    "калиниця": "калина",
 }
 
 # Поточні значення; замінюються цілком через configure_aliases().
@@ -95,7 +95,7 @@ def normalize(text: str) -> str:
 
 
 def words_to_digits(tokens: list[str]) -> str:
-    """['двісті','чотири'] -> '204'; ['тринадцять','тринадцять'] -> '1313'; ['7','3'] -> '73'"""
+    """['двісті','чотири'] -> '204'; ['двадцять','шість','двадцять','шість'] -> '2626'; ['7','3'] -> '73'"""
     groups, cur, last = [], 0, 0   # last: 1 сотни, 2 десятки, 3 10-19, 4 единицы
 
     def flush():
@@ -157,12 +157,16 @@ def to_items(text: str) -> list[tuple[str, str]]:
 
 
 class Match(NamedTuple):
-    """Збіг зі словником: ``heard`` — почуте слово після нормалізації."""
+    """Збіг зі словником: ``heard`` — почуте слово після нормалізації.
+
+    ``partial`` — код команди почуто наполовину («злива 42» при коді 4242).
+    """
     name: str
     number: str | None
     score: float
     heard: str
     exact: bool
+    partial: bool = False
 
 
 # Поріг схожості слова для словника команд, коли одразу після слова стоїть
@@ -179,8 +183,8 @@ class Callsigns:
         дуб: 204 205 300-310       слово з номерами й діапазонами
         дуб: *                     слово з будь-яким номером
         бук                        слово без номера
-        дощ 1313                   «слово номер» (одна пара в рядку)
-        дощ 13 13                  те саме: цифри без двокрапки зливаються в 1313
+        дощ 2626                   «слово номер» (одна пара в рядку)
+        дощ 26 26                  те саме: цифри без двокрапки зливаються в 2626
     """
 
     @classmethod
@@ -266,6 +270,21 @@ class Callsigns:
                 return num, used
         return None, 0
 
+    def _half_code_at(self, items, i, allowed):
+        """Код команди з двох однакових пар, почутий наполовину: «42» -> «4242».
+
+        Whisper часто зливає «сорок два сорок два» в одне «42». Лише дві цифри,
+        лише код виду ABAB і лише коли далі не стоїть та сама пара (тоді код повний).
+        """
+        if i >= len(items) or items[i][0] != "num" or len(items[i][1]) != 2:
+            return None, 0
+        code = items[i][1] * 2
+        if code not in allowed:
+            return None, 0
+        if i + 1 < len(items) and items[i + 1] == ("num", items[i][1]):
+            return None, 0
+        return code, 1
+
     def _anchored(self, word, items, i):
         """Слово, схоже на назву хоча б на anchored_threshold, і точний номер цієї назви."""
         folded = word.translate(FOLD)
@@ -335,6 +354,15 @@ class Callsigns:
                     exact = bool(num)
                     if not num and self.anchored_threshold is not None:
                         num, used = self._near_number_at(items, i, self.numbers[name])
+                    partial = False
+                    if not num and self.anchored_threshold is not None:
+                        # Ключову команду краще дописати, ніж пропустити: позначка «почуто частково».
+                        num, used = self._half_code_at(items, i, self.numbers[name])
+                        partial = bool(num)
+                    if num and partial:
+                        found.append(Match(name, num, score, val, False, True))
+                        i += used
+                        continue
                 if num:
                     found.append(Match(name, num, score, val, exact))
                     i += used
@@ -371,7 +399,7 @@ def command_dictionary(lines):
 
 if __name__ == "__main__":
     # Швидка перевірка розділу dictionaries.txt без мікрофона:
-    #   python callsigns.py commands "арба п'ятнадцять п'ятнадцять"
+    #   python callsigns.py commands "злива сорок два сорок два"
     from config import DICTIONARIES_PATH
     from database import parse_dictionary_file
 

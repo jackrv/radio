@@ -34,7 +34,7 @@ def test_defaults_and_idempotent_initialization(tmp_path):
         db.execute("""
             INSERT INTO word_corrections
                 (original, corrected)
-            VALUES ('на ган', 'наган')
+            VALUES ('на бат', 'набат')
         """)
 
     init_word_db(path)
@@ -47,7 +47,7 @@ def test_defaults_and_idempotent_initialization(tmp_path):
         """).fetchall()
 
     assert rows == [
-        ("на ган", "наган", 0, "pending")
+        ("на бат", "набат", 0, "pending")
     ]
 
 
@@ -59,19 +59,19 @@ def test_conflicting_variants_can_be_stored(tmp_path):
         db.execute("""
             INSERT INTO word_corrections
                 (original, corrected)
-            VALUES ('лира', 'ліра')
+            VALUES ('лина', 'ліна')
         """)
         db.execute("""
             INSERT INTO word_corrections
                 (original, corrected)
-            VALUES ('лира', 'лираа')
+            VALUES ('лина', 'лираа')
         """)
 
     with get_db(path) as db:
         count = db.execute("""
             SELECT COUNT(*)
             FROM word_corrections
-            WHERE original = 'лира'
+            WHERE original = 'лина'
         """).fetchone()[0]
 
     assert count == 2
@@ -86,7 +86,7 @@ def test_rejects_invalid_data(tmp_path):
             db.execute("""
                 INSERT INTO word_corrections
                     (original, corrected, confirmations)
-                VALUES ('лира', 'ліра', -1)
+                VALUES ('лина', 'ліна', -1)
             """)
 
     with pytest.raises(sqlite3.IntegrityError):
@@ -94,5 +94,5 @@ def test_rejects_invalid_data(tmp_path):
             db.execute("""
                 INSERT INTO word_corrections
                     (original, corrected, status)
-                VALUES ('на ган', 'наган', 'unknown')
+                VALUES ('на бат', 'набат', 'unknown')
             """)

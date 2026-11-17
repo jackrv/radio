@@ -9,10 +9,13 @@
 import re
 from collections import defaultdict
 
-from callsigns import normalize
+from rapidfuzz import fuzz
+
+from callsigns import FOLD, normalize
 
 NON_SPEECH = ("noise", "room", "notification")
 SPEECH = ("speech", "unclear")
+NEAR_NAME = 80           # слово, схоже на назву зі словника («маган» ~ позивний) — не пропонуємо
 SHORT_WORDS = 3          # до трьох слів — «Короткий шум», довше — «Фрази-галюцинації»
 MIN_COUNT = 2
 
@@ -55,6 +58,9 @@ def collect(records, active_keys, dictionary_names, *, min_count=MIN_COUNT):
             flags.append("has_number")
         if any(word in dictionary_names for word in words):
             flags.append("dictionary_word")
+        elif any(fuzz.ratio(word.translate(FOLD), name.translate(FOLD)) >= NEAR_NAME
+                 for word in words for name in dictionary_names):
+            flags.append("near_name")
         if text in speech_heard or any(f" {text} " in reference for reference in speech_texts):
             flags.append("in_speech")
         items.append({

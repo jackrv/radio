@@ -100,8 +100,8 @@ def test_inserted_word_never_enters_a_rule():
     from services.word_store import _plan
     _, auto, review, excluded = _plan("Маяк 68, іду на пазіцію", "Маяк 84, іду на нашу позицію", frozenset())
     assert auto == {} and review == {("пазіцію", "нашу позицію"): "word_count"}
-    _, auto, _, _ = _plan("на ган 110", "наган 110", frozenset())
-    assert auto == {("на ган", "наган"): "word"}, "склеювання того самого написання лишається автоматичним"
+    _, auto, _, _ = _plan("на бат 110", "набат 110", frozenset())
+    assert auto == {("на бат", "набат"): "word"}, "склеювання того самого написання лишається автоматичним"
 
 
 def test_fix_left_elsewhere_in_phrase_needs_review():

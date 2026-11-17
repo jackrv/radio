@@ -86,7 +86,7 @@ def test_empty_llm_response_returns_original(monkeypatch):
         response="   ",
     )
 
-    original = "Буря 011"
+    original = "Хвиля 042"
 
     assert correct(original) == original
 

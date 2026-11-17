@@ -69,11 +69,11 @@ def make_worker(db_path):
 def teach_lipka(db_path):
     save_word_feedback(
         db_path, "db:1",
-        "Улыбка 700", "Вишня 700",
+        "Калиниця 700", "Вишня 700",
     )
     save_word_feedback(
         db_path, "db:2",
-        "Улыбка 720", "Вишня 720",
+        "Калиниця 720", "Вишня 720",
     )
 
 
@@ -82,7 +82,7 @@ def test_runtime_uses_word_rules(db_path):
     worker = make_worker(db_path)
 
     assert worker.process_text(
-        "Улыбка 700, на связи"
+        "Калиниця 700, на связи"
     ) == "Вишня 700, на связи"
 
 
@@ -91,8 +91,8 @@ def test_invalid_number_is_unchanged(db_path):
     worker = make_worker(db_path)
 
     assert worker.process_text(
-        "Улыбка 999"
-    ) == "Улыбка 999"
+        "Калиниця 999"
+    ) == "Калиниця 999"
 
 
 def test_word_correction_has_priority_over_qwen(
@@ -110,7 +110,7 @@ def test_word_correction_has_priority_over_qwen(
     worker = make_worker(db_path)
 
     assert worker.process_text(
-        "Улыбка 700"
+        "Калиниця 700"
     ) == "Вишня 700"
 
     llm.assert_called_once_with("Вишня 700")
@@ -160,7 +160,7 @@ def test_qwen_complements_learned_callsign(
     worker = make_worker(db_path)
 
     assert worker.process_text(
-        "Улыбка 700, я Вира 68"
+        "Калиниця 700, я Вира 68"
     ) == "Вишня 700, я Віра 68"
 
     llm.assert_called_once_with(
@@ -211,7 +211,7 @@ def test_rejected_llm_preserves_learned_correction(
     worker = make_worker(db_path)
 
     assert worker.process_text(
-        "Улыбка 700, я тут"
+        "Калиниця 700, я тут"
     ) == "Вишня 700, я тут"
 
     llm.assert_called_once_with("Вишня 700, я тут")

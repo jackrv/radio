@@ -7,7 +7,7 @@ from callsigns import Callsigns
 @pytest.mark.parametrize(
     ("name", "number"),
     [
-        ("ліра", "68"),
+        ("ліна", "68"),
         ("їжак", "11"),
         ("єгер", "22"),
         ("сіль", "47"),
@@ -37,11 +37,11 @@ def test_alias_with_folded_characters(
 
 def test_existing_ulybka_alias():
     dictionary = Callsigns.from_lines([
-        "липка: 700"
+        "калина: 700"
     ])
 
-    assert dictionary.find("улыбка 700") == [
-        ("липка", "700", 100)
+    assert dictionary.find("калиниця 700") == [
+        ("калина", "700", 100)
     ]
 
 

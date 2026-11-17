@@ -245,7 +245,7 @@ test("editor can save twice without auto-close using the latest expected text", 
   get("corrected-text").value = "Віра 68";
   await get("save-correction-button").fire("click");
   assert.equal(get("corrected-text").disabled, false);
-  get("corrected-text").value = "Ліро 68";
+  get("corrected-text").value = "Ліно 68";
   await get("save-correction-button").fire("click");
   assert.equal(writes.length, 2);
   assert.equal(writes[1].expected_text, "Віра 68");

@@ -12,24 +12,24 @@ def test_votes_activate_and_deactivate(tmp_path):
 
     save_word_feedback(
         db_path, "db:1",
-        "На ган 110", "Наган 110",
+        "На бат 110", "Набат 110",
     )
 
     assert load_active_word_rules(db_path) == []
 
     save_word_feedback(
         db_path, "db:2",
-        "На ган 112", "Наган 112",
+        "На бат 112", "Набат 112",
     )
 
     assert load_active_word_rules(db_path) == [
-        ("на ган", "наган")
+        ("на бат", "набат")
     ]
 
     # Отменяем исправление второй записи.
     save_word_feedback(
         db_path, "db:2",
-        "На ган 112", "На ган 112",
+        "На бат 112", "На бат 112",
     )
 
     assert load_active_word_rules(db_path) == []
@@ -41,22 +41,22 @@ def test_conflict_suspends_and_restores_rule(tmp_path):
 
     save_word_feedback(
         db_path, "db:1",
-        "Лира 68", "Ліра 68",
+        "Лина 68", "Ліна 68",
     )
 
     save_word_feedback(
         db_path, "db:2",
-        "Лира 70", "Ліра 70",
+        "Лина 70", "Ліна 70",
     )
 
     assert load_active_word_rules(db_path) == [
-        ("лира", "ліра")
+        ("лина", "ліна")
     ]
 
     # Третья запись подтверждает другой вариант.
     save_word_feedback(
         db_path, "db:3",
-        "Лира 72", "Ліро 72",
+        "Лина 72", "Ліно 72",
     )
 
     assert load_active_word_rules(db_path) == []
@@ -65,20 +65,20 @@ def test_conflict_suspends_and_restores_rule(tmp_path):
         statuses = set(db.execute("""
             SELECT corrected, status
             FROM word_corrections
-            WHERE original = 'лира'
+            WHERE original = 'лина'
         """).fetchall())
 
     assert statuses == {
-        ("ліра", "pending"),
-        ("ліро", "pending"),
+        ("ліна", "pending"),
+        ("ліно", "pending"),
     }
 
     # Оператор отменяет конфликтующее исправление.
     save_word_feedback(
         db_path, "db:3",
-        "Лира 72", "Лира 72",
+        "Лина 72", "Лина 72",
     )
 
     assert load_active_word_rules(db_path) == [
-        ("лира", "ліра")
+        ("лина", "ліна")
     ]

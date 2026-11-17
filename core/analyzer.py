@@ -18,9 +18,17 @@ def spoken_number(number):
     return f"{number[:2]} {number[2:]}" if len(number) == 4 and number.isdigit() else number
 
 
-def fmt_spoken(items):
-    """Знайдені команди так, як їх вимовляють: «злива 42 42, грім»."""
-    return ", ".join(f"{name} {spoken_number(number)}" if number else name for name, number, _ in items)
+def fmt_spoken(items, partial=()):
+    """Знайдені команди так, як їх вимовляють: «злива 42 42, грім».
+
+    ``partial`` — (назва, номер) команд, чий код почуто наполовину: «злива 42 42 (почуто «42»)».
+    """
+    def one(name, number):
+        if not number:
+            return name
+        text = f"{name} {spoken_number(number)}"
+        return f"{text} (почуто «{number[:2]}»)" if (name, number) in partial else text
+    return ", ".join(one(name, number) for name, number, _ in items)
 
 
 _WORD = re.compile(r"[^\W\d_]+(?:[’'ʼ`][^\W\d_]+)*")

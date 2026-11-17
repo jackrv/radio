@@ -92,11 +92,14 @@ def test_old_table_is_migrated_without_losing_rows(tmp_path):
 
     result = save(path, "Злива 42 42")
 
-    assert result["revision"] == 8
+    assert result["revision"] == 9, "одна ревізія — початкові шаблони зворотів, друга — збереження"
     with sqlite3.connect(path) as db:
-        rows = db.execute("SELECT list_type, raw_line, enabled FROM text_list_entries ORDER BY id").fetchall()
+        templates = [r[0] for r in db.execute("SELECT raw_line FROM text_list_entries WHERE list_type='phrase_templates'")]
+        rows = db.execute("SELECT list_type, raw_line, enabled FROM text_list_entries "
+                          "WHERE list_type NOT IN ('phrase_templates', 'phrase_patterns') ORDER BY id").fetchall()
         sql = db.execute("SELECT sql FROM sqlite_master WHERE name='text_list_entries'").fetchone()[0]
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert rows == [("blacklist", "дякую за перегляд", 1), ("callsign_aliases", "вишня: вишна", 0),
                     ("whisper_prompt", "Злива 42 42", 1)]
     assert "'whisper_prompt'" in sql and "text_list_entries_new" not in tables
+    assert "посилку отримав" in templates, "наявна база отримує шаблони зворотів один раз"

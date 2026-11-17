@@ -360,6 +360,14 @@ class RecordingStore:
                            "recipient": item["roles_ok"] / item["roles"] if item["roles"] else None})
         return result
 
+    def reviewed_records(self):
+        """Розмічені записи для перепровірки: еталон, мітка, ролі, зв’язок із подією."""
+        with self.connect() as db:
+            rows = db.execute("SELECT id, created, reviewed_at, label, reference, reference_recipient, reference_sender, "
+                              "multiple_messages, json_extract(data,'$.fix_id') AS fix_id FROM recordings "
+                              "WHERE reference IS NOT NULL ORDER BY reviewed_at DESC").fetchall()
+        return [dict(row) for row in rows]
+
     def labelled_texts(self):
         """Усі розмічені записи: мітка, статус, текст Whisper і правильний текст."""
         with self.connect() as db:

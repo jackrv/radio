@@ -25,14 +25,14 @@ def get_rules(path):
 
 def test_different_records_accumulate(db_path):
     save_word_feedback(
-        db_path, "db:1", "На ган 110", "Наган 110"
+        db_path, "db:1", "На бат 110", "Набат 110"
     )
     save_word_feedback(
-        db_path, "db:2", "На ган 112", "Наган 112"
+        db_path, "db:2", "На бат 112", "Набат 112"
     )
 
     assert get_rules(db_path) == [
-        ("на ган", "наган", 2, "active")
+        ("на бат", "набат", 2, "active")
     ]
 
 
@@ -40,59 +40,59 @@ def test_same_record_does_not_count_twice(db_path):
     for _ in range(3):
         save_word_feedback(
             db_path, "db:1",
-            "Лира 68", "Ліра 68"
+            "Лина 68", "Ліна 68"
         )
 
     assert get_rules(db_path) == [
-        ("лира", "ліра", 1, "pending")
+        ("лина", "ліна", 1, "pending")
     ]
 
 
 def test_revising_record_changes_vote(db_path):
     save_word_feedback(
-        db_path, "db:1", "Лира 68", "Ліра 68"
+        db_path, "db:1", "Лина 68", "Ліна 68"
     )
 
     save_word_feedback(
-        db_path, "db:1", "Лира 68", "Ліро 68"
+        db_path, "db:1", "Лина 68", "Ліно 68"
     )
 
     assert get_rules(db_path) == [
-        ("лира", "ліра", 0, "pending"),
-        ("лира", "ліро", 1, "pending"),
+        ("лина", "ліна", 0, "pending"),
+        ("лина", "ліно", 1, "pending"),
     ]
 
 
 def test_removed_correction_removes_vote(db_path):
     save_word_feedback(
-        db_path, "db:1", "Лира 68", "Ліра 68"
+        db_path, "db:1", "Лина 68", "Ліна 68"
     )
 
     save_word_feedback(
-        db_path, "db:1", "Лира 68", "Лира 68"
+        db_path, "db:1", "Лина 68", "Лина 68"
     )
 
     assert get_rules(db_path) == [
-        ("лира", "ліра", 0, "pending")
+        ("лина", "ліна", 0, "pending")
     ]
 
 
 def test_rules_remain_pending_and_disabled_preserved(db_path):
     save_word_feedback(
-        db_path, "db:1", "На ган 110", "Наган 110"
+        db_path, "db:1", "На бат 110", "Набат 110"
     )
 
     with get_db(db_path) as db:
         db.execute("""
             UPDATE word_corrections
             SET status = 'disabled'
-            WHERE original = 'на ган'
+            WHERE original = 'на бат'
         """)
 
     save_word_feedback(
-        db_path, "db:2", "На ган 112", "Наган 112"
+        db_path, "db:2", "На бат 112", "Набат 112"
     )
 
     assert get_rules(db_path) == [
-        ("на ган", "наган", 2, "disabled")
+        ("на бат", "набат", 2, "disabled")
     ]

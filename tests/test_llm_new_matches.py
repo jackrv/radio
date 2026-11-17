@@ -3,11 +3,11 @@ from core.analyzer import correction_is_safe
 
 
 def test_llm_cannot_invent_command():
-    commands = Callsigns.from_lines(["штиль"])
+    commands = Callsigns.from_lines(["бриз"])
 
     assert not correction_is_safe(
         "Шо і здесяду вісім",
-        "Штиль і здесяду вісім",
+        "Бриз і здесяду вісім",
         (commands,),
     )
 

@@ -26,3 +26,9 @@ def test_repeated_non_speech_texts_become_candidates_with_safety_flags():
     assert items["ага"]["flags"] == ["already_added"]
     assert "один раз" not in items, "одиничний текст — ще не закономірність"
     assert [i["addable"] for i in collect(records, {"ага"}, {"клен", "вишня"})][:2] == [True, True]
+
+
+def test_word_close_to_a_dictionary_name_is_not_offered():
+    records = [record("room", "кленн"), record("noise", "кленн")]
+    items = {i["text"]: i for i in collect(records, set(), {"клен"})}
+    assert items["кленн"]["flags"] == ["near_name"] and not items["кленн"]["addable"]

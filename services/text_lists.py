@@ -6,7 +6,11 @@
 - aliases — «правильне: варіант, варіант»: заміни в нормалізованому тексті;
 - callsign_aliases — «позивний: почутий варіант»: лише для пошуку позивного;
 - whisper_prompt — фрази на початку підказки Whisper, як їх вимовляють
-  («дощ 13 13»): допомагають правильно записати важливі команди.
+  («дощ 42 42»): допомагають правильно записати важливі команди;
+- phrase_templates — обороти м’яких шаблонів («посилку отримав»): схоже на них
+  почуте пишеться як в обороті (core/template_text.py);
+- phrase_patterns — шаблони цілих фраз («{П}, я {П}, перевірка звʼязку, прийом»):
+  фраза, що повністю їм відповідає, пишеться як у шаблоні (core/phrase_patterns.py).
 
 Початкові значення беруться з коду (config.py, callsigns.py) один раз — під
 час першого створення таблиць. Далі джерело правди — SQLite; редагування лише
@@ -22,7 +26,12 @@ import callsigns as callsign_module
 from callsigns import Callsigns, NUMBER_WORDS, basic_normalize, configure_aliases, normalize
 from services.sqlite_connection import get_db
 
-LIST_TYPES = ("blacklist", "short_garbage", "aliases", "callsign_aliases", "whisper_prompt")
+LIST_TYPES = ("blacklist", "short_garbage", "aliases", "callsign_aliases", "whisper_prompt", "phrase_templates",
+              "phrase_patterns")
+# Списки, що з’явилися пізніше за першу базу: заповнюються початковими значеннями один раз.
+LATER_LISTS = ("phrase_templates", "phrase_patterns")
+MAX_PATTERN_LINE = 200
+MAX_TEMPLATE_WORDS = 6
 DISABLED_PREFIX = "#"
 MAX_ENTRIES = 500
 MAX_LINE = 300
@@ -55,25 +64,79 @@ def default_lines():
         "aliases": [f"{canon}: {', '.join(variants)}" for canon, variants in callsign_module.DEFAULT_ALIASES.items()],
         "callsign_aliases": [f"{name}: {', '.join(heard)}" for name, heard in callsign_groups.items()],
         "whisper_prompt": [],
+        "phrase_templates": list(_default_phrases()),
+        # Шаблони фраз додаються вимкненими (#): оператор вмикає їх після перевірки на еталонах.
+        "phrase_patterns": [DISABLED_PREFIX + line for line in DEFAULT_PATTERNS],
     }
+
+
+# Найчастіші схеми передач з еталонів оператора (17.11, 410 передач).
+DEFAULT_PATTERNS = (
+    "{П}, прийнято, прийом", "{П}, прийом", "{П}, {П}, я {П}, {К} звʼязку, прийом", "{П}, я {П}, {К} звʼязку, прийом",
+    "{П}, посилку отримав, прийом", "прийнято, прийом", "{П}, я {П}", "{П}, прийняв, прийом", "{П}, прийнято",
+    "{П}, я {П}, роботу закінчив, прийом", "{П}, {П}, я {П}, на звʼязок, прийом", "{П}, я {П}, прийнято, прийом",
+    "{П}, {П}, я {П}, прийом", "{П}, посилку отримав", "{П}, я {П}, чую та розбираю вас на пʼятірку, прийнято, прийом",
+    "{П}, {П}, я {П}, прийнято, прийом", "{П}, прийняв", "{П}, {П}, я {П}, до роботи приступив, прийом", "{Ч}, прийом",
+    "{П}, я {П}, на звʼязку, прийом", "{П}, я {П}, до роботи приступив, прийом", "{П}, чую добре, прийом",
+    "{П}, {П}, прийнято, прийом", "{П}, я {П}, чую та розбираю вас на відмінно, прийом",
+    "{П}, {П}, я {П}, чую та розбираю вас на відмінно, прийом", "{П}, я {П}, як прийнято, прийом",
+)
+
+
+def _seed_rows(list_type, lines):
+    """Рядок із «#» — вимкнений рядок без «#»."""
+    return [(list_type, number, line[len(DISABLED_PREFIX):] if line.startswith(DISABLED_PREFIX) else line,
+             int(not line.startswith(DISABLED_PREFIX))) for number, line in enumerate(lines, 1)]
+
+
+def _default_phrases():
+    from core.template_text import DEFAULT_PHRASES
+    return DEFAULT_PHRASES
 
 
 def ensure_tables(db):
     """Створює таблиці й один раз заповнює їх початковими значеннями з коду."""
     db.execute(_entries_table_sql("IF NOT EXISTS text_list_entries"))
-    _migrate_list_types(db)
+    try:
+        _migrate_list_types(db)
+    except sqlite3.OperationalError:
+        pass  # знімок лише для читання: старий CHECK не заважає читати рядки
     db.execute("""CREATE TABLE IF NOT EXISTS text_list_state (
         id INTEGER PRIMARY KEY CHECK(id = 1),
         revision INTEGER NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )""")
+    try:
+        db.execute("CREATE TABLE IF NOT EXISTS text_list_seeded (list_type TEXT PRIMARY KEY)")
+    except sqlite3.OperationalError:
+        return  # знімок лише для читання (лабораторія): нічого не дописуємо
     if db.execute("SELECT 1 FROM text_list_state WHERE id = 1").fetchone():
+        try:
+            _seed_later_lists(db)
+        except sqlite3.OperationalError:
+            pass
         return
     # Початкове заповнення — лише раз; порожній список потім так і лишається порожнім.
     for list_type, lines in default_lines().items():
-        db.executemany("INSERT OR IGNORE INTO text_list_entries (list_type, line_number, raw_line) VALUES (?, ?, ?)",
-                       [(list_type, number, line) for number, line in enumerate(lines, 1)])
+        db.executemany("INSERT OR IGNORE INTO text_list_entries (list_type, line_number, raw_line, enabled) VALUES (?, ?, ?, ?)",
+                       _seed_rows(list_type, lines))
+    db.executemany("INSERT OR IGNORE INTO text_list_seeded (list_type) VALUES (?)", [(t,) for t in LATER_LISTS])
     db.execute("INSERT INTO text_list_state (id, revision) VALUES (1, 1)")
+
+
+def _seed_later_lists(db):
+    """Новий тип списку в наявній базі отримує початкові значення один раз (далі — як збережено)."""
+    seeded = {row[0] for row in db.execute("SELECT list_type FROM text_list_seeded")}
+    missing = [t for t in LATER_LISTS if t not in seeded]
+    if not missing:
+        return
+    defaults = default_lines()
+    for list_type in missing:
+        if not db.execute("SELECT 1 FROM text_list_entries WHERE list_type = ?", (list_type,)).fetchone():
+            db.executemany("INSERT INTO text_list_entries (list_type, line_number, raw_line, enabled) VALUES (?, ?, ?, ?)",
+                           _seed_rows(list_type, defaults[list_type]))
+        db.execute("INSERT OR IGNORE INTO text_list_seeded (list_type) VALUES (?)", (list_type,))
+    db.execute("UPDATE text_list_state SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1")
 
 
 def _entries_table_sql(name):
@@ -137,6 +200,39 @@ def parse(list_type, lines):
                 errors.append(f"Рядок {number}: порожня фраза")
             elif _has_number(value):
                 errors.append(f"Рядок {number}: фраза з числом може бути справжнім повідомленням")
+            elif value not in result:
+                result.append(value)
+        return result, errors
+
+    if list_type == "phrase_patterns":
+        from core.phrase_patterns import parse_pattern
+        result = []
+        for number, line in lines:
+            value = " ".join(line.split())
+            try:
+                if len(value) > MAX_PATTERN_LINE:
+                    raise ValueError(f"довше за {MAX_PATTERN_LINE} символів")
+                parse_pattern(value)
+            except ValueError as exc:
+                errors.append(f"Рядок {number}: {exc}")
+                continue
+            if value not in result:
+                result.append(value)
+        return result, errors
+
+    if list_type == "phrase_templates":
+        result = []
+        for number, line in lines:
+            value = " ".join(line.lower().replace("'", "ʼ").replace("’", "ʼ").split()).strip(".,;!?")
+            words = value.split()
+            if not value:
+                errors.append(f"Рядок {number}: порожній оборот")
+            elif _has_number(value):
+                errors.append(f"Рядок {number}: оборот без чисел — числа шаблони не змінюють")
+            elif not re.fullmatch(r"[^\W\d_]+(?:[ʼ-][^\W\d_]+)*(?: [^\W\d_]+(?:[ʼ-][^\W\d_]+)*)*", value):
+                errors.append(f"Рядок {number}: лише слова, без розділових знаків усередині")
+            elif len(words) > MAX_TEMPLATE_WORDS:
+                errors.append(f"Рядок {number}: не більше {MAX_TEMPLATE_WORDS} слів")
             elif value not in result:
                 result.append(value)
         return result, errors
@@ -266,6 +362,27 @@ def check_against_dictionaries(db, list_type, parsed):
             for variant in variants:
                 if variant in names:
                     errors.append(f"«{variant}» — правильне словникове ім’я, його не можна переписувати")
+    elif list_type == "phrase_patterns":
+        from core.phrase_patterns import parse_pattern
+        for value in parsed:
+            hit = [e[1] for e in parse_pattern(value) if e[0] == "W" and e[1] in names]
+            if hit:
+                errors.append(f"«{value}»: «{hit[0]}» — назва зі словника; позначте її місцем {{П}} чи {{К}}")
+    elif list_type == "phrase_templates":
+        callsign_names = set(dictionaries["callsigns"].names) if "callsigns" in dictionaries else set()
+        for value in parsed:
+            words = value.replace("ʼ", "").split()
+            hit = [token for token in words if token in callsign_names]
+            if hit:
+                errors.append(f"«{value}» містить позивний «{hit[0]}» — шаблон переписував би схожі слова на цей позивний")
+                continue
+            other = [token for token in words if token in names]
+            if other:
+                warnings.append(f"«{value}» містить назву зі словника «{other[0]}»: схожі слова писатимуться як ця назва")
+        single = [v for v in parsed if " " not in v]
+        if single:
+            warnings.append("Однослівні звороти (" + ", ".join(f"«{v}»" for v in single[:4]) +
+                            ") виправляються лише в кінці фрази або за дуже великої схожості.")
     elif list_type == "whisper_prompt":
         for phrase in parsed:
             words = basic_normalize(phrase).split()
@@ -346,13 +463,23 @@ def check_list(db_path, list_type, entries):
     return {"errors": errors + dictionary_errors, "warnings": warnings}
 
 
+def _seeded(db):
+    try:
+        return {row[0] for row in db.execute("SELECT list_type FROM text_list_seeded")}
+    except sqlite3.OperationalError:
+        return set()
+
+
 def load_active(db):
     """Увімкнені значення всіх списків; непридатні рядки пропускаються (fail safe)."""
     ensure_tables(db)
     revision = db.execute("SELECT revision FROM text_list_state WHERE id = 1").fetchone()[0]
-    values = {}
+    values, seeded = {}, _seeded(db)
     for list_type in LIST_TYPES:
         rows = _lines(db, list_type)
+        if list_type in LATER_LISTS and list_type not in seeded and not rows:
+            # Старий знімок без цього списку (лабораторія): працюють початкові значення.
+            rows = [(raw, on) for _, _, raw, on in _seed_rows(list_type, default_lines()[list_type])]
         values[list_type], _ = parse(list_type, [(n, line) for n, (line, on) in enumerate(rows, 1) if on])
     return revision, values
 
@@ -384,7 +511,15 @@ def sync_aliases(db):
         return
     revision, values = load_active(db)
     configure_aliases(values["aliases"], values["callsign_aliases"])
+    _configure_templates(values)
     _synced = (path, revision)
+
+
+def _configure_templates(values):
+    from core.phrase_patterns import configure_patterns
+    from core.template_text import configure_phrases
+    configure_phrases(values.get("phrase_templates", ()))
+    configure_patterns(values.get("phrase_patterns", ()))
 
 
 class LiveTextLists:

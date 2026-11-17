@@ -1,7 +1,7 @@
 """М'яка підстановка шаблонів у текст сповіщення.
 
 Whisper часто чує позивні й обороти радіообміну з однією-двома хибними літерами:
-«Привой 91», «посилка отримав», «приєм». Тут такі слова пишуться так, як у
+«Бериза 56», «посилка отримав», «приєм». Тут такі слова пишуться так, як у
 словнику позивних і в переліку оборотів (ASR_TEMPLATES.md). Правила навмисно
 обережні:
 
@@ -24,13 +24,65 @@ from rapidfuzz import fuzz
 import callsigns as callsigns_module
 from callsigns import FOLD, NUMBER_WORDS, basic_normalize, dictionary_address_forms
 
-# Обороти з підтверджених оператором шаблонів (ASR_TEMPLATES.md, розділ 2).
-PHRASES = (
+# Обороти з підтверджених оператором шаблонів (ASR_TEMPLATES.md). Робочий перелік —
+# у SQLite (список «Шаблони зворотів» у локальній панелі); це лише початкові значення.
+DEFAULT_PHRASES = (
     "прийом", "прийнято", "прийняв", "посилку отримав", "на звʼязку", "на звʼязок",
     "перевірка звʼязку", "до роботи приступив", "роботу закінчив", "роботу розпочав",
     "чую та розбираю", "чую і розбираю", "повторіть голос не пройшов",
+    # Додано 17.11 за еталонами оператора (tools/text_replay: 3 фрази краще, 0 гірше).
+    "чую та розбираю вас", "як прийнято", "на пʼятірку",
 )
-FUNCTION_WORDS = ("я", "на", "до", "як", "та", "і", "й", "не", "добре", "вас", "з")
+PHRASES = DEFAULT_PHRASES
+
+
+def configure_phrases(phrases):
+    """Застосувати перелік зворотів зі SQLite (живе оновлення, без перезапуску)."""
+    global PHRASES
+    PHRASES = tuple(dict.fromkeys(" ".join(p.split()) for p in phrases if p and p.strip()))
+
+
+# Зациклення Whisper: те саме слово 4+ рази поспіль. Службові звороти не чіпаються —
+# кілька передач у записі справді повторюють «прийом».
+_LOOP = re.compile(r"\b([^\W\d_]+)((?:[\s,.;!?]+\1\b){3,})", re.IGNORECASE)
+_LOOP_KEEP = {"прийом", "прийнято", "прийняв", "так", "ні"}
+
+
+def trim_loops(text):
+    """«вишня, вишня, вишня, вишня» → «вишня, вишня»."""
+    def keep_two(match):
+        if match.group(1).lower() in _LOOP_KEEP:
+            return match.group(0)
+        second = re.match(r"[\s,.;!?]+" + re.escape(match.group(1)), match.group(2), re.IGNORECASE)
+        return match.group(1) + second.group(0)
+    return _LOOP.sub(keep_two, text)
+
+
+# «на 109» на місці позивного: Whisper розірвав позивний на «на» й номер («Набат 109»).
+_SPLIT = re.compile(r"(^|[,.;!?/]\s*|\bя\s+)(на)\s+(\d{3})\b", re.IGNORECASE)
+
+
+def join_split_callsign(text, callsigns):
+    """Лише якщо є позивний, що починається на «на», і цей номер є в його словнику.
+
+    Номер лишається почутим; не на місці позивного (усередині фрази) нічого не змінюється.
+    """
+    names = [n for n in callsigns.names if n.startswith("на") and len(n) > 2]
+    if not names:
+        return text
+
+    def fix(match):
+        number = match.group(3)
+        owners = [n for n in names if number in (callsigns.numbers.get(n) or ())]
+        if len(owners) != 1:
+            return match.group(0)
+        return f"{match.group(1)}{_cased(owners[0], match.group(2))} {number}"
+    return _SPLIT.sub(fix, text)
+FUNCTION_WORDS = ("я", "на", "до", "як", "та", "і", "й", "не", "добре", "вас", "з",
+                  # Оцінки якості зв’язку — різні слова, а не написання одного: «четвірку» ≠ «пʼятірку».
+                  "одиницю", "двійку", "трійку", "четвірку", "пʼятірку", "відмінно", "погано", "задовільно",
+                  # Інші форми того самого дієслова — теж почуте слово, не помилка: «як прийняли».
+                  "прийняли", "прийняла", "приймаєш", "приймаєте")
 
 # Пороги схожості (rapidfuzz.ratio, 0–100), підібрані на архіві 16.11.
 CALLSIGN_WITH_ITS_NUMBER = 60    # «Берега 56» -> «Береза 56», якщо 56 є в словнику берези
@@ -62,6 +114,7 @@ def template_text(text, callsigns, known_names=()):
     ``known_names`` — назви з усіх словників, які не можна переписувати.
     """
     known_names = tuple(known_names)
+    text = join_split_callsign(trim_loops(text), callsigns)
     tokens = [(m.start(), m.end(), m.group()) for m in _TOKEN.finditer(text)]
     if not tokens:
         return text
@@ -131,4 +184,6 @@ def template_text(text, callsigns, known_names=()):
         if i in replace:
             out += [text[pos:start], replace[i]]
             pos = end
-    return "".join(out) + text[pos:]
+    # Шаблони цілих фраз — після слів і зворотів: виправляють лише написання почутих слів.
+    from core.phrase_patterns import apply_patterns
+    return apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names)

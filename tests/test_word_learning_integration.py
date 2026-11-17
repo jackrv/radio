@@ -29,22 +29,22 @@ def create_event(db_path, raw_text):
 
 
 def test_word_learning_from_different_events(db_path):
-    event1 = create_event(db_path, "На ган 110")
-    event2 = create_event(db_path, "На ган 112")
+    event1 = create_event(db_path, "На бат 110")
+    event2 = create_event(db_path, "На бат 112")
 
     save_correction(
-        "На ган 110", "Наган 110",
+        "На бат 110", "Набат 110",
         event1, db_path,
     )
 
     # Повторное исправление той же записи.
     save_correction(
-        "На ган 110", "Наган 110",
+        "На бат 110", "Набат 110",
         event1, db_path,
     )
 
     save_correction(
-        "На ган 112", "Наган 112",
+        "На бат 112", "Набат 112",
         event2, db_path,
     )
 
@@ -56,12 +56,12 @@ def test_word_learning_from_different_events(db_path):
         """).fetchall()
 
     assert result == [
-        ("на ган", "наган", 2, "active")
+        ("на бат", "набат", 2, "active")
     ]
 
 
 def test_word_learning_rollback(db_path):
-    event_id = create_event(db_path, "На ган 110")
+    event_id = create_event(db_path, "На бат 110")
 
     with get_db(db_path) as db:
         db.execute("""
@@ -74,7 +74,7 @@ def test_word_learning_rollback(db_path):
 
     with pytest.raises(sqlite3.IntegrityError):
         save_correction(
-            "На ган 110", "Наган 110",
+            "На бат 110", "Набат 110",
             event_id, db_path,
         )
 
@@ -87,14 +87,14 @@ def test_word_learning_rollback(db_path):
             SELECT COUNT(*) FROM word_correction_votes
         """).fetchone()[0]
 
-    assert text == "На ган 110"
+    assert text == "На бат 110"
     assert votes == 0
 
 
 def test_memory_correction_without_event(db_path):
     save_correction(
-        "На ган 110",
-        "Наган 110",
+        "На бат 110",
+        "Набат 110",
         db_path=db_path,
         source_id="mem:abc123",
     )
@@ -106,5 +106,5 @@ def test_memory_correction_without_event(db_path):
         """).fetchall()
 
     assert votes == [
-        ("mem:abc123", "на ган", "наган"),
+        ("mem:abc123", "на бат", "набат"),
     ]

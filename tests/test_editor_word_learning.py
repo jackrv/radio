@@ -44,18 +44,18 @@ def test_mem_messages_accumulate_confirmations(setup_service):
     service, path = setup_service
 
     first = service.register_phrase_for_fix(
-        "На ган 110", None
+        "На бат 110", None
     )
 
     second = service.register_phrase_for_fix(
-        "На ган 112", None
+        "На бат 112", None
     )
 
-    correct_message(service, first, "Наган 110")
-    correct_message(service, second, "Наган 112")
+    correct_message(service, first, "Набат 110")
+    correct_message(service, second, "Набат 112")
 
     assert get_rules(path) == [
-        ("на ган", "наган", 2)
+        ("на бат", "набат", 2)
     ]
 
 
@@ -63,14 +63,14 @@ def test_repeated_mem_correction_not_counted_twice(setup_service):
     service, path = setup_service
 
     fix_id = service.register_phrase_for_fix(
-        "Лира 68", None
+        "Лина 68", None
     )
 
-    correct_message(service, fix_id, "Ліра 68")
-    correct_message(service, fix_id, "Ліра 68")
+    correct_message(service, fix_id, "Ліна 68")
+    correct_message(service, fix_id, "Ліна 68")
 
     assert get_rules(path) == [
-        ("лира", "ліра", 1)
+        ("лина", "ліна", 1)
     ]
 
 
@@ -78,13 +78,13 @@ def test_revising_mem_correction_replaces_vote(setup_service):
     service, path = setup_service
 
     fix_id = service.register_phrase_for_fix(
-        "Лира 68", None
+        "Лина 68", None
     )
 
-    correct_message(service, fix_id, "Ліра 68")
-    correct_message(service, fix_id, "Ліро 68")
+    correct_message(service, fix_id, "Ліна 68")
+    correct_message(service, fix_id, "Ліно 68")
 
     assert get_rules(path) == [
-        ("лира", "ліра", 0),
-        ("лира", "ліро", 1),
+        ("лина", "ліна", 0),
+        ("лина", "ліно", 1),
     ]

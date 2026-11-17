@@ -33,7 +33,7 @@ def make_worker(text):
 @pytest.mark.parametrize("speech", [
     "Віра 68, слабо чую, прийом",
     "Вишня 700, дякую, прийняв",
-    "Щит, слабо чую",
+    "Дуб, слабо чую",
     "Віра 68, команди виконано",
     "Ясень, папа тут",
     "Віра 68, спасибо за просмотр, прийом",
@@ -94,7 +94,7 @@ def test_normal_radio_words_not_in_blacklist():
     ("Па-па!", True),
     ("Папа", True),
     ("Слабо чую, повторіть", False),
-    ("Ліра 31, дякую, прийом", False),
+    ("Ліна 31, дякую, прийом", False),
 ])
 def test_shadow_proposals_are_archived_without_changing_processing(text, additional):
     worker, processor = make_worker(text)

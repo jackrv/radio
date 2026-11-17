@@ -19,8 +19,8 @@ def test_feedback_inside_existing_transaction(db_path):
         count = save_word_feedback(
             db_path,
             "db:1",
-            "На ган 110",
-            "Наган 110",
+            "На бат 110",
+            "Набат 110",
             db=db,
         )
 
@@ -29,8 +29,8 @@ def test_feedback_inside_existing_transaction(db_path):
         result = db.execute("""
             SELECT confirmations
             FROM word_corrections
-            WHERE original = 'на ган'
-              AND corrected = 'наган'
+            WHERE original = 'на бат'
+              AND corrected = 'набат'
         """).fetchone()
 
         assert result == (1,)
@@ -48,8 +48,8 @@ def test_outer_transaction_rollback(db_path):
             save_word_feedback(
                 db_path,
                 "db:1",
-                "На ган 110",
-                "Наган 110",
+                "На бат 110",
+                "Набат 110",
                 db=db,
             )
             raise RuntimeError("Тестовый откат")

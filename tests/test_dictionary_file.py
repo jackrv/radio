@@ -17,12 +17,12 @@ def test_sections_comments_and_disabled_entries():
 
 # @radio345-disabled: граб
 [Commands]
-злива 1313
+злива 2626
 [telegram]
 """
     assert parse_dictionary_file(text) == {
         "callsigns": [("вишня: 700 701", True), ("граб", False)],
-        "commands": [("злива 1313", True)],
+        "commands": [("злива 2626", True)],
         "telegram": [],
     }
 

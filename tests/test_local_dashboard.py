@@ -694,3 +694,48 @@ def test_storage_status_endpoint_requires_auth_and_does_not_create_archive(setup
         assert result.json()['audio']['available'] is False
         assert result.json()['backups']['keep'] == 7
         assert not directory.exists()
+
+
+def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path):
+    """Кнопка «Перевірити на моїх еталонах»: порівняння до/після, нічого не зберігається."""
+    _, path = setup
+    import sqlite3
+    from services.recordings import RecordingStore
+    store = RecordingStore(tmp_path/'recordings')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES ('callsigns', 2, 'Ліна: 63')")
+    rec = store.save(pcm(segment()), 16000, {'status': 'ready', 'raw_text': 'ліна 63, приняте, прийом', 'before_llm': 'ліна 63, приняте, прийом'})
+    store.review(rec, 'Ліна 63, прийнято, прийом', 'speech', 0)
+    app = create_dashboard(path, KEY, samples_dir=tmp_path/'samples', recordings_dir=store.root)
+    h = {'Origin': ORIGIN}
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1', 1)) as client:
+        client.post('/session', json={'token': KEY}, headers=h)
+        revision = client.get('/api/text-lists').json()['revision']
+        r = client.put('/api/text-lists/phrase_patterns/evaluate', headers=h,
+                       json={'entries': [{'raw_line': '{П}, прийнято, прийом', 'enabled': True}]}).json()
+        assert r['records'] == 1 and r['better'] == 1 and r['worse'] == 0
+        assert r['examples'][0]['after'] == 'ліна 63, прийнято, прийом'
+        assert client.get('/api/text-lists').json()['revision'] == revision, "перевірка нічого не зберегла"
+        bad = client.put('/api/text-lists/phrase_patterns/evaluate', headers=h, json={'entries': [{'raw_line': '{Х}', 'enabled': True}]})
+        assert bad.status_code == 422
+        assert client.put('/api/text-lists/blacklist/evaluate', headers=h, json={'entries': []}).status_code == 404
+
+
+def test_stale_events_are_updated_from_references_on_request(setup, tmp_path):
+    _, path = setup
+    import sqlite3
+    from services.event_store import save_event
+    from services.recordings import RecordingStore
+    event = save_event("віра 68", "", "", "", "вира 68 прийом", path)
+    store = RecordingStore(tmp_path/'recordings')
+    rid = store.save(pcm(segment()), 16000, {'status': 'ready', 'fix_id': f'db:{event}'})
+    store.review(rid, 'Віра 68, прийом', 'speech', 0)        # еталон є, але подія ще з текстом Whisper
+    app = create_dashboard(path, KEY, samples_dir=tmp_path/'samples', recordings_dir=store.root)
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1', 1)) as client:
+        client.post('/session', json={'token': KEY}, headers={'Origin': ORIGIN})
+        assert client.post('/api/suggestions/sync-events').status_code == 403, "без Origin панелі"
+        result = client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}).json()
+        assert result['updated'] == 1
+        with sqlite3.connect(path) as db:
+            assert db.execute("SELECT text FROM radio_events WHERE id=?", (event,)).fetchone()[0] == 'Віра 68, прийом'
+        assert client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}).json()['updated'] == 0

@@ -379,7 +379,7 @@ nav button.active { box-shadow: none; }
 .text-check-item { flex-wrap: wrap; gap: 4px 8px; padding: 3px 0; }
 .text-check-item::before { display: none; }
 .hint-kind { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
-.hint-message { flex: 1 1 200px; }
+.hint-message { flex: 0 1 auto; }  /* кнопка — одразу за текстом підказки, а не біля правого краю */
 .text-check-item button { font-size: 12px; padding: 3px 7px; }
 #recordings.compact .recording-edit { display: block; font-size: 11px; }
 .system-controls button { display: inline-flex; align-items: center; gap: 8px; }
@@ -392,3 +392,9 @@ nav button.active { box-shadow: none; }
 [data-panel="preview"] .phone-preview { display: block; margin: 12px auto; }
 #storage-status progress { display: block; width: 100%; height: 12px; margin: 8px 0 14px; accent-color: var(--lime2); }
 #storage-status > p { margin-top: 10px; }
+.list-evaluation { margin-top: 12px; }
+.list-evaluation .summary { margin: 8px 0; }
+.eval-item { padding: 6px 8px; margin-top: 6px; border-left: 3px solid var(--off); background: var(--surface2); border-radius: 6px; }
+.eval-item.ok { border-left-color: var(--ok); } .eval-item.bad { border-left-color: var(--bad); }
+.eval-item div { overflow-wrap: anywhere; }
+.attention-actions { display: flex; gap: 6px; flex-shrink: 0; }

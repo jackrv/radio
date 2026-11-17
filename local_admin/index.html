@@ -62,7 +62,7 @@
     <div id="content" hidden>
       <!-- Огляд -->
       <section data-panel="overview">
-        <article class="panel attention" id="attention-panel" hidden><h2>Потребує уваги</h2><div id="attention" class="attention-list"></div></article>
+        <article class="panel attention" id="attention-panel" hidden><div class="panel-head"><h2>Потребує уваги</h2><button id="suggestions-refresh" class="ghost small-button" title="Перевірити всі списки й шаблони на еталонах зараз (фоново — раз на 30 хв)">Перевірити зараз</button></div><div id="attention" class="attention-list"></div></article>
         <div class="cards" id="cards"></div>
         <div class="grid two">
           <article class="panel"><div class="panel-head"><h2>Події за 24 години</h2><span id="events-total" class="muted small"></span></div><div id="events-chart" class="chart"></div></article>
@@ -249,7 +249,6 @@
       </section>
 
       <section data-panel="system" hidden>
-        <article class="panel"><h2>Сховище й автоматичне очищення</h2><div id="storage-status" aria-live="polite">Завантаження…</div></article>
         <article class="panel"><h2>Керування службами</h2><p class="muted small">Повна зупинка також закриває доступ до цієї панелі. Пауза мікрофона й стан приймача доступні в боковому меню.</p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
         <div class="sys-grid">
           <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>
@@ -270,6 +269,7 @@
           <details><summary>Усі лічильники поточної сесії</summary><div class="table-wrap"><table id="counters" class="compact"></table></div></details>
           <details><summary>Повна діагностика (JSON)</summary><pre id="diagnostics"></pre></details>
         </article>
+        <article class="panel"><h2>Сховище й автоматичне очищення</h2><div id="storage-status" aria-live="polite">Завантаження…</div></article>
       </section>
 
     </div>

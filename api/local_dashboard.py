@@ -237,7 +237,7 @@ def diagnostics_view(data):
     return result
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None, experiments_dir=None):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None, experiments_dir=None, suggestions=False):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
@@ -253,6 +253,10 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES)
+    if suggestions:
+        # Фонова перевірка списків у процесі панелі: приймач не навантажується.
+        from services.suggestions import SuggestionWorker
+        SuggestionWorker(db_path, recordings, logging.getLogger("radio.suggestions")).start()
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
     backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
     host = f"127.0.0.1:{port}"
@@ -635,6 +639,35 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             return {"errors": [str(exc)], "warnings": []}
         return {"errors": [], "warnings": []}
 
+    @app.put("/api/text-lists/{list_type}/evaluate")
+    def text_list_evaluate(list_type: str, payload: TextListCheck, admin=Depends(actor)):
+        """Як змінився б текст на розмічених записах із цим (незбереженим) списком.
+
+        Повтор текстової обробки на збережених виходах Whisper — без моделей, приймач працює.
+        """
+        from services.text_lists import parse
+        from services.text_replay import compare, load_records, load_setup
+        if list_type not in ("phrase_templates", "phrase_patterns", "callsign_aliases", "aliases"):
+            raise HTTPException(404, "Цей список не перевіряється на еталонах")
+        lines = [(n, e.raw_line) for n, e in enumerate(payload.entries, 1) if e.enabled and e.raw_line.strip()]
+        parsed, errors = parse(list_type, lines)
+        if errors:
+            raise HTTPException(422, "; ".join(errors[:5]))
+        dictionaries, short_garbage, values = load_setup(db_path)
+        current = {"phrases": values.get("phrase_templates", ()), "patterns": values.get("phrase_patterns", ()),
+                   "aliases": (values.get("aliases", {}), values.get("callsign_aliases", {}))}
+        after = dict(current)
+        if list_type == "phrase_templates":
+            after["phrases"] = parsed
+        elif list_type == "phrase_patterns":
+            after["patterns"] = parsed
+        elif list_type == "aliases":
+            after["aliases"] = (parsed, current["aliases"][1])
+        else:
+            after["aliases"] = (current["aliases"][0], parsed)
+        rows = load_records(recordings.root)
+        return compare(rows, dictionaries, short_garbage, before=current, after=after, show=15)
+
     @app.put("/api/text-lists/{list_type}")
     def text_list_update(list_type: str, payload: TextListUpdate, admin=Depends(actor)):
         from services.text_lists import LIST_TYPES, TextListConflict, write_list
@@ -744,10 +777,35 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             codes = daily_codes.read_day(db, day)
         learning = store.learning_queue(db_path)["counts"]
         fresh = recordings.view_counts(time.time() - 86400)
-        return {"codes_day": day, "codes_missing": not codes,
+        from services import suggestions as suggestion_service
+        return {"suggestions": suggestion_service.overview(db_path)["groups"],
+                "codes_day": day, "codes_missing": not codes,
                 "approvals": learning.get("needs_approval", 0), "conflicts": learning.get("conflict", 0),
                 "telegram_failed": sync_status(db_path)["exhausted"],
                 "unlabeled_radio_24h": fresh["radio"], "unlabeled_speech_24h": fresh["speech"]}
+
+    @app.post("/api/suggestions/sync-events")
+    def suggestions_sync_events(admin=Depends(actor)):
+        """Перенести еталони в події, які лишилися з текстом Whisper (журнал, підпис у Telegram, навчання)."""
+        from services import suggestions as suggestion_service
+        result = {"updated": 0, "same": 0, "hidden": 0, "failed": 0, "none": 0}
+        for item in suggestion_service.reference_checks(db_path, recordings):
+            if item["kind"] != "ref_event":
+                continue
+            try:
+                outcome = sync_event_from_reference(recordings.get(item["record"]), admin)
+            except LookupError:
+                outcome = None
+            result[outcome or "none"] += 1
+        suggestion_service.refresh(db_path, recordings)
+        return result
+
+    @app.post("/api/suggestions/refresh")
+    def suggestions_refresh(admin=Depends(actor)):
+        """Перевірити всі списки зараз (зокрема шаблони фраз на еталонах), не чекаючи фонової перевірки."""
+        from services import suggestions as suggestion_service
+        current, fresh = suggestion_service.refresh(db_path, recordings, deep=True)
+        return {"total": len(current), "new": len(fresh), **suggestion_service.overview(db_path)}
 
     @app.get("/api/launcher")
     def launcher_state(admin=Depends(actor)):
@@ -1005,7 +1063,7 @@ def main(argv=None):
     print("Відкрити: .venv/bin/python -m api.local_dashboard --open")
     if args.open:
         open_when_ready(url)
-    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"))
+    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"),suggestions=True)
     uvicorn.run(app,host="127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
     return 0
 

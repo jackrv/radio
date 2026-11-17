@@ -15,6 +15,7 @@ class TextAnalysis:
     recipient: list
     sender: list
     rejected: str | None = None
+    partial_commands: frozenset = frozenset()   # (назва, код) команд, чий код почуто наполовину
 
 
 def analyze_text(text, callsigns, commands, watch, short_garbage, log):
@@ -35,4 +36,9 @@ def analyze_text(text, callsigns, commands, watch, short_garbage, log):
         rejected = "short_garbage"
     elif not cmd_found and not watch_found and is_bare_callsign(text, cs_found, callsigns):
         rejected = "bare_callsign"
-    return TextAnalysis(text, cs_found, cmd_found, watch_found, to_found, from_found, rejected)
+    try:
+        # Лише позначка для шапки: збій тут не повинен зупинити подію чи сповіщення.
+        partial = frozenset((m.name, m.number) for m in commands.matches(text) if getattr(m, "partial", False))
+    except Exception:
+        partial = frozenset()
+    return TextAnalysis(text, cs_found, cmd_found, watch_found, to_found, from_found, rejected, partial)

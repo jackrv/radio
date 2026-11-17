@@ -119,7 +119,7 @@ class EventProcessor:
                 # Збій оформлення не має зупинити сповіщення.
                 shown = text
                 try:
-                    commands_str = fmt_spoken(cmd_found)
+                    commands_str = fmt_spoken(cmd_found, analysis.partial_commands)
                 except Exception:
                     self.log.exception("Не вдалося оформити рядок команд; надсилаю без нього")
                     commands_str = cmd_str

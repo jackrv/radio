@@ -103,15 +103,15 @@ def test_empty_callsigns_or_broken_database_keep_previous_dictionary(db_path):
 
 def test_alias_change_rebuilds_dictionaries(db_path):
     clock = Clock()
-    set_dictionary(db_path, "callsigns", ["наган: 110"])
+    set_dictionary(db_path, "callsigns", ["набат: 110"])
     dictionaries = live(db_path, clock)
     revision = read_lists(db_path)["revision"]
-    write_list(db_path, "aliases", [{"raw_line": "наган: нага", "enabled": True}], revision)
+    write_list(db_path, "aliases", [{"raw_line": "набат: нага", "enabled": True}], revision)
     text = text_lists.LiveTextLists(db_path)
     text.refresh(force=True)
     clock.now = 3.0
     assert dictionaries.refresh() is True, "алиаси змінились — словники перебудовано"
-    assert dictionaries.callsigns.find("нага 110") == [("наган", "110", 100)]
+    assert dictionaries.callsigns.find("нага 110") == [("набат", "110", 100)]
 
 
 # ---------- Налаштування обробки ----------

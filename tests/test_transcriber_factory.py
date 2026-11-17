@@ -26,7 +26,7 @@ def make_dependencies():
         "callsigns": Mock(),
         "commands": Mock(),
         "watch": Mock(),
-        "prompt": "Вишня, Кобза, Буря",
+        "prompt": "Вишня, Кобза, Хвиля",
         "telegram_service": Mock(),
         "cooldown": Mock(),
         "log": Mock(),

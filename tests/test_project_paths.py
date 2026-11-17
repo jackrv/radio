@@ -156,18 +156,18 @@ def test_factory_uses_configured_db_for_word_corrections(
         word_engine,
     )
 
-    assert corrector("Улыбка 700") == (
+    assert corrector("Калиниця 700") == (
         "Вишня 700", True
     )
 
     word_engine.assert_called_once_with(
-        "Улыбка 700",
+        "Калиниця 700",
         db_path,
         selected["dictionaries"],
     )
 
-    word_engine.return_value = "Улыбка 700"
+    word_engine.return_value = "Калиниця 700"
 
-    assert corrector("Улыбка 700") == (
-        "Улыбка 700", False
+    assert corrector("Калиниця 700") == (
+        "Калиниця 700", False
     )

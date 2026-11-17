@@ -72,7 +72,7 @@ def test_populated_dictionaries_load(tmp_path):
         [
             ("callsigns", 1, "вишня: 700"),
             ("commands", 1, "прийом"),
-            ("telegram", 1, "гроза: 011"),
+            ("telegram", 1, "туча: 042"),
         ],
     )
 
@@ -84,11 +84,11 @@ def test_populated_dictionaries_load(tmp_path):
 
     assert "вишня" in callsigns.names
     assert "прийом" in commands.names
-    assert "гроза" in watch.names
+    assert "туча" in watch.names
 
     assert all(
         name in prompt
-        for name in ("вишня", "прийом", "гроза")
+        for name in ("вишня", "прийом", "туча")
     )
 
     log.warning.assert_not_called()

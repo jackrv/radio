@@ -23,11 +23,11 @@ def test_two_editor_corrections_activate_word_rule(tmp_path):
                 (dictionary_type, line_number, raw_line)
             VALUES (?, ?, ?)
             """,
-            ("callsigns", 1, "липка: 700 720"),
+            ("callsigns", 1, "калина: 700 720"),
         )
 
     callsigns = Callsigns.from_lines([
-        "липка: 700 720"
+        "калина: 700 720"
     ])
     empty = Callsigns.from_lines([])
     dictionaries = (callsigns, empty, empty)
@@ -45,44 +45,44 @@ def test_two_editor_corrections_activate_word_rule(tmp_path):
 
     # Первое независимое исправление.
     first_id = correct_through_editor(
-        "Улыбка 700",
-        "Липка 700",
+        "Калиниця 700",
+        "Калина 700",
         1,
     )
 
     # Одного подтверждения пока недостаточно.
     assert apply_verified_word_rules(
-        "Улыбка 700",
+        "Калиниця 700",
         db_path,
         dictionaries,
-    ) == "Улыбка 700"
+    ) == "Калиниця 700"
 
     # Второе независимое исправление.
     second_id = correct_through_editor(
-        "Улыбка 720",
-        "Липка 720",
+        "Калиниця 720",
+        "Калина 720",
         2,
     )
 
     # Проверяем автоматическую активацию.
     assert apply_verified_word_rules(
-        "Улыбка 700, на связи",
+        "Калиниця 700, на связи",
         db_path,
         dictionaries,
-    ) == "Липка 700, на связи"
+    ) == "Калина 700, на связи"
 
     assert apply_verified_word_rules(
-        "Улыбка 720",
+        "Калиниця 720",
         db_path,
         dictionaries,
-    ) == "Липка 720"
+    ) == "Калина 720"
 
     # Недопустимый номер не исправляем.
     assert apply_verified_word_rules(
-        "Улыбка 999",
+        "Калиниця 999",
         db_path,
         dictionaries,
-    ) == "Улыбка 999"
+    ) == "Калиниця 999"
 
     with sqlite3.connect(db_path) as db:
         rules = db.execute("""
@@ -104,7 +104,7 @@ def test_two_editor_corrections_activate_word_rule(tmp_path):
         """).fetchall()
 
     assert rules == [
-        ("улыбка", "липка", 2, "active")
+        ("калиниця", "калина", 2, "active")
     ]
 
     assert votes == [
@@ -113,8 +113,8 @@ def test_two_editor_corrections_activate_word_rule(tmp_path):
     ]
 
     assert events == [
-        ("Улыбка 700", "Липка 700"),
-        ("Улыбка 720", "Липка 720"),
+        ("Калиниця 700", "Калина 700"),
+        ("Калиниця 720", "Калина 720"),
     ]
 
     # Старая таблица больше не пополняется.

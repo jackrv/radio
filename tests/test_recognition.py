@@ -109,14 +109,14 @@ def test_extract_text_without_confidence_fields():
                 "no_speech_prob": 0.9,
             },
             {
-                "text": "Буря 011",
+                "text": "Хвиля 042",
                 "avg_logprob": -1.5,
             },
         ]
     }
 
     assert WhisperRecognizer.extract_text(result) == (
-        "Віра 68 Кобза 110 Буря 011"
+        "Віра 68 Кобза 110 Хвиля 042"
     )
 
 

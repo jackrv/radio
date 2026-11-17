@@ -358,23 +358,65 @@
   });
 
   // ---------- Огляд: що потребує уваги ----------
+  // «texts:callsign_aliases» — вкладка «Фільтри тексту» з потрібним списком; інакше — назва вкладки.
+  function openTarget(target) {
+    const [view, list] = target.split(":");
+    if (view === "recordings" && list) {
+      // Записи для перевірки — пошуком за номерами в усьому архіві.
+      $("recording-search").value = list.split(",").join(", ");
+      if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
+      return;
+    }
+    if (view === "texts" && list) {
+      textListType = list;
+      try { localStorage.setItem("radio345:text-list", list); } catch (_) { /* сесія */ }
+      if (loaded.has("texts")) { show("texts"); action(texts); } else show("texts");
+      return;
+    }
+    show(view);
+  }
   let attentionAt = 0;
+  $("suggestions-refresh").addEventListener("click", () => action(async () => {
+    $("suggestions-refresh").disabled = true;
+    try {
+      const r = await request("/api/suggestions/refresh", "POST");
+      note(r.new ? `Знайдено нових пропозицій: ${r.new} (усього ${r.total}).` : `Нових пропозицій немає (усього ${r.total}).`);
+      await attention(true);
+    } finally { $("suggestions-refresh").disabled = false; }
+  }));
   async function attention(force = false) {
     if (!force && Date.now() - attentionAt < 60000) return;
     attentionAt = Date.now();
     let a;
     try { a = await request("/api/attention"); } catch (_) { return; }
     const items = [];
-    const item = (tone, text, label, go) => {
+    const item = (tone, text, label, go, extra) => {
       const row = el("div", `attention-item ${tone}`);
       row.append(el("span", "", text));
-      if (label) { const b = el("button", "ghost", label); b.type = "button"; b.addEventListener("click", go); row.append(b); }
+      const buttons = el("span", "attention-actions");
+      for (const [title, handler] of [[label, go], ...(extra || [])]) {
+        if (!title) continue;
+        const b = el("button", "ghost", title); b.type = "button"; b.addEventListener("click", handler); buttons.append(b);
+      }
+      row.append(buttons);
       items.push(row);
     };
     if (a.codes_missing) item("warn", `Не внесено коди доби ${a.codes_day.split("-").reverse().slice(0, 2).join(".")} (діють з 20:00 попереднього дня).`, "Внести", () => show("codes"));
     if (a.approvals) item("warn", `Замін, що чекають вашого дозволу: ${a.approvals}.`, "Переглянути", () => show("learning"));
     if (a.conflicts) item("bad", `Конфліктів у навчанні: ${a.conflicts} — одне слово виправлено по-різному.`, "Переглянути", () => show("learning"));
     if (a.telegram_failed) item("bad", `Правок, що не дійшли в Telegram після всіх спроб: ${a.telegram_failed}.`, "Система", () => show("system"));
+    // Пропозиції з розмітки, що накопичилися в усіх списках (фонова перевірка панелі).
+    for (const g of a.suggestions || []) {
+      const fresh = g.new ? ` · нових ${g.new}` : "";
+      const extra = g.kind === "ref_event" ? [["Оновити всі", () => action(async () => {
+        if (!confirm(`Перенести еталони в ${g.count} подій? Оновляться журнал, підписи повідомлень у Telegram і навчання — як після правки в Mini App.`)) return;
+        const r = await request("/api/suggestions/sync-events", "POST");
+        note(`Оновлено подій: ${r.updated}${r.failed ? `, не вдалося: ${r.failed}` : ""}${r.hidden ? `, приховані: ${r.hidden}` : ""}.`);
+        await attention(true);
+      })]] : [];
+      item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
+        "Переглянути", () => openTarget(g.target), extra);
+    }
     if (a.unlabeled_radio_24h) item("info", `Нерозмічених записів «Ефіру» за добу: ${a.unlabeled_radio_24h}.`, "Розмітити", () => {
       $("recording-view").value = "radio"; $("recording-period").value = "24";
       if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
@@ -703,9 +745,11 @@
   const TEXT_LISTS = {
     blacklist: ["Фрази-галюцинації Whisper", "Відкидається лише фраза, що повністю збігається з рядком (регістр і пунктуація не важливі). Наприклад: «дякую за перегляд»."],
     short_garbage: ["Короткий шум", "Короткі хибні фрагменти. Відкидаються, лише якщо у фразі немає позивних, команд і слів спостереження."],
-    aliases: ["Алиаси тексту", "Формат «правильне: варіант, варіант». Варіант замінюється на правильне написання перед пошуком позивних і команд, наприклад «наган: на ган, ган»."],
+    aliases: ["Алиаси тексту", "Формат «правильне: варіант, варіант». Варіант замінюється на правильне написання перед пошуком позивних і команд, наприклад «злата: зла та, злото»."],
     callsign_aliases: ["Алиаси позивних", "Формат «позивний: почутий варіант». Для позивного з номерами діє лише перед дозволеним номером; для позивного без номера — на саме слово. Позивний має бути у словнику."],
-    whisper_prompt: ["Підказка Whisper", "Фрази на початку підказки розпізнавання, по одній у рядку, так, як їх вимовляють: «дощ 13 13». Допомагають Whisper правильно записати важливі команди, але зрідка потрапляють у розпізнаний текст. З’являться хибні спрацьовування — вимкніть рядок, поставивши «#» на початку."],
+    phrase_patterns: ["Шаблони фраз", "Шаблон цілої передачі: «{П}, {П}, я {П}, перевірка звʼязку, прийом». {П} — позивний (слово й необов’язковий номер), {Ч} — число чи код, {К} — команда зі словника. Фраза (між . ! ? ; /), що повністю відповідає шаблону, пишеться як у шаблоні: схожі слова виправляються, слово на місці позивного стає позивним зі словника, лише якщо почутий номер є в його словнику (без номера — лише майже точний збіг). Нічого не додається й не прибирається, числа не змінюються, назви зі словників і правильно почуті «прийом / прийнято / прийняв» не переписуються. Рядки з # вимкнені: увімкніть, натисніть «Перевірити на моїх еталонах», і зберігайте, якщо гірше — 0."],
+    phrase_templates: ["Шаблони зворотів", "М’які шаблони: якщо почуте схоже на оборот із цього списку, воно пишеться як в обороті («посилку отримаф» → «посилку отримав»). Кожне слово має бути схожим, однослівні — лише в кінці фрази. Числа шаблони не змінюють, назви зі словників і форми звертання («Клену») захищені. Окрім цього списку діють вбудовані правила: позивний перед номером пишеться як у словнику, якщо номер є в словнику («Бериза 56» → «Береза 56»); «на 109» на місці позивного, що починається на «на…» (напр. «Набат»), → «Набат 109», лише з номером зі словника; зациклення «вишня, вишня, вишня, вишня» скорочується до двох, крім «прийом». Перевірка змін на ваших еталонах: .venv/bin/python -m tools.text_replay"],
+    whisper_prompt: ["Підказка Whisper", "Фрази на початку підказки розпізнавання, по одній у рядку, так, як їх вимовляють: «дощ 42 42». Допомагають Whisper правильно записати важливі команди, але зрідка потрапляють у розпізнаний текст. З’являться хибні спрацьовування — вимкніть рядок, поставивши «#» на початку."],
   };
   let textRevision = null;
   let textListType = (() => { try { return localStorage.getItem("radio345:text-list") || "short_garbage"; } catch (_) { return "short_garbage"; } })();
@@ -909,10 +953,42 @@
     const actions = el("div", "list-actions"); actions.append(save, status);
     left.append(area, actions);
     right.append(el("h2", "", title), el("p", "muted small", help), warnings);
+    if (EVALUATED_LISTS.includes(type)) right.append(listEvaluation(type, area));
     if (type === "callsign_aliases") right.append(aliasCandidates(list.entries));
     if (type === "blacklist" || type === "short_garbage") right.append(noiseCandidates(type, list.entries));
     panel.append(left, right);
     box.append(panel);
+  }
+
+  // Перевірка списку на розмічених записах: повтор текстової обробки, без збереження й без зупинки приймача.
+  const EVALUATED_LISTS = ["phrase_templates", "phrase_patterns", "callsign_aliases", "aliases"];
+  function listEvaluation(type, area) {
+    const wrap = el("div", "list-evaluation");
+    const run = el("button", "ghost", "Перевірити на моїх еталонах"); run.type = "button";
+    run.title = "Як змінився б текст розмічених записів із цим списком (зміни не зберігаються)";
+    const out = el("div");
+    run.addEventListener("click", () => action(async () => {
+      run.disabled = true; out.replaceChildren(el("p", "muted small", "Рахую…"));
+      try {
+        const r = await request(`/api/text-lists/${type}/evaluate`, "PUT", { entries: fromLines(area.value) });
+        const b = r.before, a = r.after;
+        const tone = r.worse ? "bad" : r.better ? "ok" : "";
+        const summary = el("div", `summary ${tone}`);
+        summary.append(el("b", "", r.changed ? `Змінилося фраз: ${r.changed} — краще ${r.better}, гірше ${r.worse}` : "Жодна фраза не змінилася"),
+          el("div", "small muted", `Записів: ${r.records} · помилка в словах ${pct(b.wer)} → ${pct(a.wer)} · позивні ${b.callsigns_hit} → ${a.callsigns_hit} з ${a.callsigns_ref} (хибних ${b.callsigns_false} → ${a.callsigns_false}) · команди ${b.commands_hit} → ${a.commands_hit} з ${a.commands_ref}`));
+        out.replaceChildren(summary);
+        for (const c of r.examples) {
+          const item = el("div", `eval-item ${c.delta > 0 ? "bad" : c.delta < 0 ? "ok" : ""}`);
+          const link = el("a", "small", c.id.slice(0, 8)); link.href = `?view=recordings&q=${c.id.slice(0, 8)}`;
+          item.append(link, el("span", "small", c.delta > 0 ? ` гірше на ${c.delta} сл.` : c.delta < 0 ? ` краще на ${-c.delta} сл.` : " так само"),
+            el("div", "small", `було: ${c.before}`), el("div", "small", `стало: ${c.after}`), el("div", "small muted", `еталон: ${c.reference}`));
+          out.append(item);
+        }
+      } catch (error) { out.replaceChildren(el("p", "alert small", error.message)); throw error; }
+      finally { run.disabled = false; }
+    }));
+    wrap.append(run, out);
+    return wrap;
   }
 
   // Підказка: як Whisper чув позивні в розмічених записах. Додає лише оператор.
@@ -973,6 +1049,7 @@
     already_added: "вже у списках",
     has_number: "є число — може бути повідомленням",
     dictionary_word: "словникове ім’я — не можна",
+    near_name: "схоже на назву зі словника — ризиковано",
     in_speech: "трапляється в справжньому мовленні",
   };
   const LABEL_NAMES = { noise: "шум ефіру", room: "кімната", notification: "сигнал" };

@@ -87,6 +87,10 @@ class TextListEntry(BaseModel):
     enabled: bool = Field(strict=True)
 
 
+class TextListCheck(BaseModel):
+    entries: list[TextListEntry] = Field(max_length=1000)
+
+
 class TextListUpdate(BaseModel):
     entries: list[TextListEntry] = Field(max_length=500)
     expected_revision: int = Field(ge=0)
@@ -98,7 +102,7 @@ class DictionaryEntry(BaseModel):
 
 
 class DictionaryUpdate(BaseModel):
-    entries: list[DictionaryEntry] = Field(max_length=1000)
+    entries: list[TextListEntry] = Field(max_length=1000)
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
@@ -269,7 +273,7 @@ def diagnostics_view(data):
     return result
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
@@ -659,6 +663,40 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         records = recordings.labelled_speech()
         return {"items": collect(records, callsigns, all_names, active["callsign_aliases"]), "records": len(records)}
 
+    @app.get("/api/text-lists/noise-candidates")
+    def noise_candidates(admin=Depends(actor)):
+        """Підказка: тексти Whisper, що повторюються на записах без мовлення. Нічого не записує."""
+        from services.noise_candidates import collect, key
+        from services.text_lists import _dictionary_names, ensure_tables, load_active
+        with get_db(db_path) as db:
+            ensure_tables(db)
+            _, active = load_active(db)
+            names, _ = _dictionary_names(db) if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone() else (set(), None)
+        keys = {key(v) for v in (*active["blacklist"], *active["short_garbage"])}
+        records = recordings.labelled_texts()
+        return {"items": collect(records, keys, set(names)), "records": len(records)}
+
+    @app.put("/api/text-lists/{list_type}/check")
+    def text_list_check(list_type: str, payload: TextListCheck, admin=Depends(actor)):
+        from services.text_lists import check_list
+        try:
+            return check_list(db_path, list_type, [e.model_dump() for e in payload.entries])
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+    @app.put("/api/dictionaries/{kind}/check")
+    def dictionary_check(kind: str, payload: TextListCheck, admin=Depends(actor)):
+        """Перевірка рядків словника без збереження: помилка, яку покаже «Зберегти»."""
+        from services.miniapp_management import validate_dictionary
+        if kind not in ("callsigns", "commands", "telegram"):
+            raise HTTPException(404, "Невідомий словник")
+        try:
+            validate_dictionary([e.model_dump() for e in payload.entries], kind)
+        except ValueError as exc:
+            return {"errors": [str(exc)], "warnings": []}
+        return {"errors": [], "warnings": []}
+
     @app.put("/api/text-lists/{list_type}")
     def text_list_update(list_type: str, payload: TextListUpdate, admin=Depends(actor)):
         from services.text_lists import LIST_TYPES, TextListConflict, write_list
@@ -717,6 +755,41 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     @app.put("/api/learning/{rule_id}/approval")
     def learning_approval(rule_id: int, payload: RuleApproval, admin=Depends(actor)):
         return _rule_call(store.approve_rule, admin, rule_id, payload.approved, payload.expected_version)
+
+    @app.get("/api/attention")
+    def attention(admin=Depends(actor)):
+        """Що чекає на оператора: коди доби, дозволи замін, збої Telegram, свіжа розмітка."""
+        from services import daily_codes
+        day = daily_codes.local_day()
+        with get_db(db_path) as db:
+            codes = daily_codes.read_day(db, day)
+        learning = store.learning_queue(db_path)["counts"]
+        fresh = recordings.view_counts(time.time() - 86400)
+        return {"codes_day": day, "codes_missing": not codes,
+                "approvals": learning.get("needs_approval", 0), "conflicts": learning.get("conflict", 0),
+                "telegram_failed": sync_status(db_path)["exhausted"],
+                "unlabeled_radio_24h": fresh["radio"], "unlabeled_speech_24h": fresh["speech"]}
+
+    @app.get("/api/launcher")
+    def launcher_state(admin=Depends(actor)):
+        """Чи працює керований лаунчер (без токена керування)."""
+        from services.launcher_lifecycle import managed_status
+        state = managed_status(launcher_root or ROOT)
+        return {"managed": state["managed"], "reachable": state["launcher_reachable"], "state": state["state"],
+                "receiver_stopped": "radio" in state.get("stopped_services", [])}
+
+    @app.post("/api/launcher/{command}")
+    def launcher_command(command: Literal["restart", "stop", "receiver-stop", "receiver-start"], admin=Depends(actor)):
+        """Команда лаунчеру через його захищений канал. Відповідь — одразу: панель
+        працює всередині лаунчера й зупиниться разом з усіма службами."""
+        from services.launcher_lifecycle import send_command
+        try:
+            sent = send_command(launcher_root or ROOT, command)
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if not sent:
+            raise HTTPException(409, "Лаунчер не керує цим запуском: панель запущено окремо")
+        return {"sent": command}
 
     @app.get("/api/users")
     def users_list(admin=Depends(actor)):

@@ -65,10 +65,22 @@ def managed_status(root):
             "launcher_reachable": reachable,
             "state": (state.get("state", "unknown") if reachable else "cleanup_pending") if active else "inactive",
             "controllers": {k: v for k, v in controllers.items()
-                            if k in NAMES and type(v) is int}}
+                            if k in NAMES and type(v) is int},
+            "stopped_services": [n for n in state.get("stopped_services", []) if n in NAMES] if active else []}
 
 
-def request_stop(root, timeout=None):
+COMMANDS = ("stop", "restart", "receiver-stop", "receiver-start")
+SERVICE_REQUESTS = ("receiver-stop", "receiver-start")
+
+
+def send_command(root, command):
+    """Передає команду запущеному лаунчеру через його канал і одразу повертається.
+
+    False — керованого запуску немає. Чужі процеси не зачіпаються: команда діє
+    лише з токеном поточного запуску.
+    """
+    if command not in COMMANDS:
+        raise ValueError("Невідома команда")
     directory = Path(root) / ".radio345-launcher"
     if not lock_held(directory / "lock"):
         return False
@@ -84,9 +96,22 @@ def request_stop(root, timeout=None):
     except OSError:
         raise RuntimeError("Запускатель уже зник; контролери завершують служби. Перевірте --status") from None
     try:
-        os.write(fd, f"stop {token}\n".encode())
+        os.write(fd, f"{command} {token}\n".encode())
     finally:
         os.close(fd)
+    return token
+
+
+def request_restart(root):
+    """Лаунчер штатно зупиняє всі служби й запускає їх знову в тому самому вікні."""
+    return bool(send_command(root, "restart"))
+
+
+def request_stop(root, timeout=None):
+    directory = Path(root) / ".radio345-launcher"
+    token = send_command(root, "stop")
+    if not token:
+        return False
     deadline = time.monotonic() + (timeout if timeout is not None else sum(GRACE_SECONDS.values()) + 5)
     while lock_held(directory / "lock"):
         if read_state(root).get("token") != token:
@@ -109,6 +134,9 @@ class LauncherSession:
         self.token = secrets.token_hex(16)
         self.controllers = {}
         self.stopping = False
+        self.restart_requested = False
+        self.requests = []          # receiver-stop / receiver-start для головного циклу
+        self.stopped_services = set()
         self.deadline = None
         self.lock_fd = self.watch_read = self.watch_write = self.control_fd = None
         self.done = {}
@@ -119,7 +147,8 @@ class LauncherSession:
         self._stop_pending = False
 
     def _save(self, state):
-        data = {"pid": os.getpid(), "token": self.token, "state": state, "controllers": self.controllers}
+        data = {"pid": os.getpid(), "token": self.token, "state": state, "controllers": self.controllers,
+                "stopped_services": sorted(self.stopped_services)}
         temporary = None
         try:
             with tempfile.NamedTemporaryFile("w", dir=self.directory, delete=False) as file:
@@ -176,8 +205,17 @@ class LauncherSession:
             buffer += os.read(self.control_fd, 1024)
             while b"\n" in buffer:
                 line, buffer = buffer.split(b"\n", 1)
-                if secrets.compare_digest(line, f"stop {self.token}".encode()) and not self.stopping:
+                if self.stopping:
+                    continue
+                if secrets.compare_digest(line, f"restart {self.token}".encode()):
+                    self.restart_requested = True
                     os.kill(os.getpid(), signal.SIGTERM)
+                elif secrets.compare_digest(line, f"stop {self.token}".encode()):
+                    os.kill(os.getpid(), signal.SIGTERM)
+                else:
+                    for request in SERVICE_REQUESTS:
+                        if secrets.compare_digest(line, f"{request} {self.token}".encode()):
+                            self.requests.append(request)
             if len(buffer) > 1024:
                 buffer = b""
 
@@ -199,10 +237,40 @@ class LauncherSession:
         fds.append(self.lock_fd)
         return command + ["--", *target], tuple(fds)
 
+    def take_request(self):
+        """Наступний запит на окрему службу або None (викликає головний цикл лаунчера)."""
+        try:
+            return self.requests.pop(0)
+        except IndexError:
+            return None
+
+    def stop_service(self, process, name):
+        """Зупиняє одну службу, решта працює: напр. приймач на час важкого прогону.
+
+        Контролер отримує SIGTERM і штатно зупиняє службу (приймач — через SIGINT,
+        з очікуванням черги Telegram), після строку — лише власну групу.
+        Для повторного запуску служба отримує нову пару каналу завершення.
+        """
+        if process.poll() is None:
+            os.kill(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=self.grace[name] + 5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+        for fd in self.done[name]:
+            if fd is not None:
+                os.close(fd)
+        self.done[name] = list(os.pipe())
+        self.controllers.pop(name, None)
+        self.stopped_services.add(name)
+        self._save("running")
+
     def register(self, name, process):
         self._registering = True
         try:
             self.controllers[name] = process.pid
+            self.stopped_services.discard(name)
             os.close(self.done[name][1])
             self.done[name][1] = None
             self._save("running")

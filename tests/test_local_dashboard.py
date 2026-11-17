@@ -1,4 +1,5 @@
 import io
+import os
 import json
 import wave
 from unittest.mock import patch
@@ -542,3 +543,68 @@ def test_learning_queue_shows_why_rules_wait_and_allows_approval(local):
     assert client.put(f"/api/learning/{fresh['id']}",json={"disabled":True,"expected_version":fresh["version"]},headers=h).status_code==200
     assert {i["original"]:i["state"] for i in client.get("/api/learning").json()["items"]}["прием"]=="disabled"
     assert client.put("/api/learning/999/approval",json={"approved":True,"expected_version":"0"*64},headers=h).status_code==404
+
+
+def test_launcher_buttons_use_the_authenticated_control_channel(setup, tmp_path):
+    from services.launcher_lifecycle import LauncherSession
+    _, path = setup
+    root = tmp_path / "launcher"
+    root.mkdir()
+    app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", diagnostics_path=tmp_path / "d.json",
+                           recordings_dir=tmp_path / "recordings", launcher_root=root)
+    h = {"Origin": ORIGIN}
+    with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 12345)) as client:
+        assert client.post("/session", json={"token": KEY}, headers=h).status_code == 204
+        assert client.get("/api/launcher").json() == {"managed": False, "reachable": False, "state": "inactive", "receiver_stopped": False}
+        assert client.post("/api/launcher/restart", headers=h).status_code == 409, "панель без лаунчера"
+        assert client.post("/api/launcher/kill", headers=h).status_code == 422
+        session = LauncherSession(root, ["api"]).__enter__()
+        try:
+            assert client.get("/api/launcher").json()["managed"] is True
+            assert client.post("/api/launcher/restart").status_code == 403, "без Origin панелі"
+            fifo = root / ".radio345-launcher/control.fifo"
+            reader = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+            session.thread_stop.set(); session.thread.join(timeout=1)   # читаємо канал самі
+            try:
+                assert client.post("/api/launcher/restart", headers=h).json() == {"sent": "restart"}
+                assert os.read(reader, 1024) == f"restart {session.token}\n".encode()
+            finally:
+                os.close(reader)
+        finally:
+            session.__exit__(None, None, None)
+
+
+def test_attention_lists_what_waits_for_the_operator(local):
+    client, path, _ = local
+    import sqlite3
+    from services import daily_codes
+    from services.word_store import init_word_db
+    data = client.get("/api/attention").json()
+    assert data["codes_missing"] is True and data["codes_day"] == daily_codes.local_day()
+    assert data["approvals"] == 0 and data["telegram_failed"] == 0 and data["unlabeled_radio_24h"] == 0
+    daily_codes.write(path, data["codes_day"], "14 77")
+    init_word_db(path)
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO word_corrections (original, corrected, confirmations, status) VALUES ('прием','прийом',2,'active')")
+    data = client.get("/api/attention").json()
+    assert data["codes_missing"] is False and data["approvals"] == 1
+
+
+def test_lists_and_dictionaries_are_checked_while_typing_without_saving(local):
+    client, path, _ = local
+    h = {"Origin": ORIGIN}
+    revision = client.get("/api/text-lists").json()["revision"]
+    bad = client.put("/api/text-lists/short_garbage/check", headers=h,
+                     json={"entries": [{"raw_line": "вишня 12", "enabled": True}]}).json()
+    assert bad["errors"], "число в короткому шумі — помилка ще до збереження"
+    ok = client.put("/api/text-lists/short_garbage/check", headers=h,
+                    json={"entries": [{"raw_line": "пау пау", "enabled": True}]}).json()
+    assert ok == {"errors": [], "warnings": []}
+    assert client.get("/api/text-lists").json()["revision"] == revision, "перевірка нічого не записує"
+    assert client.put("/api/text-lists/other/check", headers=h, json={"entries": []}).status_code == 404
+    wrong = client.put("/api/dictionaries/callsigns/check", headers=h,
+                       json={"entries": [{"raw_line": "береза мала: 5", "enabled": True}]}).json()
+    assert wrong["errors"] and "одним словом" in wrong["errors"][0]
+    assert client.put("/api/dictionaries/callsigns/check", headers=h,
+                      json={"entries": [{"raw_line": "береза: 5", "enabled": True}]}).json()["errors"] == []
+    assert client.get("/api/text-lists/noise-candidates").json() == {"items": [], "records": 0}

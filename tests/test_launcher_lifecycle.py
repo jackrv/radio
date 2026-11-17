@@ -229,3 +229,64 @@ def test_stale_stop_token_cannot_stop_the_current_session(environment):
     parent.send_signal(signal.SIGTERM)
     parent.wait(timeout=10)
     assert_clean(root, ports)
+
+
+def test_restart_command_marks_session_and_stops_it_through_the_same_channel(tmp_path):
+    from services.launcher_lifecycle import request_restart, send_command
+    with pytest.raises(ValueError):
+        send_command(tmp_path, "rm")
+    assert request_restart(tmp_path) is False, "без запуску перезапускати нічого"
+    with pytest.raises(KeyboardInterrupt):
+        with LauncherSession(tmp_path, ["api"]) as session:
+            fd = os.open(tmp_path / ".radio345-launcher/control.fifo", os.O_WRONLY | os.O_NONBLOCK)
+            try:
+                os.write(fd, ("restart " + "0" * 32 + "\n").encode())
+            finally:
+                os.close(fd)
+            time.sleep(0.3)
+            assert session.restart_requested is False, "чужий токен не діє"
+            assert request_restart(tmp_path) is True
+            time.sleep(5)
+    assert session.restart_requested is True
+    assert not lock_held(tmp_path / ".radio345-launcher/lock")
+
+
+def test_launcher_runs_services_again_after_restart_request(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    monkeypatch.setattr(launcher, "should_start_admin", lambda args: False)
+    runs = []
+
+    def run_services(args, session):
+        runs.append(session.token)
+        assert lock_held(tmp_path / ".radio345-launcher/lock")
+        session.restart_requested = len(runs) == 1
+        return 0
+
+    monkeypatch.setattr(launcher, "run_services", run_services)
+    args = type("Args", (), {"local_miniapp": False})()
+    assert launcher.run_until_stopped(args) == 0
+    assert len(runs) == 2 and runs[0] != runs[1], "друга сесія з новим токеном"
+    assert not lock_held(tmp_path / ".radio345-launcher/lock")
+
+
+def test_receiver_alone_is_stopped_and_started_while_other_services_keep_running(tmp_path, monkeypatch):
+    from services.launcher_lifecycle import send_command
+    monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
+    with LauncherSession(tmp_path, ["api", "radio"], grace={"api": 0.5, "radio": 0.5}) as session:
+        api = launcher.ManagedProcess("api", sleeper, session=session)
+        radio = launcher.ManagedProcess("radio", sleeper, session=session)
+        assert send_command(tmp_path, "receiver-stop")
+        until(lambda: session.requests == ["receiver-stop"])
+        assert session.take_request() == "receiver-stop" and session.take_request() is None
+        session.stop_service(radio.process, "radio")
+        assert radio.process.poll() is not None and api.process.poll() is None
+        assert managed_status(tmp_path)["stopped_services"] == ["radio"]
+        assert set(managed_status(tmp_path)["controllers"]) == {"api"}
+        again = launcher.ManagedProcess("radio", sleeper, session=session)
+        assert again.process.poll() is None
+        assert managed_status(tmp_path)["stopped_services"] == []
+        session.begin_shutdown()
+        for item in (again, api):
+            item.stop()
+    assert not lock_held(tmp_path / ".radio345-launcher/lock")

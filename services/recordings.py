@@ -274,6 +274,14 @@ class RecordingStore:
         return [{"id": row["id"], "reference": row["reference"],
                  "raw_text": json.loads(row["data"]).get("raw_text", "")} for row in rows]
 
+    def labelled_texts(self):
+        """Усі розмічені записи: мітка, статус, текст Whisper і правильний текст."""
+        with self.connect() as db:
+            rows = db.execute("SELECT label, status, reference, data FROM recordings "
+                              "WHERE reference IS NOT NULL").fetchall()
+        return [{"label": row["label"], "status": row["status"], "reference": row["reference"],
+                 "raw_text": json.loads(row["data"]).get("raw_text", "")} for row in rows]
+
     def audio(self, record_id):
         self.get(record_id)
         path = self.root / (record_id + ".wav")

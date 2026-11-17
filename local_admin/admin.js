@@ -55,16 +55,66 @@
   }
   async function action(callback) { if (busy) return; busy = true; try { await callback(); } catch (error) { note(error.message); } finally { busy = false; } }
 
-  // ---------- Навігація ----------
-  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази", sounds: "Звуки сповіщень", filter: "Фільтр сповіщень", dictionaries: "Словники", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", system: "Система", roles: "Ролі" };
+  // ---------- Навігація: розділи й вкладки ----------
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", phrases: "Фрази з Telegram", sounds: "Зразки звуків", filter: "Фільтр", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", system: "Система", roles: "Mini App очима ролі" };
+  const GROUPS = {
+    overview: ["Огляд", ["overview"]],
+    recordings: ["Аудіоархів", ["recordings"]],
+    recognition: ["Розпізнавання", ["dictionaries", "codes", "texts", "learning", "settings"]],
+    signals: ["Сигнали сповіщень", ["sounds", "filter", "phrases"]],
+    people: ["Люди", ["users", "activity", "roles"]],
+    system: ["Система", ["system"]],
+  };
+  // Дані, які змінюються поза цією вкладкою, перечитуються при кожному відкритті.
+  const ALWAYS_RELOAD = new Set(["codes", "learning", "users", "activity"]);
+  const lastTab = {};
+  const groupOf = name => Object.keys(GROUPS).find(g => GROUPS[g][1].includes(name));
   function show(name) {
-    view = name;
-    for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.view === name);
+    if (GROUPS[name]) name = lastTab[name] || GROUPS[name][1][0];
+    const group = groupOf(name);
+    if (!group) return;
+    view = name; lastTab[group] = name;
+    for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.group === group);
     for (const s of document.querySelectorAll("[data-panel]")) s.hidden = s.dataset.panel !== name;
-    $("view-title").textContent = titles[name];
-    if (!loaded.has(name)) { loaded.add(name); action(() => loaders[name]()); }
+    $("view-title").textContent = GROUPS[group][0];
+    const tabs = $("tabs"), list = GROUPS[group][1];
+    tabs.replaceChildren();
+    tabs.hidden = list.length < 2;
+    for (const tab of list) {
+      const b = el("button", tab === name ? "tab active" : "tab", titles[tab]);
+      b.type = "button"; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", String(tab === name));
+      b.addEventListener("click", () => show(tab));
+      tabs.append(b);
+    }
+    if (!loaded.has(name) || ALWAYS_RELOAD.has(name)) { loaded.add(name); action(() => loaders[name]()); }
   }
-  for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.view));
+  for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.group));
+
+  // ---------- Огляд: що потребує уваги ----------
+  let attentionAt = 0;
+  async function attention(force = false) {
+    if (!force && Date.now() - attentionAt < 60000) return;
+    attentionAt = Date.now();
+    let a;
+    try { a = await request("/api/attention"); } catch (_) { return; }
+    const items = [];
+    const item = (tone, text, label, go) => {
+      const row = el("div", `attention-item ${tone}`);
+      row.append(el("span", "", text));
+      if (label) { const b = el("button", "ghost", label); b.type = "button"; b.addEventListener("click", go); row.append(b); }
+      items.push(row);
+    };
+    if (a.codes_missing) item("warn", `Не внесено коди доби ${a.codes_day.split("-").reverse().slice(0, 2).join(".")} (діють з 20:00 попереднього дня).`, "Внести", () => show("codes"));
+    if (a.approvals) item("warn", `Замін, що чекають вашого дозволу: ${a.approvals}.`, "Переглянути", () => show("learning"));
+    if (a.conflicts) item("bad", `Конфліктів у навчанні: ${a.conflicts} — одне слово виправлено по-різному.`, "Переглянути", () => show("learning"));
+    if (a.telegram_failed) item("bad", `Правок, що не дійшли в Telegram після всіх спроб: ${a.telegram_failed}.`, "Система", () => show("system"));
+    if (a.unlabeled_radio_24h) item("info", `Нерозмічених записів «Ефіру» за добу: ${a.unlabeled_radio_24h}.`, "Розмітити", () => {
+      $("recording-view").value = "radio"; $("recording-period").value = "24";
+      if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
+    });
+    $("attention").replaceChildren(...items);
+    $("attention-panel").hidden = !items.length;
+  }
 
   // ---------- Огляд ----------
   function card(label, value, detail, tone) {
@@ -72,10 +122,23 @@
     c.append(el("div", "label", label), el("div", "value", value), el("div", "detail", detail || ""));
     return c;
   }
+  // Картка Огляду веде на сторінку з подробицями.
+  function linked(c, go, title) {
+    c.classList.add("clickable");
+    c.tabIndex = 0; c.setAttribute("role", "button"); c.title = title;
+    c.addEventListener("click", go);
+    c.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); } });
+    return c;
+  }
+  const openRadioRecords = () => {
+    $("recording-view").value = "radio";
+    if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
+  };
   function receiverTone(state) { return state === "listening" ? "ok" : state === "paused" ? "warn" : "bad"; }
 
   async function overview() {
     data = await request("/api/overview");
+    attention();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {}, o = data.overview;
     const state = data.receiver;
     const pill = $("receiver-pill");
@@ -93,22 +156,23 @@
     const lastEvent = utcTs(o.last_event_at);
     const sync = data.telegram_sync || {};
     $("cards").replaceChildren(
-      card("Приймач", pill.textContent, d.started_at ? `сесія ${ago(now() - d.started_at)}` : "немає даних сесії", receiverTone(state)),
-      card("Розпізнавання", { ok: "Працює", stuck: "Зависло", failing: "Помилки", unknown: "Немає даних" }[health] || health,
+      linked(card("Приймач", pill.textContent, d.started_at ? `сесія ${ago(now() - d.started_at)}` : "немає даних сесії", receiverTone(state)), () => show("system"), "Система: моделі, потоки, діагностика"),
+      linked(card("Розпізнавання", { ok: "Працює", stuck: "Зависло", failing: "Помилки", unknown: "Немає даних" }[health] || health,
         fresh ? (models.length ? `моделі: ${models.join(" / ")}` : "") : "приймач не надсилає свіжих метрик",
-        health === "ok" ? "ok" : health === "unknown" ? "" : "bad"),
-      card("Знімок метрик", age === null ? "—" : `${ago(age)} тому`, "оновлюється кожні ~30 с",
-        age === null ? "" : age > 120 ? "warn" : "ok"),
-      card("Telegram", !fresh ? "Немає даних" : g["workers.telegram_alive"] === false ? "Потік зупинено" : "Працює",
+        health === "ok" ? "ok" : health === "unknown" ? "" : "bad"), () => show("settings"), "Налаштування розпізнавання"),
+      linked(card("Знімок метрик", age === null ? "—" : `${ago(age)} тому`, "оновлюється кожні ~30 с",
+        age === null ? "" : age > 120 ? "warn" : "ok"), () => show("system"), "Система: історія діагностики"),
+      linked(card("Telegram", !fresh ? "Немає даних" : g["workers.telegram_alive"] === false ? "Потік зупинено" : "Працює",
         `правок у черзі: ${num(sync.pending)}${sync.exhausted ? ` · не вдалося: ${sync.exhausted}` : ""}`,
         !fresh ? (sync.exhausted ? "bad" : "") : g["workers.telegram_alive"] === false || sync.exhausted ? "bad" : sync.pending ? "warn" : "ok"),
-      card("Події", num(o.events), lastEvent ? `остання ${ago(now() - lastEvent)} тому` : "ще немає", "info"),
-      card("Виправлення", num(o.corrections), `правил: ${num(o.active_rules)} активних / ${num(o.total_rules)}`, "info"),
-      card("Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
-        backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok"),
-      card("Фільтр сповіщень", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
+        () => show("system"), "Система: Telegram"),
+      linked(card("Події", num(o.events), lastEvent ? `остання ${ago(now() - lastEvent)} тому` : "ще немає", "info"), openRadioRecords, "Аудіоархів: ефір"),
+      linked(card("Виправлення", num(o.corrections), `правил: ${num(o.active_rules)} активних / ${num(o.total_rules)}`, "info"), () => show("learning"), "Навчання"),
+      linked(card("Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
+        backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok"), () => show("system"), "Система: резервні копії"),
+      linked(card("Фільтр сповіщень", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
         `зразків: ${data.samples} · відкинуто: ${num(c["asr.outcome.notification"] || 0)} · кандидатів: ${num(c["asr.spectral.candidate"] || 0)}`,
-        data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn"),
+        data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn"), () => show("filter"), "Сигнали: фільтр"),
     );
     drawEvents(data.events_by_hour);
     drawFunnel(c);
@@ -317,7 +381,7 @@
     }
     chart.append(svg("line", { class: "thr", x1: threshold * W, x2: threshold * W, y1: 0, y2: H }));
     const total = buckets.reduce((a, b) => a + b, 0);
-    $("filter-hist").replaceChildren(total ? chart : el("p", "muted", "Оцінок ще немає: потрібні зразки й перезапущений приймач у режимі спостереження."));
+    $("filter-hist").replaceChildren(total ? chart : el("p", "muted", "Оцінок ще немає: потрібні зразки й запущений приймач."));
   }
 
   function drawRecent(rows) {
@@ -463,8 +527,28 @@
     } catch (error) { status.className = "alert small"; status.textContent = error.message; throw error; }
   }));
 
+  // Перевірка рядків під час набору: ті самі правила, що й «Зберегти», без запису.
+  function liveCheck(area, box, path, initial = []) {
+    const render = (errors, warnings) => {
+      box.replaceChildren();
+      for (const e of errors) box.append(el("li", "error", e));
+      for (const w of warnings) box.append(el("li", "", w));
+    };
+    render([], initial);
+    let timer = null, seq = 0;
+    area.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const mine = ++seq;
+        try {
+          const r = await request(path, "PUT", { entries: fromLines(area.value) });
+          if (mine === seq) render(r.errors || [], r.warnings || []);
+        } catch (_) { /* підказка необов’язкова */ }
+      }, 600);
+    });
+  }
+
   async function dictionaries() {
-    await dailyCodes();
     const data = await request("/api/dictionaries");
     const box = $("dictionary-lists");
     box.replaceChildren();
@@ -486,7 +570,9 @@
         } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
       }));
       const actions = el("div", "list-actions"); actions.append(save, status);
-      panel.append(el("h2", "", title), el("p", "muted small", help), area, actions);
+      const hints = el("ul", "warn-list");
+      liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
+      panel.append(el("h2", "", title), el("p", "muted small", help), area, actions, hints);
       box.append(panel);
     }
   }
@@ -511,7 +597,7 @@
       area.setAttribute("aria-label", title);
       const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
       const warnings = el("ul", "warn-list");
-      for (const w of list.warnings || []) warnings.append(el("li", "", w));
+      liveCheck(area, warnings, `/api/text-lists/${type}/check`, list.warnings || []);
       save.addEventListener("click", () => action(async () => {
         try {
           const r = await request(`/api/text-lists/${type}`, "PUT", { entries: fromLines(area.value), expected_revision: textRevision });
@@ -523,6 +609,7 @@
       const actions = el("div", "list-actions"); actions.append(save, status);
       panel.append(el("h2", "", title), el("p", "muted small", help), area, actions, warnings);
       if (type === "callsign_aliases") panel.append(aliasCandidates(list.entries));
+      if (type === "blacklist" || type === "short_garbage") panel.append(noiseCandidates(type, list.entries));
       box.append(panel);
     }
   }
@@ -543,6 +630,8 @@
     const load = el("button", "ghost", "Кандидати з архіву");
     const out = el("div");
     load.addEventListener("click", () => action(async () => {
+      if (out.childNodes.length) { out.replaceChildren(); load.textContent = "Кандидати з архіву"; return; }
+      load.textContent = "Сховати кандидатів";
       const data = await request("/api/text-lists/callsign-alias-candidates");
       out.replaceChildren();
       if (!data.items.length) { out.append(el("p", "muted small", `Розмічених записів мовлення: ${data.records}. Кандидатів немає.`)); return; }
@@ -569,6 +658,55 @@
         }
         row.append(el("td", "", c.heard), el("td", "", c.callsign), el("td", "", String(c.count)),
                    el("td", "", `${c.similarity}%`), flags, cell);
+        table.append(row);
+      }
+      const scroll = el("div", "table-wrap"); scroll.append(table);
+      out.append(scroll);
+    }));
+    wrap.append(load, out);
+    return wrap;
+  }
+
+  // Підказка: тексти Whisper, що повторюються на записах без мовлення. Додає лише оператор.
+  const NOISE_FLAGS = {
+    already_added: "вже у списках",
+    has_number: "є число — може бути повідомленням",
+    dictionary_word: "словникове ім’я — не можна",
+    in_speech: "трапляється в справжньому мовленні",
+  };
+  const LABEL_NAMES = { noise: "шум ефіру", room: "кімната", notification: "сигнал" };
+  function noiseCandidates(type, entries) {
+    const wrap = el("div", "alias-candidates");
+    const load = el("button", "ghost", "Кандидати з архіву");
+    const out = el("div");
+    load.addEventListener("click", () => action(async () => {
+      if (out.childNodes.length) { out.replaceChildren(); load.textContent = "Кандидати з архіву"; return; }
+      load.textContent = "Сховати кандидатів";
+      const data = await request("/api/text-lists/noise-candidates");
+      const items = data.items.filter(i => i.list === type);
+      if (!items.length) { out.append(el("p", "muted small", `Розмічених записів: ${data.records}. Кандидатів немає.`)); return; }
+      out.append(el("p", "muted small", "Тексти Whisper, що повторюються на записах, які ви позначили як шум, кімнату чи сигнал. "
+        + "«Дійшло до тексту» — скільки разів такий запис пройшов усі фільтри. До трьох слів — сюди, у «Короткий шум»; довші — у «Фрази-галюцинації»."));
+      const table = el("table"), head = el("tr");
+      for (const h of ["Текст", "Разів", "Дійшло до тексту", "Де", "Примітки", ""]) head.append(el("th", "", h));
+      table.append(head);
+      for (const c of items) {
+        const row = el("tr"), flags = el("td", "small"), cell = el("td");
+        for (const f of c.flags) flags.append(el("span", "badge", NOISE_FLAGS[f] || f), " ");
+        if (c.addable) {
+          const add = el("button", "ghost", "Додати");
+          add.addEventListener("click", () => action(async () => {
+            const r = await request(`/api/text-lists/${type}`, "PUT",
+              { entries: entries.concat([{ raw_line: c.text, enabled: true }]), expected_revision: textRevision });
+            textRevision = r.revision;
+            note(`Додано «${c.text}» (ревізія ${r.revision}).`);
+            await texts();
+          }));
+          cell.append(add);
+        }
+        const where = Object.entries(c.labels).map(([k, v]) => `${LABEL_NAMES[k] || k}: ${v}`).join(", ");
+        const text = el("td", "", c.text); text.title = c.example;
+        row.append(text, el("td", "", String(c.count)), el("td", "", String(c.reached_text)), el("td", "small", where), flags, cell);
         table.append(row);
       }
       const scroll = el("div", "table-wrap"); scroll.append(table);
@@ -732,6 +870,50 @@
   }
   $("learning-filter").addEventListener("change", () => { if (learningData) renderLearning(); });
   $("learning-refresh").addEventListener("click", () => action(learning));
+
+  // ---------- Лаунчер: перезапуск і зупинка ----------
+  const LAUNCHER = { running: "працює", starting: "запускається", stopping: "зупиняється", cleanup_pending: "завершує служби", inactive: "не керує панеллю" };
+  async function launcherState() {
+    try {
+      const s = await request("/api/launcher");
+      $("launcher-state").textContent = s.managed ? (LAUNCHER[s.state] || s.state) : LAUNCHER.inactive;
+      $("launcher-restart").disabled = $("launcher-stop").disabled = $("receiver-toggle").disabled = !s.managed || !s.reachable;
+      receiverStopped = !!s.receiver_stopped;
+      if (s.managed && receiverStopped) $("launcher-state").textContent += " · приймач зупинено";
+      $("receiver-toggle").textContent = receiverStopped ? "▶ Запустити приймач" : "⏸ Зупинити приймач";
+    } catch (_) { $("launcher-state").textContent = "—"; }
+  }
+  let receiverStopped = false;
+  $("receiver-toggle").addEventListener("click", () => action(async () => {
+    const start = receiverStopped;
+    if (!start && !confirm("Зупинити лише приймач? Ефір не записуватиметься й сповіщень не буде, доки його не запустять знову. Панель, API й Mini App працюють.")) return;
+    await request(`/api/launcher/${start ? "receiver-start" : "receiver-stop"}`, "POST");
+    note(start ? "Приймач запускається (близько 10 с)…" : "Приймач зупиняється: дочікується черги Telegram…");
+    setTimeout(launcherState, 8000);
+  }));
+  async function waitForComeback() {
+    // Панель перезапускається разом з усіма службами; сесія зберігається.
+    for (let i = 0; i < 90; i++) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      try { const s = await request("/api/launcher"); if (s.managed && s.state === "running" && i > 2) { location.reload(); return; } } catch (_) {}
+    }
+    note("Панель не повернулась за 3 хв. Перевірте вікно лаунчера або launcher.log.");
+  }
+  $("launcher-restart").addEventListener("click", () => action(async () => {
+    if (!confirm("Перезапустити всі служби? Приймач, бот і Mini App будуть недоступні близько хвилини. Черга Telegram буде дочекана.")) return;
+    await request("/api/launcher/restart", "POST");
+    $("launcher-state").textContent = "перезапускається";
+    note("Перезапуск… Сторінка оновиться сама, коли панель повернеться.");
+    waitForComeback();
+  }));
+  $("launcher-stop").addEventListener("click", () => action(async () => {
+    if (!confirm("Зупинити Radio 345 повністю? Сповіщення не надходитимуть, ця панель теж зупиниться. Запустити знову можна лише на Mac: у папці проєкту командою .venv/bin/python start_radio345.py")) return;
+    await request("/api/launcher/stop", "POST");
+    $("launcher-state").textContent = "зупиняється";
+    note("Лаунчер зупиняється. Запустити знову: .venv/bin/python start_radio345.py у папці проєкту.");
+  }));
+  launcherState();
+  setInterval(launcherState, 30000);
 
   // ---------- Активність користувача ----------
   const ACTIONS = {
@@ -1260,7 +1442,7 @@
   $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });
   $("recording-search").addEventListener("input", event => { if (!event.target.value) action(() => recordings(true)); });
 
-  const loaders = { recordings: () => recordings(true), overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
+  const loaders = { recordings: () => recordings(true), overview, phrases: () => phrases(true), sounds: samples, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, roles: async () => roles() };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

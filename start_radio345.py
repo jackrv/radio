@@ -7,6 +7,9 @@
     python start_radio345.py --ngrok-url https://YOUR_DEV_DOMAIN.ngrok-free.app
     python start_radio345.py --status
     python start_radio345.py --stop
+    python start_radio345.py --restart
+    python start_radio345.py --receiver-stop    # лише приймач; панель, API й Mini App працюють
+    python start_radio345.py --receiver-start
 
 Ctrl+C, SIGTERM і SIGHUP зупиняють лише служби цього запуску.
 """
@@ -37,7 +40,7 @@ from urllib.parse import urlsplit
 from project_python import select_python
 from services.admin_setup import ensure_admin
 from services.dictionary_setup import ensure_dictionaries, interactive_console
-from services.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_stop
+from services.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_restart, request_stop, send_command
 
 ROOT = Path(__file__).resolve().parent
 API_PORT = 8765
@@ -427,6 +430,11 @@ def main() -> int:
     control = parser.add_mutually_exclusive_group()
     control.add_argument("--status", action="store_true", help="показати керований запуск, порти та блокування приймача")
     control.add_argument("--stop", action="store_true", help="зупинити лише власний керований запуск")
+    control.add_argument("--restart", action="store_true",
+                         help="перезапустити всі служби запущеного лаунчера в його ж вікні")
+    control.add_argument("--receiver-stop", action="store_true",
+                         help="зупинити лише приймач (звільнити пам’ять для прогонів); решта служб працює")
+    control.add_argument("--receiver-start", action="store_true", help="знову запустити приймач у запущеному лаунчері")
     args = parser.parse_args()
 
     try:
@@ -440,17 +448,80 @@ def main() -> int:
             show_status()
             output("Немає керованого запуску. Сторонні та старі некеровані процеси не завершувались")
             return 2
-        # Одне рішення для складу сесії й для запуску: інакше сесія не знає служби «admin».
-        args.start_admin = should_start_admin(args)
-        names = ["api", "ngrok"] + (["admin"] if args.start_admin else []) + (["miniapp"] if args.local_miniapp else []) + ["radio"]
-        with LauncherSession(ROOT, names, log=output) as session:
-            return run_services(args, session)
+        if args.restart:
+            if request_restart(ROOT):
+                output("Запит перезапуску надіслано: лаунчер зупинить і знову запустить служби")
+                return 0
+            show_status()
+            output("Немає керованого запуску, перезапускати нічого")
+            return 2
+        if args.receiver_stop or args.receiver_start:
+            return receiver_command("receiver-stop" if args.receiver_stop else "receiver-start")
+        return run_until_stopped(args)
     except KeyboardInterrupt:
         output("Завершення запускателя запитано")
         return 0
     except (OSError, RuntimeError) as exc:
         output(str(exc))
         return 1
+
+
+RESTART_WAIT_SECONDS = 60
+
+
+def receiver_command(command, timeout=RESTART_WAIT_SECONDS):
+    """Зупинка чи запуск лише приймача; чекає, доки .radio345.lock звільниться / зайнятий."""
+    if not send_command(ROOT, command):
+        output("Немає керованого запуску лаунчера")
+        return 2
+    want_held = command == "receiver-start"
+    deadline = time.monotonic() + timeout
+    while lock_held(ROOT / ".radio345.lock") != want_held:
+        if time.monotonic() >= deadline:
+            output("Команду надіслано, але приймач ще не " + ("запустився" if want_held else "зупинився") + "; перевірте --status")
+            return 1
+        time.sleep(0.5)
+    output("Приймач запущено" if want_held else "Приймач зупинено; панель, API й Mini App працюють")
+    return 0
+
+
+def open_session(names, *, retry_seconds=0.0):
+    """Сесія лаунчера; після перезапуску чекає, доки старі контролери звільнять блокування."""
+    deadline = time.monotonic() + retry_seconds
+    while True:
+        try:
+            return LauncherSession(ROOT, names, log=output).__enter__()
+        except RuntimeError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.5)
+
+
+def run_until_stopped(args):
+    """Запуск служб; команда «перезапуск» (з панелі чи --restart) запускає їх знову."""
+    restarting = False
+    while True:
+        # Одне рішення для складу сесії й для запуску: інакше сесія не знає служби «admin».
+        args.start_admin = should_start_admin(args)
+        names = ["api", "ngrok"] + (["admin"] if args.start_admin else []) + (["miniapp"] if args.local_miniapp else []) + ["radio"]
+        session = open_session(names, retry_seconds=RESTART_WAIT_SECONDS if restarting else 0.0)
+        try:
+            if restarting:
+                wait_receiver_released()
+            code = run_services(args, session)
+        finally:
+            session.__exit__(None, None, None)
+        if not session.restart_requested:
+            return code
+        output("Перезапуск: служби зупинено, запускаю знову…")
+        restarting = True
+
+
+def wait_receiver_released(timeout=RESTART_WAIT_SECONDS):
+    """Попередній приймач звільняє .radio345.lock після черги Telegram."""
+    deadline = time.monotonic() + timeout
+    while lock_held(ROOT / ".radio345.lock") and time.monotonic() < deadline:
+        time.sleep(0.5)
 
 
 def show_status():
@@ -595,6 +666,20 @@ def run_services(args, session):
         processes.append(radio)
         output("Усі запитані процеси запущено. Ctrl+C — зупинити їх разом.")
         while True:
+            request = session.take_request()
+            radio = next((item for item in processes if item.name == "radio"), None)
+            if request == "receiver-stop" and radio is not None:
+                output("Зупиняю лише приймач за запитом; панель, API й Mini App працюють далі")
+                session.stop_service(radio.process, "radio")
+                processes.remove(radio)
+                output("Приймач зупинено. Запустити: --receiver-start або кнопка в панелі")
+            elif request == "receiver-start" and radio is None:
+                if lock_held(ROOT / ".radio345.lock"):
+                    output("Приймач не запущено: блокування ще утримується іншим процесом")
+                else:
+                    if _console is not None:
+                        _console.expect_receiver()
+                    processes.append(ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session))
             for item in processes:
                 exit_code = item.process.poll()
                 if exit_code is not None and item.name == "admin":

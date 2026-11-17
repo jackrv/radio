@@ -40,8 +40,11 @@ nav button.active { background: #253b31; border-color: #425844; color: #d9f3c8; 
 
 main { padding: 22px 28px 40px; min-width: 0; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.top-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.switch { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap; }
+.switch { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 99px; cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch:has(input:checked) { color: #d9f3c8; background: #253b31; border-color: #4f7359; }
+.switch:has(input:focus-visible) { outline: 2px solid var(--lime); outline-offset: 2px; }
 .pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 99px; font-size: 12px; font-weight: 700; background: #26303a; color: #b9c5ce; }
 .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .pill.ok { background: #1d4637; color: var(--ok); } .pill.warn { background: #4a3d1f; color: var(--warn); }
@@ -202,3 +205,30 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 
 /* Підписані списки над аудіоархівом */
 .field-inline { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+
+.launcher-box { margin-top: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.launcher-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.launcher-actions button { flex: 1; padding: 6px 8px; font-size: 12px; }
+
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: -6px 0 14px; border-bottom: 1px solid var(--border); }
+.tabs .tab { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 12px; font-weight: 600; }
+.tabs .tab:hover { color: var(--text); }
+.tabs .tab.active { color: var(--lime); border-bottom-color: var(--lime); }
+.attention h2 { margin-bottom: 8px; }
+.attention-list { display: flex; flex-direction: column; gap: 6px; }
+.attention-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: var(--surface2); border-left: 3px solid var(--info); font-size: 13px; }
+.attention-item.warn { border-left-color: var(--warn); } .attention-item.bad { border-left-color: var(--bad); }
+.attention-item button { flex-shrink: 0; padding: 4px 10px; font-size: 12px; }
+.warn-list li.error { color: var(--bad); }
+@media (max-width: 1250px) { .top-actions #updated { display: none; } }
+@media (max-width: 900px) { .top-actions { flex-wrap: wrap; } }
+#cards { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
+#cards .card { padding: 12px 12px; }
+#cards .card .value { font-size: 17px; line-height: 1.2; overflow-wrap: anywhere; }
+#cards .card .detail { font-size: 11px; }
+#cards .card .label { font-size: 9px; letter-spacing: .08em; }
+@media (max-width: 1100px) { #cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 760px) { #cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.card.clickable { cursor: pointer; transition: border-color .15s, background .15s; }
+.card.clickable:hover { border-color: #4f7359; background: #16222f; }
+.card.clickable:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }

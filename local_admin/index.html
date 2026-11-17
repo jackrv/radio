@@ -12,20 +12,18 @@
   <aside class="sidebar">
     <div class="brand"><span class="logo">345</span><div><div class="overline">ЛОКАЛЬНА ПАНЕЛЬ</div><div class="title">RADIO <b>345</b></div></div></div>
     <nav id="nav">
-      <button data-view="overview" class="active"><span>◎</span>Огляд</button>
-      <button data-view="recordings"><span>▶</span>Аудіоархів</button>
-      <button data-view="phrases"><span>✎</span>Фрази</button>
-      <button data-view="sounds"><span>🔔</span>Звуки</button>
-      <button data-view="filter"><span>≋</span>Фільтр</button>
-      <button data-view="dictionaries"><span>☰</span>Словники</button>
-      <button data-view="texts"><span>Aa</span>Фільтри тексту</button>
-      <button data-view="learning"><span>✓</span>Навчання</button>
-      <button data-view="settings"><span>⚙</span>Налаштування</button>
-      <button data-view="users"><span>♙</span>Користувачі</button>
-      <button data-view="activity"><span>☷</span>Активність</button>
-      <button data-view="system"><span>▤</span>Система</button>
-      <button data-view="roles"><span>◐</span>Ролі</button>
+      <button data-group="overview" class="active"><span>◎</span>Огляд</button>
+      <button data-group="recordings"><span>▶</span>Аудіоархів</button>
+      <button data-group="recognition"><span>☰</span>Розпізнавання</button>
+      <button data-group="signals"><span>🔔</span>Сигнали</button>
+      <button data-group="people"><span>♙</span>Люди</button>
+      <button data-group="system"><span>▤</span>Система</button>
     </nav>
+    <div class="launcher-box">
+      <div class="small muted">Лаунчер: <b id="launcher-state">—</b></div>
+      <div class="launcher-actions"><button id="receiver-toggle" class="ghost" title="Лише приймач: панель, API й Mini App працюють далі">⏸ Приймач</button></div>
+      <div class="launcher-actions"><button id="launcher-restart" class="ghost" title="Штатно зупинити всі служби й одразу запустити знову">⟳ Перезапустити</button><button id="launcher-stop" class="ghost danger" title="Зупинити приймач, бота, Mini App і цю панель">⏻ Зупинити</button></div>
+    </div>
     <p class="aside-note">Лише 127.0.0.1. Не публікується через ngrok.</p>
   </aside>
 
@@ -33,13 +31,15 @@
     <header class="topbar">
       <div><h1 id="view-title">Огляд</h1><p id="feedback" class="muted" role="status">Перевіряємо доступ…</p></div>
       <div class="top-actions"><span id="receiver-pill" class="pill">—</span><span id="updated" class="muted small"></span>
-        <label class="switch" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked> Не слухати ефір під час відтворення</label>
-        <label class="switch"><input id="auto" type="checkbox" checked> Автооновлення</label><button id="refresh" class="ghost">Оновити</button></div>
+        <label class="switch" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked> 🎧 Мікрофон на паузі під час відтворення</label>
+        <label class="switch" title="Оновлювати сторінку кожні кілька секунд"><input id="auto" type="checkbox" checked> ⟳ Автооновлення</label><button id="refresh" class="ghost">Оновити</button></div>
     </header>
+    <div id="tabs" class="tabs" role="tablist" hidden></div>
 
     <div id="content" hidden>
       <!-- Огляд -->
       <section data-panel="overview">
+        <article class="panel attention" id="attention-panel" hidden><h2>Потребує уваги</h2><div id="attention" class="attention-list"></div></article>
         <div class="cards" id="cards"></div>
         <div class="grid two">
           <article class="panel"><div class="panel-head"><h2>Події за 24 години</h2><span id="events-total" class="muted small"></span></div><div id="events-chart" class="chart"></div></article>
@@ -66,7 +66,9 @@
                 <optgroup label="Перегляд">
                   <option value="reviewed">Розмічені</option>
                   <option value="all">Усі записи</option>
-                  <option value="shadow">Перевірка нового фільтра тексту</option>
+                </optgroup>
+                <optgroup label="Інше">
+                  <option value="shadow">Експеримент: новий фільтр тексту</option>
                 </optgroup>
               </select></label>
             <label class="field-inline">Період
@@ -104,7 +106,7 @@
       <!-- Фрази -->
       <section data-panel="phrases" hidden>
         <div class="toolbar"><input id="phrase-query" type="search" placeholder="Пошук у фразах…"><button id="phrase-search">Знайти</button></div>
-        <p class="muted small">«＋ До зразків» робить фрагмент еталоном фільтра звуків сповіщень (лише чистий звук без мовлення, діє після перезапуску приймача). Мітка «спектр» — оцінка цього сегмента спектральним фільтром. Розмітка для перевірки фільтра — у «Аудіоархіві».</p>
+        <p class="muted small">«＋ До зразків» робить фрагмент еталоном фільтра звуків сповіщень (лише чистий звук без мовлення, діє після перезапуску — кнопка внизу меню). Мітка «спектр» — оцінка цього сегмента спектральним фільтром. Розмітка для перевірки фільтра — у «Аудіоархіві».</p>
         <div id="phrases" class="list"></div>
         <button id="phrase-more" class="ghost wide" hidden>Показати ще</button>
       </section>
@@ -113,7 +115,7 @@
       <section data-panel="sounds" hidden>
         <article class="panel">
           <h2>Зразки звуків сповіщень</h2>
-          <p class="muted">Чистий звук без мовлення: моно WAV PCM16, 16000 Гц, до 5 с; сам сигнал — до 2 с. До 16 зразків. Зміни діють після перезапуску приймача.</p>
+          <p class="muted">Чистий звук без мовлення: моно WAV PCM16, 16000 Гц, до 5 с; сам сигнал — до 2 с. До 16 зразків. Зміни діють після перезапуску (кнопка «Перезапустити» внизу меню).</p>
           <div class="toolbar"><input id="sample-file" type="file" accept=".wav,audio/wav"><label class="check"><input id="sample-confirm" type="checkbox"> Прослухав: мовлення немає</label>
             <button id="sample-add">Додати зразок</button><button id="sample-test" class="ghost">Перевірити WAV</button></div>
           <div id="samples" class="list"></div>
@@ -127,13 +129,12 @@
           <article class="panel"><div class="panel-head"><h2>Розподіл оцінок</h2><span class="muted small">поточний запуск приймача</span></div>
             <div id="filter-hist" class="chart"></div>
             <p class="muted small">Оцінка — спектральна схожість сегмента з найближчим зразком (1 — той самий звук). Пунктир — поточний поріг.</p></article>
-          <article class="panel"><h2>Як обрати поріг</h2>
+          <article class="panel"><h2>Як працює фільтр</h2>
             <ol class="steps">
-              <li>Додайте 1–3 чисті зразки сповіщення («Звуки» або «＋ До зразків» у «Фразах») і перезапустіть приймач.</li>
-              <li>Режим спостереження нічого не відкидає: кожен сегмент лише отримує оцінку, її видно тут і біля фраз.</li>
+              <li>Фільтр увімкнено (режим <code>active</code>): сегмент, схожий на зразок сповіщення, відкидається ще до Whisper. Поточний поріг і режим — угорі цієї сторінки.</li>
+              <li>Зразки — у вкладці «Зразки звуків» або кнопкою «＋ До зразків» у «Фразах з Telegram». Нові зразки діють після перезапуску (кнопка «Перезапустити» внизу меню).</li>
               <li>У «Аудіоархіві» позначайте записи: <b>«Сигнал»</b>, <b>«Мовлення»</b>, «Нерозбірливо», «Шум ефіру» чи «Кімната / клавіатура». Там справжній звук приймача, зокрема відкинуті сегменти.</li>
-              <li>«Оцінити розмітку» покаже, скільки сповіщень знайде кожен поріг і чи зачепить він мовлення.</li>
-              <li>Щоб увімкнути: у <code>config.py</code> задайте <code>SPECTRAL_NOTIFICATION_MODE = "active"</code> і рекомендований поріг, потім перезапустіть приймач.</li>
+              <li>«Оцінити розмітку» покаже, скільки сповіщень знайде кожен поріг і чи зачепить він мовлення. Поріг змінюється в <code>config.py</code>.</li>
             </ol></article>
         </div>
         <article class="panel"><div class="panel-head"><h2>Високі збіги</h2><span class="muted small">оцінка ≥ 0,5 · найновіші вгорі</span></div>
@@ -146,15 +147,18 @@
       <!-- Текстові списки -->
       <section data-panel="dictionaries" hidden>
         <article class="panel"><h2>Словники розпізнавання</h2>
-          <p class="muted">Ті самі словники, що в Mini App («Словники»). Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
+          <p class="muted">Словники позивних, команд і списку спостереження. Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
           <p id="dictionaries-status" class="muted small"></p></article>
+        <div id="dictionary-lists" class="grid two"></div>
+      </section>
+
+      <section data-panel="codes" hidden>
         <article class="panel"><h2>Коди доби</h2>
           <p class="muted small">Цифрові комбінації, які група повторює протягом доби («14 77»). Доба кодів — з 20:00 попереднього дня до 20:00 обраного (година — <code>DAILY_CODES_CHANGE_HOUR</code> у <code>config.py</code>). Постійні коди діють щодня разом із кодами доби. Перевірка тексту в архіві й у Mini App підкаже «Можливо, 14 77?», якщо в записі цього дня пара цифр відрізняється від коду однією цифрою; номер одразу після позивного не чіпається.</p>
           <div class="toolbar"><span class="muted small">Постійні:</span><input id="codes-permanent" placeholder="18 36, 24 91" aria-label="Постійні коди" maxlength="500"><button id="codes-permanent-save">Зберегти постійні</button></div>
           <div class="toolbar"><span class="muted small">Доба:</span><input id="codes-day" type="date" aria-label="Доба кодів"><input id="codes-input" placeholder="14 77" aria-label="Коди доби" maxlength="500"><button id="codes-save">Зберегти коди доби</button><span id="codes-period" class="muted small"></span></div>
           <p id="codes-status" class="muted small"></p>
           <div id="codes-recent" class="muted small"></div></article>
-        <div id="dictionary-lists" class="grid two"></div>
       </section>
 
       <section data-panel="texts" hidden>
@@ -169,7 +173,7 @@
         <article class="panel"><h2>Розпізнавання</h2><p class="muted">Застосовуються після перезапуску приймача. Збереження його не перезапускає.</p>
           <p id="models" class="muted small"></p><form id="settings"><div id="fields" class="fields"></div><button>Зберегти</button></form></article>
         <article class="panel"><h2>Обробка без перезапуску</h2>
-          <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram (розділ «Словники» тут або в Mini App) теж діють без перезапуску.</p>
+          <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram (розділ «Словники») теж діють без перезапуску.</p>
           <p id="runtime-status" class="muted small"></p>
           <form id="runtime-settings"><div id="runtime-fields" class="fields"></div><button>Зберегти</button></form></article>
       </section>

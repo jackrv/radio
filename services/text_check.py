@@ -248,16 +248,26 @@ def _tidy_part(part, callsigns, commands):
     return text[:1].upper() + text[1:] + end
 
 
+# Роздільник передач у еталоні: « / ». Старий «|» лишається зрозумілим.
+TRANSMISSION_SEPARATOR = "/"
+TRANSMISSION_SPLIT = re.compile(r"\s*[|/]\s*")
+
+
+def has_several_transmissions(text):
+    return bool(TRANSMISSION_SPLIT.search(text or ""))
+
+
 def tidy_text(text, callsigns, commands):
     """Коми між групами й великі літери позивних; слова й цифри не змінюються.
 
-    Передачі, розділені «|», оформлюються окремо. Якщо порядок слів раптом
+    Передачі, розділені « / » (старий роздільник «|» теж розуміється й замінюється
+    на « / »), оформлюються окремо. Якщо порядок слів раптом
     змінився б, текст повертається без змін.
     """
     if not text or not text.strip() or callsigns is None:
         return text
-    parts = [p for p in text.split("|")]
-    tidy = " | ".join(_tidy_part(p, callsigns, commands) for p in parts if p.strip())
+    parts = TRANSMISSION_SPLIT.split(text)
+    tidy = f" {TRANSMISSION_SEPARATOR} ".join(_tidy_part(p, callsigns, commands) for p in parts if p.strip())
     same = lambda a, b: re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", a.casefold())) == \
         re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", b.casefold()))
     return tidy if same(text, tidy) else text

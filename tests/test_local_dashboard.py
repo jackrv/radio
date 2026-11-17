@@ -348,7 +348,8 @@ def test_callsign_suggestions_and_roles_for_two_callsigns(local):
     two=lambda text: client.post("/api/recordings/suggest-roles",json={"text":text},headers={"Origin":ORIGIN}).json()["roles"]
     assert two("Вишня 210, я Клен 300, прийом")=={"recipient":"вишня 210","sender":"клен 300"}
     assert two("Вишня 210, Клен 300, прийнято")=={"recipient":"вишня 210","sender":"клен 300"}
-    assert two("Вишня 210, прийнято | Клен 300, прийнято") is None, "кілька передач — ролі не підставляються"
+    assert two("Вишня 210, прийнято / Клен 300, прийнято") is None, "кілька передач — ролі не підставляються"
+    assert two("Вишня 210, прийнято | Клен 300, прийнято") is None, "старий роздільник теж"
     assert two("Вишня 210, посилку отримав") is None, "один позивний — оператор вирішує сам"
 
 

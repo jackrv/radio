@@ -1039,13 +1039,13 @@
       // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
       const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
       const multi = el("label", "check small"); multi.append(multiBox, el("span", "", " Кілька передач у записі"));
-      // «|» у тексті — кілька передач: відмітка ставиться сама й знімається, лише якщо її
+      // «/» (чи старий «|») у тексті — кілька передач: відмітка ставиться сама й знімається, лише якщо її
       // поставила підстановка. Ручне перемикання вимикає підстановку в цій картці.
       let multiAuto = false, multiTouched = false;
       multiBox.addEventListener("change", () => { multiTouched = true; multiAuto = false; suggest(); });
       input.addEventListener("input", () => {
         if (multiTouched) return;
-        const split = input.value.includes("|");
+        const split = /[|/]/.test(input.value);
         if (split && !multiBox.checked) { multiBox.checked = true; multiAuto = true; }
         else if (!split && multiAuto) { multiBox.checked = false; multiAuto = false; }
       });

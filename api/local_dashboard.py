@@ -351,7 +351,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         # Ролі підставляються лише для двох різних позивних в одній передачі
         # (за тим самим правилом, що й у приймачі); інакше оператор вирішує сам.
         roles = None
-        if len(items) == 2 and "|" not in payload.text:
+        from services.text_check import has_several_transmissions
+        if len(items) == 2 and not has_several_transmissions(payload.text):
             from core.analyzer import split_roles
             to_found, from_found = split_roles(payload.text, callsigns)
             if len(to_found) == 1 and len(from_found) == 1:

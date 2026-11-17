@@ -8,7 +8,7 @@ import requests
 
 from core.diagnostics import RuntimeDiagnostics, error_kind
 from diagnose_radio345 import audit_database, audit_logs
-from database import init_db as init_dictionaries
+from services.dictionary_store import init_db as init_dictionaries
 from services.event_store import init_db
 from services.sqlite_connection import get_db
 from services.user_store import init_users_db, bootstrap_admin

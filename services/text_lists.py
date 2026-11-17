@@ -12,7 +12,7 @@
 - phrase_patterns — шаблони цілих фраз («{П}, я {П}, перевірка звʼязку, прийом»):
   фраза, що повністю їм відповідає, пишеться як у шаблоні (core/phrase_patterns.py).
 
-Початкові значення беруться з коду (config.py, callsigns.py) один раз — під
+Початкові значення беруться з коду (config.py, core/callsigns.py) один раз — під
 час першого створення таблиць. Далі джерело правди — SQLite; редагування лише
 в локальній панелі. Приймач перевіряє ревізію не частіше ніж раз на кілька
 секунд і застосовує нові списки до наступного сегмента.
@@ -22,8 +22,8 @@ import re
 import sqlite3
 import time
 
-import callsigns as callsign_module
-from callsigns import Callsigns, NUMBER_WORDS, basic_normalize, configure_aliases, normalize
+import core.callsigns as callsign_module
+from core.callsigns import Callsigns, NUMBER_WORDS, basic_normalize, configure_aliases, normalize
 from services.sqlite_connection import get_db
 
 LIST_TYPES = ("blacklist", "short_garbage", "aliases", "callsign_aliases", "whisper_prompt", "phrase_templates",

@@ -7,8 +7,8 @@ from pathlib import Path
 import sqlite3
 import time
 
-from callsigns import Callsigns
-from database import (
+from core.callsigns import Callsigns
+from services.dictionary_store import (
     DICTIONARY_TYPES, format_dictionary_file, init_db as init_dictionaries,
     import_dictionaries, parse_dictionary_file,
 )

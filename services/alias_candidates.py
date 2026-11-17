@@ -10,7 +10,7 @@ from collections import defaultdict
 
 from rapidfuzz import fuzz
 
-from callsigns import FOLD, to_items
+from core.callsigns import FOLD, to_items
 
 # Службові слова: як алиас вони зламали б пошук у звичайних фразах.
 FUNCTION_WORDS = {"я", "на", "к", "і", "й", "та", "до", "по", "в", "у", "з", "із", "зі", "а", "о", "не",

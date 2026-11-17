@@ -2,7 +2,7 @@
 
 import re
 
-from callsigns import FOLD
+from core.callsigns import FOLD
 
 
 def word_tokens(text: str) -> list[str]:

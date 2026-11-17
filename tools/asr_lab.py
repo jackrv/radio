@@ -213,7 +213,7 @@ def dictionaries_from(db_path):
         lines = read_dictionary_lines(db)
         try:
             from services.text_lists import load_active
-            from callsigns import configure_aliases
+            from core.callsigns import configure_aliases
             _, values = load_active(db)
             configure_aliases(values["aliases"], values["callsign_aliases"])
             blacklist, short_garbage = values["blacklist"], values["short_garbage"]

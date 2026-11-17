@@ -453,7 +453,7 @@ def label_archive_from_correction(db_path, fix_id, original, corrected):
     Правка лише регістру чи пунктуації (у т. ч. збереження без змін) не є
     перевіреним еталоном і не переноситься.
     """
-    from callsigns import basic_normalize
+    from core.callsigns import basic_normalize
     if basic_normalize(original or "") == basic_normalize(corrected):
         return []
     root = Path(db_path).resolve().parent / ".local-recordings"

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.diagnostics import RuntimeDiagnostics
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber

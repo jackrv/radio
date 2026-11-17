@@ -2,7 +2,7 @@ from contextlib import nullcontext
 from config import DB_PATH
 from services.sqlite_connection import get_db
 from services.word_store import init_word_db, save_word_feedback_report
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.analyzer import fmt, split_roles
 
 

@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from database import init_db
+from services.dictionary_store import init_db
 from services.event_store import init_db as init_events, save_event
 from services.management.common import ManagementConflict
 from services.management.dictionaries import read_dictionary, write_dictionary

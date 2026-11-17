@@ -1,4 +1,4 @@
-from callsigns import Callsigns
+from core.callsigns import Callsigns
 from core.analyzer import correction_is_safe
 
 

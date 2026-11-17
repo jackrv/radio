@@ -3,10 +3,10 @@ import sqlite3
 
 import pytest
 
-from callsigns import Callsigns
+from core.callsigns import Callsigns
 import core.template_text as tt
 from core.template_text import join_split_callsign, template_text, trim_loops
-from database import init_db
+from services.dictionary_store import init_db
 from services.text_lists import check_list, ensure_tables, load_active, read_lists, sync_aliases, write_list
 
 

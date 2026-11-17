@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from database import import_dictionaries
+from services.dictionary_store import import_dictionaries
 from services.database_lifecycle import initialize_database, reset_database, export_dictionaries
 from services.event_store import save_event
 from services.sqlite_connection import get_db
@@ -87,7 +87,7 @@ def test_failed_import_never_deletes_sources(setup):
 def test_import_failure_rolls_back_all_categories_and_preserves_sources(tmp_path):
     source = sources(tmp_path / "source")
     db = tmp_path / "events.db"
-    from database import init_db
+    from services.dictionary_store import init_db
     init_db(db)
     with get_db(db) as conn:
         conn.execute("CREATE TRIGGER fail_import BEFORE INSERT ON dictionary_entries WHEN NEW.dictionary_type='telegram' BEGIN SELECT RAISE(ABORT,'test'); END")

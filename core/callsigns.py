@@ -399,9 +399,9 @@ def command_dictionary(lines):
 
 if __name__ == "__main__":
     # Швидка перевірка розділу dictionaries.txt без мікрофона:
-    #   python callsigns.py commands "злива сорок два сорок два"
+    #   python -m core.callsigns commands "злива сорок два сорок два"
     from config import DICTIONARIES_PATH
-    from database import parse_dictionary_file
+    from services.dictionary_store import parse_dictionary_file
 
     sections = parse_dictionary_file(DICTIONARIES_PATH.read_text(encoding="utf-8-sig"))
     lines = [line for line, on in sections[sys.argv[1]] if on]

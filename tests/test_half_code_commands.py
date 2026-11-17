@@ -1,7 +1,7 @@
 """Код команди, почутий наполовину: «злива 42» при коді 4242 — команда з позначкою."""
 from unittest.mock import Mock
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.analyzer import fmt_spoken
 from core.text_analysis import analyze_text
 

@@ -99,7 +99,7 @@ def init_word_db(db_path):
 
 def dictionary_names(db) -> frozenset:
     """Імена з увімкнених словників у тій самій транзакції (порожньо без таблиці)."""
-    from callsigns import Callsigns
+    from core.callsigns import Callsigns
     from core.word_rule_validation import known_name_tuples
 
     if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entries'").fetchone():

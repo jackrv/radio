@@ -1,4 +1,4 @@
-from callsigns import Callsigns
+from core.callsigns import Callsigns
 from services.alias_candidates import collect
 
 LINES = ["вишня: 210 300", "клен: 300 301", "ясень: *", "береза: 5", "дуб"]

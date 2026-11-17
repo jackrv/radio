@@ -5,7 +5,7 @@ import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from services import daily_codes
 from services.text_check import check_text
 from tests.test_text_check import api  # noqa: F401  (фікстура Mini App API)
@@ -59,7 +59,7 @@ def test_panel_codes_and_hint_by_record_day(tmp_path):
     from tests.test_local_dashboard import KEY, ORIGIN
     from services.event_store import init_db
     from services.user_store import init_users_db, bootstrap_admin
-    from database import init_db as init_dictionary_db
+    from services.dictionary_store import init_db as init_dictionary_db
     import sqlite3
     db = tmp_path / "events.db"
     init_db(db); init_dictionary_db(db); init_users_db(db); bootstrap_admin(db, 1001)

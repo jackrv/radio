@@ -1,6 +1,6 @@
 """Проверка словесных правил по рабочим словарям Radio 345."""
 
-from callsigns import FOLD
+from core.callsigns import FOLD
 from core.word_learning import (
     tokenize,
     contains_number,

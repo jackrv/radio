@@ -1,7 +1,7 @@
 import pytest
 
-import callsigns as module
-from callsigns import Callsigns
+import core.callsigns as module
+from core.callsigns import Callsigns
 
 
 @pytest.mark.parametrize(

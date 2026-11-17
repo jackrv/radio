@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.analyzer import canonical_text
 from core.template_text import template_text
 from core.text_analysis import analyze_text

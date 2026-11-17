@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from database import init_db as init_dictionary_db
+from services.dictionary_store import init_db as init_dictionary_db
 from services.event_store import init_db as init_event_db, save_event
 from services.miniapp_correction_editor import save_edit_draft
 from services.recordings import RecordingStore, label_archive_from_correction

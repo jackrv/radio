@@ -56,7 +56,7 @@ def load_setup(db_path):
 @contextmanager
 def templates(phrases=None, patterns=None, aliases=None):
     """Тимчасово застосувати обороти й шаблони фраз (None — лишити чинні)."""
-    import callsigns as callsigns_module
+    import core.callsigns as callsigns_module
     import core.phrase_patterns as pp
     import core.template_text as tt
     saved = tt.PHRASES, pp.PATTERNS, dict(callsigns_module.CALLSIGN_ALIASES), {k: list(v) for k, v in callsigns_module.ALIASES.items()}

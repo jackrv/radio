@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 import start_radio345 as launcher
-from database import init_db
+from services.dictionary_store import init_db
 from services.database_lifecycle import initialize_database
 from services.dictionary_setup import dictionary_status, ensure_dictionaries, has_active_admin
 from services.sqlite_connection import get_db

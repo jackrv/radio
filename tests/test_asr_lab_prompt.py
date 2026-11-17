@@ -1,7 +1,7 @@
 """Підказка лабораторії: власні фрази й коди доби конкретного запису."""
 import sqlite3
 
-from database import init_db
+from services.dictionary_store import init_db
 from services import daily_codes
 from tools.asr_lab import receiver_prompt, record_codes
 

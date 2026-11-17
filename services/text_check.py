@@ -16,8 +16,8 @@
 import re
 import sqlite3
 
-import callsigns as callsigns_module
-from callsigns import FOLD, NUMBER_WORDS, basic_normalize
+import core.callsigns as callsigns_module
+from core.callsigns import FOLD, NUMBER_WORDS, basic_normalize
 from core.template_text import _TOKEN, template_text
 
 # Слова з апострофом, які часто пишуть без нього (ключ — без апострофа).
@@ -388,7 +388,7 @@ _cache = {}
 def dictionaries_from_db(db):
     """(позивні, команди, Telegram) з тієї самої SQLite; кешується за відбитком рядків."""
     from services.dictionary_loader import dictionary_fingerprint, dictionaries_from_lines, read_dictionary_lines
-    import callsigns as callsign_module
+    import core.callsigns as callsign_module
     from services.text_lists import sync_aliases
     sync_aliases(db)
     try:

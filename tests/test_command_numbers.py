@@ -1,6 +1,6 @@
 """Кодові команди «слово 42 42»: склеювання номера й упізнавання за номером."""
 
-from callsigns import COMMAND_ANCHORED_THRESHOLD, Callsigns, command_dictionary
+from core.callsigns import COMMAND_ANCHORED_THRESHOLD, Callsigns, command_dictionary
 
 
 def pairs(found):
@@ -66,7 +66,7 @@ def test_matching_word_with_other_number_falls_back_to_owner_of_number():
 
 
 def test_near_number_rules():
-    from callsigns import near_number
+    from core.callsigns import near_number
     assert near_number("023", {"022", "777"}) == "022"
     assert near_number("922", {"022"}) is None, "перша цифра має збігатися"
     assert near_number("033", {"022"}) is None, "відрізняється більше ніж однією цифрою"

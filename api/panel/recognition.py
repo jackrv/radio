@@ -82,7 +82,7 @@ def register(app, ctx):
     @app.get("/api/text-lists/callsign-alias-candidates")
     def callsign_alias_candidates(admin=Depends(actor)):
         """Підказка: почуті Whisper варіанти позивних із розмічених записів. Нічого не записує."""
-        from callsigns import Callsigns
+        from core.callsigns import Callsigns
         from services.alias_candidates import collect
         from services.text_lists import _dictionary_names, ensure_tables, load_active, sync_aliases
         with get_db(db_path) as db:

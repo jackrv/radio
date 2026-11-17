@@ -2,9 +2,9 @@ import hashlib
 import sqlite3
 import time
 
-import callsigns as callsign_module
-from callsigns import Callsigns, command_dictionary
-from database import DICTIONARY_TYPES, init_db
+import core.callsigns as callsign_module
+from core.callsigns import Callsigns, command_dictionary
+from services.dictionary_store import DICTIONARY_TYPES, init_db
 from services.sqlite_connection import get_db
 
 REFRESH_INTERVAL_S = 2.0

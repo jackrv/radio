@@ -7,11 +7,11 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import callsigns as callsign_module
+import core.callsigns as callsign_module
 import services.text_lists as text_lists
-from callsigns import Callsigns, configure_aliases
+from core.callsigns import Callsigns, configure_aliases
 from core.transcriber import Transcriber
-from database import init_db as init_dictionary_db
+from services.dictionary_store import init_db as init_dictionary_db
 from services.text_lists import LiveTextLists, read_lists, write_list, TextListConflict
 
 ORIGIN = "http://127.0.0.1:8766"

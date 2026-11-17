@@ -18,8 +18,8 @@ import re
 
 from rapidfuzz import fuzz
 
-import callsigns as callsigns_module
-from callsigns import FOLD, basic_normalize
+import core.callsigns as callsigns_module
+from core.callsigns import FOLD, basic_normalize
 
 SLOTS = {"п": "P", "ч": "N", "к": "C"}
 FIXED_WORD_MIN = 62          # кожне слово шаблону — щонайменше настільки схоже на почуте

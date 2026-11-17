@@ -2,7 +2,7 @@ import math
 import re
 from typing import NamedTuple
 
-from callsigns import FOLD, basic_normalize, normalize, to_items, dictionary_address_forms
+from core.callsigns import FOLD, basic_normalize, normalize, to_items, dictionary_address_forms
 
 
 def fmt(items):
@@ -333,7 +333,7 @@ def correction_is_safe(
 
         # Проверяем словарные названия независимо от номеров.
         # find() может не обнаружить название с неверным номером.
-        from callsigns import FOLD
+        from core.callsigns import FOLD
 
         original_folded = [
             value.translate(FOLD)

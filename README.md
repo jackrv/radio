@@ -99,8 +99,11 @@ cp dictionaries.example.txt dictionaries.txt      # ваші позивні й �
 ```text
 radio.py, config.py       приймач і базові параметри
 start_radio345.py         лаунчер служб
-core/                     аудіо, VAD, Whisper, аналіз тексту, шаблони, фільтр сигналів
-services/                 SQLite, словники, списки, навчання, Telegram, архів, підказки
+manage_database.py        імпорт, експорт, скидання й відновлення бази
+diagnose_radio345.py      перевірка без зупинки приймача
+core/                     ядро без бази: аудіо, VAD, Whisper, позивні, аналіз тексту, шаблони, фільтр сигналів
+services/                 SQLite і все, що з нею працює: словники, списки, навчання, Telegram, архів, підказки
+services/management/      керування з панелі й Mini App: словники, навчання, користувачі, налаштування
 api/                      FastAPI для Mini App; local_dashboard.py — вхід і безпека панелі
 api/panel/                ендпоінти панелі за розділами (огляд, архів, розпізнавання, сигнали, люди, система)
 local_admin/              сторінка панелі; js/ — скрипт за розділами (сервер склеює їх в один /admin.js)

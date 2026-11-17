@@ -4,7 +4,7 @@ import logging
 import sqlite3
 from unittest.mock import Mock
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.analyzer import canonical_text, fmt_spoken, spoken_number
 from core.event_processor import EventProcessor
 from services.event_store import save_event
@@ -31,7 +31,7 @@ def test_callsign_with_exact_number_and_case():
 
 def test_alias_rewrites_unknown_word_but_keeps_dictionary_word(monkeypatch):
     # Алиас «сніг -> дуб» (сніг — сама назва словника) і «дубок -> дуб».
-    import callsigns
+    import core.callsigns as callsigns
     monkeypatch.setattr(callsigns, "CALLSIGN_ALIASES", {"сніг": "дуб", "дубок": "дуб"})
     assert canonical_text("Сніг, 77, прийом", DICTIONARIES) == "Сніг, 77, прийом"
     assert canonical_text("Дубок 77, прийом", DICTIONARIES) == "Дуб 77, прийом"

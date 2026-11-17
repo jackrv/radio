@@ -11,7 +11,7 @@ from collections import defaultdict
 
 from rapidfuzz import fuzz
 
-from callsigns import FOLD
+from core.callsigns import FOLD
 
 NON_SPEECH = ("noise", "room", "notification")
 SPEECH = ("speech", "unclear")

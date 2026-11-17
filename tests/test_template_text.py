@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.event_processor import EventProcessor
 from core.template_text import template_text
 
@@ -35,7 +35,7 @@ def test_dictionary_and_phrase_words_are_not_rewritten():
 
 
 def test_alias_and_callsign_without_numbers(monkeypatch):
-    import callsigns
+    import core.callsigns as callsigns
     monkeypatch.setattr(callsigns, "CALLSIGN_ALIASES", {"бук": "клен"})
     assert snap("Бук 15, прийом") == "Клен 15, прийом"
     assert snap("Вишна 5316, прийом") == "Вишня 5316, прийом"

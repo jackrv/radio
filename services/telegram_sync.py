@@ -89,7 +89,7 @@ _HEADER_CACHE = {}
 
 def _dictionaries(db_path):
     """Поточні словники з SQLite; кеш за відбитком рядків і поточними алиасами."""
-    import callsigns as callsign_module
+    import core.callsigns as callsign_module
     from services.dictionary_loader import dictionary_fingerprint, dictionaries_from_lines, read_dictionary_lines
     with get_db(db_path) as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():

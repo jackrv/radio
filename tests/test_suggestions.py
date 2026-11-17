@@ -1,7 +1,7 @@
 """Пропозиції з розмітки: збір у всіх списках, нові позначаються, застосовані зникають."""
 import sqlite3
 
-from database import init_db
+from services.dictionary_store import init_db
 from services.recordings import RecordingStore
 from services.suggestions import collect, overview, refresh
 from services.text_lists import read_lists, write_list
@@ -56,7 +56,7 @@ def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path):
 
 
 def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):
-    import callsigns
+    import core.callsigns as callsigns
     from services.event_store import init_db as init_events, save_event
     from services.suggestions import dictionary_conflicts, reference_checks
     path = base_db(tmp_path)
@@ -83,7 +83,7 @@ def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):
 
 
 def test_ordinal_role_is_understood_through_the_dictionary(tmp_path, monkeypatch):
-    import callsigns
+    import core.callsigns as callsigns
     from services.suggestions import reference_checks
     path = base_db(tmp_path)
     with sqlite3.connect(path) as db:

@@ -7,7 +7,7 @@ import sqlite3
 
 import pytest
 
-from callsigns import Callsigns
+from core.callsigns import Callsigns
 from core.word_learning import analyze_word_changes
 from services.word_rule_engine import apply_verified_word_rules
 from services.event_store import save_event

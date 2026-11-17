@@ -2,7 +2,7 @@
 
 import pytest
 
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.analyzer import strip_dictionary_echo
 from tests.test_transcriber import make_pcm, make_transcriber
 

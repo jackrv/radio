@@ -13,7 +13,7 @@ import sqlite3
 import subprocess
 import sys
 
-from database import DICTIONARY_TYPES, parse_dictionary_file
+from services.dictionary_store import DICTIONARY_TYPES, parse_dictionary_file
 from services.sqlite_connection import read_only
 
 YES_ANSWERS = {"y", "yes"}

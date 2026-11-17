@@ -1,6 +1,6 @@
 import pytest
 
-from callsigns import Callsigns
+from core.callsigns import Callsigns
 from services.word_store import (
     init_word_db,
     save_word_feedback,

@@ -3,7 +3,7 @@ import re
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
 from core.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
-from callsigns import normalize
+from core.callsigns import normalize
 from core.diagnostics import runtime
 
 

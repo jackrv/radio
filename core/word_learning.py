@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
-from callsigns import FOLD, NUMBER_WORDS, TENS, to_items, words_to_digits
+from core.callsigns import FOLD, NUMBER_WORDS, TENS, to_items, words_to_digits
 
 
 MAX_WORDS_PER_SIDE = 2

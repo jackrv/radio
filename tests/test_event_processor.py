@@ -277,7 +277,7 @@ def test_sqlite_failure_allows_immediate_retry(monkeypatch):
 
 
 def test_bare_callsign_without_number_is_not_an_event():
-    from callsigns import Callsigns
+    from core.callsigns import Callsigns
     callsigns = Callsigns.from_lines(["дуб", "вишня: 210"])
     for text in ("Дуб", "дуб, дуб."):
         processor, save_event, telegram, log = make_processor(callsigns=callsigns)
@@ -293,7 +293,7 @@ def test_bare_callsign_without_number_is_not_an_event():
 
 
 def test_bare_callsign_with_command_or_watch_word_stays():
-    from callsigns import Callsigns
+    from core.callsigns import Callsigns
     callsigns = Callsigns.from_lines(["дуб"])
     commands = Callsigns.from_lines(["дуб"])
     processor, save_event, _, _ = make_processor(callsigns=callsigns, commands=commands)

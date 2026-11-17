@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from database import init_db as init_dictionary_db
+from services.dictionary_store import init_db as init_dictionary_db
 from services.text_lists import (
     LiveTextLists, compose_prompt, load_active, parse, read_lists, write_list,
 )

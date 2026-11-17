@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import pytest
 
 import start_radio345 as launcher
-from database import init_db
+from services.dictionary_store import init_db
 from services.admin_setup import ensure_admin, fetch_private_chat, parse_private_chat
 from services.sqlite_connection import get_db
 from services.user_store import init_users_db

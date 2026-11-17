@@ -2,7 +2,7 @@
 
 import pytest
 
-from callsigns import Callsigns
+from core.callsigns import Callsigns
 from core.analyzer import fmt, split_roles
 
 CALLSIGNS = Callsigns.from_lines(["береза: 31 56 700 706", "клен: 15", "вишня"])

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 
 import config
-from callsigns import Callsigns, command_dictionary
+from core.callsigns import Callsigns, command_dictionary
 from core.analyzer import is_low_confidence_short
 from core.transcriber import Transcriber
 

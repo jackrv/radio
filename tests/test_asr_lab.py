@@ -68,7 +68,7 @@ def test_run_reads_archive_only_and_saves_results_with_parameters(tmp_path, monk
     archive = tmp_path / "recordings"
     store, speech, quiet = make_archive(archive)
     db = tmp_path / "events.db"
-    from database import init_db
+    from services.dictionary_store import init_db
     init_db(db)
     with sqlite3.connect(db) as conn:
         conn.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
@@ -213,7 +213,7 @@ def test_family_metrics_separate_kept_from_invented_phrases():
 
 @pytest.mark.parametrize("variant, expected", [("dictionary", "вишня"), ("phrases", "Посилку отримав"), ("none", "")])
 def test_prompt_variants_are_built_from_phrases_and_dictionary(tmp_path, monkeypatch, variant, expected):
-    from database import init_db
+    from services.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     with sqlite3.connect(db) as conn:
@@ -232,7 +232,7 @@ def test_prompt_variants_are_built_from_phrases_and_dictionary(tmp_path, monkeyp
 
 
 def test_pipeline_without_llm_skips_qwen_and_records_it(tmp_path, monkeypatch):
-    from database import init_db
+    from services.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     with sqlite3.connect(db) as conn:
@@ -252,7 +252,7 @@ def test_pipeline_without_llm_skips_qwen_and_records_it(tmp_path, monkeypatch):
 
 
 def test_temperature_option_reaches_whisper_and_is_recorded(tmp_path, monkeypatch):
-    from database import init_db
+    from services.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     monkeypatch.setattr("config.DB_PATH", str(db))

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from database import init_db
+from services.dictionary_store import init_db
 from services.dictionary_loader import load_dictionaries
 
 

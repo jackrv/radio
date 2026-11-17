@@ -8,13 +8,13 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import callsigns as callsign_module
+import core.callsigns as callsign_module
 import config as project_config
 import services.text_lists as text_lists
-from callsigns import Callsigns, configure_aliases
+from core.callsigns import Callsigns, configure_aliases
 from core.analyzer import looks_like_garbage
 from core.cooldown import Cooldown
-from database import init_db as init_dictionary_db
+from services.dictionary_store import init_db as init_dictionary_db
 from services.dictionary_loader import LiveDictionaries
 from services.event_store import init_db as init_event_db
 from services.runtime_settings import (LiveRuntimeSettings, RuntimeSettingsConflict, read_runtime_settings,

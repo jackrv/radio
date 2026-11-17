@@ -21,8 +21,8 @@ import re
 
 from rapidfuzz import fuzz
 
-import callsigns as callsigns_module
-from callsigns import FOLD, NUMBER_WORDS, basic_normalize, dictionary_address_forms
+import core.callsigns as callsigns_module
+from core.callsigns import FOLD, NUMBER_WORDS, basic_normalize, dictionary_address_forms
 
 # Обороти з підтверджених оператором шаблонів (docs/dictionaries.md). Робочий перелік —
 # у SQLite (список «Шаблони зворотів» у локальній панелі); це лише початкові значення.

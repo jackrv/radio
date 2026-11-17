@@ -182,7 +182,7 @@ def dictionary_conflicts(db_path):
 
 def collect(db_path, store, *, patterns=None):
     """Поточні пропозиції. ``patterns`` — готовий результат глибокої перевірки шаблонів (або None)."""
-    from callsigns import normalize
+    from core.callsigns import normalize
     from services.alias_candidates import collect as alias_collect
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     from services.management.learning import learning_queue

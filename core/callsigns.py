@@ -5,23 +5,15 @@ from typing import NamedTuple
 
 from rapidfuzz import fuzz, process
 
-# Початкові значення. Робочі списки зберігаються в SQLite (text_list_entries),
-# редагуються в локальній панелі й застосовуються без перезапуску приймача.
-# как могут произнести/написать -> как записано в списках (в нормализованном виде)
-DEFAULT_ALIASES = {
-    "пзрк": ["пе зе ер ка", "пэ зэ эр ка", "пзерка"],
-    "вовк": ["волк"],
-    "набат": [
-        "на бат",
-        "бат",
-        "на bat",
-        "на бату",
-    ],
-}
+from core import default_text_lists
 
-DEFAULT_CALLSIGN_ALIASES = {
-    "калиниця": "калина",
-}
+# Початкові значення (core/default_text_lists.txt). Робочі списки — у SQLite
+# (text_list_entries), редагуються в панелі й застосовуються без перезапуску.
+# як можуть вимовити/написати -> як записано в списках (у нормалізованому вигляді)
+DEFAULT_ALIASES = default_text_lists.mapping("aliases")
+# почутий варіант -> позивний
+DEFAULT_CALLSIGN_ALIASES = {heard: name for name, variants in default_text_lists.mapping("callsign_aliases").items()
+                            for heard in variants}
 
 # Поточні значення; замінюються цілком через configure_aliases().
 ALIASES = {canon: list(variants) for canon, variants in DEFAULT_ALIASES.items()}

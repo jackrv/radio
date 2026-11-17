@@ -22,7 +22,6 @@ import re
 import sqlite3
 import time
 
-import core.callsigns as callsign_module
 from core.callsigns import Callsigns, NUMBER_WORDS, basic_normalize, configure_aliases, normalize
 from services.sqlite_connection import get_db
 
@@ -46,44 +45,18 @@ class TextListConflict(Exception):
 
 
 def default_lines():
-    import config
-    callsign_groups = {}
-    for heard, name in callsign_module.DEFAULT_CALLSIGN_ALIASES.items():
-        callsign_groups.setdefault(name, []).append(heard)
-    return {
-        "blacklist": list(getattr(config, "BLACKLIST", ())),
-        "short_garbage": sorted(getattr(config, "SHORT_GARBAGE", ())),
-        "aliases": [f"{canon}: {', '.join(variants)}" for canon, variants in callsign_module.DEFAULT_ALIASES.items()],
-        "callsign_aliases": [f"{name}: {', '.join(heard)}" for name, heard in callsign_groups.items()],
-        "whisper_prompt": [],
-        "phrase_templates": list(_default_phrases()),
-        # Шаблони фраз додаються вимкненими (#): оператор вмикає їх після перевірки на еталонах.
-        "phrase_patterns": [DISABLED_PREFIX + line for line in DEFAULT_PATTERNS],
-    }
+    """Початкові рядки кожного списку (core/default_text_lists.txt), «#» — вимкнений рядок.
 
-
-# Найчастіші схеми передач з еталонів оператора (17.11, 410 передач).
-DEFAULT_PATTERNS = (
-    "{П}, прийнято, прийом", "{П}, прийом", "{П}, {П}, я {П}, {К} звʼязку, прийом", "{П}, я {П}, {К} звʼязку, прийом",
-    "{П}, посилку отримав, прийом", "прийнято, прийом", "{П}, я {П}", "{П}, прийняв, прийом", "{П}, прийнято",
-    "{П}, я {П}, роботу закінчив, прийом", "{П}, {П}, я {П}, на звʼязок, прийом", "{П}, я {П}, прийнято, прийом",
-    "{П}, {П}, я {П}, прийом", "{П}, посилку отримав", "{П}, я {П}, чую та розбираю вас на пʼятірку, прийнято, прийом",
-    "{П}, {П}, я {П}, прийнято, прийом", "{П}, прийняв", "{П}, {П}, я {П}, до роботи приступив, прийом", "{Ч}, прийом",
-    "{П}, я {П}, на звʼязку, прийом", "{П}, я {П}, до роботи приступив, прийом", "{П}, чую добре, прийом",
-    "{П}, {П}, прийнято, прийом", "{П}, я {П}, чую та розбираю вас на відмінно, прийом",
-    "{П}, {П}, я {П}, чую та розбираю вас на відмінно, прийом", "{П}, я {П}, як прийнято, прийом",
-)
+    Шаблони фраз там вимкнені: оператор вмикає їх після перевірки на еталонах.
+    """
+    from core import default_text_lists
+    return {list_type: list(default_text_lists.lines(list_type)) for list_type in LIST_TYPES}
 
 
 def _seed_rows(list_type, lines):
     """Рядок із «#» — вимкнений рядок без «#»."""
-    return [(list_type, number, line[len(DISABLED_PREFIX):] if line.startswith(DISABLED_PREFIX) else line,
+    return [(list_type, number, line[len(DISABLED_PREFIX):].strip() if line.startswith(DISABLED_PREFIX) else line,
              int(not line.startswith(DISABLED_PREFIX))) for number, line in enumerate(lines, 1)]
-
-
-def _default_phrases():
-    from core.template_text import DEFAULT_PHRASES
-    return DEFAULT_PHRASES
 
 
 def ensure_tables(db):

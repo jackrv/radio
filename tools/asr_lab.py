@@ -218,8 +218,8 @@ def dictionaries_from(db_path):
             configure_aliases(values["aliases"], values["callsign_aliases"])
             blacklist, short_garbage = values["blacklist"], values["short_garbage"]
         except sqlite3.Error:
-            import config
-            blacklist, short_garbage = list(config.BLACKLIST), list(config.SHORT_GARBAGE)
+            from core.default_text_lists import enabled
+            blacklist, short_garbage = list(enabled("blacklist")), list(enabled("short_garbage"))
     callsigns, commands, watch = dictionaries_from_lines(lines)
     return (callsigns, commands, watch), build_prompt(callsigns, commands, watch), blacklist, short_garbage
 

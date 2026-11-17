@@ -203,3 +203,16 @@ def test_local_panel_reads_and_saves_lists(tmp_path):
         result = client.put("/api/text-lists/blacklist", json=bad, headers={"Origin": ORIGIN})
         assert result.status_code == 422 and "числом" in result.json()["detail"]
         assert client.put("/api/text-lists/unknown", json=bad, headers={"Origin": ORIGIN}).status_code == 404
+
+
+def test_new_database_is_seeded_from_the_single_defaults_file(tmp_path):
+    """Усі початкові списки — з core/default_text_lists.txt; шаблони фраз — вимкнені."""
+    from core import default_text_lists
+    path = tmp_path / "events.db"
+    init_dictionary_db(path)
+    lists = read_lists(path)["lists"]
+    for list_type in ("blacklist", "short_garbage", "aliases", "callsign_aliases", "phrase_templates"):
+        assert [e["raw_line"] for e in lists[list_type]["entries"]] == list(default_text_lists.enabled(list_type))
+    patterns = lists["phrase_patterns"]["entries"]
+    assert patterns and not any(e["enabled"] for e in patterns)
+    assert all(not e["raw_line"].startswith(("#", " ")) for e in patterns)

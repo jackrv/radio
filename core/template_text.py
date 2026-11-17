@@ -22,17 +22,12 @@ import re
 from rapidfuzz import fuzz
 
 import core.callsigns as callsigns_module
+from core import default_text_lists
 from core.callsigns import FOLD, NUMBER_WORDS, basic_normalize, dictionary_address_forms
 
 # Обороти з підтверджених оператором шаблонів (docs/dictionaries.md). Робочий перелік —
-# у SQLite (список «Шаблони зворотів» у локальній панелі); це лише початкові значення.
-DEFAULT_PHRASES = (
-    "прийом", "прийнято", "прийняв", "посилку отримав", "на звʼязку", "на звʼязок",
-    "перевірка звʼязку", "до роботи приступив", "роботу закінчив", "роботу розпочав",
-    "чую та розбираю", "чую і розбираю", "повторіть голос не пройшов",
-    # Додано 17.11 за еталонами оператора (tools/text_replay: 3 фрази краще, 0 гірше).
-    "чую та розбираю вас", "як прийнято", "на пʼятірку",
-)
+# у SQLite (список «Шаблони зворотів» у панелі); початкові — core/default_text_lists.txt.
+DEFAULT_PHRASES = default_text_lists.enabled("phrase_templates")
 PHRASES = DEFAULT_PHRASES
 
 

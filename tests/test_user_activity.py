@@ -62,3 +62,30 @@ def test_panel_activity_page(tmp_path):
         assert body["selected"]["user_id"] == 3003 and body["selected"]["actions"] == {"correction": 1}
         assert client.get("/api/activity", params={"user_id": 1001}).json()["selected"]["actions"] == {}
         assert client.get("/api/activity", params={"user_id": 42}).status_code == 404
+
+
+def test_archive_filter_by_editor(tmp_path):
+    from api.local_dashboard import create_dashboard
+    from tests.test_local_dashboard import KEY, ORIGIN, pcm, segment
+    from services.event_store import init_db
+    from services.recordings import RecordingStore
+    from services.user_store import init_users_db, bootstrap_admin, create_user
+    db = tmp_path / "events.db"
+    init_db(db); init_users_db(db); bootstrap_admin(db, 1001); create_user(db, 1001, 3003, role="editor")
+    store = RecordingStore(tmp_path / "recordings")
+    hers = store.save(pcm(segment()), 16000, {"status": "ready", "fix_id": "db:5"})
+    old = store.save(pcm(segment()), 16000, {"status": "ready", "fix_id": "db:6"})
+    other = store.save(pcm(segment()), 16000, {"status": "ready"})
+    store.label_from_correction("db:6", "Береза 56, прийом")          # стара правка з Mini App, автор невідомий
+    user_activity.record(db, 3003, "correction", "db:5", {"from": "берега", "to": "Береза 56", "changed": True})
+    app = create_dashboard(db, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings")
+    with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 1)) as client:
+        client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN})
+        page = lambda **p: client.get("/api/recordings", params=p).json()
+        assert [i["id"] for i in page(edits="3003")["items"]] == [hers]
+        assert [i["id"] for i in page(edits="miniapp")["items"]] == [old]
+        assert {i["id"] for i in page()["items"]} == {hers, old, other}
+        first = page(edits="3003")
+        assert first["items"][0]["corrections"][0]["to"] == "Береза 56"
+        assert first["editors"] == [{"user_id": 3003, "name": "3003", "corrections": 1}]
+        assert client.get("/api/recordings", params={"edits": "x; drop"}).status_code == 422

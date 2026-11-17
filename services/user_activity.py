@@ -114,3 +114,40 @@ def overview(db_path, user_id, *, limit=200, now=None):
         "items": [{"ts": ts, "action": action, "target": target, "details": json.loads(details or "{}")}
                   for ts, action, target, details in rows],
     }
+
+
+def corrections(db_path, fix_ids=None, user_id=None):
+    """Правки тексту з журналу: {fix_id: [{user_id, name, ts, from, to}]}, новіші — першими."""
+    with get_db(db_path) as db:
+        ensure_table(db)
+        profiles = _table_exists(db, "telegram_user_profiles")
+        sql = ("SELECT a.target, a.user_id, a.ts, a.details, " +
+               ("COALESCE(NULLIF(p.display_name,''), NULLIF(p.telegram_name,''), NULLIF(p.username,''), '') "
+                "FROM user_activity a LEFT JOIN telegram_user_profiles p ON p.user_id=a.user_id "
+                if profiles else "'' FROM user_activity a ") +
+               "WHERE a.action='correction'")
+        params = []
+        if user_id is not None:
+            sql += " AND a.user_id=?"
+            params.append(user_id)
+        if fix_ids is not None:
+            sql += " AND a.target IN (SELECT value FROM json_each(?))"
+            params.append(json.dumps(sorted(set(fix_ids))))
+        rows = db.execute(sql + " ORDER BY a.ts DESC", params).fetchall()
+    result = {}
+    for target, uid, ts, details, name in rows:
+        d = json.loads(details or "{}")
+        result.setdefault(target, []).append({"user_id": uid, "name": name or str(uid), "ts": ts,
+                                              "from": d.get("from"), "to": d.get("to"), "changed": d.get("changed")})
+    return result
+
+
+def editors(db_path):
+    """Користувачі, чиї правки є в журналі: [{user_id, name, corrections}]."""
+    people = {u["user_id"]: u for u in users(db_path)}
+    with get_db(db_path) as db:
+        ensure_table(db)
+        rows = db.execute("SELECT user_id, COUNT(DISTINCT target) FROM user_activity WHERE action='correction' "
+                          "GROUP BY user_id ORDER BY 2 DESC").fetchall()
+    return [{"user_id": uid, "name": (people.get(uid) or {}).get("name") or str(uid), "corrections": n}
+            for uid, n in rows]

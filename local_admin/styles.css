@@ -196,3 +196,6 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 /* Результат збереження еталона поруч із кнопкою */
 .save-status.ok { color: var(--ok); }
 .save-status.alert { color: var(--bad); }
+
+/* Хто правив запис у Mini App */
+.recording-edit { margin: 2px 0; color: var(--info); }

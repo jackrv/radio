@@ -214,7 +214,7 @@ def diagnostics_view(data):
         if type(value) in (int,float): return value if math.isfinite(value) else None
         if isinstance(value,list): return [numbers(x) for x in value[:128]]
         if isinstance(value,dict): return {k:numbers(v) for k,v in value.items() if isinstance(k,str) and re.fullmatch(r"[a-zA-Z0-9_.:-]{1,90}",k)}
-        if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","low_confidence","stale","error","whisper_error","discarded","adc","callback","s","ratio",
+        if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","low_confidence","dictionary_echo","stale","error","whisper_error","discarded","adc","callback","s","ratio",
                      "ok","stuck","failing","loading","failed","disabled"): return value
         return None
     result = {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","ended_at","counters","gauges","timings","asr_latency","notification_spectral") if k in data}}
@@ -365,14 +365,30 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     @app.get("/api/recordings")
     def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
-                       q: str = "", admin=Depends(actor)):
+                       q: str = "", edits: str = "", admin=Depends(actor)):
         if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
                 or group not in ("all", "normal", "short", "shadow", "speech", "radio") or not re.fullmatch(r"(?:|all|[A-Z])", queue)
                 or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
         if queue and queue != "all" and queue not in REVIEW_QUEUES and not q.strip():
             raise HTTPException(404, "Такої групи в черзі немає")
-        page = recordings.listing(offset, limit, review, group, queue=queue, search=q)
+        if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
+            raise HTTPException(422, "Некоректні параметри")
+        from services import user_activity
+        selected = None
+        if edits == "miniapp":
+            selected = "miniapp"
+        elif edits:
+            selected = list(user_activity.corrections(db_path, user_id=int(edits)))
+        page = recordings.listing(offset, limit, review, group, queue=queue, search=q, edits=selected)
+        # Хто й коли правив запис у Mini App (журнал дій з 16.11.2026).
+        linked = [item["data"].get("fix_id") for item in page["items"] if item["data"].get("fix_id")]
+        if linked:
+            found = user_activity.corrections(db_path, fix_ids=linked)
+            for item in page["items"]:
+                if item["data"].get("fix_id") in found:
+                    item["corrections"] = found[item["data"]["fix_id"]]
+        page["editors"] = user_activity.editors(db_path)
         # Зауваження до оформлення еталонів — щоб картки з ними було видно одразу.
         from services.text_check import check_with_db
         with get_db(db_path) as db:

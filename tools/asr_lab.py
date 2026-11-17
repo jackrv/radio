@@ -469,7 +469,7 @@ class Lab:
     def process(self, pcm):
         import config
         from core.audio import prepare_audio
-        from core.analyzer import fmt, is_low_confidence_short, looks_like_garbage, split_roles
+        from core.analyzer import fmt, is_low_confidence_short, looks_like_garbage, split_roles, strip_dictionary_echo
         from core.pipeline import build_text_pipeline
         from core.analyzer import correction_is_safe
         from services.text_lists import blacklist_key
@@ -535,16 +535,25 @@ class Lab:
                 text, stage = "", "garbage"
             elif blacklist_key(raw) in {blacklist_key(v) for v in self.blacklist}:
                 text, stage = "", "blacklist"
-            elif is_low_confidence_short(raw, result["whisper_segments"], self.dictionaries[0], self.dictionaries[1],
-                                         max_words=config.LOW_CONFIDENCE_MAX_WORDS,
-                                         logprob=config.LOW_CONFIDENCE_LOGPROB):
-                text, stage = "", "low_confidence"
             else:
-                t = time.perf_counter()
-                pipeline = build_text_pipeline(self.llm, self.apply_rules, self.dictionaries, correction_is_safe, self.log)
-                text = pipeline(raw)
-                timing["qwen_s"] = time.perf_counter() - t
-                stage = "pipeline"
+                # Перелік назв словника з підказки — як у приймачі (core/transcriber.py).
+                cleaned, echo = strip_dictionary_echo(raw, self.dictionaries)
+                if echo:
+                    result["dictionary_echo"] = True
+                if echo and not cleaned:
+                    text, stage = "", "dictionary_echo"
+                elif echo and blacklist_key(cleaned) in {blacklist_key(v) for v in self.blacklist}:
+                    text, stage = "", "blacklist"
+                elif is_low_confidence_short(cleaned, result["whisper_segments"], self.dictionaries[0],
+                                             self.dictionaries[1], max_words=config.LOW_CONFIDENCE_MAX_WORDS,
+                                             logprob=config.LOW_CONFIDENCE_LOGPROB):
+                    text, stage = "", "low_confidence"
+                else:
+                    t = time.perf_counter()
+                    pipeline = build_text_pipeline(self.llm, self.apply_rules, self.dictionaries, correction_is_safe, self.log)
+                    text = pipeline(cleaned)
+                    timing["qwen_s"] = time.perf_counter() - t
+                    stage = "pipeline"
         result["hypothesis"] = text
         result["stage"] = stage
         callsigns = self.dictionaries[0]

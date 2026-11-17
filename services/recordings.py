@@ -21,7 +21,7 @@ UNSET = object()
 NON_SPEECH = ("noise", "notification", "room")
 # Live annotation queues; frozen experimental samples stay in tools/asr_lab.py.
 REVIEW_QUEUES = {
-    "A": ("Усе, що бачив Whisper", "status IN ('ready','empty_text','blacklist','low_confidence')"),
+    "A": ("Усе, що бачив Whisper", "status IN ('ready','empty_text','blacklist','low_confidence','dictionary_echo')"),
     "B": ("Тихі поруч із порогом (−36…−34 dBFS)",
           "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')>=-36 "
           "AND json_extract(data,'$.signal.rms_dbfs')<-34"),
@@ -222,11 +222,13 @@ class RecordingStore:
             }
         return result
 
-    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue="", search=""):
+    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue="", search="", edits=None):
+        """``edits``: None — без фільтра; "miniapp" — еталони з Mini App; список fix_id —
+        записи, пов'язані з цими подіями (правки конкретного користувача)."""
         reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
         # Rejected short/quiet/blacklisted material belongs outside the main
         # review list regardless of its audio duration.
-        short = "(status IN ('vad_short','low_rms','blacklist','low_confidence') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
+        short = "(status IN ('vad_short','low_rms','blacklist','low_confidence','dictionary_echo') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
         shadow = "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"
         grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow,
                    "speech": SPEECH_GROUP, "radio": RADIO_GROUP}[group]
@@ -241,6 +243,14 @@ class RecordingStore:
             # Optional frozen ID list used by offline callers.
             grouped, params = "id IN (SELECT value FROM json_each(?))", (json.dumps(sorted(ids)),)
         where = f"({reviewed}) AND ({grouped})"
+        if edits == "miniapp":
+            where += " AND reference_source='miniapp'"
+        elif edits is not None:
+            # Фільтр правок діє на весь архів, як пошук: групи й черги не застосовуються.
+            if not search.strip():
+                where, params = f"({reviewed})", ()
+            where += " AND json_extract(data,'$.fix_id') IN (SELECT value FROM json_each(?))"
+            params = (*params, json.dumps(sorted(set(edits))))
         with self.connect() as db:
             db.execute("BEGIN")
             counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0), "

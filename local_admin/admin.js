@@ -8,7 +8,7 @@
 
   const STATUS = {
     ready: "Розпізнано", low_rms: "Тихо (нижче MIN_RMS)", short: "Закоротко (VAD)",
-    notification: "Звук сповіщення", blacklist: "Чорний список", garbage: "Сміття Whisper", low_confidence: "Низька впевненість",
+    notification: "Звук сповіщення", blacklist: "Чорний список", garbage: "Сміття Whisper", low_confidence: "Низька впевненість", dictionary_echo: "Перелік назв із підказки",
     empty_text: "Порожній текст", whisper_error: "Помилка Whisper", stale: "Після паузи", discarded: "Відкинуто",
   };
   const SPECTRAL_MODES = { shadow: "Спостереження", active: "Активний", off: "Спектральний вимкнено" };
@@ -817,9 +817,18 @@
     const [page, summary] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&review=${$("recording-filter").value}&group=${$("recording-group").value}` +
         ($("recording-queue").value ? `&queue=${$("recording-queue").value}` : "") +
-        (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "")),
+        (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
+        ($("recording-edits").value ? `&edits=${encodeURIComponent($("recording-edits").value)}` : "")),
       request("/api/recordings/summary")
     ]);
+    // Правки з Mini App: усі або конкретного користувача (журнал дій з 16.11.2026).
+    const editsSelect = $("recording-edits"), chosenEdits = editsSelect.value;
+    for (const option of [...editsSelect.options].slice(2)) option.remove();
+    for (const person of page.editors || []) {
+      const option = el("option", "", `Правки: ${person.name} (${person.corrections})`);
+      option.value = String(person.user_id); editsSelect.append(option);
+    }
+    if ([...editsSelect.options].some(o => o.value === chosenEdits)) editsSelect.value = chosenEdits;
     const groups = page.groups;
     const grouped = groups && ["all", "normal", "short"].every(key => typeof groups[key] === "number");
     const groupSelect = $("recording-group");
@@ -853,6 +862,14 @@
       const details = el("details", "recording-details");
       details.append(el("summary", "", "Розбір і метрики"));
       details.append(el("p", "muted small", `Тривалість: ${fix(signal.duration_s)} с · рівень: ${fix(signal.rms_dbfs, 1)} dBFS · кліпінг: ${pct(signal.clipping_ratio)} · Whisper: ${fix(d.whisper_s)} с · Qwen: ${fix(d.qwen_s)} с · черга: ${fix(d.queue_wait_s)} с`));
+      for (const fix of item.corrections || []) {
+        const when = new Date(fix.ts * 1000).toLocaleString("uk-UA");
+        card.append(el("p", "recording-edit small", fix.changed
+          ? `✎ Правка в Mini App: ${fix.name} · ${when}: «${fix.from}» → «${fix.to}»`
+          : `✎ Відкрито й збережено без змін: ${fix.name} · ${when}`));
+      }
+      if (!item.corrections && item.reference_source === "miniapp")
+        card.append(el("p", "recording-edit small muted", "✎ Еталон із правки в Mini App (автор невідомий: до журналу дій)"));
       card.append(el("p", "recording-raw", `Whisper: ${d.raw_text || "Текст відсутній / розпізнавання не виконувалось"}`));
       if (d.text_filter_shadow?.additional) card.append(el("p", "recording-shadow", `Новий фільтр пропонує відсіяти: «${d.text_filter_shadow.phrase}». Перевірте аудіо.`));
       if (d.before_llm && d.before_llm !== d.raw_text) details.append(el("p", "", `До Qwen: ${d.before_llm}`));
@@ -1071,6 +1088,7 @@
     await recordings(true);
   }));
   $("recording-filter").addEventListener("change", () => action(() => recordings(true)));
+  $("recording-edits").addEventListener("change", () => action(() => recordings(true)));
   $("recording-group").addEventListener("change", () => action(() => recordings(true)));
   $("recording-queue").addEventListener("change", () => action(() => recordings(true)));
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));

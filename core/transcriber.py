@@ -2,7 +2,7 @@ import os
 import re
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
-from core.analyzer import is_low_confidence_short, looks_like_garbage
+from core.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
 from callsigns import normalize
 from core.diagnostics import runtime
 
@@ -242,6 +242,27 @@ class Transcriber:
             runtime.asr_status("blacklist")
             runtime.count("asr.blacklist_filtered")
             return
+        # Перелік назв словника, переписаний із підказки Whisper («…береза вишня клен»).
+        try:
+            dictionaries = tuple(
+                d for d in (getattr(self.event_processor, n, None) for n in ("callsigns", "commands", "watch"))
+                if isinstance(getattr(d, "names", None), (list, tuple, set, frozenset)))
+            cleaned, echo = strip_dictionary_echo(raw_text, dictionaries) if dictionaries else (raw_text, False)
+        except Exception:
+            self.log.exception("Помилка перевірки переліку назв; текст передано далі без змін")
+            cleaned, echo = raw_text, False
+        if echo:
+            runtime.count("asr.dictionary_echo")
+            if not cleaned:
+                runtime.asr_status("dictionary_echo")
+                self.log.info("Відкинуто: перелік назв словника з підказки Whisper: %s", raw_text)
+                return
+            self.log.info("Прибрано перелік назв словника з підказки: %s -> %s", raw_text, cleaned)
+            raw_text = cleaned
+            if self._is_blacklisted(raw_text):
+                runtime.asr_status("blacklist")
+                runtime.count("asr.blacklist_filtered")
+                return
         if self.low_confidence is not None and is_low_confidence_short(
                 raw_text, whisper_segments, self.event_processor.callsigns, self.event_processor.commands,
                 **self.low_confidence):

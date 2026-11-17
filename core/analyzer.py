@@ -2,7 +2,7 @@ import math
 import re
 from typing import NamedTuple
 
-from callsigns import basic_normalize, normalize, to_items
+from callsigns import FOLD, basic_normalize, normalize, to_items
 
 
 def fmt(items):
@@ -53,6 +53,72 @@ def canonical_text(text, dictionaries):
         out += [text[last:word.start()], name]
         last = word.end()
     return "".join(out) + text[last:]
+
+
+_ECHO_TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`][^\W\d_]+)*|\d+")
+
+
+def strip_dictionary_echo(text, dictionaries, min_run=3):
+    """Прибирає перелік назв словника, який Whisper переписує з підказки.
+
+    Підказка закінчується назвами всіх словників за абеткою; на тиші модель
+    (особливо large-v3) іноді видає її шматок: «…береза вишня грім клен».
+    Ознака переліку — у низці назв без номерів є щонайменше ``min_run`` підряд у
+    зростаючому абетковому порядку. Тоді прибирається вся низка, а якщо вона на
+    самому початку після цифр («42 42, злива, …») — і ці цифри. Назва з номером («дощ 27 27») — справжня команда чи позивний і до
+    переліку не належить.
+
+    Повертає (текст без переліку, чи знайдено перелік). Якщо після вилучення
+    лишилися тільки назви й цифри без жодного точного збігу зі словником, текст —
+    порожній рядок: сегмент відкидається.
+    """
+    names = sorted({name for dictionary in dictionaries for name in dictionary.names})
+    order = {name.translate(FOLD): i for i, name in enumerate(names)}
+    tokens = [(m.start(), m.end(), m.group()) for m in _ECHO_TOKEN.finditer(text or "")]
+    folded = [basic_normalize(t).translate(FOLD) for _, _, t in tokens]
+    bare = [f in order and not (i + 1 < len(tokens) and tokens[i + 1][2].isdigit())
+            for i, f in enumerate(folded)]
+    marked = set()
+    i = 0
+    while i < len(tokens):
+        if not bare[i]:
+            i += 1
+            continue
+        run = [i]
+        while i + 1 < len(tokens) and bare[i + 1]:
+            i += 1
+            run.append(i)
+        rising, longest = [run[0]], 1
+        for j in run[1:]:
+            rising = rising + [j] if order[folded[j]] > order[folded[rising[-1]]] else [j]
+            longest = max(longest, len(rising))
+        if longest >= min_run:
+            # Уся низка назв без номерів і цифри одразу перед нею («42 42 злива …» —
+            # шматок «дощ 42 42, злива …» з підказки).
+            start = run[0]
+            while start > 0 and tokens[start - 1][2].isdigit():
+                start -= 1
+            if start > 0:
+                start = run[0]          # цифри всередині тексту — номер попереднього слова
+            marked.update(range(start, run[-1] + 1))
+        i += 1
+    if not marked:
+        return text, False
+    out, last = [], 0
+    for k in sorted(marked):
+        out.append(text[last:tokens[k][0]])
+        last = tokens[k][1]
+    out.append(text[last:])
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", "".join(out))
+    cleaned = re.sub(r"([,.;:])(?:\s*[,.;:])+", r"\1", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,;:")
+    # Лишилися тільки назви й цифри — це теж шматок підказки («злива 42, дощ 13»),
+    # якщо серед них немає точного збігу зі словником («береза 56» — справжній позивний).
+    rest = [k for k in range(len(tokens)) if k not in marked]
+    words_left = any(not tokens[k][2].isdigit() and folded[k] not in order for k in rest)
+    exact = any(m.exact for dictionary in dictionaries if hasattr(dictionary, "matches")
+                for m in dictionary.matches(cleaned))
+    return (cleaned if words_left or exact else ""), True
 
 
 GARBAGE_DEFAULTS = {

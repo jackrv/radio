@@ -19,6 +19,7 @@
       <button data-view="filter"><span>≋</span>Фільтр</button>
       <button data-view="dictionaries"><span>☰</span>Словники</button>
       <button data-view="texts"><span>Aa</span>Фільтри тексту</button>
+      <button data-view="learning"><span>✓</span>Навчання</button>
       <button data-view="settings"><span>⚙</span>Налаштування</button>
       <button data-view="users"><span>♙</span>Користувачі</button>
       <button data-view="activity"><span>☷</span>Активність</button>
@@ -176,6 +177,15 @@
       <!-- Користувачі -->
       <section data-panel="users" hidden>
         <article class="panel"><h2>Користувачі</h2><p class="muted small">Ролі й режими змінюються в Mini App адміністратором.</p><div class="table-wrap"><table id="users"></table></div></article>
+      </section>
+
+      <!-- Навчання за правками -->
+      <section data-panel="learning" hidden>
+        <article class="panel"><div class="panel-head"><h2>Навчені заміни слів</h2><button id="learning-refresh" class="ghost">Оновити</button></div>
+          <p class="muted small">Кожна правка тексту (в Mini App чи еталоном в «Аудіоархіві») порівнюється з почутим, і пари слів «почуте → правильне» стають кандидатами в заміни. Заміна діє в розпізнаванні лише після двох однакових правок у різних фразах. Заміна звичайного слова потребує ще й вашого дозволу. Позивний виправляється лише перед номером із його словника. Номери й назви зі словників правилами не змінюються. Моделі Whisper і Qwen від цього не перенавчаються: заміни застосовуються до їхнього тексту.</p>
+          <div class="cards" id="learning-cards"></div></article>
+        <article class="panel"><div class="panel-head"><h2>Заміни</h2><select id="learning-filter" aria-label="Показати"><option value="queue">Черга: чекають підтвердження чи дозволу</option><option value="applies">Діють зараз</option><option value="other">Вимкнені й заборонені</option><option value="all">Усі</option></select></div>
+          <div class="table-wrap"><table id="learning-items"></table></div></article>
       </section>
 
       <!-- Активність користувачів -->

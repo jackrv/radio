@@ -535,3 +535,30 @@ def test_reference_from_panel_updates_linked_event_and_telegram(setup, tmp_path)
         assert review(linked,"Береза 56, прийнято, прийом",rev=1)["event_sync"]=="same"
         assert review(lonely,"Береза 56")["event_sync"] is None, "без події нічого не змінюється"
         assert review(linked,"","room",rev=2)["event_sync"] is None, "шум не переписує подію"
+
+
+def test_learning_queue_shows_why_rules_wait_and_allows_approval(local):
+    client,path,_=local
+    h={"Origin":ORIGIN}
+    import sqlite3
+    from services.word_store import init_word_db
+    init_word_db(path)
+    with sqlite3.connect(path) as db:
+        db.executemany("INSERT INTO word_corrections (original, corrected, confirmations, status) VALUES (?,?,?,?)",
+                       [("прием","прийом",2,"active"),("прайом","прийом",1,"pending")])
+        db.execute("INSERT INTO word_correction_votes (source_id, original, corrected) VALUES ('db:7','прием','прийом')")
+    data=client.get("/api/learning").json()
+    by={item["original"]:item for item in data["items"]}
+    assert by["прием"]["state"]=="needs_approval" and by["прием"]["sources"]==["db:7"]
+    assert by["прайом"]["state"]=="needs_confirmation"
+    assert data["counts"]=={"needs_approval":1,"needs_confirmation":1} and data["min_confirmations"]==2
+    rule=by["прием"]
+    url=f"/api/learning/{rule['id']}/approval"
+    assert client.put(url,json={"approved":True,"expected_version":rule["version"]}).status_code==403, "без Origin"
+    assert client.put(url,json={"approved":True,"expected_version":rule["version"]},headers=h).status_code==200
+    assert {i["original"]:i["state"] for i in client.get("/api/learning").json()["items"]}["прием"]=="applies"
+    assert client.put(url,json={"approved":False,"expected_version":rule["version"]},headers=h).status_code==409, "застаріла версія"
+    fresh={i["original"]:i for i in client.get("/api/learning").json()["items"]}["прием"]
+    assert client.put(f"/api/learning/{fresh['id']}",json={"disabled":True,"expected_version":fresh["version"]},headers=h).status_code==200
+    assert {i["original"]:i["state"] for i in client.get("/api/learning").json()["items"]}["прием"]=="disabled"
+    assert client.put("/api/learning/999/approval",json={"approved":True,"expected_version":"0"*64},headers=h).status_code==404

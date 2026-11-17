@@ -170,6 +170,43 @@ def list_rules(db_path, query="", offset=0, limit=20):
             "has_more": len(rows) > limit}
 
 
+def _rule_state(item, min_confirmations):
+    """Чому правило діє або не діє — одним словом для панелі."""
+    if item["kind"] == "blocked":
+        return "blocked"
+    if item["status"] == "disabled":
+        return "disabled"
+    if item["applies"]:
+        return "applies"
+    if item["confirmations"] < min_confirmations:
+        return "needs_confirmation"
+    if item["status"] != "active":
+        return "conflict"           # підтверджень досить, але є інший варіант того самого слова
+    return "needs_approval"
+
+
+def learning_queue(db_path):
+    """Усі навчені заміни з причиною, чому кожна діє чи ні, і правками-джерелами (лише читання)."""
+    from services.word_store import MIN_CONFIRMATIONS, dictionary_names, init_word_db
+    init_word_db(db_path)
+    with get_db(db_path) as db:
+        names = dictionary_names(db)
+        rows = db.execute(f"SELECT {_RULE_COLUMNS}, updated_at FROM word_corrections ORDER BY id DESC").fetchall()
+        sources = {}
+        for source_id, original, corrected in db.execute(
+                "SELECT source_id, original, corrected FROM word_correction_votes ORDER BY rowid"):
+            sources.setdefault((original, corrected), []).append(source_id)
+    items, counts = [], {}
+    for row in rows:
+        item = _rule_item(row[:6], names)
+        item["updated_at"] = row[6]
+        item["state"] = _rule_state(item, MIN_CONFIRMATIONS)
+        item["sources"] = sources.get((item["original"], item["corrected"]), [])
+        counts[item["state"]] = counts.get(item["state"], 0) + 1
+        items.append(item)
+    return {"items": items, "counts": counts, "total": len(items), "min_confirmations": MIN_CONFIRMATIONS}
+
+
 def _locked_rule(db, actor_id, rule_id, expected_version):
     _require_permission(db, actor_id, "dictionaries.write")
     row = db.execute(f"SELECT {_RULE_COLUMNS} FROM word_corrections WHERE id = ?", (rule_id,)).fetchone()

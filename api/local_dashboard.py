@@ -25,7 +25,7 @@ import uvicorn
 
 import config
 from api.app import create_app
-from api.management import SettingsUpdate
+from api.management import RuleApproval, RuleUpdate, SettingsUpdate
 from services import miniapp_management as store
 from services.notification_samples import add_sample, delete_sample, list_samples, MAX_UPLOAD_BYTES, validate_wav
 from services import notification_eval
@@ -654,6 +654,31 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(403, "Недостатньо прав") from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/learning")
+    def learning(admin=Depends(actor)):
+        """Навчені заміни слів: що вже діє в розпізнаванні і чого бракує решті."""
+        return store.learning_queue(db_path)
+
+    def _rule_call(function, admin, rule_id, *args):
+        try:
+            return function(db_path, admin, rule_id, *args)
+        except store.ManagementConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except PermissionError:
+            raise HTTPException(403, "Недостатньо прав") from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.put("/api/learning/{rule_id}")
+    def learning_toggle(rule_id: int, payload: RuleUpdate, admin=Depends(actor)):
+        return _rule_call(store.toggle_rule, admin, rule_id, payload.disabled, payload.expected_version)
+
+    @app.put("/api/learning/{rule_id}/approval")
+    def learning_approval(rule_id: int, payload: RuleApproval, admin=Depends(actor)):
+        return _rule_call(store.approve_rule, admin, rule_id, payload.approved, payload.expected_version)
 
     @app.get("/api/activity")
     def activity(user_id: int | None = None, admin=Depends(actor)):

@@ -98,13 +98,13 @@ def api(tmp_path):
 
 def test_miniapp_check_endpoint_uses_database_dictionaries_and_permissions(api):
     _, client = api
-    response = client.post("/api/corrections/check", headers=auth_header(3003), json={"text": "Бериза 56, Береза 99, злива 4242"})
+    response = client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "Бериза 56, Береза 99, злива 4242"})
     assert response.status_code == 200
     body = response.json()
     assert body["formatted"] == "Бериза 56, Береза 99, злива 42 42"
     assert {i["kind"] for i in body["issues"]} == {"format", "spelling", "info"}
-    assert client.post("/api/corrections/check", headers=auth_header(2002), json={"text": "x"}).status_code == 403
-    assert client.post("/api/corrections/check", headers=auth_header(3003), json={"text": "x" * 5001}).status_code == 422
+    assert client.put("/api/corrections/check", headers=auth_header(2002), json={"text": "x"}).status_code == 403
+    assert client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "x" * 5001}).status_code == 422
 
 
 @pytest.mark.parametrize("text, expected", [
@@ -133,3 +133,14 @@ def test_tidy_is_offered_as_one_formatting_fix():
     result = check("береза 56 посилку отримав прийом")
     assert [(i["kind"], i["message"]) for i in result["issues"]] == [("format", "Коми між групами й великі літери позивних")]
     assert result["formatted"] == "Береза 56, посилку отримав, прийом"
+
+
+def test_browser_may_send_text_check_from_the_miniapp(api):
+    """Попередній запит браузера (CORS) із Mini App на GitHub Pages має проходити: метод
+    перевірки має бути серед дозволених, інакше браузер блокує запит і показує «зв’язок втрачено»."""
+    _, client = api
+    response = client.options("/api/corrections/check", headers={
+        "Origin": "https://jackrv.github.io", "Access-Control-Request-Method": "PUT",
+        "Access-Control-Request-Headers": "authorization,content-type,ngrok-skip-browser-warning"})
+    assert response.status_code == 200
+    assert "PUT" in response.headers["access-control-allow-methods"]

@@ -230,7 +230,8 @@ def create_app(db_path, bot_token):
         except sqlite3.Error:
             raise HTTPException(status_code=503, detail="База недоступна") from None
 
-    @app.post("/api/corrections/check")
+    # PUT, а не POST: CORS Mini App навмисно дозволяє лише GET і PUT.
+    @app.put("/api/corrections/check")
     def check_correction_text(payload: TextCheck, user=Depends(current_user)):
         """Зауваження до оформлення правки (пробіли, цифри, «з», апостроф, назви словника)."""
         require_settings_permission(user, "corrections.write")

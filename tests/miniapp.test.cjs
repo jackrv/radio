@@ -238,7 +238,11 @@ async function correctionFixture(autoClose, hasAudio = false, check = () => ({ i
     addEventListener() {},
     Radio345: { request: async (url, method, body) => {
       if (url.startsWith("/api/phrases/audio")) return new Blob(["OggSfake"]);
-      if (url === "/api/corrections/check") { checks.push(body.text); return check(body.text); }
+      if (url === "/api/corrections/check") {
+        // CORS сервера (api/app.py) дозволяє лише GET і PUT: інакше браузер заблокує запит.
+        assert.ok(["GET", "PUT"].includes(method), `метод ${method} заборонено CORS`);
+        checks.push(body.text); return check(body.text);
+      }
       if (method === "GET") return { original_text: "Вира 68", current_text: "Вира 68", has_audio: hasAudio };
       writes.push(body);
       return { saved: true, corrected_text: body.corrected_text };

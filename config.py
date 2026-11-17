@@ -2,7 +2,11 @@ from pathlib import Path
 
 # ---------- Настройки моделей и обработки ----------
 
-MODEL_REPO = "mlx-community/whisper-large-v3-turbo"
+# 17.11.2026: повна large-v3 замість turbo. На розмічених записах WER 82,9 % -> 68,6 %,
+# мовлення без тексту 33 -> 7 зі 120, числа точно 23 -> 28; на нових записях 79,5 % -> 74,6 %.
+# Хибних ключових сповіщень на шумі не більше (1 проти 2). Її вигадки на тиші закривають
+# чорний список і правило переліку назв (strip_dictionary_echo).
+MODEL_REPO = "mlx-community/whisper-large-v3-mlx"
 LLM_REPO = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 
 USE_LLM = True

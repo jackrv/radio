@@ -5,7 +5,7 @@ Silicon і Python 3.12**. Орієнтир — MacBook Air M4 з 16 ГБ опе�
 Моделі працюють локально; інтернет потрібен для Telegram, HTTPS-тунелю та першого
 завантаження моделей.
 
-Аудіопристрій → WebRTC VAD → MLX Whisper large-v3-turbo → словесні правила та
+Аудіопристрій → WebRTC VAD → MLX Whisper large-v3 → словесні правила та
 консервативна корекція Qwen2.5-3B-Instruct-4bit → визначення позивних/команд →
 SQLite → текстові й голосові сповіщення Telegram.
 

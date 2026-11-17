@@ -14,7 +14,7 @@
 ## Текущее устройство и ограничения
 
 - Сейчас проект работает на Mac через MLX. Whisper:
-  `mlx-community/whisper-large-v3-turbo`; текстовый корректор:
+  `mlx-community/whisper-large-v3-mlx` (до 17.11.2026 — `whisper-large-v3-turbo`); текстовый корректор:
   `mlx-community/Qwen2.5-3B-Instruct-4bit`.
 - В рабочем Whisper язык `uk`, prompt из имён словарей,
   `temperature=(0.0,0.2,0.4)`, `condition_on_previous_text=False`,

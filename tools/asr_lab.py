@@ -292,12 +292,32 @@ def snapshot_database(target):
     return target
 
 
-def receiver_prompt(db_path, dictionary_prompt):
-    """Підказка, як у приймачі: фрази списку «Підказка Whisper» + назви словників."""
+def receiver_prompt(db_path, dictionary_prompt, phrases=None, extra=()):
+    """Підказка, як у приймачі: фрази списку «Підказка Whisper» + назви словників.
+
+    ``phrases`` — інший перелік фраз (файл --whisper-phrases); ``extra`` — додаткові
+    фрази перед назвами (коди доби запису для --daily-codes).
+    """
     from services.text_lists import compose_prompt, load_active
+    if phrases is None:
+        with read_only(db_path) as db:
+            _, values = load_active(db)
+        phrases = values.get("whisper_prompt", ())
+    return compose_prompt((*phrases, *extra), dictionary_prompt)
+
+
+def record_codes(db_path, created, mode="append"):
+    """Коди доби запису (доба за межею 20:00) зі знімка бази.
+
+    append — постійні й усі коди доби; latest — лише останній доданий код цієї доби.
+    """
+    from services import daily_codes
+    day = daily_codes.local_day(created)
     with read_only(db_path) as db:
-        _, values = load_active(db)
-    return compose_prompt(values.get("whisper_prompt", ()), dictionary_prompt)
+        try:
+            return daily_codes.read_day(db, day)[-1:] if mode == "latest" else daily_codes.read(db, day)
+        except sqlite3.Error:
+            return []
 
 
 def dictionaries_from(db_path):
@@ -383,8 +403,12 @@ class Lab:
         self.db_path = snapshot_database(run_dir / "events-snapshot.db")
         self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path)
         phrases = Path(args.prompt_file).read_text(encoding="utf-8").strip() if args.prompt_file else PHRASES_PROMPT
+        self.whisper_phrases = None
+        if getattr(args, "whisper_phrases", None):
+            self.whisper_phrases = [line.strip() for line in Path(args.whisper_phrases).read_text(encoding="utf-8").splitlines()
+                                    if line.strip() and not line.startswith("#")]
         if args.prompt == "receiver":
-            self.prompt = receiver_prompt(self.db_path, dictionary_prompt)
+            self.prompt = receiver_prompt(self.db_path, dictionary_prompt, self.whisper_phrases)
         else:
             self.prompt = {"dictionary": dictionary_prompt, "none": "", "phrases": phrases,
                            "combined": f"{phrases} {dictionary_prompt}".strip()}[args.prompt]
@@ -422,6 +446,7 @@ class Lab:
                 "llm": getattr(self.args, "llm", "on") if self.args.variant in ("qwen", "pipeline") else None,
                 "llm_repo": config.LLM_REPO if self.llm else None, "temperature": list(self.temperature), "model": self.model, "language": self.language or "auto",
                 "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "prompt_text": self.prompt,
+                "daily_codes": getattr(self.args, "daily_codes", "off"), "whisper_phrases": self.whisper_phrases,
                 "prompt_tokens": prompt_token_count(self.prompt, self.language),
                 "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
                 "dictionary_prompt_sha256": hashlib.sha256(self.dictionary_prompt.encode()).hexdigest(),
@@ -599,6 +624,10 @@ def run(args):
                 pcm, sr = read_pcm(args.archive, record["id"])
                 if sr != lab.sample_rate:
                     raise ValueError("Інша частота дискретизації")
+                if getattr(args, "daily_codes", "off") != "off" and args.prompt == "receiver":
+                    # Як могло б бути в приймачі: коди доби саме цього запису — у підказці.
+                    lab.recognizer.prompt = receiver_prompt(lab.db_path, lab.dictionary_prompt, lab.whisper_phrases,
+                                                            record_codes(lab.db_path, record["created"], args.daily_codes))
                 output, timing = lab.process(pcm)
             except Exception as exc:  # один зіпсований запис не зупиняє експеримент
                 output, timing = {"error": type(exc).__name__}, {}
@@ -741,6 +770,10 @@ def main(argv=None):
                    help="dictionary — лише назви словників; receiver — як у приймачі (список «Підказка Whisper» "
                         "+ назви); phrases — лише звороти; combined — звороти + словник")
     r.add_argument("--prompt-file", help="власний текст зворотів для phrases/combined (без номерів)")
+    r.add_argument("--whisper-phrases", help="файл фраз «Підказки Whisper» замість списку з бази (для --prompt receiver)")
+    r.add_argument("--daily-codes", choices=("off", "append", "latest"), default="off",
+                   help="append: додати в підказку постійні й коди доби кожного запису; latest — лише останній "
+                        "код доби запису (лише --prompt receiver)")
     r.add_argument("--normalize", choices=("on", "off"), default="on")
     r.add_argument("--temperature", default="0,0.2,0.4",
                    help="температури Whisper через кому; «0» — без повторного розпізнавання")

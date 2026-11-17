@@ -314,3 +314,24 @@ def test_room_label_and_multiple_messages_flag(tmp_path):
     assert summary["false_text"] == 0, "кімнатний шум не входить у хибний текст ефіру"
     store.review(speech, "вишня 210", "speech", 1)
     assert store.get(speech)["multiple_messages"] == 1, "без поля відмітка не стирається"
+
+
+def test_when_space_runs_out_filtered_noise_goes_first_and_radio_last(tmp_path):
+    """Нестача місця: спершу відсіяне програмою, потім інше мовлення, ефір — останнім."""
+    from unittest.mock import patch
+    store = RecordingStore(tmp_path / 'archive')
+    audio = b'\x00\x01' * (16000 * 3)          # 3 с: «інше мовлення» — довше за 2 с
+    radio_old = store.save(audio, 16000, {'status': 'ready', 'fix_id': 'db:1'})
+    speech_old = store.save(audio, 16000, {'status': 'ready'})
+    quiet_new = store.save(audio, 16000, {'status': 'low_rms'})
+    size = store.get(quiet_new)['bytes']
+    store.max_bytes = 2 * size          # вміщується лише два записи
+    store.prune()
+    kept = {r['id'] for r in store.listing(view='all', limit=10)['items']}
+    assert kept == {radio_old, speech_old}, "найновіша тиша поступається старішому ефіру й мовленню"
+    store.max_bytes = size
+    store.prune()
+    assert {r['id'] for r in store.listing(view='all', limit=10)['items']} == {radio_old}
+    with patch('services.recordings.time.time', return_value=10**10):
+        store.prune()
+    assert store.listing(view='all', limit=10)['items'] == [], "строк за віком діє для всіх нерозмічених"

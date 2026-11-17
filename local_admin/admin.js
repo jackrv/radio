@@ -1415,6 +1415,45 @@
   // ---------- Система ----------
   const shortModel = name => (name || "—").replace(/^mlx-community\//, "").replace(/-mlx$/, "");
   const size = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} МБ` : `${Math.round(bytes / 1024)} КБ`;
+  const storageSize = value => value >= 1073741824 ? `${(value/1073741824).toFixed(2)} ГіБ` : `${(value/1048576).toFixed(1)} МіБ`;
+  async function storageView() {
+    const box = $("storage-status");
+    let s;
+    try { s = await request("/api/storage"); }
+    catch (_) { box.textContent = "Дані сховища недоступні. Після оновлення сервера потрібен перезапуск лаунчера."; return; }
+    box.replaceChildren();
+    const audio = s.audio;
+    if (audio.available) {
+      const full = audio.bytes / audio.max_bytes;
+      const bar = el("progress"); bar.max = audio.max_bytes; bar.value = Math.min(audio.bytes, audio.max_bytes);
+      bar.setAttribute("aria-label", "Заповнення ліміту WAV"); box.append(bar);
+      box.append(kv([
+        ["WAV за індексом", `${storageSize(audio.bytes)} / ${storageSize(audio.max_bytes)} · ${(full*100).toFixed(1)}%`, full>=0.9 ? "caution" : ""],
+        ["До ліміту", storageSize(audio.remaining_bytes)],
+        ["Захищено розміткою", `${num(audio.protected_count)} записів · ${storageSize(audio.protected_bytes)}`],
+        ["Нерозмічені", `${num(audio.unreviewed_count)} · ${storageSize(audio.unreviewed_bytes)} · до ${audio.retention_days} днів`],
+        ["Найближча межа за віком", audio.next_age_expiry_at ? `${new Date(audio.next_age_expiry_at*1000).toLocaleString("uk-UA")}` : "нерозмічених немає"],
+        ["Підлягає очищенню зараз", `${num(audio.due_count)} записів · ${storageSize(audio.due_bytes)}`, audio.due_count ? "caution" : ""],
+        ["Індекс SQLite та WAL/SHM", storageSize(audio.metadata_bytes)],
+      ]));
+      if (audio.estimated_full_at) box.append(el("p", "small caution", `Ліміт може бути досягнутий близько ${new Date(audio.estimated_full_at*1000).toLocaleString("uk-UA")} за темпом останньої години. Це оцінка, не розклад.`));
+      const g = audio.unreviewed_by_group;
+      if (g) box.append(kv([
+        ["Нерозмічені: ефір", `${num(g.radio.count)} · ${storageSize(g.radio.bytes)}`],
+        ["Нерозмічені: інше мовлення", `${num(g.speech.count)} · ${storageSize(g.speech.bytes)}`],
+        ["Нерозмічені: відсіяне програмою", `${num(g.filtered.count)} · ${storageSize(g.filtered.bytes)}`],
+      ]));
+      box.append(el("p", "small muted", "Очищення виконується після збереження нового аудіо: за віком або обсягом — що настане раніше. Коли місця бракує, першим видаляється відсіяне програмою (тиша, закороткі, чорний список…), потім інше мовлення, ефір — останнім; у кожній групі спершу старіші. Розмічені записи не видаляються, але займають частину ліміту. Ліміт стосується WAV за індексом, не всього каталогу."));
+      if (audio.protected_bytes >= audio.max_bytes) box.append(el("p", "alert", "Захищені записи вже займають увесь ліміт: нові нерозмічені можуть видалятися одразу. Розмітка не очищається автоматично."));
+    } else box.append(el("p", "muted", "Аудіоархів ще не створено або його індекс недоступний."));
+    for (const log of s.logs) box.append(el("p", "small", `${log.name}: ${storageSize(log.bytes)} загалом; активний ${storageSize(log.active_bytes)} / ${storageSize(log.max_file_bytes)}. До ротації близько ${storageSize(log.remaining_to_rotation_bytes)}. Архівів ${log.archive_count}/${log.max_archives}${log.rotations_until_oldest_removed ? `; найстаріший буде замінено через ${log.rotations_until_oldest_removed} ротацій` : ""}.`));
+    box.append(el("p", "small muted", "Логи не мають строку в днях: ротація за розміром, до 5 архівів плюс активний файл для кожного журналу. Точний час залежить від кількості нових повідомлень."));
+    const h=s.diagnostics,b=s.backups;
+    box.append(el("p", "small", `Історія діагностики: ${h.count}/${h.max_sessions} сесій, ${storageSize(h.bytes)} / ${storageSize(h.max_bytes)}, до ${h.retention_days} днів. Будь-який ліміт може спрацювати раніше за інші. Очищення під час запису знімка; вік рахується від останнього оновлення файла.`));
+    if (h.next_age_expiry_at) box.append(el("p", "small muted", `Найближча вікова межа діагностики: ${new Date(h.next_age_expiry_at*1000).toLocaleString("uk-UA")}.`));
+    box.append(el("p", "small", `Резервні копії: ${b.automatic_count}/${b.keep} автоматичних (${storageSize(b.automatic_bytes)}). Найстаріші понад ліміт видаляються при створенні наступної копії. Інші копії: ${b.manual_count} (${storageSize(b.manual_bytes)}) — автоматично не видаляються.`));
+    box.append(el("p", "small muted", `Вільно на диску: ${storageSize(s.disk.free_bytes)}. Це не вільне місце в ліміті архіву. Перегляд нічого не очищає.`));
+  }
   async function system() {
     if (!data) await overview();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {};
@@ -1455,6 +1494,7 @@
     for (const [k, v] of Object.entries(c).sort()) { const r = el("tr"); r.append(el("td", "", k), el("td", "", num(v))); table.append(r); }
     $("diagnostics").textContent = JSON.stringify(d, null, 2);
     await diagnosticHistory();
+    await storageView();
   }
   // ---------- Історія сесій ----------
   let selectedHistory = null;

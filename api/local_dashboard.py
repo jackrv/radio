@@ -799,6 +799,11 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(404, "Користувача не знайдено")
         return {"users": people, "selected": user_activity.overview(db_path, user_id) if user_id is not None else None}
 
+    @app.get("/api/storage")
+    def storage(admin=Depends(actor)):
+        from services.storage_status import storage_status
+        return storage_status(db_path, recordings, diagnostic_history, backup_dir)
+
     @app.get("/api/backups")
     def backups(admin=Depends(actor)):
         return {"items": backups_overview(backup_dir)}

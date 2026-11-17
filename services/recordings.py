@@ -26,6 +26,30 @@ SPEECH_GROUP = ("(status IN ('ready','empty_text') "
 RADIO_GROUP = ("(json_extract(data,'$.fix_id') IS NOT NULL "
                "OR COALESCE(json_extract(data,'$.predicted_recipient'),'') <> '' "
                "OR COALESCE(json_extract(data,'$.predicted_sender'),'') <> '')")
+# Черговість при нестачі місця: першим зберігається ефір, потім інше мовлення,
+# останнім — відсіяне програмою (тиша, закороткі, чорний список…). Розмічене не видаляється.
+PRUNE_TIER_SQL = f"CASE WHEN {RADIO_GROUP} THEN 0 WHEN {SPEECH_GROUP} THEN 1 ELSE 2 END"
+PRUNE_TIERS = ("radio", "speech", "filtered")
+
+
+def plan_prune(rows, *, cutoff, max_bytes):
+    """Що видалити: rows — (id, created, bytes, reviewed, tier).
+
+    Розмічене не видаляється й першим займає місце в ліміті. Неразмічене старше за
+    строк видаляється завжди. Решта лишається, поки вміщується в ліміт, у порядку:
+    ефір → інше мовлення → відсіяне, у кожній групі новіші першими. Тож при нестачі
+    місця першим іде відсіяне програмою, а ефір — останнім.
+    """
+    used = sum(size for _, _, size, reviewed, _ in rows if reviewed)
+    delete = []
+    for record_id, created, size, _, tier in sorted((r for r in rows if not r[3]), key=lambda r: (r[4], -r[1])):
+        if created < cutoff or used + size > max_bytes:
+            delete.append((record_id, size, tier))
+        else:
+            used += size
+    return delete
+
+
 # Види для панелі: архів ділиться на три частини без перетину — ефір (позивний чи
 # подія), інше мовлення, усе відсіяне. Ключ -> (стан перевірки, умова).
 VIEWS = {
@@ -193,20 +217,13 @@ class RecordingStore:
     def prune(self):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            rows = db.execute("SELECT id,created,bytes,reference FROM recordings ORDER BY created DESC").fetchall()
-            used, cutoff = 0, time.time() - self.retention_days * 86400
-            for row in rows:
+            rows = db.execute(f"SELECT id, created, bytes, reference IS NOT NULL, {PRUNE_TIER_SQL} FROM recordings").fetchall()
+            plan = plan_prune([tuple(row) for row in rows], cutoff=time.time() - self.retention_days * 86400,
+                              max_bytes=self.max_bytes)
+            for record_id, _, _ in plan:
+                (self.root / (record_id + ".wav")).unlink(missing_ok=True)
                 # Reviewed material is the evaluation corpus and must survive retention.
-                if row["reference"] is not None:
-                    used += row["bytes"]
-            for row in rows:
-                if row["reference"] is not None:
-                    continue
-                if row["created"] < cutoff or used + row["bytes"] > self.max_bytes:
-                    (self.root / (row["id"] + ".wav")).unlink(missing_ok=True)
-                    db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL", (row["id"],))
-                else:
-                    used += row["bytes"]
+                db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL", (record_id,))
 
     @staticmethod
     def decode(row):

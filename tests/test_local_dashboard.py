@@ -678,3 +678,17 @@ def test_editor_quick_add_conflict_keeps_concurrent_dictionary_change(local):
     })
     assert stale.status_code == 409
     assert client.get('/api/dictionaries').json()['callsigns'] == new.json()
+
+
+def test_storage_status_endpoint_requires_auth_and_does_not_create_archive(setup, tmp_path):
+    _, path = setup
+    directory = tmp_path/'not-created'
+    app = create_dashboard(path, KEY, recordings_dir=directory, samples_dir=tmp_path/'samples', diagnostics_path=tmp_path/'diagnostics.json')
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1',1)) as client:
+        assert client.get('/api/storage').status_code == 401
+        client.post('/session', json={'token':KEY}, headers={'Origin':ORIGIN})
+        result = client.get('/api/storage')
+        assert result.status_code == 200
+        assert result.json()['audio']['available'] is False
+        assert result.json()['backups']['keep'] == 7
+        assert not directory.exists()

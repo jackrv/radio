@@ -23,28 +23,11 @@ def is_hidden(db_path, fix_id, *, db=None):
         return bool(row and row[0] != "visible")
 
 
-def remember_message(db_path, fix_id, message):
-    if not isinstance(fix_id, str) or not FIX_RE.fullmatch(fix_id) or not isinstance(message, dict):
-        return
-    msg_id = message.get("message_id")
-    chat_id = (message.get("chat") or {}).get("id")
-    file_id = (message.get("voice") or {}).get("file_id")
-    if type(msg_id) is not int or chat_id is None:
-        return
-    with get_db(db_path) as db:
-        ensure_table(db)
-        db.execute("""INSERT INTO telegram_phrase_messages (fix_id,chat_id,message_id,voice_file_id)
-            VALUES (?,?,?,?) ON CONFLICT(fix_id) DO UPDATE SET
-            chat_id=excluded.chat_id, message_id=excluded.message_id,
-            voice_file_id=COALESCE(excluded.voice_file_id, telegram_phrase_messages.voice_file_id)
-        """, (fix_id, str(chat_id), msg_id, file_id if isinstance(file_id, str) else None))
-
-
 def remember_voice(db_path, fix_id, file_id):
     """Лише file_id голосового з чату іншого користувача: аудіо для редактора.
 
-    Розташування повідомлення (чат і message_id) зберігається тільки для
-    робочого чату, тож видалення в чужому чаті не приховує фразу.
+    Адреси нових копій зберігаються в telegram_deliveries. Старі chat_id і
+    message_id лишаються для сумісності коротких кнопок del.
     """
     if not isinstance(fix_id, str) or not FIX_RE.fullmatch(fix_id) or not isinstance(file_id, str):
         return

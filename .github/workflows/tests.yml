@@ -52,5 +52,5 @@ jobs:
       - name: Syntax check
         run: for file in miniapp/*.js local_admin/*.js; do node --check "$file"; done
 
-      - name: Mini App tests
-        run: node --test tests/miniapp.test.cjs
+      - name: JavaScript tests
+        run: node --test tests/*.cjs

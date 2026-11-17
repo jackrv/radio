@@ -42,16 +42,6 @@ def init_db(db_path=DB_PATH):
     init_word_db(db_path)
 
 
-def resolve_event_text(event_id: int, db_path=DB_PATH):
-    with get_db(db_path) as db:
-        row = db.execute(
-            "SELECT COALESCE(raw_text, text) FROM radio_events WHERE id = ?",
-            (event_id,),
-        ).fetchone()
-
-    return row[0] if row else None
-
-
 def save_correction(
     original: str,
     corrected: str,
@@ -173,7 +163,6 @@ def save_correction(
                 db=db,
             )
         return None
-
 
 
 def save_event(

@@ -24,7 +24,6 @@ class Transcriber:
         log,
         pause_gate=None,
         health=None,
-        notification_filter=None,
         spectral_matcher=None,
         spectral_mode="shadow",
         text_lists=None,
@@ -34,7 +33,6 @@ class Transcriber:
         self.segments = segments
         # Стан прогресу для супервізора; None — без контролю (тести, старий код).
         self.health = health
-        self.notification_filter = notification_filter
         self.spectral_matcher = spectral_matcher
         self.spectral_mode = spectral_mode
         # Живі списки з SQLite (фрази-галюцинації, алиаси); None — статичний blacklist.
@@ -176,20 +174,6 @@ class Transcriber:
 
         spectral = self._spectral_score(pcm)
 
-        if self.notification_filter is not None:
-            try:
-                with runtime.timed("asr.notification_filter"):
-                    isolated_notification = self.notification_filter.is_notification(pcm)
-            except Exception:
-                runtime.count("asr.notification_filter_error")
-                self.log.exception("Помилка фільтра сповіщень; сегмент передано Whisper")
-            else:
-                if isolated_notification:
-                    runtime.asr_status("notification")
-                    runtime.count("asr.notification_filtered")
-                    self.log.info("Відкинуто окремий звук сповіщення: збіг із локальним зразком")
-                    return
-
         if spectral is not None and spectral["candidate"] and self.spectral_mode == "active":
             runtime.asr_status("notification")
             runtime.count("asr.notification_filtered")
@@ -277,6 +261,7 @@ class Transcriber:
 
         self.log.info("Розпізнано (початкове): %s", raw_text)
 
+        note(filtered_text=raw_text)
         fallback = False
         try:
             with runtime.timed("asr.correction_pipeline"):

@@ -1,6 +1,5 @@
 import io
 import json
-import logging
 import wave
 from unittest.mock import Mock
 
@@ -34,8 +33,8 @@ def test_audio_text_metrics_review_and_conflict(tmp_path):
     with pytest.raises(ValueError):
         store.review(record_id, 'перезапис', 'speech', 0)
     assert store.summary()['quality']['raw_text']['wer'] == 0
-    assert store.listing(review='reviewed')['total'] == 1
-    assert store.listing(review='pending')['total'] == 0
+    assert store.listing(view='reviewed')['total'] == 1
+    assert store.listing(view='radio')['total'] == 0
     assert (store.root / (record_id + '.wav')).stat().st_mode & 0o777 == 0o600
     for value in ('../index', 'a'*31, '../../etc/passwd'):
         with pytest.raises(LookupError):
@@ -224,40 +223,37 @@ def test_event_processor_captures_actual_role_prediction():
     assert trace['roles_parsed'] is True
 
 
-def test_short_groups_partition_archive_before_pagination(tmp_path):
-    store=RecordingStore(tmp_path/'archive')
-    short=store.save(pcm(),16000,{'status':'ready','raw_text':'коротка фраза'})
-    boundary=store.save(pcm()*2,16000,{'status':'ready'})
-    normal=store.save(pcm()*3,16000,{'status':'ready','raw_text':'прийом'})
-    vad=store.save(pcm()*3,16000,{'status':'vad_short'})
-    quiet=store.save(pcm()*3,16000,{'status':'low_rms'})
-    blacklisted=store.save(pcm()*3,16000,{'status':'blacklist'})
-    page=store.listing(group='short',limit=1)
-    assert {k:v for k,v in page['groups'].items() if k not in ('speech','radio')}=={'all':6,'short':5,'normal':1,'shadow':0}
-    assert page['total']==5 and len(page['items'])==1
-    assert {r['id'] for r in store.listing(group='short')['items']}=={short,boundary,vad,quiet,blacklisted}
-    assert [r['id'] for r in store.listing(group='normal')['items']]==[normal]
-    store.review(short,'коротка фраза','speech',0)
-    assert {k:v for k,v in store.listing(review='reviewed',group='short')['groups'].items() if k not in ('speech','radio')}=={'all':1,'short':1,'normal':0,'shadow':0}
-    assert store.listing(review='pending',group='short')['total']==4
-    assert len(store.listing()['items'])==6  # No records were removed.
+def test_views_partition_pending_archive_and_preserve_reviewed_records(tmp_path):
+    store = RecordingStore(tmp_path/'archive')
+    filtered = store.save(pcm(), 16000, {'status':'low_rms'})
+    speech = store.save(pcm()*3, 16000, {'status':'ready'})
+    radio = store.save(pcm(), 16000, {'status':'ready', 'fix_id':'db:7'})
+    assert store.listing(view='filtered', limit=1)['total'] == 1
+    assert store.listing(view='speech')['items'][0]['id'] == speech
+    assert store.listing(view='radio')['items'][0]['id'] == radio
+    store.review(filtered, '', 'noise', 0)
+    assert store.listing(view='filtered')['total'] == 0
+    assert store.listing(view='reviewed')['items'][0]['id'] == filtered
+    assert store.listing()['total'] == 3
 
 
-def test_recording_group_api_validation(setup,tmp_path):
-    _,db=setup
-    store=RecordingStore(tmp_path/'archive')
-    store.save(pcm(),16000,{'status':'ready'})
-    normal=store.save(pcm()*3,16000,{'status':'ready','text_filter_shadow':{'evaluated':True,'additional':True}})
-    app=create_dashboard(db,'x'*43,recordings_dir=store.root)
-    with TestClient(app,base_url='http://127.0.0.1:8766',client=('127.0.0.1',1234)) as client:
-        client.post('/session',json={'token':'x'*43},headers={'Origin':'http://127.0.0.1:8766'})
-        page=client.get('/api/recordings?group=normal').json()
-        assert page['total']==1 and page['items'][0]['id']==normal
-        assert client.get('/api/recordings?group=short').json()['total']==1
-        shadow=client.get('/api/recordings?group=shadow').json()
-        assert shadow['total']==1 and shadow['items'][0]['id']==normal
-        assert client.get('/api/recordings?group=invalid').status_code==422
-        assert client.get('/api/recordings').json()['total']==2
+
+def test_recording_view_api_validation(setup, tmp_path):
+    _, db = setup
+    store = RecordingStore(tmp_path/'archive')
+    store.save(pcm(), 16000, {'status':'ready'})
+    normal = store.save(pcm()*3, 16000, {'status':'ready'})
+    app = create_dashboard(db, 'x'*43, recordings_dir=store.root)
+    with TestClient(app, base_url='http://127.0.0.1:8766', client=('127.0.0.1',1234)) as client:
+        client.post('/session', json={'token':'x'*43}, headers={'Origin':'http://127.0.0.1:8766'})
+        page = client.get('/api/recordings?view=speech').json()
+        assert page['total'] == 1 and page['items'][0]['id'] == normal
+        assert client.get('/api/recordings?view=invalid').status_code == 422
+        assert client.get('/api/recordings').json()['total'] == 2
+        assert client.get('/api/recordings/queue').status_code == 404
+        for parameter in ('group', 'queue', 'review'):
+            assert client.get('/api/recordings', params={parameter:'all'}).status_code == 422
+
 
 
 def test_shadow_review_selection_metrics_and_legacy_records(tmp_path):
@@ -268,15 +264,14 @@ def test_shadow_review_selection_metrics_and_legacy_records(tmp_path):
     store.save(pcm(),16000,{'status':'ready','text_filter_shadow':{'evaluated':True,'additional':False}})
     legacy=store.save(pcm(),16000,{'status':'ready','raw_text':'старий запис'})
     store.review(legacy,'старий запис','speech',0)
-    page=store.listing(group='shadow',limit=1)
+    page=store.listing(view='shadow',limit=1)
     assert page['total']==5 and len(page['items'])==1
-    assert page['groups']['all']==7 and page['groups']['shadow']==5
-    assert {r['id'] for r in store.listing(group='shadow')['items']}==set(candidates.values())
+    assert {r['id'] for r in store.listing(view='shadow')['items']}==set(candidates.values())
     for label,record_id in candidates.items():
         if label!='unclear':
             store.review(record_id,'дякую' if label=='speech' else '',label,0)
-    assert store.listing(group='shadow',review='pending')['total']==1
-    assert store.listing(group='shadow',review='reviewed')['groups']['shadow']==4
+    assert store.listing(view='shadow')['total']==1
+    assert store.listing(view='reviewed')['total']==5
     assert store.summary()['text_filter_shadow']=={
         'evaluated':6,'candidates':5,'reviewed':4,'speech':1,'noise':1,'notification':1,'room':1,'unclear':0}
     store.review(candidates['unclear'],'','unclear',0)
@@ -285,25 +280,16 @@ def test_shadow_review_selection_metrics_and_legacy_records(tmp_path):
     assert store.audio(candidates['speech'])
 
 
-def test_live_queues_classify_thresholds_without_sample_limits(tmp_path):
-    store=RecordingStore(tmp_path/'archive')
-    for level in (-36,-35,-34,-37):
-        record_id=store.save(pcm(),16000,{'status':'low_rms'})
-        with store.connect() as db:
-            db.execute("UPDATE recordings SET data=json_set(data,'$.signal.rms_dbfs',?) WHERE id=?",(level,record_id))
-    d=[store.save(pcm(),16000,{'status':'vad_short','speech_ms':300+i}) for i in range(22)]
-    store.save(pcm(),16000,{'status':'vad_short','speech_ms':299})
-    store.save(pcm(),16000,{'status':'notification'})
-    ready=store.save(pcm(),16000,{'status':'empty_text'})
-    progress={g['key']:g for g in store.queue_progress()}
-    assert {k:g['total'] for k,g in progress.items()}=={'A':1,'B':2,'C':1,'D':22}
-    assert store.listing(queue='A')['items'][0]['id']==ready
-    assert store.listing(queue='all')['total']==26
-    assert [r['id'] for r in store.listing(queue='D',limit=2)['items']]==d[:2]
-    store.review(d[0],'','noise',0)
-    pending=store.listing(queue='D',review='pending')
-    assert pending['total']==21 and pending['items'][0]['id']==d[1]
-    assert store.get(d[0])['label']=='noise'
+def test_filtered_view_is_live_and_has_no_sample_limit(tmp_path):
+    store = RecordingStore(tmp_path/'archive')
+    ids = [store.save(pcm(), 16000, {'status':'vad_short'}) for _ in range(22)]
+    assert store.listing(view='filtered')['total'] == 22
+    store.review(ids[0], '', 'noise', 0)
+    assert store.listing(view='filtered')['total'] == 21
+    new = store.save(pcm(), 16000, {'status':'notification'})
+    assert store.listing(view='filtered', limit=2)['items'][0]['id'] == new
+    assert store.get(ids[0])['label'] == 'noise'
+
 
 
 

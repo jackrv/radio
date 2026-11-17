@@ -1,7 +1,6 @@
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-import sys
 import os
 from core.console import ConsoleDashboard
 

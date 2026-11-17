@@ -1,7 +1,6 @@
-from core.analyzer import (
-    canonical_text, fmt, fmt_spoken, is_bare_callsign, is_short_garbage, split_roles,
-)
-from core.template_text import template_text
+from core.analyzer import fmt, fmt_spoken
+from core.diagnostics import runtime
+from core.text_analysis import analyze_text
 
 
 class EventProcessor:
@@ -35,24 +34,13 @@ class EventProcessor:
         self.select_recipients = select_recipients
 
     def process(self, text, pcm, raw_text=None):
-        # Автокорекція за словниками й шаблонами — до пошуку позивних і команд:
-        # «Берега 56» -> «Береза 56», «приєм» -> «прийом». Виправлений текст —
-        # основний (подія, журнал, Mini App, сповіщення); почутий лишається в raw_text.
-        # Збій автокорекції не зупиняє обробку: тоді йде текст без неї.
         original = text
-        try:
-            text = canonical_text(text, (self.commands, self.callsigns, self.watch))
-            text = template_text(text, self.callsigns, (*self.commands.names, *self.watch.names))
-        except Exception:
-            self.log.exception("Не вдалося застосувати автокорекцію; обробляю текст без неї")
-            text = original
+        analysis = analyze_text(text, self.callsigns, self.commands, self.watch, self.short_garbage, self.log)
+        text = analysis.text
         if raw_text is None and text != original:
             raw_text = original
-        cs_found = self.callsigns.find(text)
-        cmd_found = self.commands.find(text)
-        watch_found = self.watch.find(text)
-
-        to_found, from_found = split_roles(text, self.callsigns)
+        cs_found, cmd_found, watch_found = analysis.callsigns, analysis.commands, analysis.watch
+        to_found, from_found = analysis.recipient, analysis.sender
 
         cs_str = fmt(cs_found)
         cmd_str = fmt(cmd_found)
@@ -65,18 +53,15 @@ class EventProcessor:
         if text != original:
             note(final_text=text)
 
-        if (
-            is_short_garbage(text, self.short_garbage)
-            and not cs_found
-            and not cmd_found
-            and not watch_found
-        ):
-            self.log.info("Відкинуто короткий хибний фрагмент: %s", text)
-            return
-
-        if not cmd_found and not watch_found and is_bare_callsign(text, cs_found, self.callsigns):
-            note(bare_callsign=True)
-            self.log.info("Відкинуто: лише позивний без номера, без команди й тексту: %s", text)
+        if analysis.rejected:
+            note(final_text="", rejected_text=text)
+            runtime.asr_status(analysis.rejected)
+            runtime.count(f"asr.{analysis.rejected}_filtered")
+            if analysis.rejected == "bare_callsign":
+                note(bare_callsign=True)
+                self.log.info("Відкинуто: лише позивний без номера, без команди й тексту: %s", text)
+            else:
+                self.log.info("Відкинуто короткий хибний фрагмент: %s", text)
             return
 
         event_id = None

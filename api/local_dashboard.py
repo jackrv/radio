@@ -242,7 +242,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
-    from services.recordings import RecordingStore, REVIEW_QUEUES
+    from services.recordings import RecordingStore
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES)
@@ -303,7 +303,6 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     def summary(admin=Depends(actor)):
         return {"receiver":read_receiver_status(db_path),"overview":store.overview(db_path),
             "settings":store.read_settings(db_path),"roles":{k:sorted(v) for k,v in PERMISSIONS.items()},
-            "notification_filter":bool(config.FILTER_NOTIFICATION_SOUNDS),
             "telegram_sync":sync_status(db_path)}
 
     @app.get("/api/overview")
@@ -312,13 +311,10 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         return {"receiver": read_receiver_status(db_path), "overview": store.overview(db_path),
                 "events_by_hour": events_by_hour(db_path), "users": users_overview(db_path),
                 "backups": backups_overview(backup_dir), "telegram_sync": sync_status(db_path),
-                "notification_filter": bool(config.FILTER_NOTIFICATION_SOUNDS),
                 "spectral": spectral_settings(),
                 "samples": len(list_samples(samples_dir)["items"]),
                 "models": {"whisper": config.MODEL_REPO, "qwen": config.LLM_REPO},
                 "diagnostics": read_diagnostics(diagnostics_path)}
-
-    callsign_cache = {}
 
     @app.post("/api/recordings/suggest-roles")
     def suggest_roles(payload: RoleSuggestion, admin=Depends(actor)):
@@ -327,21 +323,12 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         Для двох різних позивних пропонуються й ролі (перший — кому, другий — від):
         оператор вирішив, що зручність розмітки важливіша за незалежну оцінку ролей.
         """
-        from callsigns import Callsigns
         from core.analyzer import fmt
-        from services.dictionary_loader import dictionary_fingerprint
-        from services.text_lists import sync_aliases
+        from services.text_check import dictionaries_from_db
         with get_db(db_path) as db:
-            sync_aliases(db)
-            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():
-                return {"callsigns": []}
-            key = dictionary_fingerprint(db)
-            if key not in callsign_cache:
-                lines = [line for (line,) in db.execute("SELECT raw_line FROM dictionary_entries "
-                         "WHERE enabled=1 AND dictionary_type='callsigns' ORDER BY line_number")]
-                callsign_cache.clear()
-                callsign_cache[key] = Callsigns.from_lines(lines)
-            callsigns = callsign_cache[key]
+            callsigns, _, _ = dictionaries_from_db(db)
+        if callsigns is None:
+            return {"callsigns": []}
         found = []
         items = callsigns.find(payload.text)
         for item in items:
@@ -396,24 +383,17 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(422, str(exc)) from None
         return {"day": day, "codes": codes}
 
-    @app.get("/api/recordings/queue")
-    def recording_queue(admin=Depends(actor)):
-        return {"available": True, "live": True, "updated_at": time.time(), "groups": recordings.queue_progress()}
-
     @app.get("/api/recordings")
-    def recording_list(offset: int = 0, limit: int = 25, review: str = "all", group: str = "all", queue: str = "",
-                       q: str = "", edits: str = "", view: str = "", since: float | None = None,
+    def recording_list(request: Request, offset: int = 0, limit: int = 25,
+                       q: str = "", edits: str = "", view: str = "all", since: float | None = None,
                        admin=Depends(actor)):
-        if (not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or review not in ("all", "pending", "reviewed")
-                or group not in ("all", "normal", "short", "shadow", "speech", "radio") or not re.fullmatch(r"(?:|all|[A-Z])", queue)
-                or len(q) > 200):
+        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since"}
+                or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
-        if queue and queue != "all" and queue not in REVIEW_QUEUES and not q.strip():
-            raise HTTPException(404, "Такої групи в черзі немає")
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
             raise HTTPException(422, "Некоректні параметри")
         from services.recordings import VIEWS
-        if (view and view not in VIEWS) or (since is not None and not 0 <= since <= 4e9):
+        if (view not in VIEWS) or (since is not None and not 0 <= since <= 4e9):
             raise HTTPException(422, "Некоректні параметри")
         from services import user_activity
         selected = None
@@ -421,8 +401,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             selected = "miniapp"
         elif edits:
             selected = list(user_activity.corrections(db_path, user_id=int(edits)))
-        page = recordings.listing(offset, limit, review, group, queue=queue, search=q, edits=selected,
-                                  view=view or None, since=since)
+        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since)
         page["views"] = recordings.view_counts(since)
         # Хто й коли правив запис у Mini App (журнал дій з 16.11.2026).
         linked = [item["data"].get("fix_id") for item in page["items"] if item["data"].get("fix_id")]
@@ -564,8 +543,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         except ValueError:
             diagnostics = {"available": False}
         counters = diagnostics.get("counters") or {}
-        return {"spectral": spectral_settings(), "waveform": bool(config.FILTER_NOTIFICATION_SOUNDS),
-                "samples": len(list_samples(samples_dir)["items"]),
+        return {"spectral": spectral_settings(), "samples": len(list_samples(samples_dir)["items"]),
                 # Мітки — з «Аудіоархіву»: справжній PCM приймача, зокрема відкинуті сегменти.
                 "labels": notification_eval.label_counts(recordings),
                 "updated_at": diagnostics.get("updated_at"), "started_at": diagnostics.get("started_at"),
@@ -744,7 +722,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         import io
         import logging
         import wave
-        from core.notification_filter import NotificationSoundFilter
+        from core.notification_spectral import SpectralNotificationMatcher
         content = await upload(request)
         try:
             content,_ = validate_wav(content)
@@ -752,8 +730,13 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             raise HTTPException(422,str(exc)) from None
         with wave.open(io.BytesIO(content),"rb") as audio:
             pcm = audio.readframes(audio.getnframes())
-        detector = NotificationSoundFilter.from_directory(samples_dir,16000,logging.getLogger(__name__))
-        return {"isolated_match":detector.is_notification(pcm),"templates":len(detector.templates)}
+        settings = spectral_settings()
+        detector = SpectralNotificationMatcher.from_directory(
+            samples_dir, 16000, logging.getLogger(__name__),
+            **{key: settings[key] for key in ("threshold", "max_outside_s", "max_extra")})
+        score = detector.score_pcm(pcm)
+        return {"isolated_match": bool(score and score["candidate"]), "templates": len(detector.templates),
+                "mode": settings["mode"]}
 
     @app.delete("/api/samples/{sample_id}")
     def sample_delete(sample_id: str,admin=Depends(actor)):

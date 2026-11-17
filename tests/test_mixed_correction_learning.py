@@ -8,7 +8,7 @@ import sqlite3
 import pytest
 
 from callsigns import Callsigns
-from core.word_learning import analyze_word_changes, extract_word_changes
+from core.word_learning import analyze_word_changes
 from core.word_rule_engine import apply_verified_word_rules
 from services.event_store import save_event
 from services.miniapp_correction_editor import save_edit_draft, decide_learning
@@ -91,7 +91,7 @@ def test_long_mixed_correction_separates_words_numbers_and_callsigns():
     ("нам не понятно зараз", "все ясно сейчас тут"),  # довге переписування
 ])
 def test_insertions_permutations_repeats_and_rewrites_never_vote(before, after):
-    assert extract_word_changes(before, after) == []
+    assert analyze_word_changes(before, after).pairs == []
 
 
 def test_inserted_word_never_enters_a_rule():

@@ -76,7 +76,7 @@ def make_processor(db_path):
 
 
 def test_stores_original_and_corrected_text(tmp_path, monkeypatch):
-    import core.event_processor as ep
+    import core.text_analysis as ep
 
     monkeypatch.setattr(
         ep, "split_roles", lambda *_: ([], [])
@@ -104,7 +104,7 @@ def test_stores_original_and_corrected_text(tmp_path, monkeypatch):
 
 
 def test_legacy_call_without_raw_text(tmp_path, monkeypatch):
-    import core.event_processor as ep
+    import core.text_analysis as ep
 
     monkeypatch.setattr(
         ep, "split_roles", lambda *_: ([], [])

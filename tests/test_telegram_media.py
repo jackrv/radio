@@ -8,7 +8,7 @@ import requests
 from services.event_store import save_event
 from services.miniapp_management import list_phrases
 from services.telegram_media_store import (
-    remember_message, is_hidden, audio_file_id, deletion_intent, deletion_result,
+    remember_voice, is_hidden, audio_file_id, deletion_intent, deletion_result,
 )
 from services.telegram_audio import download_voice, AudioUnavailable, MAX_AUDIO_BYTES
 from tests.test_miniapp_management import setup
@@ -21,7 +21,11 @@ def phrase(db):
     eid = save_event("", "", "", "", "Вира 68", db)
     fix_id = f"db:{eid}"
     message = {"chat": {"id": 1001, "type": "private"}, "message_id": 777, "voice": {"file_id": "voice-test-id"}}
-    remember_message(db, fix_id, message)
+    remember_voice(db, fix_id, message["voice"]["file_id"])
+    # Старе розташування: лише fixture для перевірки короткої кнопки del.
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE telegram_phrase_messages SET chat_id=?,message_id=? WHERE fix_id=?",
+                     (str(message["chat"]["id"]), message["message_id"], fix_id))
     return fix_id, message
 
 

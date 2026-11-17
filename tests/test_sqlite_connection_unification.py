@@ -91,7 +91,6 @@ def test_default_paths_are_project_absolute(
         database.import_dictionaries,
         database.get_dictionary_lines,
         event_store.init_db,
-        event_store.resolve_event_text,
         event_store.save_correction,
         event_store.save_event,
     )

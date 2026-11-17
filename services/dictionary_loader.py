@@ -4,7 +4,7 @@ import time
 
 import callsigns as callsign_module
 from callsigns import Callsigns, command_dictionary
-from database import DICTIONARY_TYPES, init_db, get_dictionary_lines
+from database import DICTIONARY_TYPES, init_db
 from services.sqlite_connection import get_db
 
 REFRESH_INTERVAL_S = 2.0
@@ -15,22 +15,29 @@ def build_prompt(callsigns, commands, watch):
     return ", ".join(sorted(set(callsigns.names) | set(commands.names) | set(watch.names)))
 
 
+def dictionaries_from_lines(lines):
+    """Єдиний конструктор словників; не читає й не змінює базу."""
+    return (Callsigns.from_lines(lines.get("callsigns", ())),
+            command_dictionary(lines.get("commands", ())),
+            Callsigns.from_lines(lines.get("telegram", ())))
+
+
+def read_dictionary_lines(db):
+    """Лише SELECT: придатний і для read-only знімка лабораторії."""
+    lines = {kind: [] for kind in DICTIONARY_TYPES}
+    for kind, line in db.execute("""SELECT dictionary_type, raw_line FROM dictionary_entries
+            WHERE enabled = 1 ORDER BY dictionary_type, line_number"""):
+        lines.setdefault(kind, []).append(line)
+    return lines
+
+
 def load_dictionaries(db_path, log):
     """Загружает словари из SQLite и формирует prompt для Whisper."""
 
     init_db(db_path)
 
-    callsigns = Callsigns.from_lines(
-        get_dictionary_lines("callsigns", db_path)
-    )
-
-    commands = command_dictionary(
-        get_dictionary_lines("commands", db_path)
-    )
-
-    watch = Callsigns.from_lines(
-        get_dictionary_lines("telegram", db_path)
-    )
+    with get_db(db_path) as db:
+        callsigns, commands, watch = dictionaries_from_lines(read_dictionary_lines(db))
 
     if not callsigns.names:
         message = (
@@ -132,17 +139,14 @@ class LiveDictionaries:
                 key = (fingerprint, id(callsign_module.ALIASES))
                 if key == self._key and not force:
                     return False
-                lines = {kind: [] for kind in DICTIONARY_TYPES}
-                for kind, line in db.execute("""SELECT dictionary_type, raw_line FROM dictionary_entries
-                        WHERE enabled = 1 ORDER BY dictionary_type, line_number"""):
-                    lines.setdefault(kind, []).append(line)
+                lines = read_dictionary_lines(db)
         except sqlite3.Error:
             if self.log is not None and self._warned != "db":
                 self.log.warning("Словники недоступні; використовую попередні")
             self._warned = "db"
             return False
 
-        callsigns = Callsigns.from_lines(lines["callsigns"])
+        callsigns, commands, watch = dictionaries_from_lines(lines)
         self._key = key
         if not callsigns.names:
             if self.log is not None and self._warned != fingerprint:
@@ -150,8 +154,6 @@ class LiveDictionaries:
             self._warned = fingerprint
             return False
         self._warned = None
-        commands = command_dictionary(lines["commands"])
-        watch = Callsigns.from_lines(lines["telegram"])
         changed = self.revision is not None and fingerprint != self.revision
         self.callsigns._swap(callsigns)
         self.commands._swap(commands)

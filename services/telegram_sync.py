@@ -87,20 +87,16 @@ _HEADER_CACHE = {}
 def _dictionaries(db_path):
     """Поточні словники з SQLite; кеш за відбитком рядків і поточними алиасами."""
     import callsigns as callsign_module
-    from callsigns import Callsigns, command_dictionary
-    from services.dictionary_loader import dictionary_fingerprint
+    from services.dictionary_loader import dictionary_fingerprint, dictionaries_from_lines, read_dictionary_lines
     with get_db(db_path) as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='dictionary_entries'").fetchone():
             return None
         key = (str(db_path), dictionary_fingerprint(db), id(callsign_module.ALIASES))
         if key in _HEADER_CACHE:
             return _HEADER_CACHE[key]
-        lines = {}
-        for kind, line in db.execute("""SELECT dictionary_type, raw_line FROM dictionary_entries
-                WHERE enabled = 1 ORDER BY dictionary_type, line_number"""):
-            lines.setdefault(kind, []).append(line)
-    result = (*(Callsigns.from_lines(lines.get(kind, [])) for kind in ("callsigns", "telegram")),
-              command_dictionary(lines.get("commands", [])))
+        lines = read_dictionary_lines(db)
+    callsigns, commands, watch = dictionaries_from_lines(lines)
+    result = (callsigns, watch, commands)
     _HEADER_CACHE.clear()
     _HEADER_CACHE[key] = result
     return result

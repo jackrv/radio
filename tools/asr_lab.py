@@ -19,7 +19,6 @@
 
 import argparse
 import hashlib
-import io
 import json
 import logging
 import math
@@ -302,13 +301,9 @@ def receiver_prompt(db_path, dictionary_prompt):
 
 
 def dictionaries_from(db_path):
-    from callsigns import Callsigns, command_dictionary
-    from services.dictionary_loader import build_prompt
-    lines = {}
+    from services.dictionary_loader import build_prompt, dictionaries_from_lines, read_dictionary_lines
     with read_only(db_path) as db:
-        for kind, line in db.execute("SELECT dictionary_type, raw_line FROM dictionary_entries WHERE enabled = 1 "
-                                     "ORDER BY dictionary_type, line_number"):
-            lines.setdefault(kind, []).append(line)
+        lines = read_dictionary_lines(db)
         try:
             from services.text_lists import load_active
             from callsigns import configure_aliases
@@ -318,8 +313,7 @@ def dictionaries_from(db_path):
         except sqlite3.Error:
             import config
             blacklist, short_garbage = list(config.BLACKLIST), list(config.SHORT_GARBAGE)
-    callsigns, watch = (Callsigns.from_lines(lines.get(k, [])) for k in ("callsigns", "telegram"))
-    commands = command_dictionary(lines.get("commands", []))
+    callsigns, commands, watch = dictionaries_from_lines(lines)
     return (callsigns, commands, watch), build_prompt(callsigns, commands, watch), blacklist, short_garbage
 
 
@@ -403,6 +397,15 @@ class Lab:
         self.whisper_options = parse_whisper_options(getattr(args, "whisper_option", None) or [])
         self.recognizer = WhisperRecognizer(self.model, self.language, self.sample_rate, self.prompt, self.log,
                                             temperature=self.temperature, options=self.whisper_options)
+        from services.runtime_settings import _read
+        with read_only(self.db_path) as db:
+            self.runtime_values, self.runtime_revision = _read(db)
+        self.garbage_limits = {
+            "min_words": self.runtime_values["GARBAGE_MIN_WORDS"],
+            "min_unique_ratio": self.runtime_values["GARBAGE_MIN_UNIQUE_RATIO"],
+            "max_words_per_s": self.runtime_values["GARBAGE_MAX_WORDS_PER_S"],
+            "extra_words": self.runtime_values["GARBAGE_EXTRA_WORDS"],
+        }
         self.llm = None
         if args.variant == "qwen" and getattr(args, "llm", "on") == "off":
             raise SystemExit("--llm off має сенс лише для --variant pipeline")
@@ -413,7 +416,10 @@ class Lab:
 
     def params(self):
         import config
-        return {"variant": self.args.variant, "llm": getattr(self.args, "llm", "on") if self.args.variant in ("qwen", "pipeline") else None,
+        return {"variant": self.args.variant, "pipeline_scope": "text-after-whisper-v2",
+                "runtime_settings": self.runtime_values, "runtime_settings_revision": self.runtime_revision,
+                "not_replayed": ["notification_spectral", "cooldown", "recipient_modes", "telegram_delivery"],
+                "llm": getattr(self.args, "llm", "on") if self.args.variant in ("qwen", "pipeline") else None,
                 "llm_repo": config.LLM_REPO if self.llm else None, "temperature": list(self.temperature), "model": self.model, "language": self.language or "auto",
                 "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "prompt_text": self.prompt,
                 "prompt_tokens": prompt_token_count(self.prompt, self.language),
@@ -531,7 +537,7 @@ class Lab:
             duration = len(pcm) / (2 * self.sample_rate)
             if not raw:
                 stage = "empty_text"
-            elif looks_like_garbage(raw, duration):
+            elif looks_like_garbage(raw, duration, **self.garbage_limits):
                 text, stage = "", "garbage"
             elif blacklist_key(raw) in {blacklist_key(v) for v in self.blacklist}:
                 text, stage = "", "blacklist"
@@ -552,8 +558,11 @@ class Lab:
                     t = time.perf_counter()
                     pipeline = build_text_pipeline(self.llm, self.apply_rules, self.dictionaries, correction_is_safe, self.log)
                     text = pipeline(cleaned)
-                    timing["qwen_s"] = time.perf_counter() - t
-                    stage = "pipeline"
+                    timing["correction_s"] = time.perf_counter() - t
+                    from core.text_analysis import analyze_text
+                    analysis = analyze_text(text, *self.dictionaries, self.short_garbage, self.log)
+                    text = "" if analysis.rejected else analysis.text
+                    stage = analysis.rejected or "pipeline"
         result["hypothesis"] = text
         result["stage"] = stage
         callsigns = self.dictionaries[0]

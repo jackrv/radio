@@ -1,63 +1,63 @@
-from core.word_learning import extract_word_changes
+from core.word_learning import analyze_word_changes
 
 
 def test_two_word_corrections():
-    assert extract_word_changes(
-        "Улыбка 700, я на ган 110, принял.",
-        "Липка 700, я Наган 110, принял.",
-    ) == [
-        ("улыбка", "липка"),
-        ("на ган", "наган"),
+    assert analyze_word_changes(
+        "Вішня 700, я ду бок 110, принял.",
+        "Вишня 700, я Дубок 110, принял.",
+    ).pairs == [
+        ("вішня", "вишня"),
+        ("ду бок", "дубок"),
     ]
 
 
 def test_ukrainian_letters():
-    assert extract_word_changes(
-        "Лира 68",
-        "Ліра 68",
-    ) == [("лира", "ліра")]
+    assert analyze_word_changes(
+        "Вира 68",
+        "Віра 68",
+    ).pairs == [("вира", "віра")]
 
 
 def test_different_numbers_are_rejected():
-    assert extract_word_changes(
-        "Улыбка 700",
-        "Липка 720",
-    ) == []
+    assert analyze_word_changes(
+        "Вішня 700",
+        "Вишня 720",
+    ).pairs == []
 
 
 def test_number_words_are_not_learned():
-    assert extract_word_changes(
-        "Наган сто",
-        "Наган 100",
-    ) == []
+    assert analyze_word_changes(
+        "Дубок сто",
+        "Дубок 100",
+    ).pairs == []
 
 
 def test_insertions_and_deletions_are_ignored():
-    assert extract_word_changes(
-        "Липка 700",
-        "Липка новый 700",
-    ) == []
+    assert analyze_word_changes(
+        "Вишня 700",
+        "Вишня новый 700",
+    ).pairs == []
 
-    assert extract_word_changes(
-        "Липка новый 700",
-        "Липка 700",
-    ) == []
+    assert analyze_word_changes(
+        "Вишня новый 700",
+        "Вишня 700",
+    ).pairs == []
 
 
 def test_long_rewrites_are_ignored():
-    assert extract_word_changes(
+    assert analyze_word_changes(
         "нам не понятно",
         "все ясно сейчас",
-    ) == []
+    ).pairs == []
 
 
 def test_case_and_punctuation_are_not_rules():
-    assert extract_word_changes(
-        "Липка, 700!",
-        "липка 700",
-    ) == []
+    assert analyze_word_changes(
+        "Вишня, 700!",
+        "вишня 700",
+    ).pairs == []
 
 
 def test_empty_input():
-    assert extract_word_changes("", "Липка") == []
-    assert extract_word_changes("Липка", "") == []
+    assert analyze_word_changes("", "Вишня").pairs == []
+    assert analyze_word_changes("Вишня", "").pairs == []

@@ -234,14 +234,3 @@ def analyze_word_changes(original: str, corrected: str) -> WordAnalysis:
     analysis.review = [(o, n, "leftover" if leftover(o) else r) for o, n, r in analysis.review]
     analysis.review += [(o, n, "leftover") for o, n in moved]
     return analysis
-
-
-def extract_word_changes(
-    original: str,
-    corrected: str,
-) -> list[tuple[str, str]]:
-    """Однозначні короткі заміни (без урахування словників).
-
-    Це кандидати на навчання, а не дозволені глобальні правила.
-    """
-    return list(analyze_word_changes(original, corrected).pairs)

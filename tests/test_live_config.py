@@ -164,7 +164,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
     from core.transcriber_factory import build_transcriber
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
-                                "SPECTRAL_NOTIFICATION_MODE": "off", "FILTER_NOTIFICATION_SOUNDS": False,
+                                "SPECTRAL_NOTIFICATION_MODE": "off",
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
     cooldown = Cooldown(3.0)
@@ -230,7 +230,7 @@ def test_receiver_applies_whisper_prompt_list_without_restart(db_path, tmp_path)
     from services.text_lists import read_lists, write_list
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
-                                "SPECTRAL_NOTIFICATION_MODE": "off", "FILTER_NOTIFICATION_SOUNDS": False,
+                                "SPECTRAL_NOTIFICATION_MODE": "off",
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
     with patch("core.transcriber_factory.WhisperRecognizer") as whisper:

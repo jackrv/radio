@@ -4,7 +4,7 @@ from core.pipeline import build_text_pipeline
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
 from core.analyzer import correction_is_safe
-from core.notification_filter import NotificationSoundFilter, load_templates
+from core.notification_templates import load_templates
 from core.notification_spectral import (
     DEFAULT_MAX_EXTRA, DEFAULT_MAX_OUTSIDE_S, DEFAULT_THRESHOLD, SpectralNotificationMatcher,
 )
@@ -105,19 +105,14 @@ def build_transcriber(
     live_dictionaries.on_prompt(update_prompt)
     text_lists.on_change(update_prompt)
 
-    notification_filter = None
     spectral_matcher = None
     spectral_mode = getattr(config, "SPECTRAL_NOTIFICATION_MODE", "off")
     if spectral_mode not in ("off", "shadow", "active"):
         log.warning("Невідомий режим спектрального фільтра; використано спостереження")
         spectral_mode = "shadow"
-    use_waveform = getattr(config, "FILTER_NOTIFICATION_SOUNDS", False)
-    if use_waveform or spectral_mode != "off":
+    if spectral_mode != "off":
         templates = load_templates(config.NOTIFICATION_SOUNDS_DIR, config.SR, log)
         log.info("Фільтр звуків сповіщень: завантажено зразків — %d", len(templates))
-        if use_waveform:
-            notification_filter = NotificationSoundFilter([], config.SR)
-            notification_filter.templates = tuple(templates)
         if spectral_mode != "off":
             spectral_matcher = SpectralNotificationMatcher(
                 templates, config.SR, prepared=True,
@@ -141,7 +136,6 @@ def build_transcriber(
         pause_gate=pause_gate,
         health=health,
         recorder=recorder,
-        notification_filter=notification_filter,
         spectral_matcher=spectral_matcher,
         spectral_mode=spectral_mode,
     )

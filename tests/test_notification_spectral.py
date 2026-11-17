@@ -9,7 +9,7 @@ from core.diagnostics import RuntimeDiagnostics
 from core.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher
 from core.transcriber import Transcriber
 from services import notification_eval
-from tests.test_notification_filter import SR, pcm, phone_sound, segment, voice_like
+from tests.audio_helpers import SR, pcm, phone_sound, segment, voice_like
 from tests.test_local_dashboard import wav
 
 

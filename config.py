@@ -22,9 +22,6 @@ DIAGNOSTICS_HISTORY_DAYS = 14
 DIAGNOSTICS_HISTORY_MAX_SESSIONS = 100
 DIAGNOSTICS_HISTORY_MAX_BYTES = 50 * 1024 * 1024
 NOTIFICATION_SOUNDS_DIR = BASE_DIR / ".local-notification-sounds"
-# Хвильовий фільтр (майже точна копія зразка) вимкнено 16.11.2026: на розмітці не
-# знайшов жодного з 74 «Сигналів» — звук через динамік і мікрофон так не збігається.
-FILTER_NOTIFICATION_SOUNDS = False
 # Спектральний фільтр сповіщень: "shadow" — лише оцінює кожен сегмент і показує
 # оцінки в локальній панелі, нічого не відкидає; "active" — відкидає кандидатів;
 # "off" — вимкнено. Поріг обирається в панелі за розміченими записами «Аудіоархіву».

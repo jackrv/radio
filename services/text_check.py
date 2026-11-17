@@ -17,7 +17,7 @@ import re
 import sqlite3
 
 import callsigns as callsigns_module
-from callsigns import FOLD, Callsigns, basic_normalize, command_dictionary
+from callsigns import FOLD, basic_normalize
 from core.template_text import _TOKEN, template_text
 
 # Слова з апострофом, які часто пишуть без нього (ключ — без апострофа).
@@ -336,22 +336,21 @@ _cache = {}
 
 def dictionaries_from_db(db):
     """(позивні, команди, Telegram) з тієї самої SQLite; кешується за відбитком рядків."""
-    from services.dictionary_loader import dictionary_fingerprint
+    from services.dictionary_loader import dictionary_fingerprint, dictionaries_from_lines, read_dictionary_lines
+    import callsigns as callsign_module
     from services.text_lists import sync_aliases
     sync_aliases(db)
     try:
-        key = dictionary_fingerprint(db)
+        key = (dictionary_fingerprint(db), id(callsign_module.ALIASES))
     except sqlite3.OperationalError:
         return None, None, None
-    if key not in _cache:
-        lines = {"callsigns": [], "commands": [], "telegram": []}
-        for kind, line in db.execute("SELECT dictionary_type, raw_line FROM dictionary_entries "
-                                     "WHERE enabled=1 ORDER BY line_number"):
-            lines.setdefault(kind, []).append(line)
+    dictionaries = _cache.get(key)
+    if dictionaries is None:
+        dictionaries = dictionaries_from_lines(read_dictionary_lines(db))
         _cache.clear()
-        _cache[key] = (Callsigns.from_lines(lines["callsigns"]), command_dictionary(lines["commands"]),
-                       Callsigns.from_lines(lines["telegram"]))
-    return _cache[key]
+        _cache[key] = dictionaries
+    return dictionaries
+
 
 
 def check_with_db(db, text, codes=None):

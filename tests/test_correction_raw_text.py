@@ -1,14 +1,14 @@
 from unittest.mock import Mock
 
 from core.event_processor import EventProcessor
+from services.miniapp_correction_editor import load_edit_draft
 from services.event_store import (
     init_db,
     save_event,
-    resolve_event_text,
 )
 
 
-def test_resolve_returns_whisper_original(tmp_path):
+def test_editor_draft_returns_whisper_original(tmp_path):
     path = str(tmp_path / "events.db")
     init_db(path)
 
@@ -19,7 +19,7 @@ def test_resolve_returns_whisper_original(tmp_path):
         raw_text="Вішня 700, прийом",
     )
 
-    assert resolve_event_text(event_id, path) == (
+    assert load_edit_draft(path, f"db:{event_id}")["original_text"] == (
         "Вішня 700, прийом"
     )
 
@@ -28,7 +28,7 @@ def test_resolve_returns_whisper_original(tmp_path):
         "Кобза 110", path,
     )
 
-    assert resolve_event_text(old_id, path) == "Кобза 110"
+    assert load_edit_draft(path, f"db:{old_id}")["original_text"] == "Кобза 110"
 
 
 def test_event_processor_registers_whisper_original():

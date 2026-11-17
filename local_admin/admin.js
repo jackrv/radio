@@ -7,7 +7,8 @@
   const loaded = new Set();
 
   const STATUS = {
-    ready: "Розпізнано", low_rms: "Тихо (нижче MIN_RMS)", short: "Закоротко (VAD)",
+    ready: "Розпізнано", ready_fallback: "Розпізнано (резервний текст)",
+    short_garbage: "Короткий хибний фрагмент", bare_callsign: "Лише позивний без номера", low_rms: "Тихо (нижче MIN_RMS)", short: "Закоротко (VAD)",
     notification: "Звук сповіщення", blacklist: "Чорний список", garbage: "Сміття Whisper", low_confidence: "Низька впевненість", dictionary_echo: "Перелік назв із підказки",
     empty_text: "Порожній текст", whisper_error: "Помилка Whisper", stale: "Після паузи", discarded: "Відкинуто",
   };
@@ -105,7 +106,7 @@
       card("Виправлення", num(o.corrections), `правил: ${num(o.active_rules)} активних / ${num(o.total_rules)}`, "info"),
       card("Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
         backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok"),
-      card("Фільтр сповіщень", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Хвильовий",
+      card("Фільтр сповіщень", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
         `зразків: ${data.samples} · відкинуто: ${num(c["asr.outcome.notification"] || 0)} · кандидатів: ${num(c["asr.spectral.candidate"] || 0)}`,
         data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn"),
     );
@@ -275,7 +276,7 @@
   }));
   $("sample-test").addEventListener("click", () => action(async () => {
     const r = await request("/api/samples/test", "POST", selected(), { "Content-Type": "audio/wav" });
-    note(r.isolated_match ? "Збіг знайдено: фільтр відкинув би цей сегмент." : "Збігу немає: сегмент пішов би у Whisper.");
+    note(r.isolated_match ? "Спектральний збіг знайдено. Відкидання залежить від режиму фільтра." : "Збігу немає: сегмент пішов би у Whisper.");
   }));
 
   // ---------- Налаштування ----------
@@ -289,7 +290,7 @@
     $("filter-cards").replaceChildren(
       card("Режим", SPECTRAL_MODES[sp.mode] || sp.mode, sp.mode === "shadow" ? "лише оцінює, нічого не відкидає" : sp.mode === "active" ? "відкидає кандидатів" : "оцінки не збираються",
         sp.mode === "active" ? "ok" : sp.mode === "shadow" ? "info" : "warn"),
-      card("Зразків", num(f.samples), f.waveform ? "хвильовий фільтр теж працює" : "хвильовий фільтр вимкнено", f.samples ? "ok" : "bad"),
+      card("Зразків", num(f.samples), "WAV-зразки спектрального фільтра", f.samples ? "ok" : "bad"),
       card("Оцінено сегментів", num(c["asr.spectral.scored"] || 0), age === null ? "немає знімка метрик" : `знімок ${ago(age)} тому`, "info"),
       card("Кандидатів", num(c["asr.spectral.candidate"] || 0), `із них розпізнано Whisper: ${num(recognised)}`, recognised ? "warn" : ""),
       card("Розмічено в архіві", `${num(f.labels.notification)} / ${num(f.labels.speech)}`, `сигналів / мовлення · шуму: ${num(f.labels.noise)}`, f.labels.notification && f.labels.speech ? "ok" : "warn"),
@@ -366,7 +367,7 @@
     $("filter-table").replaceChildren(grid);
 
     const items = el("table"), ih = el("tr");
-    for (const h of ["Запис", "Позначка", "Оцінка", "Поза", "Стороннє", "Спектр", "Хвиля"]) ih.append(el("th", "", h));
+    for (const h of ["Запис", "Позначка", "Оцінка", "Поза", "Стороннє", "Спектр"]) ih.append(el("th", "", h));
     items.append(ih);
     for (const i of r.items) {
       const row = el("tr"), name = el("td", "", `${stamp(i.created)}${i.duration_s ? ` · ${fix(i.duration_s, 1)} с` : ""}`);
@@ -375,9 +376,9 @@
       const scored = i.score !== undefined && i.score !== null;
       const wrong = scored && (i.label === "notification" ? !i.candidate : i.label !== "noise" && i.candidate);
       row.append(name, el("td", "", { notification: "🔔 сигнал", speech: "🗣 мовлення", unclear: "🗣 нерозбірливе", noise: "· шум" }[i.label] || i.label));
-      if (i.error || i.score === null || i.score === undefined) row.append(el("td", "muted", i.error || "не оцінено"), el("td"), el("td"), el("td"), el("td"));
+      if (i.error || i.score === null || i.score === undefined) row.append(el("td", "muted", i.error || "не оцінено"), el("td"), el("td"), el("td"));
       else row.append(el("td", "", fix(i.score)), el("td", "", `${fix(i.outside_s)} с`), el("td", "", pct(i.extra_ratio)),
-        el("td", wrong ? "alert" : "good", yes(i.candidate)), el("td", "", yes(i.waveform_match)));
+        el("td", wrong ? "alert" : "good", yes(i.candidate)));
       items.append(row);
     }
     $("filter-items").replaceChildren(r.items.length ? items : el("p", "muted", "Розмічених записів ще немає. Позначайте їх у розділі «Аудіоархів»."));

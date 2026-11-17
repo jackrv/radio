@@ -52,3 +52,6 @@ diagnostics-report.json
 .local-diagnostics/
 
 .local-recordings/
+
+# Особистий робочий простір VS Code
+radio345.code-workspace

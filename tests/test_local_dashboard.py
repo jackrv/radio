@@ -11,7 +11,7 @@ from services.miniapp_management import list_users
 from services.notification_samples import add_sample, delete_sample, list_samples, ogg_to_wav
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
-from tests.test_notification_filter import segment, pcm
+from tests.audio_helpers import segment, pcm
 
 ORIGIN="http://127.0.0.1:8766"
 KEY="x"*43
@@ -105,7 +105,7 @@ def test_sample_upload_test_and_delete_never_use_working_directory(local):
     sample=result.json()["id"]
     assert (tmp/"samples"/sample).stat().st_mode & 0o777==0o600
     result=client.post("/api/samples/test",content=content,headers={"Origin":ORIGIN})
-    assert result.json()=={"isolated_match":True,"templates":1}
+    assert result.json()=={"isolated_match":True,"templates":1,"mode":"active"}
     assert client.get("/api/samples").json()["items"][0]["id"]==sample
     assert client.delete("/api/samples/"+sample,headers={"Origin":ORIGIN}).status_code==200
     assert not (tmp/"samples"/sample).exists()
@@ -243,7 +243,7 @@ def test_archive_labels_feed_filter_evaluation(local):
     client,path,tmp=local
     import numpy as np
     from services.recordings import RecordingStore
-    from tests.test_notification_filter import phone_sound, voice_like
+    from tests.audio_helpers import phone_sound, voice_like
     add_sample(tmp/"samples",wav(phone_sound()),confirmed_isolated=True)
     store=RecordingStore(tmp/"recordings")
     signal=store.save(pcm(segment(phone_sound()*0.4)),16000,{"status":"ready"})
@@ -293,33 +293,23 @@ def test_each_spectral_observation_labels_at_most_one_phrase():
     assert "spectral" not in items[0] and items[1]["spectral"]["score"]==0.9 and "spectral" not in items[2]
 
 
-def test_review_queue_filters_archive_and_reports_progress(setup, tmp_path):
-    _,path=setup
+def test_current_archive_views_refresh_without_rewriting_samples(setup, tmp_path):
+    _, path = setup
     from services.recordings import RecordingStore
-    store=RecordingStore(tmp_path/"recordings")
-    ids=[store.save(pcm(segment()),16000,{"status":"ready"}) for _ in range(4)]
-    store.review(ids[0],"текст","speech",0)
-    app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
-    with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
-        client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
-        state=client.get("/api/recordings/queue").json()
-        assert state["available"] is True and state["live"] is True
-        a=state["groups"][0]
-        assert (a['key'],a['total'],a['reviewed'],a['pending'])==('A',4,1,3)
-        page=client.get("/api/recordings?queue=A&review=pending").json()
-        assert [i["id"] for i in page["items"]]==ids[1:] and page["total"]==3
-        assert {i["id"] for i in client.get("/api/recordings?queue=all").json()["items"]}==set(ids)
-        assert len(client.get("/api/recordings").json()["items"])==4, "без черги — увесь архів"
-        # Arriving audio immediately enters the same queue, without recreating a file or app.
-        new=store.save(pcm(segment()),16000,{'status':'ready'})
-        page=client.get('/api/recordings?queue=A&review=pending').json()
-        assert [i['id'] for i in page['items']]==ids[1:]+[new]
-        store.review(new,'нова фраза','speech',0)
-        a=client.get('/api/recordings/queue').json()['groups'][0]
-        assert (a['total'],a['reviewed'],a['pending'])==(5,2,3)
-        assert {i['id'] for i in client.get('/api/recordings?queue=A&review=reviewed').json()['items']}=={ids[0],new}
-        assert client.get("/api/recordings?queue=Z").status_code==404
-        assert client.get("/api/recordings?queue=a;drop").status_code==422
+    store = RecordingStore(tmp_path/'recordings')
+    ids = [store.save(pcm(segment()), 16000, {'status':'ready', 'fix_id':f'db:{i+1}'}) for i in range(4)]
+    store.review(ids[0], 'текст', 'speech', 0)
+    app = create_dashboard(path, KEY, samples_dir=tmp_path/'samples', recordings_dir=store.root)
+    with TestClient(app, base_url=ORIGIN, client=('127.0.0.1',1)) as client:
+        client.post('/session', json={'token':KEY}, headers={'Origin':ORIGIN})
+        page = client.get('/api/recordings?view=radio').json()
+        assert {i['id'] for i in page['items']} == set(ids[1:])
+        assert page['views']['radio'] == 3 and page['views']['reviewed'] == 1
+        new = store.save(pcm(segment()), 16000, {'status':'ready', 'fix_id':'db:9'})
+        assert client.get('/api/recordings?view=radio').json()['total'] == 4
+        store.review(new, 'нова фраза', 'speech', 0)
+        assert {i['id'] for i in client.get('/api/recordings?view=reviewed').json()['items']} == {ids[0], new}
+
 
 
 def test_listening_hold_endpoint_requires_origin_and_bounds(local):
@@ -399,7 +389,7 @@ def test_archive_search_by_id_event_number_and_text(setup, tmp_path):
     app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
     with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
         client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
-        found=lambda q: {i["id"] for i in client.get("/api/recordings",params={"q":q,"review":"pending","group":"normal"}).json()["items"]}
+        found=lambda q: {i["id"] for i in client.get("/api/recordings",params={"q":q,"view":"speech"}).json()["items"]}
         assert found(f"{a[:8]}, {c[:8]}")=={a,c}, "кілька ID; пошук ігнорує групу й стан перевірки"
         assert found("№82")=={a} and found("#82")=={a}
         assert found("ВИШНЯ 13")=={b} and found("берега")=={a}, "текст — без урахування регістру, і еталон, і Whisper"
@@ -481,11 +471,11 @@ def test_archive_speech_and_radio_groups(setup, tmp_path):
     app=create_dashboard(path,KEY,samples_dir=tmp_path/"samples",recordings_dir=tmp_path/"recordings")
     with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
         client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
-        page=lambda group: client.get("/api/recordings",params={"group":group}).json()
-        assert {i["id"] for i in page("speech")["items"]}=={room,radio,event,loop}, "Whisper щось чув і довше 2 с"
+        page=lambda group: client.get("/api/recordings",params={"view":group}).json()
+        assert {i["id"] for i in page("speech")["items"]}=={room,loop}, "інше мовлення не дублює ефір"
         assert {i["id"] for i in page("radio")["items"]}=={radio,event}, "позивний або подія"
-        groups=page("speech")["groups"]
-        assert (groups["speech"],groups["radio"])==(4,2)
+        views=page("speech")["views"]
+        assert (views["speech"],views["radio"])==(2,2)
         assert short not in {i["id"] for i in page("speech")["items"]}
 
 

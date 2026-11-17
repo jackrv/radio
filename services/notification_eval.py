@@ -17,7 +17,7 @@ import wave
 
 import numpy as np
 
-from core.notification_filter import NotificationSoundFilter, _prepare_template, load_templates
+from core.notification_templates import _prepare_template, load_templates
 from core.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher, template_hash
 
 SAMPLE_RATE = 16000
@@ -98,13 +98,12 @@ def _summary(items, matcher):
 
 
 def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=None):
-    """Оцінки обох фільтрів на розмічених записах архіву й рекомендований поріг."""
+    """Оцінка спектрального фільтра на розмічених записах архіву й рекомендований поріг."""
     log = log or logging.getLogger(__name__)
     templates = load_templates(samples_dir, SAMPLE_RATE, log)
     digests = [template_hash(t) for t in templates]
     matcher = SpectralNotificationMatcher(templates, SAMPLE_RATE, prepared=True, threshold=threshold,
                                           max_outside_s=max_outside_s, max_extra=max_extra)
-    waveform = NotificationSoundFilter([], SAMPLE_RATE)
     items = []
     for row in _labelled(store):
         item = {"record_id": row["id"], "created": row["created"], "label": row["label"]}
@@ -132,8 +131,6 @@ def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=Non
             item["score"] = None
         else:
             item.update({key: result[key] for key in ("score", "outside_s", "extra_ratio", "candidate")})
-        waveform.templates = tuple(t for t, d in zip(templates, digests) if d not in exclude)
-        item["waveform_match"] = bool(waveform.is_notification(raw))
         items.append(item)
     return {"templates": len(templates), "items": items, "summary": _summary(items, matcher),
             "limits": {"max_outside_s": max_outside_s, "max_extra": max_extra}}

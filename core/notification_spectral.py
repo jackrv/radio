@@ -6,16 +6,16 @@
 активного звуку поза збігом і немає сторонньої енергії в смугах, де зразок
 тихий (мовлення поверх сигналу).
 
-Типовий режим — спостереження: оцінки лише записуються в діагностику й
-показуються в локальній панелі. Відкидання вмикається окремо, коли поріг
-обрано за розміченими реальними записами.
+Режим задає config.SPECTRAL_NOTIFICATION_MODE: active відкидає кандидата,
+shadow лише записує оцінку, off вимикає перевірку. Поточні межі обираються
+за розміченими реальними записами.
 """
 
 import hashlib
 
 import numpy as np
 
-from core.notification_filter import MAX_TEMPLATES, _prepare_template, load_templates
+from core.notification_templates import MAX_TEMPLATES, _prepare_template, load_templates
 
 N_FFT = 512
 WINDOW = 400          # 25 мс при 16 кГц

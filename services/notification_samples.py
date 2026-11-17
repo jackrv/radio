@@ -12,7 +12,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
-from core.notification_filter import MAX_TEMPLATES, MAX_RECORDING_S, NotificationSoundFilter
+from core.notification_templates import MAX_TEMPLATES, MAX_RECORDING_S, _prepare_template
 
 MAX_UPLOAD_BYTES = 200_000
 SAMPLE_ID = re.compile(r"[0-9a-f]{32}\.wav\Z")
@@ -45,7 +45,7 @@ def validate_wav(content, sample_rate=16000):
         if len(raw)!=count*2:
             raise ValueError("Неповний WAV")
         samples = np.frombuffer(raw,dtype="<i2").astype(np.float64)/32768
-        NotificationSoundFilter([samples], sample_rate)
+        _prepare_template(samples, sample_rate)
         # Rebuild PCM-only WAV: discard arbitrary file metadata.
         output = io.BytesIO()
         with wave.open(output,"wb") as audio:

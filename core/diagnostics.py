@@ -20,7 +20,6 @@ _asr_span = ContextVar("radio345_asr_span", default=None)
 _ASR_STAGES = {
     "asr.whisper": "whisper_s", "asr.qwen": "qwen_s",
     "asr.correction_pipeline": "correction_s", "asr.event_processing": "event_s",
-    "asr.notification_filter": "notification_filter_s",
     "asr.notification_spectral": "notification_spectral_s",
 }
 _SPECTRAL_FIELDS = ("notification_score", "notification_outside_s", "notification_extra", "notification_candidate")
@@ -29,11 +28,11 @@ SPECTRAL_KEEP_SCORE = 0.5
 SPECTRAL_BUCKETS = 20
 _ASR_STATUSES = frozenset({
     "discarded", "ready", "ready_fallback", "stale", "low_rms", "empty_text",
-    "garbage", "blacklist", "low_confidence", "notification", "whisper_error", "error",
+    "garbage", "blacklist", "dictionary_echo", "short_garbage", "bare_callsign", "low_confidence", "notification", "whisper_error", "error",
 })
 _ASR_READY_METRICS = (
     "audio_duration_s", "queue_wait_s", "vad_release_s", "speech_tail_s", "capture_to_enqueue_s", "whisper_s", "qwen_s",
-    "correction_s", "notification_filter_s", "processing_to_text_s", "total_latency_s",
+    "correction_s", "processing_to_text_s", "total_latency_s",
     "segment_to_text_s", "rtf",
 )
 _ASR_ALL_METRICS = ("audio_duration_s", "queue_wait_s", "worker_busy_s", "worker_rtf", "event_s")
@@ -154,7 +153,7 @@ class RuntimeDiagnostics:
                 "audio_duration_s": len(pcm) / (2 * sample_rate),
                 "queue_depth": depth, "segments_dropped": dropped,
                 "whisper_s": 0.0, "qwen_s": 0.0, "correction_s": 0.0,
-                "notification_filter_s": 0.0, "notification_spectral_s": 0.0, "event_s": 0.0,
+                "notification_spectral_s": 0.0, "event_s": 0.0,
                 "whisper_calls": 0, "qwen_calls": 0, "capture_source": "legacy"}
         timing = getattr(pcm, "timing", None)
         if timing is not None:

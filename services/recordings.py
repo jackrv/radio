@@ -19,15 +19,6 @@ _trace = ContextVar("recording_trace", default=None)
 UNSET = object()
 # Звук із кімнати (клавіатура, кроки) — не радіоефір: окремо від шуму ефіру в метриках.
 NON_SPEECH = ("noise", "notification", "room")
-# Live annotation queues; frozen experimental samples stay in tools/asr_lab.py.
-REVIEW_QUEUES = {
-    "A": ("Усе, що бачив Whisper", "status IN ('ready','empty_text','blacklist','low_confidence','dictionary_echo')"),
-    "B": ("Тихі поруч із порогом (−36…−34 dBFS)",
-          "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')>=-36 "
-          "AND json_extract(data,'$.signal.rms_dbfs')<-34"),
-    "C": ("Тихі нижче −36 dBFS", "status='low_rms' AND json_extract(data,'$.signal.rms_dbfs')<-36"),
-    "D": ("Відкинуті VAD, мовлення від 300 мс", "status='vad_short' AND json_extract(data,'$.speech_ms')>=300"),
-}
 # Групи для розмітки тексту: Whisper щось розпізнав (або зациклився на довгому
 # мовленні) і запис довший за 2 с; «Ефір» — серед них ті, де є позивний чи подія.
 SPEECH_GROUP = ("(status IN ('ready','empty_text') "
@@ -242,68 +233,29 @@ class RecordingStore:
             row = db.execute(f"SELECT {sums} FROM recordings WHERE {period}", (since,) if since else ()).fetchone()
         return dict(zip(VIEWS, row))
 
-    def listing(self, offset=0, limit=25, review="all", group="all", ids=None, queue="", search="", edits=None,
-                view=None, since=None):
-        """``edits``: None — без фільтра; "miniapp" — еталони з Mini App; список fix_id —
-        записи, пов'язані з цими подіями (правки конкретного користувача)."""
-        reviewed = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}[review]
-        # Rejected short/quiet/blacklisted material belongs outside the main
-        # review list regardless of its audio duration.
-        short = "(status IN ('vad_short','low_rms','blacklist','low_confidence','dictionary_echo') OR COALESCE(json_extract(data,'$.signal.duration_s'),999999)<=2.0)"
-        shadow = "COALESCE(json_extract(data,'$.text_filter_shadow.additional'),0)=1"
-        grouped = {"all": "1", "normal": f"NOT {short}", "short": short, "shadow": shadow,
-                   "speech": SPEECH_GROUP, "radio": RADIO_GROUP}[group]
+    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None):
+        review, condition = VIEWS[view]
+        reviewed = _REVIEW_SQL[review]
         params = ()
         if search.strip():
-            # Пошук іде по всьому архіву: черги, групи й стан перевірки не застосовуються.
-            reviewed, (grouped, params) = "1", search_condition(search)
-        elif queue:
-            grouped = " OR ".join(f"({condition})" for _, condition in REVIEW_QUEUES.values()) \
-                if queue == "all" else REVIEW_QUEUES[queue][1]
-        elif ids is not None:
-            # Optional frozen ID list used by offline callers.
-            grouped, params = "id IN (SELECT value FROM json_each(?))", (json.dumps(sorted(ids)),)
-        if view and not search.strip() and not queue:
-            view_review, grouped = VIEWS[view]
-            reviewed = _REVIEW_SQL[view_review]
-        where = f"({reviewed}) AND ({grouped})"
+            reviewed, (condition, params) = "1", search_condition(search)
+        where = f"({reviewed}) AND ({condition})"
         if edits == "miniapp":
             where += " AND reference_source='miniapp'"
         elif edits is not None:
-            # Фільтр правок діє на весь архів, як пошук: групи й черги не застосовуються.
             if not search.strip():
                 where, params = f"({reviewed})", ()
             where += " AND json_extract(data,'$.fix_id') IN (SELECT value FROM json_each(?))"
             params = (*params, json.dumps(sorted(set(edits))))
-        if since:
+        if since is not None:
             where += " AND created >= ?"
             params = (*params, float(since))
         with self.connect() as db:
             db.execute("BEGIN")
-            counts = db.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN {short} THEN 1 ELSE 0 END),0), "
-                                f"COALESCE(SUM({shadow}),0), COALESCE(SUM({SPEECH_GROUP}),0), "
-                                f"COALESCE(SUM({RADIO_GROUP}),0) FROM recordings WHERE {reviewed}").fetchone()
-            groups = {"all": counts[0], "short": counts[1], "normal": counts[0] - counts[1], "shadow": counts[2],
-                      "speech": counts[3], "radio": counts[4]}
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
-            # New recordings append to a live queue, keeping loaded pages stable.
-            order = "created ASC,id ASC" if queue else "created DESC,id DESC"
-            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
+            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY created DESC,id DESC LIMIT ? OFFSET ?",
                               (*params, limit, offset)).fetchall()
-        return {"items": [self.decode(row) for row in rows], "total": total, "groups": groups, "short_max_seconds": 2}
-
-    def queue_progress(self):
-        """Current archive membership: new arrivals enter without rewriting an ID file."""
-        result = []
-        with self.connect() as db:
-            db.execute("BEGIN")
-            for key, (title, condition) in REVIEW_QUEUES.items():
-                present, reviewed = db.execute(
-                    "SELECT COUNT(*), COALESCE(SUM(reference IS NOT NULL),0) FROM recordings "
-                    f"WHERE {condition}").fetchone()
-                result.append({"key": key, "title": title, "total": present,
-                               "present": present, "reviewed": reviewed, "pending": present - reviewed})
-        return result
+        return {"items": [self.decode(row) for row in rows], "total": total}
 
     def get(self, record_id):
         if not ID.fullmatch(record_id):

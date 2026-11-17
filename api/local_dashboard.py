@@ -65,6 +65,11 @@ class RoleSuggestion(BaseModel):
 
 class TextCheck(BaseModel):
     text: str = Field(max_length=5000)
+    at: float | None = Field(default=None, ge=0, le=4e9)   # час запису: коди доби цього дня
+
+
+class DailyCodesUpdate(BaseModel):
+    codes: str = Field(max_length=500)
 
 
 class ListeningHold(BaseModel):
@@ -356,9 +361,26 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     @app.post("/api/text-check")
     def text_check(payload: TextCheck, admin=Depends(actor)):
         """Зауваження до оформлення тексту еталона; нічого не змінює."""
+        from services import daily_codes
         from services.text_check import check_with_db
         with get_db(db_path) as db:
-            return check_with_db(db, payload.text)
+            codes = daily_codes.read(db, daily_codes.local_day(payload.at))
+            return check_with_db(db, payload.text, codes)
+
+    @app.get("/api/daily-codes")
+    def daily_codes_list(admin=Depends(actor)):
+        """Коди доби, внесені вручну, за останні дні."""
+        from services import daily_codes
+        return {"today": daily_codes.local_day(), "items": daily_codes.recent(db_path)}
+
+    @app.put("/api/daily-codes/{day}")
+    def daily_codes_update(day: str, payload: DailyCodesUpdate, admin=Depends(actor)):
+        from services import daily_codes
+        try:
+            codes = daily_codes.write(db_path, day, payload.codes)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"day": day, "codes": codes}
 
     @app.get("/api/recordings/queue")
     def recording_queue(admin=Depends(actor)):
@@ -397,11 +419,16 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                     item["corrections"] = found[item["data"]["fix_id"]]
         page["editors"] = user_activity.editors(db_path)
         # Зауваження до оформлення еталонів — щоб картки з ними було видно одразу.
+        from services import daily_codes
         from services.text_check import check_with_db
         with get_db(db_path) as db:
+            codes_by_day = {}
             for item in page["items"]:
                 if item.get("reference") and item.get("label") in ("speech", "unclear"):
-                    item["text_check"] = check_with_db(db, item["reference"])
+                    day = daily_codes.local_day(item["created"])
+                    if day not in codes_by_day:
+                        codes_by_day[day] = daily_codes.read(db, day)
+                    item["text_check"] = check_with_db(db, item["reference"], codes_by_day[day])
         return page
 
     @app.get("/api/recordings/summary")

@@ -208,7 +208,7 @@
       const seq = ++checkSeq;
       if (!text.trim()) { renderCheck(null); return; }
       try {
-        const result = await window.Radio345.request("/api/corrections/check", "PUT", { text });
+        const result = await window.Radio345.request("/api/corrections/check", "PUT", { text, fix_id: fixId });
         if (seq === checkSeq && edited.value === text) renderCheck(result);
       } catch (_) {
         // Перевірка необов'язкова (наприклад, API ще не оновлено) — редактор працює як раніше.

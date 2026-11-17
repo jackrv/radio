@@ -263,13 +263,55 @@ def tidy_text(text, callsigns, commands):
     return tidy if same(text, tidy) else text
 
 
-def check_text(text, callsigns=None, commands=None, watch=None):
+_CODE_TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`][^\W\d_]+)*|\d+")
+
+
+def _message_pairs(text, names):
+    """Пари цифр повідомлення («14 77», «14, 77», «1477») з позиціями; номер одразу
+    після назви словника («Береза 68, 96 80» -> 68) — номер позивного, не код."""
+    tokens = [(m.group(), m.start(), m.end()) for m in _CODE_TOKEN.finditer(text)]
+    pairs, i = [], 0
+    while i < len(tokens):
+        token, start, end = tokens[i]
+        if not token.isdigit():
+            i += 1
+            folded = basic_normalize(token).translate(FOLD)
+            if (folded in names or callsigns_module.CALLSIGN_ALIASES.get(basic_normalize(token))) \
+                    and i < len(tokens) and tokens[i][0].isdigit():
+                i += 1
+            continue
+        if len(token) == 4:
+            pairs.append((token, start, end)); i += 1; continue
+        if len(token) == 2 and i + 1 < len(tokens) and tokens[i + 1][0].isdigit() and len(tokens[i + 1][0]) == 2:
+            pairs.append((token + tokens[i + 1][0], start, tokens[i + 1][2])); i += 2; continue
+        i += 1
+    return pairs
+
+
+def _code_issues(text, codes, names):
+    """«Можливо, 14 77?» — пара цифр відрізняється від коду доби однією цифрою."""
+    digits = [c.replace(" ", "") for c in codes or ()]
+    issues = []
+    for pair, start, end in _message_pairs(text, names):
+        if pair in digits:
+            continue
+        near = [c for c in digits if sum(x != y for x, y in zip(c, pair)) == 1]
+        if len(near) == 1:
+            code = f"{near[0][:2]} {near[0][2:]}"
+            issues.append(_issue("spelling", f"Можливо, «{code}» — код доби, а не «{text[start:end]}»?", text,
+                                 text[:start] + code + text[end:]))
+    return issues
+
+
+def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     """Зауваження до тексту оператора; ``formatted`` — текст з усіма виправленнями оформлення."""
     text = text or ""
     known = tuple((commands.names if commands else ())) + tuple((watch.names if watch else ()))
     issues = _format_issues(text)
     issues += _spelling_issues(text, callsigns, known)
     issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None])
+    names = {n.translate(FOLD) for d in (callsigns, commands, watch) if d is not None for n in d.names}
+    issues += _code_issues(text, codes, names)
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):
         issues.append(_issue("info", f"Російська літера «{letter}» — перевірте, чи це українське слово"))
     tidy = tidy_text(text, callsigns, commands)
@@ -302,5 +344,5 @@ def dictionaries_from_db(db):
     return _cache[key]
 
 
-def check_with_db(db, text):
-    return check_text(text, *dictionaries_from_db(db))
+def check_with_db(db, text, codes=None):
+    return check_text(text, *dictionaries_from_db(db), codes=codes)

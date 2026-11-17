@@ -147,6 +147,10 @@
         <article class="panel"><h2>Словники розпізнавання</h2>
           <p class="muted">Ті самі словники, що в Mini App («Словники»). Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
           <p id="dictionaries-status" class="muted small"></p></article>
+        <article class="panel"><h2>Коди доби</h2>
+          <p class="muted small">Цифрові комбінації, які група повторює протягом доби («14 77, 18 36»). Вносяться вручну на кожен день. Перевірка тексту в архіві й у Mini App підкаже «Можливо, 14 77?», якщо в записі цього дня пара цифр відрізняється від коду однією цифрою; номер одразу після позивного не чіпається.</p>
+          <div class="toolbar"><input id="codes-day" type="date" aria-label="День"><input id="codes-input" placeholder="14 77, 18 36" aria-label="Коди доби" maxlength="500"><button id="codes-save">Зберегти</button><span id="codes-status" class="muted small"></span></div>
+          <div id="codes-recent" class="muted small"></div></article>
         <div id="dictionary-lists" class="grid two"></div>
       </section>
 

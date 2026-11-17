@@ -56,6 +56,8 @@ class CorrectionDraftUpdate(BaseModel):
 
 class TextCheck(BaseModel):
     text: str = Field(max_length=5000)
+    # Подія чи фраза, яку виправляють: за її датою беруться коди доби.
+    fix_id: str | None = Field(default=None, pattern=r"^(?:db:[1-9][0-9]{0,17}|mem:[0-9a-f]{32})$")
 
 
 class LearningDecision(BaseModel):
@@ -235,11 +237,12 @@ def create_app(db_path, bot_token):
     def check_correction_text(payload: TextCheck, user=Depends(current_user)):
         """Зауваження до оформлення правки (пробіли, цифри, «з», апостроф, назви словника)."""
         require_settings_permission(user, "corrections.write")
+        from services import daily_codes
         from services.sqlite_connection import get_db
         from services.text_check import check_with_db
         try:
             with get_db(db_path) as db:
-                return check_with_db(db, payload.text)
+                return check_with_db(db, payload.text, daily_codes.for_fix_id(db, payload.fix_id))
         except sqlite3.Error:
             raise HTTPException(status_code=503, detail="База недоступна") from None
 

@@ -413,7 +413,37 @@
     commands: ["Команди", "«назва номер» так, як вимовляють: «злива 42 42» (номер 4242). Без номера — ключове слово: «грім». Кілька номерів — через двокрапку: «злива: 4242 2727»."],
     telegram: ["Telegram (/watch)", "Що надсилати підписникам /watch. «береза: 56» — лише з цим номером; «вишня» без номера — і сам позивний без номера (на шум Whisper іноді вигадує такі слова); «вишня: *» — з будь-яким номером."],
   };
+  // ---------- Коди доби ----------
+  let codesByDay = {};
+  function showDayCodes() { $("codes-input").value = (codesByDay[$("codes-day").value] || []).join(", "); }
+  async function dailyCodes() {
+    const data = await request("/api/daily-codes");
+    codesByDay = Object.fromEntries(data.items.map(i => [i.day, i.codes]));
+    if (!$("codes-day").value) $("codes-day").value = data.today;
+    showDayCodes();
+    const box = $("codes-recent");
+    box.replaceChildren();
+    if (!data.items.length) { box.textContent = "Кодів ще не внесено."; return; }
+    box.append(el("span", "", "Останні дні: "));
+    for (const item of data.items) {
+      const link = el("button", "ghost", `${item.day}: ${item.codes.join(", ")}`); link.type = "button";
+      link.addEventListener("click", () => { $("codes-day").value = item.day; showDayCodes(); });
+      box.append(link);
+    }
+  }
+  $("codes-day").addEventListener("change", showDayCodes);
+  $("codes-save").addEventListener("click", () => action(async () => {
+    const status = $("codes-status");
+    try {
+      const result = await request(`/api/daily-codes/${$("codes-day").value}`, "PUT", { codes: $("codes-input").value });
+      status.className = "ok small";
+      status.textContent = result.codes.length ? `✓ ${result.day}: ${result.codes.join(", ")}` : `✓ ${result.day}: коди прибрано`;
+      await dailyCodes();
+    } catch (error) { status.className = "alert small"; status.textContent = error.message; throw error; }
+  }));
+
   async function dictionaries() {
+    await dailyCodes();
     const data = await request("/api/dictionaries");
     const box = $("dictionary-lists");
     box.replaceChildren();
@@ -979,7 +1009,7 @@
         clearTimeout(lintTimer);
         lintTimer = setTimeout(async () => {
           if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) { renderLint(null); return; }
-          try { renderLint(await request("/api/text-check", "POST", { text: input.value })); }
+          try { renderLint(await request("/api/text-check", "POST", { text: input.value, at: item.created })); }
           catch (_) { renderLint(null); }
         }, delay);
       }

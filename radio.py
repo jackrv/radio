@@ -2,7 +2,7 @@ import os
 import sys
 
 # Автоматичний перезапуск через .venv проєкту, якщо запущено іншим Python.
-from project_python import select_python
+from services.project_python import select_python
 
 venv_python = select_python()
 if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.abspath(venv_python):

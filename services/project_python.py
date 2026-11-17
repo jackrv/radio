@@ -5,7 +5,7 @@ import sys
 
 
 def select_python(root=None):
-    root = Path(root) if root is not None else Path(__file__).resolve().parent
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[1]
     python = root / ".venv" / "bin" / "python"
     if python.is_file():
         return str(python.absolute())

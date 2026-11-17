@@ -37,7 +37,7 @@ import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
-from project_python import select_python
+from services.project_python import select_python
 from services.admin_setup import ensure_admin
 from services.dictionary_setup import ensure_dictionaries, interactive_console
 from services.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_restart, request_stop, send_command

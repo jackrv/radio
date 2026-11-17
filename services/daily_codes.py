@@ -1,4 +1,4 @@
-"""Цифрові коди доби, які оператор вносить вручну («14 77, 18 36»).
+"""Цифрові коди доби, які оператор вносить вручну («14 77, 18 36»), і постійні коди.
 
 У межах доби група позивних повторює ті самі цифрові комбінації. Коди не
 вгадуються з розпізнаного тексту: там трапляються й помилки Whisper, і номери
@@ -48,11 +48,31 @@ def parse_codes(text):
     return codes
 
 
+def change_hour():
+    """Година зміни кодів (місцевий час): коди «доби Д» діють з Д−1 о цій годині до Д."""
+    import config
+    return int(getattr(config, "DAILY_CODES_CHANGE_HOUR", 20))
+
+
 def local_day(moment=None):
-    """Місцева дата «РРРР-ММ-ДД»: unix-час, datetime або None (зараз)."""
+    """Доба кодів «РРРР-ММ-ДД» для моменту (unix-час, datetime або None — зараз).
+
+    Коди змінюються не опівночі, а о change_hour(): запис 16.11 о 23:05 належить
+    добі кодів 17.11 (з 16.11 20:00 до 17.11 20:00).
+    """
     if isinstance(moment, (int, float)):
         moment = datetime.datetime.fromtimestamp(moment)
-    return (moment or datetime.datetime.now()).strftime("%Y-%m-%d")
+    moment = moment or datetime.datetime.now()
+    if moment.hour >= change_hour():
+        moment += datetime.timedelta(days=1)
+    return moment.strftime("%Y-%m-%d")
+
+
+def period(day):
+    """(початок, кінець) доби кодів як рядки «16.11 20:00» для показу."""
+    end = datetime.datetime.combine(datetime.date.fromisoformat(check_day(day)), datetime.time(change_hour()))
+    start = end - datetime.timedelta(days=1)
+    return start.strftime("%d.%m %H:%M"), end.strftime("%d.%m %H:%M")
 
 
 def day_of_event_ts(value):
@@ -68,10 +88,36 @@ def check_day(day):
     return day
 
 
-def read(db, day):
+PERMANENT = "permanent"   # рядок таблиці з постійними кодами, що діють завжди
+
+
+def read_permanent(db):
+    ensure_table(db)
+    row = db.execute("SELECT codes FROM daily_codes WHERE day=?", (PERMANENT,)).fetchone()
+    return json.loads(row[0]) if row else []
+
+
+def read_day(db, day):
+    """Лише коди цієї доби, без постійних."""
     ensure_table(db)
     row = db.execute("SELECT codes FROM daily_codes WHERE day=?", (check_day(day),)).fetchone()
     return json.loads(row[0]) if row else []
+
+
+def read(db, day):
+    """Коди, що діють у цю добу: постійні й коди доби."""
+    codes = read_permanent(db)
+    return codes + [c for c in read_day(db, day) if c not in codes]
+
+
+def write_permanent(db_path, text):
+    codes = parse_codes(text)
+    with get_db(db_path) as db:
+        ensure_table(db)
+        db.execute("INSERT INTO daily_codes (day, codes, updated_at) VALUES (?,?,?) "
+                   "ON CONFLICT(day) DO UPDATE SET codes=excluded.codes, updated_at=excluded.updated_at",
+                   (PERMANENT, json.dumps(codes, ensure_ascii=False), time.time()))
+    return codes
 
 
 def write(db_path, day, text):
@@ -90,8 +136,9 @@ def write(db_path, day, text):
 def recent(db_path, days=14):
     with get_db(db_path) as db:
         ensure_table(db)
-        rows = db.execute("SELECT day, codes FROM daily_codes ORDER BY day DESC LIMIT ?", (days,)).fetchall()
-    return [{"day": day, "codes": json.loads(codes)} for day, codes in rows]
+        rows = db.execute("SELECT day, codes FROM daily_codes WHERE day<>? ORDER BY day DESC LIMIT ?",
+                          (PERMANENT, days)).fetchall()
+    return [{"day": day, "codes": json.loads(codes), "period": period(day)} for day, codes in rows]
 
 
 def for_fix_id(db, fix_id):

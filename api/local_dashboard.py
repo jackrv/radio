@@ -371,7 +371,20 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     def daily_codes_list(admin=Depends(actor)):
         """Коди доби, внесені вручну, за останні дні."""
         from services import daily_codes
-        return {"today": daily_codes.local_day(), "items": daily_codes.recent(db_path)}
+        today = daily_codes.local_day()
+        with get_db(db_path) as db:
+            permanent = daily_codes.read_permanent(db)
+        return {"today": today, "today_period": daily_codes.period(today), "permanent": permanent,
+                "change_hour": daily_codes.change_hour(), "items": daily_codes.recent(db_path)}
+
+    @app.put("/api/daily-codes/permanent")
+    def daily_codes_permanent(payload: DailyCodesUpdate, admin=Depends(actor)):
+        """Постійні коди: діють у будь-яку добу разом із кодами доби."""
+        from services import daily_codes
+        try:
+            return {"codes": daily_codes.write_permanent(db_path, payload.codes)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.put("/api/daily-codes/{day}")
     def daily_codes_update(day: str, payload: DailyCodesUpdate, admin=Depends(actor)):

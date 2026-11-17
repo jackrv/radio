@@ -54,6 +54,9 @@ LOW_CONFIDENCE_LOGPROB = -0.7
 
 # Чувствительность аудио
 GAIN = 1.0
+# Коди доби (services/daily_codes.py) змінюються о цій годині місцевого часу:
+# коди «17.11» діють з 16.11 20:00 до 17.11 20:00.
+DAILY_CODES_CHANGE_HOUR = 20
 MIN_RMS = 0.02
 NORMALIZE = True
 DEBUG_RMS = False

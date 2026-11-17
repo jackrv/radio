@@ -414,11 +414,21 @@
     telegram: ["Telegram (/watch)", "Що надсилати підписникам /watch. «береза: 56» — лише з цим номером; «вишня» без номера — і сам позивний без номера (на шум Whisper іноді вигадує такі слова); «вишня: *» — з будь-яким номером."],
   };
   // ---------- Коди доби ----------
-  let codesByDay = {};
-  function showDayCodes() { $("codes-input").value = (codesByDay[$("codes-day").value] || []).join(", "); }
+  let codesByDay = {}, changeHour = 20;
+  function showDayCodes() {
+    $("codes-input").value = (codesByDay[$("codes-day").value] || []).join(", ");
+    const day = $("codes-day").value;
+    if (!day) { $("codes-period").textContent = ""; return; }
+    const end = new Date(`${day}T00:00:00`); end.setHours(changeHour);
+    const start = new Date(end.getTime() - 24 * 3600 * 1000);
+    const fmt = d => `${d.toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" })} ${String(changeHour).padStart(2, "0")}:00`;
+    $("codes-period").textContent = `діють з ${fmt(start)} до ${fmt(end)}`;
+  }
   async function dailyCodes() {
     const data = await request("/api/daily-codes");
     codesByDay = Object.fromEntries(data.items.map(i => [i.day, i.codes]));
+    changeHour = data.change_hour ?? 20;
+    $("codes-permanent").value = (data.permanent || []).join(", ");
     if (!$("codes-day").value) $("codes-day").value = data.today;
     showDayCodes();
     const box = $("codes-recent");
@@ -427,11 +437,21 @@
     box.append(el("span", "", "Останні дні: "));
     for (const item of data.items) {
       const link = el("button", "ghost", `${item.day}: ${item.codes.join(", ")}`); link.type = "button";
+      link.title = `Діють з ${item.period?.[0] ?? ""} до ${item.period?.[1] ?? ""}`;
       link.addEventListener("click", () => { $("codes-day").value = item.day; showDayCodes(); });
       box.append(link);
     }
   }
   $("codes-day").addEventListener("change", showDayCodes);
+  $("codes-permanent-save").addEventListener("click", () => action(async () => {
+    const status = $("codes-status");
+    try {
+      const result = await request("/api/daily-codes/permanent", "PUT", { codes: $("codes-permanent").value });
+      status.className = "ok small";
+      status.textContent = result.codes.length ? `✓ Постійні коди: ${result.codes.join(", ")}` : "✓ Постійні коди прибрано";
+      await dailyCodes();
+    } catch (error) { status.className = "alert small"; status.textContent = error.message; throw error; }
+  }));
   $("codes-save").addEventListener("click", () => action(async () => {
     const status = $("codes-status");
     try {

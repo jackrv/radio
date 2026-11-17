@@ -148,8 +148,10 @@
           <p class="muted">Ті самі словники, що в Mini App («Словники»). Приймач застосовує зміни за кілька секунд, без перезапуску. Один рядок — одна назва; рядок, що починається з <code>#</code>, зберігається вимкненим. Неправильний рядок не збережеться — буде назване, що виправити.</p>
           <p id="dictionaries-status" class="muted small"></p></article>
         <article class="panel"><h2>Коди доби</h2>
-          <p class="muted small">Цифрові комбінації, які група повторює протягом доби («14 77, 18 36»). Вносяться вручну на кожен день. Перевірка тексту в архіві й у Mini App підкаже «Можливо, 14 77?», якщо в записі цього дня пара цифр відрізняється від коду однією цифрою; номер одразу після позивного не чіпається.</p>
-          <div class="toolbar"><input id="codes-day" type="date" aria-label="День"><input id="codes-input" placeholder="14 77, 18 36" aria-label="Коди доби" maxlength="500"><button id="codes-save">Зберегти</button><span id="codes-status" class="muted small"></span></div>
+          <p class="muted small">Цифрові комбінації, які група повторює протягом доби («14 77»). Доба кодів — з 20:00 попереднього дня до 20:00 обраного (година — <code>DAILY_CODES_CHANGE_HOUR</code> у <code>config.py</code>). Постійні коди діють щодня разом із кодами доби. Перевірка тексту в архіві й у Mini App підкаже «Можливо, 14 77?», якщо в записі цього дня пара цифр відрізняється від коду однією цифрою; номер одразу після позивного не чіпається.</p>
+          <div class="toolbar"><span class="muted small">Постійні:</span><input id="codes-permanent" placeholder="18 36, 24 91" aria-label="Постійні коди" maxlength="500"><button id="codes-permanent-save">Зберегти постійні</button></div>
+          <div class="toolbar"><span class="muted small">Доба:</span><input id="codes-day" type="date" aria-label="Доба кодів"><input id="codes-input" placeholder="14 77" aria-label="Коди доби" maxlength="500"><button id="codes-save">Зберегти коди доби</button><span id="codes-period" class="muted small"></span></div>
+          <p id="codes-status" class="muted small"></p>
           <div id="codes-recent" class="muted small"></div></article>
         <div id="dictionary-lists" class="grid two"></div>
       </section>

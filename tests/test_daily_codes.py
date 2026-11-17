@@ -72,11 +72,15 @@ def test_panel_codes_and_hint_by_record_day(tmp_path):
         today = client.get("/api/daily-codes").json()["today"]
         assert client.put(f"/api/daily-codes/{today}", json={"codes": "14 77"}, headers=h).json()["codes"] == ["14 77"]
         assert client.put(f"/api/daily-codes/{today}", json={"codes": "1"}, headers=h).status_code == 422
-        assert client.get("/api/daily-codes").json()["items"] == [{"day": today, "codes": ["14 77"]}]
+        assert [(i["day"], i["codes"]) for i in client.get("/api/daily-codes").json()["items"]] == [(today, ["14 77"])]
+        assert client.put("/api/daily-codes/permanent", json={"codes": "18 36, 2491"}, headers=h).json()["codes"] == ["18 36", "24 91"]
+        listing = client.get("/api/daily-codes").json()
+        assert listing["permanent"] == ["18 36", "24 91"] and [i["day"] for i in listing["items"]] == [today]
         check = lambda **body: [i["message"] for i in client.post("/api/text-check", json=body, headers=h).json()["issues"]]
         now = datetime.datetime.now().timestamp()
         assert any("14 77" in m for m in check(text="Береза 68, 14, 57", at=now))
-        assert not any("код доби" in m for m in check(text="Береза 68, 14, 57", at=now - 3 * 24 * 3600)), "інший день — свої коди"
+        assert not any("14 77" in m for m in check(text="Береза 68, 14, 57", at=now - 3 * 24 * 3600)), "інший день — свої коди"
+        assert any("18 36" in m for m in check(text="Береза 68, 15 36", at=now - 3 * 24 * 3600)), "постійні — щодня"
 
 
 def test_miniapp_check_uses_codes_of_the_event_day(api):  # noqa: F811
@@ -91,3 +95,27 @@ def test_miniapp_check_uses_codes_of_the_event_day(api):  # noqa: F811
     body = client.put("/api/corrections/check", headers=auth_header(3003),
                       json={"text": "Береза 68, 14, 57", "fix_id": "db:9"}).json()
     assert not any("код доби" in i["message"] for i in body["issues"]), "подія іншого дня — без кодів сьогодні"
+
+
+def test_code_day_changes_at_configured_hour(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "DAILY_CODES_CHANGE_HOUR", 20, raising=False)
+    at = lambda h, m=0, d=16: datetime.datetime(2026, 11, d, h, m)
+    assert daily_codes.local_day(at(19, 59)) == "2026-11-16"
+    assert daily_codes.local_day(at(20, 0)) == "2026-11-17", "о 20:00 — уже коди наступної доби"
+    assert daily_codes.local_day(at(23, 5)) == "2026-11-17"
+    assert daily_codes.local_day(at(7, 1, d=17)) == "2026-11-17"
+    assert daily_codes.period("2026-11-17") == ("16.11 20:00", "17.11 20:00")
+
+
+def test_permanent_codes_join_every_day(tmp_path):
+    from services.event_store import init_db
+    from services.sqlite_connection import get_db
+    db_path = tmp_path / "events.db"
+    init_db(db_path)
+    daily_codes.write_permanent(db_path, "18 36, 24 91")
+    daily_codes.write(db_path, "2026-11-17", "14 77, 18 36")
+    with get_db(db_path) as db:
+        assert daily_codes.read(db, "2026-11-17") == ["18 36", "24 91", "14 77"], "без повторів"
+        assert daily_codes.read(db, "2026-11-01") == ["18 36", "24 91"]
+    assert [i["day"] for i in daily_codes.recent(db_path)] == ["2026-11-17"], "постійні — не доба"

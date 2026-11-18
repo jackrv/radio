@@ -112,8 +112,12 @@
   const recordingFilterIds = ["recording-view", "recording-period", "recording-edits", "recording-search"];
   function updateDraftCount() {
     const count = reviewCards.filter(card => card.dirty).length;
-    $("archive-drafts").hidden = $("archive-drafts-nav").hidden = !count;
-    $("archive-drafts").textContent = `Незбережені зміни: ${count}`;
+    // Плитка в шапці (поруч зі статистикою): помітно, і клік веде до першої незбереженої картки.
+    const drafts = $("archive-drafts");
+    drafts.hidden = $("archive-drafts-nav").hidden = !count;
+    drafts.replaceChildren(el("span", "stat-label", "Не збережено"), el("span", "stat-value", String(count)),
+                           el("span", "stat-extra", "перейти →"));
+    drafts.title = `Незбережених карток: ${count}. Клік — до першої з них`;
     $("archive-drafts-nav").textContent = String(count);
     $("archive-drafts-nav").title = `Незбережених карток: ${count}`;
   }
@@ -211,20 +215,20 @@
       const before = quality.raw_text.wer, after = quality.final_text.wer;
       const delta = before != null && after != null ? after - before : null;
       const tiles = [goal,
-        tile("Сьогодні", typeof today === "number" ? num(today) : "—", `усього ${num(summary.reviewed)}`, today ? "live" : "",
+        tile("Сьогодні", typeof today === "number" ? num(today) : "—", `усього ${num(summary.reviewed)}`, today ? "live compact" : "compact",
              "Записів розмічено сьогодні; нижче — усього перевірених"),
         tile("WER до → після", `${pct(before)} → ${pct(after)}`,
              delta == null ? "" : `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. обробка`,
-             delta == null ? "" : delta <= 0 ? "good" : "bad",
+             delta == null ? "wide" : delta <= 0 ? "good wide" : "bad wide",
              "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення)"),
-        tile("У виді", num(page.total), $("recording-view").selectedOptions?.[0]?.dataset.title || "", "",
+        tile("У виді", num(page.total), $("recording-view").selectedOptions?.[0]?.dataset.title || "", "compact",
              "Скільки записів у поточному виді й періоді")];
       if (searchQuery()) {
         const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });
         const found = tile("Пошук", `«${searchQuery()}»`, "", "search"); found.append(clear); tiles.push(found);
       }
-      $("recording-summary").replaceChildren(...tiles);
+      $("recording-summary").replaceChildren(...tiles, $("archive-drafts"));   // плитка чернеток — у тому ж ряду
     }
     if (!page.total && searchQuery()) $("recordings").append(el("p", "muted", "Нічого не знайдено. Шукайте за початком ID (від 4 знаків), №події або шматком тексту."));
     else if (!page.total) $("recordings").append(el("p", "muted", TODO_VIEWS.includes($("recording-view").value)
@@ -247,8 +251,10 @@
       header.append(title);
       const audio = el("audio"); audio.controls = true; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`;
+      // Плеєр — «фартушок» над карткою (як деталі під нею): завжди на виду, не губиться серед полів.
       const player = el("div", "recording-player"); player.append(audio, speedSelect());
-      header.append(player); card.append(header);
+      const deck = el("div", "recording-deck"); deck.append(player);
+      card.append(header);
       // «Фартушок» під карткою: текст Whisper (з «Повернути розпізнане») і технічні деталі.
       const apron = el("div", "recording-apron");
       {
@@ -603,7 +609,7 @@
       details.append(apron.sample);
       details.append(el("pre", "", JSON.stringify(d, null, 2)));
       apron.append(rawRow, details);
-      card.append(form); $("recordings").append(card, apron);
+      card.append(form); $("recordings").append(deck, card, apron);
     }
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
@@ -763,6 +769,13 @@
   });
   const playing = new Set();
   let holdTimer = null;
+  // Квадрат «мікрофон» показує, що зараз мікрофон справді закрито (грає запис).
+  const showHold = () => holdBox.closest?.(".mic-square")?.classList.toggle("holding", holdBox.checked && playing.size > 0);
+  holdBox.addEventListener("change", showHold);
+  $("archive-drafts").addEventListener("click", () => {
+    const first = reviewCards.find(card => card.dirty);
+    if (first && typeof activateReview === "function") activateReview(first);
+  });
   function sendHold(seconds) {
     return fetch("/api/listening-hold", { method: "PUT", credentials: "same-origin", cache: "no-store",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seconds: Math.max(0, Math.min(120, seconds)) }) })
@@ -777,13 +790,17 @@
   document.addEventListener("play", event => {
     const media = event.target;
     if (!(media instanceof HTMLMediaElement) || !holdBox.checked) return;
-    playing.add(media);
+    playing.add(media); showHold();
     const left = Number.isFinite(media.duration) ? media.duration - media.currentTime : 10;
     sendHold(Math.min(120, left + 1.5));
     if (!holdTimer) holdTimer = setInterval(() => { if (playing.size) sendHold(10); }, 4000);
   }, true);
+  // Плеєр, що грає, підсвічено (фартушок над карткою).
+  for (const [name, on] of [["play", true], ["pause", false], ["ended", false]])
+    document.addEventListener(name, event => event.target?.closest?.(".recording-deck")?.classList.toggle("playing", on), true);
   function stopped(event) {
     if (!playing.delete(event.target) || playing.size) return;
+    showHold();
     clearInterval(holdTimer); holdTimer = null;
     sendHold(1);  // 1 с на відлуння кімнати, потім мікрофон відкривається
   }

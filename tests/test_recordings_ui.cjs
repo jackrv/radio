@@ -90,12 +90,12 @@ test('search text is encoded and the next page uses its offset', async () => {
 test('loading more preserves the existing card and its unsaved input', async () => {
   const ui = harness({items:[item],total:3});
   await ui.load();
-  const card = ui.$('recordings').children[0];
+  const card = ui.$('recordings').children.find(c => c.className.includes('recording-card'));
   const input = descendants(card).find(n=>n.className==='text-input-box').children[0];
   input.value = 'незбережена правка';
   ui.set({items:[{...item,id:'b'.repeat(32)}],total:3});
   await ui.more();
-  assert.equal(ui.$('recordings').children[0], card);
+  assert.equal(ui.$('recordings').children.find(c => c.className.includes('recording-card')), card);
   assert.equal(input.value, 'незбережена правка');
 });
 
@@ -198,7 +198,7 @@ test('a callsign is either "to" or "from": choosing one role clears the other, a
   await ui.load();
   ui.cards()[0].refreshHints();   // як під час відкриття картки: чипи й підказки
   await new Promise(resolve => setImmediate(resolve));
-  const switches = () => descendants(ui.$('recordings').children[0]).filter(n=>n.className==='role-switch');
+  const switches = () => descendants(ui.$('recordings')).filter(n=>n.className==='role-switch');
   const buttons = () => switches()[0].children;
   assert.deepEqual(buttons().map(b=>[b.textContent, b.className]), [['Кому','ghost on'], ['Від','ghost']]);
   buttons()[1].click();

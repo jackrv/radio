@@ -21,11 +21,11 @@
       const main = el("div", "live-text");
       main.append(time, el("span", text ? "live-phrase" : "live-phrase empty", text || "тексту немає"));
       const meta = el("div", "live-meta");
-      meta.append(el("span", `live-status ${LIVE_TONE[item.status] || ""}`, STATUS[item.status] || item.status));
-      if (item.fix_id) {
-        const sent = el("span", "live-sent", item.fix_id.startsWith("db:") ? `✈ №${item.fix_id.slice(3)}` : "✈");
-        sent.title = "Надіслано в Telegram"; meta.append(sent);
-      }
+      // Номер повідомлення Telegram — першим і в колонці сталої ширини (порожньою, якщо не надсилалось),
+      // щоб пігулки статусу стояли рівно одна під одною.
+      const sent = el("span", "live-sent", item.fix_id ? (item.fix_id.startsWith("db:") ? `✈ №${item.fix_id.slice(3)}` : "✈") : "");
+      if (item.fix_id) sent.title = "Надіслано в Telegram";
+      meta.append(sent, el("span", `live-status ${LIVE_TONE[item.status] || ""}`, STATUS[item.status] || item.status));
       if (item.reference !== null) { const done = el("span", "live-done", "✓"); done.title = "Розмічено"; meta.append(done); }
       const play = el("button", "live-play", "▶"); play.type = "button"; play.title = "Прослухати";
       play.addEventListener("click", () => {

@@ -1074,3 +1074,5 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   .overview-live > .panel-head { flex: none; }
   .overview-live > #live { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
 }
+/* «Ефір зараз»: колонка номера Telegram сталої ширини — перед статусом */
+.live-sent { display: inline-block; min-width: 64px; text-align: right; }

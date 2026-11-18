@@ -76,7 +76,9 @@
     callsigns: "позивний зі словника почуто як інше слово", words: "звичайні слова (не позивні й не числа)",
     inserted: "у тексті є слова, яких не казали", deleted: "сказане не потрапило в текст", missed: "з мовлення не вийшло жодного слова" };
   const SUB_KIND = { callsign: "позивний", number: "число", word: "слово" };
-  const showIds = ids => openRecordings({ view: "all", search: ids.join(",") });
+  // Пошук архіву приймає до 200 знаків: перші 8 знаків ID (20 × 9 = 180) однозначні й уміщаються.
+  const idsQuery = ids => ids.map(id => id.slice(0, 8)).join(",");
+  const showIds = ids => openRecordings({ view: "all", search: idsQuery(ids) });
   async function qualityErrors() {
     const e = await request(`/api/quality/errors?days=${$("errors-days").value}`);
     const box = $("errors-kinds");

@@ -263,3 +263,13 @@ test('leaving the text with Esc applies the formatting fixes (not the spelling g
   assert.equal(ui.cards()[0].dirty, true);
   assert.equal(await ui.cards()[0].applyFormatting(), false, 'already formatted — nothing to do');
 });
+
+test('analysis "show" links fit the archive search limit and find every record', () => {
+  const analysis = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '04-analysis.js'), 'utf8');
+  const code = analysis.slice(analysis.indexOf('  const idsQuery ='), analysis.indexOf('\n', analysis.indexOf('  const idsQuery =')));
+  const idsQuery = vm.runInNewContext(code.replace('const idsQuery =', '(').replace(/;\s*$/, '') + ')');
+  const ids = Array.from({length: 20}, (_, i) => i.toString(16).padStart(2, '0').repeat(16));
+  const query = idsQuery(ids);
+  assert.ok(query.length <= 200, `query is ${query.length} chars`);
+  assert.deepEqual(query.split(','), ids.map(id => id.slice(0, 8)));
+});

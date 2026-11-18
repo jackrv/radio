@@ -492,3 +492,11 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .recording-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .recording-chips .chips-hint { flex-basis: 100%; margin-bottom: -2px; }
 .recording-chips .chip { flex: none; }
+/* Картка: тип і ролі над текстом; «Виправити оформлення» — усередині поля праворуч */
+.recording-type { margin: 4px 0 6px; }
+.recording-type .segmented button { font-size: 12px; padding: 5px 8px; }
+.text-input-box { position: relative; }
+.text-input-box textarea { width: 100%; padding-right: 168px; }
+.text-input-box .fix-all { position: absolute; top: 6px; right: 6px; padding: 3px 9px !important; font-size: 11px !important; border-radius: 6px; }
+.text-input-box .fix-all[hidden] { display: none; }
+.recording-actions { justify-content: flex-end; }

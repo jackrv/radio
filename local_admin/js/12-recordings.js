@@ -301,16 +301,18 @@
       // Лише підказки: зберегти можна будь-який текст.
       const lint = el("div", "text-check");
       let lintTimer = null;
+      // «Виправити оформлення» — усі рекомендовані правки оформлення одним натисканням; кнопка всередині поля праворуч.
+      let formatted = null;
+      const fixAll = el("button", "ghost fix-all", "Виправити оформлення"); fixAll.type = "button"; fixAll.hidden = true;
+      fixAll.title = "Застосувати всі правки оформлення (пробіли, коми, цифри групами, апостроф)";
+      fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; updateDirty(); checkText(0); input.focus(); });
       function renderLint(result) {
         lint.replaceChildren();
         const issues = result?.issues || [];
         card.classList.toggle("has-remarks", issues.length > 0);
+        formatted = issues.length && result.formatted ? result.formatted : null;
+        fixAll.hidden = !formatted;
         if (!issues.length) return;
-        if (result.formatted) {
-          const all = el("button", "ghost", "Виправити оформлення"); all.type = "button";
-          all.addEventListener("click", () => { input.value = result.formatted; updateDirty(); checkText(0); input.focus(); });
-          lint.append(all);
-        }
         const seenIssues = new Set();
         for (const issue of issues) {
           const key = JSON.stringify([issue.kind, issue.message, issue.dictionary_entry, issue.fixed_text]);
@@ -370,7 +372,8 @@
       multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
       const textField = el("label", "recording-text");
-      textField.append(el("span", "muted small", "Почутий текст"), input);
+      const inputBox = el("div", "text-input-box"); inputBox.append(input, fixAll);
+      textField.append(el("span", "muted small", "Почутий текст"), inputBox);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
       const actions = el("div", "recording-actions");
       const saveStatus = el("span", "muted small save-status"); saveStatus.setAttribute("role", "status");
@@ -379,7 +382,8 @@
       segmented.setAttribute("aria-label", "Тип запису");
       // «Зберегти» — крайня праворуч, позначка незбережених змін і результат — ліворуч від неї.
       const saveActions = el("div", "save-actions"); saveActions.append(saveStatus, dirtyBadge, save);
-      actions.append(segmented, saveActions);
+      actions.append(saveActions);
+      const typeRow = el("div", "recording-type"); typeRow.append(segmented);
       function setCategory(value, quick) {
         category.value = value;
         for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
@@ -433,7 +437,8 @@
         }
       }
       const meta = el("div", "recording-meta"); meta.append(roles, multi);
-      form.append(textField, lint, chips, meta, actions);
+      // Зверху вниз: тип запису, ролі, текст (з «Виправити оформлення»), підказки й позивні, «Зберегти».
+      form.append(typeRow, meta, textField, lint, chips, actions);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,

@@ -121,7 +121,7 @@ test('missing callsign number can be added from its hint without saving or repla
   const visit = node => {all.push(node);for(const child of node.children || [])visit(child);};
   visit(ui.$('recordings'));
   const add = all.find(node=>node.textContent==='＋ У словник: береза 57');
-  const field = all.find(node=>node.className==='recording-text').children[1];
+  const field = all.find(node=>node.className==='text-input-box').children[0];
   field.value = 'незбережений текст оператора';
   add.listeners.click();
   for(let i=0;i<8;i++)await Promise.resolve();
@@ -137,7 +137,7 @@ function descendants(node) {
 }
 function editor(ui) {
   const nodes = descendants(ui.$('recordings'));
-  return {nodes, form:nodes.find(n=>n.listeners.submit), input:nodes.find(n=>n.className==='recording-text').children[1]};
+  return {nodes, form:nodes.find(n=>n.listeners.submit), input:nodes.find(n=>n.className==='text-input-box').children[0]};
 }
 
 test('dirty badge and count follow edits and reverting them, including unsaved first-time references', async () => {

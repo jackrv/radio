@@ -872,3 +872,10 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   color: var(--muted); background: var(--surface2); align-self: center; }
 .recording-row.active .row-time .row-hm { color: var(--lime); }
 .recording-row.done .row-time .row-hm { color: var(--text); font-weight: 700; }
+
+/* Плитка «Коди доби» — нагадування в шапці архіву */
+.stat-tile.codes { cursor: pointer; border-color: rgba(140, 196, 255, .45); background: linear-gradient(160deg, rgba(140, 196, 255, .12), rgba(140, 196, 255, 0) 75%); }
+.stat-tile.codes .stat-value { color: var(--cyan); font-family: ui-monospace, Menlo, monospace; font-size: 17px; letter-spacing: .04em; }
+.stat-tile.codes:hover { border-color: var(--cyan); }
+.stat-tile.codes.missing { border-style: dashed; border-color: rgba(240, 190, 90, .6); background: rgba(240, 190, 90, .08); }
+.stat-tile.codes.missing .stat-value, .stat-tile.codes.missing .stat-extra { color: var(--warn); font-family: inherit; font-size: 15px; }

@@ -10,6 +10,25 @@ from services.notification_samples import add_sample
 from services.sqlite_connection import get_db
 from api.panel.models import RecordingReview, RoleSuggestion, TextCheck, ListeningHold, SampleConfirmation
 
+_RANGE = re.compile(r"bytes=(\d*)-(\d*)\Z")
+
+
+def ranged_audio(data, header):
+    """WAV із підтримкою Range: без неї Chrome не перемотує запис, що вже грає (скидає на початок)."""
+    size = len(data)
+    match = _RANGE.fullmatch((header or "").strip())
+    if not match or not (match[1] or match[2]):
+        return Response(data, media_type="audio/wav", headers={"Accept-Ranges": "bytes"})
+    if match[1]:
+        start, end = int(match[1]), min(size - 1, int(match[2])) if match[2] else size - 1
+    else:   # «bytes=-N» — останні N байтів
+        start, end = max(0, size - int(match[2])), size - 1
+    if start >= size or start > end:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"})
+    return Response(data[start:end + 1], status_code=206, media_type="audio/wav",
+                    headers={"Content-Range": f"bytes {start}-{end}/{size}", "Accept-Ranges": "bytes"})
+
+
 def register(app, ctx):
     db_path = ctx.db_path
     recordings = ctx.recordings
@@ -134,11 +153,12 @@ def register(app, ctx):
                         media_type="application/json", headers={"Content-Disposition": 'attachment; filename="recordings.json"'})
 
     @app.get("/api/recordings/{record_id}/audio")
-    def recording_audio(record_id: str, admin=Depends(actor)):
+    def recording_audio(record_id: str, request: Request, admin=Depends(actor)):
         try:
-            return Response(recordings.audio(record_id), media_type="audio/wav")
+            data = recordings.audio(record_id)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+        return ranged_audio(data, request.headers.get("range"))
 
     @app.put("/api/recordings/{record_id}/review")
     def recording_review(record_id: str, payload: RecordingReview, admin=Depends(actor)):

@@ -366,3 +366,16 @@ def test_summary_counts_phrases_without_edits_and_todays_reviews(tmp_path):
     assert summary['no_edits']==1 and summary['quality']['final_text']['reviewed_speech']==2
     assert summary['reviewed_today']==2
     assert summary['speech_today']==2 and summary['no_edits_today']==1
+
+
+def test_audio_supports_byte_ranges_for_seeking():
+    from api.panel.recordings import ranged_audio
+    data = bytes(range(100))
+    full = ranged_audio(data, None)
+    assert full.status_code == 200 and full.body == data and full.headers['accept-ranges'] == 'bytes'
+    part = ranged_audio(data, 'bytes=10-19')
+    assert part.status_code == 206 and part.body == data[10:20] and part.headers['content-range'] == 'bytes 10-19/100'
+    assert ranged_audio(data, 'bytes=90-').body == data[90:]
+    assert ranged_audio(data, 'bytes=-5').body == data[95:]
+    assert ranged_audio(data, 'bytes=200-').status_code == 416
+    assert ranged_audio(data, 'items=1-2').status_code == 200

@@ -263,12 +263,13 @@
     }
     if (reset) { recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); $("recording-rows").replaceChildren(); }
     const since = periodSince(), until = periodUntil();
-    const [page, summary] = await Promise.all([
+    const [page, summary, codes] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&view=${$("recording-view").value}` +
         (since ? `&since=${since}` : "") + (until ? `&until=${until}` : "") +
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
         (editsValue() ? `&edits=${encodeURIComponent(editsValue())}` : "")),
-      request("/api/recordings/summary")
+      request("/api/recordings/summary"),
+      request("/api/daily-codes").catch(() => null)   // нагадування: коди поточної доби
     ]);
     if (reset) archiveBaseline = {query: JSON.stringify(recordingFilterIds.map(id => $(id).value)), total: page.total, first: page.items[0]?.id};
     showArchiveFresh(false);
@@ -332,6 +333,17 @@
         const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });
         const found = tile("Пошук", `«${searchQuery()}»`, "", "search"); found.append(clear); tiles.push(found);
+      }
+      // Коди доби — під рукою, щоб правильно записати їх у тексті (лише добові, без постійних).
+      if (codes && codes.today) {
+        const current = (codes.items || []).find(entry => entry.day === codes.today);
+        const until = codes.today_period?.[1] || "";
+        const reminder = current?.codes?.length
+          ? tile("Коди доби", current.codes.join(" · "), until ? `діють до ${until}` : "", "codes",
+                 "Коди поточної доби (змінюються о 20:00). Клік — сторінка кодів")
+          : tile("Коди доби", "не внесено", "внести →", "codes missing", "Коди поточної доби ще не внесено. Клік — внести");
+        reminder.addEventListener?.("click", () => typeof show === "function" && show("codes"));
+        tiles.splice(1, 0, reminder);
       }
       $("recording-summary").replaceChildren(...tiles);
     }

@@ -987,3 +987,10 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   border-color: rgba(184, 239, 134, .18) !important; }
 .recording-type .segmented button.on .type-key { color: #10220f; border-color: transparent;
   background: linear-gradient(180deg, #c3ec9a 0%, #a3da8b 55%, #86c890 100%); }
+/* Без активної картки — по центру екрана; з карткою — під кнопками типу */
+.undo-toast { bottom: auto; top: 50%; transform: translate(-50%, -50%); animation: undo-in-center .2s ease-out; }
+@keyframes undo-in-center { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } }
+.recording-type { position: relative; }
+.recording-type > .undo-toast.anchored { position: absolute; left: 0; top: calc(100% + 6px); transform: none; z-index: 20;
+  animation: undo-in-local .2s ease-out; }
+@keyframes undo-in-local { from { opacity: 0; transform: translateY(-6px); } }

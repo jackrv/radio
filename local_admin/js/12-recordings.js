@@ -38,6 +38,10 @@
       document.body.append(undoToast);
     }
     if (!undoStack.length) { undoToast.hidden = true; clearTimeout(undoTimer); return; }
+    // Плашка — одразу під кнопками типу активної картки (туди щойно клікали); без картки — по центру екрана.
+    const anchor = typeof activeReview !== "undefined" && activeReview?.card?.querySelector?.(".recording-type");
+    if (anchor) { if (undoToast.parentElement !== anchor) anchor.append(undoToast); undoToast.classList.add("anchored"); }
+    else { if (undoToast.parentElement !== document.body) document.body.append(undoToast); undoToast.classList.remove("anchored"); }
     const last = undoStack[undoStack.length - 1];
     undoToast.querySelector(".undo-text").textContent = `Позначено «${last.title}»${undoStack.length > 1 ? ` · і ще ${undoStack.length - 1}` : ""}`;
     undoToast.hidden = false;
@@ -935,6 +939,7 @@
   }
   function activateReview(controller, scroll = true) {
     activeReview = controller;
+    if (undoStack.length) renderUndo(false);   // плашка «Скасувати» переходить до нової активної картки
     for (const c of reviewCards) c.card.classList.toggle("active", c === controller);
     // Прихована картка не мала висоти: поле тексту підганяємо, щойно вона показана.
     window.requestAnimationFrame?.(() => controller.grow?.());

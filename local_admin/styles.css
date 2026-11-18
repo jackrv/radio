@@ -902,3 +902,6 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 /* Фартушок кодів — завширшки за вмістом (але не далі за «Виправити оформлення») */
 .recording-text .text-head .codes-apron { flex: 0 1 auto; max-width: calc(100% - 150px - 110px); margin-right: 0; }
 @media (max-width: 820px) { .recording-text .text-head .codes-apron { max-width: none; } }
+/* …і прилягає праворуч — правою межею точно до розділювача «Виправити оформлення» (138 px + рамка поля) */
+.recording-text .text-head .codes-apron { margin-left: auto; margin-right: 139px; max-width: calc(100% - 139px - 110px); }
+@media (max-width: 820px) { .recording-text .text-head .codes-apron { margin-right: 139px; } }

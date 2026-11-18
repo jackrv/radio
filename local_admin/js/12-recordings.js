@@ -380,8 +380,8 @@
              delta == null ? "" : `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. обробка`,
              delta == null ? "wide" : delta <= 0 ? "good wide" : "bad wide",
              "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення)"),
-        tile("У виді", num(page.total), $("recording-view").selectedOptions?.[0]?.dataset.title || "", "compact",
-             "Скільки записів у поточному виді й періоді")];
+        tile("У списку", num(page.total), $("recording-view").selectedOptions?.[0]?.dataset.title || "", "compact",
+             "Скільки записів у списку праворуч — за вибраним видом, періодом і пошуком")];
       if (searchQuery()) {
         const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });

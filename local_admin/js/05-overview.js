@@ -189,6 +189,7 @@
     pill.textContent = { listening: "Слухає ефір", paused: "Призупинено", stopped: "Зупинено", offline: "Не працює" }[state] || state;
     const age = d.updated_at ? now() - d.updated_at : null;
     $("updated").textContent = `оновлено ${new Date().toLocaleTimeString("uk-UA")}`;
+    $("updated").title = "";
 
     // Стан потоків беремо зі знімка лише тоді, коли він свіжий і приймач працює.
     const fresh = age !== null && age <= 120 && (state === "listening" || state === "paused");

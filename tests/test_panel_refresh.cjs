@@ -29,7 +29,7 @@ test('hidden and busy panels skip requests, and returning to a visible page refr
 });
 test('failed background refresh releases its lock and retries successfully',async()=>{
  const h=refreshHarness();h.context.overview=async()=>{throw new Error('offline');};await h.context.refresh();
- assert.match(h.$('updated').textContent,/повторюємо/);
+ assert.match(h.$('updated').textContent,/не оновлено/);
  h.context.overview=async()=>h.calls.push('recovered');await h.context.refresh();assert.deepEqual(h.calls,['recovered']);
 });
 test('slow background requests cannot overlap',async()=>{

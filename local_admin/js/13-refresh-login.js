@@ -24,7 +24,9 @@
       else if (view === "activity") await activity();
       else if (view === "recordings") await refreshArchiveNotice();
     } catch (_) {
-      $("updated").textContent = "Не вдалося оновити дані — повторюємо автоматично";
+      // Коротко в шапці; пояснення — у підказці при наведенні.
+      $("updated").textContent = "⚠ не оновлено · повтор…";
+      $("updated").title = "Не вдалося оновити дані (немає зв’язку з панеллю або служби перезапускаються). Повторюємо автоматично кожні 10 с.";
     } finally { refreshPending = false; }
   }
   function schedule() {

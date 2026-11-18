@@ -107,6 +107,22 @@ def split_code_pairs(text):
     return _CODE_PAIR.sub(r"\1 \2", text)
 
 
+# «прийом, прийом» майже завжди — почуте двічі «прийнято, прийом»: 18.11.2026 на 362 еталонах подвоєне
+# «прийом» у тексті програми — 17 разів, в еталонах — лише у 2 фразах; заміна: 6 фраз краще, 1 гірше,
+# «без правок» 30 → 31. Лише рівно два поспіль; розділювач (кома, пробіл) і регістр зберігаються.
+_OVER_RUN = re.compile(r"(?<![^\W\d_])прийом(?:\s*,?\s*прийом)+(?![^\W\d_])", re.IGNORECASE)
+_OVER_WORD = re.compile(r"прийом", re.IGNORECASE)
+
+
+def fix_double_over(text):
+    def run(match):
+        words = _OVER_WORD.findall(match.group(0))
+        if len(words) != 2:
+            return match.group(0)
+        return _OVER_WORD.sub(lambda m: "Прийнято" if m.group(0)[:1].isupper() else "прийнято", match.group(0), count=1)
+    return _OVER_RUN.sub(run, text)
+
+
 _NAME = r"([^\W\d_]{3,})"
 _HUNDREDS_SPLIT = re.compile(_NAME + r",?\s+(\d00),\s*(\d{1,2})\b(?!\s*\d)")
 _NAME_COMMA_NUMBER = re.compile(_NAME + r",\s+(\d{1,4})\b")
@@ -225,4 +241,4 @@ def template_text(text, callsigns, known_names=()):
             pos = end
     # Шаблони цілих фраз — після слів і зворотів: виправляють лише написання почутих слів.
     from core.phrase_patterns import apply_patterns
-    return strip_final_period(split_code_pairs(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names)))
+    return strip_final_period(split_code_pairs(fix_double_over(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names))))

@@ -92,3 +92,13 @@ def test_whisper_final_period_is_dropped_but_inner_and_ellipsis_stay():
     assert strip_final_period("Клен 15, прийом.") == "Клен 15, прийом"
     assert strip_final_period("Клен 15, прийом. Дуб 4, прийнято.") == "Клен 15, прийом. Дуб 4, прийнято"
     assert strip_final_period("Клен 15…") == "Клен 15…" and strip_final_period("Клен...") == "Клен..."
+
+
+def test_double_over_is_usually_heard_as_received_over():
+    from core.template_text import fix_double_over
+    assert fix_double_over("Клен 48, прийом, прийом") == "Клен 48, прийнято, прийом"
+    assert fix_double_over("Прийом прийом.") == "Прийнято прийом."
+    assert fix_double_over("дуб, прийом, прийом / клен, прийом, прийом") == "дуб, прийнято, прийом / клен, прийнято, прийом"
+    assert fix_double_over("Клен, прийом, прийом, прийом") == "Клен, прийом, прийом, прийом", "три поспіль — не чіпаємо"
+    assert fix_double_over("прийом, прийнято") == "прийом, прийнято"
+    assert fix_double_over("прийомка прийом") == "прийомка прийом"

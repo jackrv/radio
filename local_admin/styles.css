@@ -843,9 +843,17 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 @media (min-width: 1100px) {
   main:has(> section[data-panel="recordings"]:not([hidden])) { padding-bottom: 12px; }
   .archive-split > * { min-height: 0; overflow: hidden; }
-  .archive-split > .archive-list { overflow-y: auto; }
 }
 
-/* Легенда над переліком: пункти не розриваються, переносяться цілими, рівною сіткою */
-.row-legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, max-content)); gap: 2px 14px; line-height: 1.5; }
-.row-legend .lg-item { white-space: nowrap; }
+/* Легенда над переліком: компактні пігулки на розмір вмісту, пункти не розриваються */
+.row-legend { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; padding: 0 2px 6px; font-size: 12px; line-height: 1.4;
+  border-bottom: 1px solid var(--border); }
+.row-legend .lg-item { white-space: nowrap; padding: 2px 8px; border-radius: 99px; background: var(--surface2); color: var(--muted); cursor: help; }
+.row-legend .lg-item:hover { color: var(--text); }
+/* Шапка переліку («Оновити», легенда) стоїть на місці — прокручуються лише рядки */
+@media (min-width: 1100px) {
+  .archive-split > .archive-list { overflow: hidden; }
+  .archive-list > * { flex: none; }
+  .archive-list > #recording-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+  .archive-list > #recording-more { margin: 6px 0 0; }
+}

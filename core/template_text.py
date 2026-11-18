@@ -99,6 +99,33 @@ def split_code_pairs(text):
     return _CODE_PAIR.sub(r"\1 \2", text)
 
 
+_NAME = r"([^\W\d_]{3,})"
+_HUNDREDS_SPLIT = re.compile(_NAME + r",?\s+(\d00),\s*(\d{1,2})\b(?!\s*\d)")
+_NAME_COMMA_NUMBER = re.compile(_NAME + r",\s+(\d{1,4})\b")
+
+
+def join_callsign_numbers(text, callsigns):
+    """Номер позивного, розірваний Whisper, — разом, лише якщо такий номер є в словнику позивного.
+
+    «Клен, 700, 73» → «Клен 773» (вимовлено «сімсот сімдесят три»), якщо 773 — номер клена;
+    «Клен, 700» → «Клен 700», якщо 700 — номер клена. Цифри не змінюються, лише кома й розрив;
+    далі за числом ще одне число («700, 72 59») — це код, не склеюємо. 18.11.2026 на 280
+    еталонах: 1 фраза краще, 0 гірше, +1 знайдений позивний.
+    """
+    def allowed(word):
+        name = basic_normalize(word)
+        return callsigns.numbers.get(name) or () if name in callsigns.names else ()
+
+    def hundreds(match):
+        joined = str(int(match.group(2)) + int(match.group(3)))
+        return f"{match.group(1)} {joined}" if joined in allowed(match.group(1)) else match.group(0)
+
+    def comma(match):
+        return f"{match.group(1)} {match.group(2)}" if match.group(2) in allowed(match.group(1)) else match.group(0)
+
+    return _NAME_COMMA_NUMBER.sub(comma, _HUNDREDS_SPLIT.sub(hundreds, text))
+
+
 def _fold(word):
     return basic_normalize(word).translate(FOLD)
 
@@ -118,7 +145,7 @@ def template_text(text, callsigns, known_names=()):
     ``known_names`` — назви з усіх словників, які не можна переписувати.
     """
     known_names = tuple(known_names)
-    text = join_split_callsign(trim_loops(text), callsigns)
+    text = join_callsign_numbers(join_split_callsign(trim_loops(text), callsigns), callsigns)
     tokens = [(m.start(), m.end(), m.group()) for m in _TOKEN.finditer(text)]
     if not tokens:
         return text

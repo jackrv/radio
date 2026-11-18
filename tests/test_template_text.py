@@ -74,3 +74,14 @@ def test_four_digit_codes_are_written_in_spoken_pairs():
     assert split_code_pairs("злива 4242") == "злива 42 42"
     for kept in ("Клен 700", "1:29", "12.5034", "у 2026 році", "код1234", "12345"):
         assert split_code_pairs(kept) == kept
+
+
+def test_callsign_number_split_by_whisper_is_joined_only_with_a_dictionary_number():
+    from core.template_text import join_callsign_numbers
+    cs = Callsigns.from_lines(["клен: 700 773", "дуб: 15"])
+    assert join_callsign_numbers("Клен, 700, я клен, 700, 73, до роботи приступив, прийом", cs) == \
+        "Клен 700, я клен 773, до роботи приступив, прийом"
+    assert join_callsign_numbers("клен, 700, 74, прийом", cs) == "клен 700, 74, прийом", "774 немає у словнику"
+    assert join_callsign_numbers("клен, 700, 72 59, прийом", cs) == "клен 700, 72 59, прийом", "далі код — не склеюємо"
+    assert join_callsign_numbers("дуб, 16, прийом", cs) == "дуб, 16, прийом", "16 — не номер дуба"
+    assert join_callsign_numbers("вишня, 700", cs) == "вишня, 700", "не позивний"

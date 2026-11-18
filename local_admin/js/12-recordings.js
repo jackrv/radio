@@ -268,7 +268,11 @@
       function renderChips() {
         chips.replaceChildren();
         // Кілька передач: ролі не оцінюються — замість чипів лише ця позначка (знімається кліком).
-        if (multiBox.checked) { chips.append(multi); chips.title = ""; return; }
+        if (multiBox.checked) {
+          // Сама з’являється за «/» у тексті й зникає без нього — без окремого перемикача.
+          chips.append(el("span", "multi-badge", "Кілька передач у записі"));
+          chips.title = "У тексті є «/»: ролі для такого запису не позначаються"; return;
+        }
         const names = [];
         for (const name of [...suggestions, ...recipient.values(), ...sender.values()])
           if (!names.some(n => sameRole(n, name))) names.push(name);
@@ -454,7 +458,7 @@
           saving = false; save.disabled = false;
         }
       }
-      const meta = el("div", "recording-meta"); meta.append(roles, multi);
+      const meta = el("div", "recording-meta"); meta.append(roles);   // «кілька передач» — позначка в рядку чипів
       // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
       // ліворуч підказки, позивні й ролі, праворуч «Зберегти» на висоту лівого блоку.
       const fields = el("div", "recording-fields"); fields.append(lint, meta);

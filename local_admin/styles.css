@@ -565,3 +565,13 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .text-input-box .fix-all { width: 138px; }
 .text-input-box .fix-all.idle, .text-input-box .fix-all:disabled { background: transparent; color: var(--muted); font-weight: 500;
   opacity: .6; cursor: default; }
+/* «Кілька передач у записі» — позначка замість чипів (без перемикача) */
+.recording-chips .multi-badge { font-size: 12px; color: var(--warn); border: 1px dashed rgba(240, 190, 90, .5); border-radius: 99px; padding: 3px 10px; }
+/* Тип запису — один прямокутник зі спільними межами, у два ряди */
+.recording-type .segmented { display: grid; grid-template-columns: repeat(3, auto); gap: 0; flex-wrap: nowrap;
+  border: 1px solid rgba(184, 239, 134, .4); border-radius: 9px; overflow: hidden; }
+.recording-type .segmented button { margin: 0; border: 0; border-radius: 0 !important; box-shadow: none;
+  border-right: 1px solid rgba(184, 239, 134, .25); border-bottom: 1px solid rgba(184, 239, 134, .25); padding: 5px 10px; }
+.recording-type .segmented button:nth-child(3) { border-right: 0; }
+.recording-type .segmented button:nth-child(4), .recording-type .segmented button:nth-child(5) { border-bottom: 0; }
+.recording-type .segmented button:nth-child(5) { grid-column: span 2; border-right: 0; }

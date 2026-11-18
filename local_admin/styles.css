@@ -446,13 +446,14 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .recording-row.dirty .row-time::after { content: " ●"; color: var(--warn); }
 .recording-row.active { background: var(--surface2); border-left-color: var(--lime2); opacity: 1; }
 @media (min-width: 1100px) {
-  /* Архів займає висоту вікна (--archive-h задає скрипт): прокручуються лише перелік і запис, не сторінка.
+  /* Архів займає висоту вікна (--archive-h задає скрипт): шапка вгорі, під нею запис; прокручуються
+     лише перелік і запис, не сторінка.
      Редактор — не ширше 820 px, решту ширини отримує перелік. */
   .archive-split { display: grid; grid-template-columns: minmax(0, 820px) minmax(320px, 1fr); gap: 12px; align-items: stretch;
     height: var(--archive-h, calc(100vh - 120px)); }
   .archive-main { display: flex; flex-direction: column; min-height: 0; }
   .archive-main #recordings { order: 1; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-  .archive-main .archive-bar { order: 2; margin: 8px 0 0; max-height: 55%; overflow-y: auto; flex: none; }
+  .archive-main .archive-bar { order: 0; margin: 0 0 8px; max-height: 55%; overflow-y: auto; flex: none; }
   .archive-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto;
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px; }
   .archive-list #recording-more { margin-top: 6px; }

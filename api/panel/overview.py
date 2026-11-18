@@ -62,7 +62,11 @@ def register(app, ctx):
         records = []
         for record_id, reference, data in rows:
             data = json.loads(data)
-            records.append({"id": record_id, "reference": reference, "raw_text": data.get("raw_text", ""), "final_text": data.get("final_text", "")})
+            signal, segments = data.get("signal") or {}, [s for s in data.get("whisper_segments") or [] if s.get("avg_logprob") is not None]
+            records.append({"id": record_id, "reference": reference, "raw_text": data.get("raw_text", ""), "final_text": data.get("final_text", ""),
+                            "duration": signal.get("duration_s"), "loudness": signal.get("rms_dbfs"),
+                            # Упевненість Whisper — середня ймовірність слів по сегментах (ближче до 0 — упевненіше).
+                            "confidence": sum(s["avg_logprob"] for s in segments) / len(segments) if segments else None})
         with get_db(db_path) as db:
             names = callsign_names(db)
         return analyse(records, names)

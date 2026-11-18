@@ -299,6 +299,8 @@
             <article class="panel"><div class="panel-head"><h2>Що заважає тексту без правок</h2>
                 <select id="errors-days" class="small-select" aria-label="Період розбору"><option value="0">увесь архів</option><option value="7">7 днів</option><option value="1">24 год</option></select></div>
               <div id="errors-kinds" class="error-kinds"></div></article>
+            <article class="panel"><div class="panel-head"><h2>Де розпізнавання гірше</h2><span class="muted small">«без правок» за умовами запису</span></div>
+              <div id="errors-conditions" class="error-conditions"></div></article>
             <article class="panel"><div class="panel-head"><h2>Найчастіші заміни слів</h2><span class="muted small">почуто → правильно</span></div>
               <div id="errors-subs" class="error-subs"></div><div id="errors-words" class="error-words"></div></article>
           </div>
@@ -307,6 +309,8 @@
               <div class="table-wrap"><table id="quality-days" class="compact quality-table"></table></div>
               <details class="small page-help"><summary>Що означають колонки</summary>
                 <p class="muted">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». <b>«Без правок»</b> — частка фраз, де підсумковий текст збігся з вашим еталоном слово в слово (головна мета). «Пропущено» — мовлення, з якого тексту не вийшло зовсім. «Помилка в словах» — частка слів, записаних не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після словників, шаблонів і навчених правил. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p></details></article>
+            <article class="panel"><div class="panel-head"><h2>Позивні</h2><span class="muted small">почуто вірно · з чим плутається · вигадано</span></div>
+              <div id="errors-callsigns" class="error-callsigns"></div></article>
             <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>
               <div id="training"></div>
               <details class="small page-help"><summary>Навіщо й як</summary>

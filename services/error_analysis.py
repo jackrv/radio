@@ -92,8 +92,82 @@ def record_errors(reference, hypothesis, names):
     return found, pairs
 
 
+# Умови запису: межі груп і підписи (тривалість, гучність).
+DURATION = ((2, "до 2 с"), (5, "2–5 с"), (10, "5–10 с"), (float("inf"), "понад 10 с"))
+LOUDNESS = ((-38, "дуже тихо (нижче −38 dBFS)"), (-30, "тихо (−38…−30)"), (-22, "нормально (−30…−22)"), (float("inf"), "гучно (вище −22)"))
+
+
+def _group(rows, key, bounds):
+    groups = []
+    for limit, title in bounds:
+        lower = groups[-1]["_limit"] if groups else float("-inf")
+        part = [r for r in rows if r[key] is not None and lower <= r[key] < limit]
+        groups.append({"_limit": limit, "title": title, **_stats(part)})
+    return [{k: v for k, v in g.items() if k != "_limit"} for g in groups if g["records"]]
+
+
+def _stats(rows):
+    if not rows:
+        return {"records": 0, "no_edits": 0, "share": None, "errors_mean": None, "ids": []}
+    clean = sum(r["errors"] == 0 for r in rows)
+    return {"records": len(rows), "no_edits": clean, "share": clean / len(rows),
+            "errors_mean": sum(r["errors"] for r in rows) / len(rows),
+            "ids": [r["id"] for r in rows if r["errors"]][:EXAMPLES]}
+
+
+def conditions(rows):
+    """«Без правок» за тривалістю, гучністю й упевненістю Whisper (чверті за впевненістю)."""
+    confident = sorted((r for r in rows if r["confidence"] is not None), key=lambda r: r["confidence"])
+    quarters = []
+    if len(confident) >= 8:
+        size = len(confident) / 4
+        titles = ("найменш упевнені 25 %", "нижче середнього", "вище середнього", "найбільш упевнені 25 %")
+        for q, title in enumerate(titles):
+            part = confident[round(q * size):round((q + 1) * size)]
+            quarters.append({"title": title, "range": [part[0]["confidence"], part[-1]["confidence"]], **_stats(part)})
+    # Чи передбачає впевненість правки: різниця «без правок» між найвпевненішою й найменш упевненою чвертю.
+    separation = quarters[-1]["share"] - quarters[0]["share"] if quarters else None
+    return {"duration": _group(rows, "duration", DURATION), "loudness": _group(rows, "loudness", LOUDNESS),
+            "confidence": quarters, "separation": separation}
+
+
+def callsign_accuracy(records, names):
+    """По кожному позивному з еталонів: скільки разів почуто вірно, з чим плутається; вигадані позивні."""
+    stats, invented = {}, Counter()
+    for item in records:
+        ref, hyp = metric_words(item["reference"]), metric_words(item.get("final_text"))
+        for tag, r1, r2, h1, h2 in Levenshtein.opcodes(ref, hyp):
+            ref_part, hyp_part = ref[r1:r2], hyp[h1:h2]
+            for token in ref_part:
+                if token not in names:
+                    continue
+                entry = stats.setdefault(token, {"name": token, "total": 0, "correct": 0, "missing": 0, "heard": Counter(), "ids": []})
+                entry["total"] += 1
+                if tag == "equal":
+                    entry["correct"] += 1
+                    continue
+                if tag == "delete":
+                    entry["missing"] += 1
+                else:
+                    entry["heard"][" ".join(hyp_part)] += 1
+                if item["id"] not in entry["ids"] and len(entry["ids"]) < EXAMPLES:
+                    entry["ids"].append(item["id"])
+            if tag in ("insert", "replace"):
+                for token in hyp_part:
+                    if token in names and token not in ref_part:
+                        invented[token] += 1   # позивного в цьому місці не казали — Whisper узяв його з підказки чи вигадав
+    out = []
+    for entry in stats.values():
+        out.append({**{k: v for k, v in entry.items() if k != "heard"}, "share": entry["correct"] / entry["total"],
+                    "heard": [{"text": t, "count": n} for t, n in entry["heard"].most_common(3)],
+                    "invented": invented.get(entry["name"], 0)})
+    out.sort(key=lambda e: (-e["total"], e["name"]))
+    only_invented = [{"name": n, "count": c} for n, c in invented.most_common() if n not in stats]
+    return {"callsigns": out, "invented_only": only_invented}
+
+
 def analyse(records, names):
-    """records: [{id, reference, raw_text, final_text}] — лише розмічене мовлення."""
+    """records: [{id, reference, raw_text, final_text, duration?, loudness?, confidence?}] — лише розмічене мовлення."""
     categories = {key: {"title": title, "count": 0, "ids": []} for key, title in CATEGORIES.items()}
     substitutions, sub_ids, sub_kind = Counter(), {}, {}
     inserted, deleted = Counter(), Counter()
@@ -132,7 +206,15 @@ def analyse(records, names):
             worse.append(item["id"])
     top = [{"from": a, "to": b, "count": n, "kind": sub_kind[(a, b)], "ids": sub_ids[(a, b)]}
            for (a, b), n in substitutions.most_common(15) if n >= 2]
-    return {"records": len(records), "with_edits": with_edits, "categories": categories,
+    # Помилки в словах на фразу (як у WER) — для «майже без правок» і умов запису.
+    rows = [{"id": item["id"], "errors": Levenshtein.distance(metric_words(item["reference"]), metric_words(item.get("final_text"))),
+             "duration": item.get("duration"), "loudness": item.get("loudness"), "confidence": item.get("confidence")}
+            for item in records]
+    one = [r["id"] for r in rows if r["errors"] == 1]
+    effort = {"no_edits": sum(r["errors"] == 0 for r in rows), "one_word": len(one), "one_word_ids": one[:EXAMPLES],
+              "errors_mean": sum(r["errors"] for r in rows) / len(rows) if rows else None}
+    return {"records": len(records), "with_edits": with_edits, "categories": categories, "effort": effort,
+            "conditions": conditions(rows), **callsign_accuracy(records, names),
             "processing": {"better": len(better), "worse": len(worse), "better_ids": better[:EXAMPLES], "worse_ids": worse[:EXAMPLES]},
             "substitutions": top,
             "inserted": [{"word": w, "count": n} for w, n in inserted.most_common(10) if n >= 2],

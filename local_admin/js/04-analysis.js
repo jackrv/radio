@@ -119,6 +119,74 @@
       return line;
     };
     $("errors-words").replaceChildren(...[chips("Вигадані:", e.inserted), chips("Пропущені:", e.deleted)].filter(Boolean));
+    drawEffort(e); drawConditions(e.conditions); drawCallsigns(e);
+  }
+  // Плитка «≤ 1 правка»: фрази без правок або з одним хибним словом — прогрес видно раніше, ніж фрази стануть ідеальними.
+  function drawEffort(e) {
+    const f = e.effort; if (!f || !e.records) return;
+    $("quality-tiles").querySelector?.(".effort")?.remove();
+    const near = (f.no_edits + f.one_word) / e.records;
+    const tile = qualityTile("≤ 1 правка", `${Math.round(near * 100)} %`, `ще ${num(f.one_word)} з одним словом · сер. ${fix(f.errors_mean, 1)} сл. на фразу`,
+                             "effort", "Фрази без правок або з одним хибним словом (за періодом розбору). Клік — фрази з одним словом",
+                             () => showIds(f.one_word_ids));
+    $("quality-tiles").children?.[0]?.after?.(tile);
+  }
+  // «Без правок» за тривалістю, гучністю й упевненістю Whisper.
+  function drawConditions(c) {
+    const box = $("errors-conditions");
+    if (!c) { box.replaceChildren(); return; }
+    const pct0 = v => v == null ? "—" : `${Math.round(v * 100)} %`;
+    const group = (title, rows) => {
+      if (!rows?.length) return null;
+      const wrap = el("div", "condition-group"); wrap.append(el("div", "quality-head", title));
+      for (const g of rows) {
+        const row = el("div", "error-row"), track = el("span", "quality-track"), fill = el("i");
+        fill.style.width = `${Math.max(2, (g.share || 0) * 100)}%`; track.append(fill);
+        const open = el("button", "live-open", "показати →"); open.type = "button"; open.title = "Фрази з правками в цій групі";
+        open.disabled = !g.ids.length; open.addEventListener("click", () => showIds(g.ids));
+        const label = el("span", "error-label", g.title);
+        label.title = `${num(g.records)} фраз · у середньому ${fix(g.errors_mean, 1)} хибних слів${g.range ? ` · упевненість ${fix(g.range[0], 2)}…${fix(g.range[1], 2)}` : ""}`;
+        row.append(label, track, el("b", "", pct0(g.share)), open);
+        wrap.append(row);
+      }
+      return wrap;
+    };
+    const verdict = el("p", "condition-verdict");
+    if (c.separation != null) {
+      const low = c.confidence[0], high = c.confidence[c.confidence.length - 1];
+      verdict.textContent = c.separation >= 0.15
+        ? `Упевненість Whisper добре передбачає правки: серед найменш упевнених без правок ${pct0(low.share)}, серед найбільш — ${pct0(high.share)}. За нею можна сортувати чергу розмітки й позначати сумнівні фрази.`
+        : `Упевненість Whisper слабо передбачає правки (${pct0(low.share)} проти ${pct0(high.share)}) — сортувати за нею чергу немає сенсу.`;
+      verdict.className = c.separation >= 0.15 ? "condition-verdict good" : "condition-verdict";
+    }
+    box.replaceChildren(...[group("Тривалість запису", c.duration), group("Гучність", c.loudness), group("Упевненість Whisper", c.confidence), verdict].filter(Boolean));
+  }
+  // Позивні: скільки разів почуто вірно, з чим плутається, скільки разів вигадано (узято з підказки там, де його не казали).
+  function drawCallsigns(e) {
+    const box = $("errors-callsigns"), list = e.callsigns || [];
+    if (!list.length) { box.replaceChildren(el("p", "muted", "Позивних зі словника в еталонах за цей період немає.")); return; }
+    const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+    const rows = list.map(c => {
+      const row = el("div", "callsign-row"), track = el("span", "quality-track"), fill = el("i");
+      fill.style.width = `${Math.max(2, c.share * 100)}%`; track.append(fill);
+      const heard = el("span", "callsign-heard");
+      // Довгий вигаданий фрагмент замість позивного — коротко (повністю — у підказці).
+      for (const h of c.heard.slice(0, 2)) {
+        const words = h.text.split(" "), short = words.length > 3 || h.text.length > 24 ? `${words.slice(0, 3).join(" ").slice(0, 24)}…` : h.text;
+        const chip = el("span", "word-chip", `${short} ×${h.count}`); chip.title = h.text; heard.append(chip);
+      }
+      if (c.missing) heard.append(el("span", "word-chip muted", `пропущено ×${c.missing}`));
+      const invented = el("span", c.invented > c.correct ? "callsign-invented bad" : c.invented ? "callsign-invented" : "callsign-invented none",
+                          c.invented ? `вигадано ×${c.invented}` : "");
+      if (c.invented) invented.title = "Скільки разів Whisper вставив цей позивний там, де його не казали (найчастіше — з підказки)";
+      const open = el("button", "live-open", "→"); open.type = "button"; open.title = "Фрази, де цей позивний почуто не так";
+      open.disabled = !c.ids.length; open.addEventListener("click", () => showIds(c.ids));
+      row.append(el("b", "callsign-name", cap(c.name)), track, el("span", "callsign-count", `${num(c.correct)} з ${num(c.total)}`), heard, invented, open);
+      return row;
+    });
+    const extra = (e.invented_only || []).length
+      ? [el("p", "muted small", `Вигадані, хоча в еталонах їх немає: ${e.invented_only.map(i => `${cap(i.name)} ×${i.count}`).join(", ")}.`)] : [];
+    box.replaceChildren(...rows, ...extra);
   }
   $("errors-days").addEventListener("change", () => action(async () => { await qualityErrors(); if (typeof fitAnalysis === "function") fitAnalysis(); }));
 

@@ -31,3 +31,22 @@ def test_analysis_counts_records_processing_and_top_substitutions():
     assert result["categories"]["callsigns"]["count"] == 2
     assert result["processing"] == {"better": 1, "worse": 1, "better_ids": ["a" * 32], "worse_ids": ["c" * 32]}
     assert result["substitutions"][0] == {"from": "клей", "to": "клен", "count": 2, "kind": "callsign", "ids": ["b" * 32, "c" * 32]}
+
+
+def test_effort_conditions_and_callsign_accuracy():
+    rows = []
+    for i in range(8):
+        good = i >= 4
+        rows.append({"id": f"{i:032x}", "reference": "Клен 48, прийом", "raw_text": "", "final_text": "Клен 48, прийом" if good else "клей 48 прийом",
+                     "duration": 1.5 if not good else 6.0, "loudness": -40 if not good else -25, "confidence": -1.2 + i * 0.1})
+    rows.append({"id": "f" * 32, "reference": "Дуб 7, прийом", "raw_text": "", "final_text": "Ясень, Дуб 7, прийом",
+                 "duration": 3.0, "loudness": -25, "confidence": None})
+    result = analyse(rows, NAMES)
+    assert result["effort"]["no_edits"] == 4 and result["effort"]["one_word"] == 5
+    duration = {g["title"]: g for g in result["conditions"]["duration"]}
+    assert duration["до 2 с"]["share"] == 0 and duration["5–10 с"]["share"] == 1
+    quarters = result["conditions"]["confidence"]
+    assert len(quarters) == 4 and result["conditions"]["separation"] == 1, "впевненість добре передбачає правки"
+    klen = next(c for c in result["callsigns"] if c["name"] == "клен")
+    assert (klen["total"], klen["correct"], klen["heard"][0]) == (8, 4, {"text": "клей", "count": 4})
+    assert result["invented_only"] == [{"name": "ясень", "count": 1}]

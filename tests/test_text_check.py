@@ -62,6 +62,22 @@ def test_dictionary_name_spelled_with_other_vowel_letter():
     assert result["issues"][0]["fixed_text"] == "Клен 15, прийом"
 
 
+def test_dictionary_spelling_always_returns_proper_callsign_case():
+    callsigns = Callsigns.from_lines(["вишня"])
+    result = check_text("вижня 48", callsigns, COMMANDS)
+    assert [(i["kind"], i["fixed_text"]) for i in result["issues"]] == [
+        ("spelling", "Вишня 48"),
+    ]
+
+
+@pytest.mark.parametrize("text", ["вішня 48", "Вішня 48"])
+def test_dictionary_spelling_normalizes_callsign_vowels(text):
+    callsigns = Callsigns.from_lines(["вишня"])
+    result = check_text(text, callsigns, COMMANDS)
+    spelling = next(issue for issue in result["issues"] if issue["kind"] == "spelling")
+    assert spelling["fixed_text"] == "Вишня 48"
+
+
 def test_number_missing_from_dictionary_is_only_a_note():
     notes = [i for i in check("береза 99, злива 27 27, грім 0 22")["issues"] if i["kind"] == "info"]
     assert len(notes) == 2 and not any("fixed_text" in i for i in notes)

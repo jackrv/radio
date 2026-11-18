@@ -169,6 +169,37 @@ test('typing during save remains dirty after the earlier snapshot is acknowledge
   input.value='перша правка';form.listeners.input();assert.equal(ui.cards()[0].dirty,false);
 });
 
+test('leaving the text field applies a spelling suggestion',async()=>{
+  const ui=harness({items:[item],total:1},{},{
+    textCheck: ()=>({issues:[{
+      kind:'spelling',
+      message:'Можливо, «вишня», а не «вішня»?',
+      fixed_text:'вишня',
+    }],formatted:null})
+  });
+  await ui.load();
+  const {input}=editor(ui);
+  input.value='вішня';
+  await ui.cards()[0].applySpellingOnLeave();
+  assert.equal(input.value,'вишня');
+});
+
+test('saving right after leaving the field sends the spelling-fixed text',async()=>{
+  let sent;
+  const ui=harness({items:[{...item, reference:null, label:null, revision:0}],total:1},{},{
+    review: body=>{sent=body; return {...body, revision:1};},
+    textCheck: body=>body.text==='вішня'
+      ? {issues:[{kind:'spelling', message:'Можливо, «вишня», а не «вішня»?', fixed_text:'вишня'}], formatted:null}
+      : {issues:[], formatted:null}
+  });
+  await ui.load();
+  const {input}=editor(ui);
+  input.value='вішня';
+  input.listeners.blur();   // фокус пішов на «Зберегти»
+  await ui.save();
+  assert.equal(sent.reference,'вишня');
+});
+
 test('identical hints are grouped without hiding distinct remarks',async()=>{
   const hint={kind:'info',message:'Перевірте номер',dictionary_entry:'береза: 57'};
   const ui=harness({items:[{...item,text_check:{issues:[hint,hint,{kind:'format',message:'Пробіли'}]}}],total:1});await ui.load();
@@ -293,4 +324,17 @@ test('roles the program fills into a fresh card are its starting state, not an u
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(ui.cards()[0].dirty, false);
   assert.equal(ui.$('archive-drafts-nav').hidden, true);
+});
+
+test('"insert into list" adds an alias to its callsign line or a new line, without duplicates and without saving', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '07-recognition.js'), 'utf8');
+  const start = source.indexOf('  function insertListLines(');
+  const code = source.slice(start, source.indexOf('\n  async function texts()', start));
+  const insertListLines = vm.runInNewContext(`(${code.trim().replace(/^function insertListLines/, 'function')})`);
+  const aliases = {list:'callsign_aliases', lines:[{callsign:'клен', line:'клей'}, {callsign:'дуб', line:'дум'}, {callsign:'клен', line:'клін'}]};
+  const result = insertListLines('клен: клін\n# вишня: вишна', aliases);
+  assert.equal(result.text, 'клен: клін, клей\n# вишня: вишна\nдуб: дум');
+  assert.equal(result.added, 2, 'клін уже є');
+  const noise = insertListLines('пау пау', {list:'short_garbage', lines:[{line:'Пау пау'}, {line:'кхм'}]});
+  assert.equal(noise.text, 'пау пау\nкхм'); assert.equal(noise.added, 1);
 });

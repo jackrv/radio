@@ -162,6 +162,24 @@
     box.append(panel);
   }
 
+  // Рядки, які «Потребує уваги» просить вставити в список (не зберігаються самі).
+  let pendingListInsert = null;
+  // Алиас — до рядка свого позивного («клен: клей, клін»), інакше новим рядком; шум — новим рядком; без повторів.
+  function insertListLines(text, insert) {
+    const rows = text ? text.split("\n") : [];
+    const fold = s => s.trim().toLocaleLowerCase("uk");
+    let added = 0;
+    for (const item of insert.lines) {
+      if (insert.list === "callsign_aliases") {
+        const at = rows.findIndex(r => r.includes(":") && fold(r.split(":")[0].replace(/^#\s*/, "")) === fold(item.callsign) && !r.trim().startsWith("#"));
+        if (at < 0) { rows.push(`${item.callsign}: ${item.line}`); added++; continue; }
+        const variants = rows[at].split(":").slice(1).join(":").split(",").map(fold);
+        if (variants.includes(fold(item.line))) continue;
+        rows[at] = `${rows[at].replace(/[\s,]+$/, "")}, ${item.line}`; added++;
+      } else if (!rows.some(r => fold(r) === fold(item.line))) { rows.push(item.line); added++; }
+    }
+    return { text: rows.join("\n"), added };
+  }
   async function texts() {
     const data = await request("/api/text-lists");
     textRevision = data.revision;
@@ -195,10 +213,21 @@
     area.spellcheck = false;
     area.setAttribute("aria-label", title);
     const fit = () => { area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
-    fit(); area.addEventListener("input", fit);
     const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
+    let inserted = 0;
+    if (pendingListInsert?.list === type) {
+      const result = insertListLines(area.value, pendingListInsert);
+      area.value = result.text; inserted = result.added;
+      pendingListInsert = null;
+    }
+    fit(); area.addEventListener("input", fit);
     const warnings = el("ul", "warn-list");
     liveCheck(area, warnings, `/api/text-lists/${type}/check`, list.warnings || []);
+    if (inserted) {
+      status.textContent = `Вставлено ${inserted} — перевірте й натисніть «Зберегти»`; status.className = "warn small";
+      save.classList.add("needs-save");
+      area.dispatchEvent?.(new Event("input"));   // одразу та сама перевірка, що й під час набору
+    }
     save.addEventListener("click", () => action(async () => {
       try {
         const r = await request(`/api/text-lists/${type}`, "PUT", { entries: fromLines(area.value), expected_revision: textRevision });

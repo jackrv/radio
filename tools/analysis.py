@@ -88,6 +88,10 @@ def errors(args):
     print("Найчастіші заміни (почуто → правильно):")
     for s in e["substitutions"]:
         print(f"  {s['from']} → {s['to']}  ×{s['count']}  [{s['kind']}]")
+    if e["number_confusions"]:
+        print("Плутанина чисел (почуто → правильно):")
+        for pair in e["number_confusions"]:
+            print(f"  {pair['from']} → {pair['to']}  ×{pair['count']}")
     for title, key in (("Вигадані слова", "inserted"), ("Пропущені слова", "deleted")):
         if e[key]:
             print(f"{title}: " + ", ".join(f"{w['word']} ×{w['count']}" for w in e[key]))

@@ -153,6 +153,14 @@
         note(`Приховано: ${r.dismissed}. Повернути — «Показати приховані» внизу списку.`);
         await attention(true);
       })]);
+      // Алиаси й шум: «＋ Вставити в список» відкриває список і вписує рядки в поле — перевірка й «Зберегти» за оператором.
+      if (g.lines?.length) {
+        const list = g.lines[0].list, lines = g.lines.filter(l => l.list === list);
+        extra.unshift([`＋ Вставити в список${lines.length > 1 ? ` (${lines.length})` : ""}`, () => {
+          pendingListInsert = { list, lines };
+          openTarget(`texts:${list}`);
+        }]);
+      }
       item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
         "Переглянути", () => openTarget(g.target), extra, g.hint);
     }
@@ -335,11 +343,7 @@
     const split = document.querySelector(".analysis-split");
     if (!split) return;
     if (!window.matchMedia?.("(min-width: 1100px)").matches || split.offsetParent === null) { split.style.removeProperty("--analysis-h"); return; }
-    const top = split.getBoundingClientRect().top + window.scrollY;
-    let height = Math.max(420, Math.floor(window.innerHeight - top - 10));
-    split.style.setProperty("--analysis-h", `${height}px`);
-    const extra = document.documentElement.scrollHeight - window.innerHeight;
-    if (extra > 0) { height = Math.max(420, height - extra); split.style.setProperty("--analysis-h", `${height}px`); }
+    split.style.removeProperty("--analysis-h");
   }
   function drawEvents(series) {
     const counts = series.counts, max = Math.max(1, ...counts), W = 720, H = 180, pad = 22, bw = (W - pad) / counts.length;

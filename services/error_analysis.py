@@ -194,6 +194,7 @@ def analyse(records, names):
     """records: [{id, reference, raw_text, final_text, duration?, loudness?, confidence?}] — лише розмічене мовлення."""
     categories = {key: {"title": title, "count": 0, "ids": []} for key, title in CATEGORIES.items()}
     substitutions, sub_ids, sub_kind = Counter(), {}, {}
+    number_confusions, number_ids = Counter(), {}
     inserted, deleted = Counter(), Counter()
     better, worse = [], []
     with_edits = 0
@@ -214,6 +215,20 @@ def analyse(records, names):
             tokens = pair[0].split() + pair[1].split()
             sub_kind[pair] = ("number" if any(_DIGITS.match(t) for t in tokens)
                               else "callsign" if any(t in names for t in tokens) else "word")
+        ref_numbers, hyp_numbers = join_digits(metric_words(reference)), join_digits(metric_words(final))
+        for tag, r1, r2, h1, h2 in Levenshtein.opcodes(ref_numbers, hyp_numbers):
+            if tag != "replace":
+                continue
+            ref_part, hyp_part = ref_numbers[r1:r2], hyp_numbers[h1:h2]
+            if len(ref_part) == len(hyp_part):
+                for heard, expected in zip(hyp_part, ref_part):
+                    if not (_DIGITS.match(heard) and _DIGITS.match(expected)):
+                        continue
+                    pair = (heard, expected)
+                    number_confusions[pair] += 1
+                    number_ids.setdefault(pair, [])
+                    if len(number_ids[pair]) < EXAMPLES:
+                        number_ids[pair].append(item["id"])
         ref_words, hyp_words = metric_words(reference), metric_words(final)
         for tag, r1, r2, h1, h2 in (Levenshtein.opcodes(ref_words, hyp_words) if hyp_words else []):
             if tag == "insert":
@@ -237,9 +252,14 @@ def analyse(records, names):
     one = [r["id"] for r in rows if r["errors"] == 1]
     effort = {"no_edits": sum(r["errors"] == 0 for r in rows), "one_word": len(one), "one_word_ids": one[:EXAMPLES],
               "errors_mean": sum(r["errors"] for r in rows) / len(rows) if rows else None}
+    number_confusions_out = [
+        {"from": heard, "to": expected, "count": count, "ids": number_ids[(heard, expected)]}
+        for (heard, expected), count in number_confusions.most_common(20) if count >= 2
+    ]
     return {"records": len(records), "with_edits": with_edits, "categories": categories, "effort": effort,
             "conditions": conditions(rows), **callsign_accuracy(records, names),
             "processing": {"better": len(better), "worse": len(worse), "better_ids": better[:EXAMPLES], "worse_ids": worse[:EXAMPLES]},
             "substitutions": top,
+            "number_confusions": number_confusions_out,
             "inserted": [{"word": w, "count": n} for w, n in inserted.most_common(10) if n >= 2],
             "deleted": [{"word": w, "count": n} for w, n in deleted.most_common(10) if n >= 2]}

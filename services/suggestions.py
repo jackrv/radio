@@ -353,18 +353,25 @@ def overview(db_path, now=None):
     with get_db(db_path) as db:
         ensure_table(db)
         ensure_dismissed(db)
-        rows = db.execute("""SELECT kind, title, first_seen, record FROM suggestion_state
+        rows = db.execute("""SELECT kind, title, first_seen, record, key FROM suggestion_state
             WHERE key NOT IN (SELECT key FROM suggestion_dismissed) ORDER BY first_seen DESC""").fetchall()
         hidden = db.execute("""SELECT COUNT(*) FROM suggestion_state
             WHERE key IN (SELECT key FROM suggestion_dismissed)""").fetchone()[0]
         meta = db.execute("SELECT last_deep FROM suggestion_meta WHERE id=1").fetchone()
     groups = {}
-    for kind, title, first_seen, record in rows:
+    for kind, title, first_seen, record, key in rows:
         if kind not in KINDS:      # вид, якого вже немає (старий запис стану)
             continue
         name, target, hint = KINDS[kind]
         group = groups.setdefault(kind, {"kind": kind, "title": name, "target": target, "hint": hint,
-                                         "count": 0, "new": 0, "examples": [], "records": []})
+                                         "count": 0, "new": 0, "examples": [], "records": [], "lines": []})
+        # Що вставити в список кнопкою «＋ Вставити в список» (зберігає оператор сам): алиас і шум.
+        if kind == "alias" and len(group["lines"]) < 50:
+            _, callsign, heard = key.split(":", 2)
+            group["lines"].append({"list": "callsign_aliases", "callsign": callsign, "line": heard})
+        elif kind == "noise" and len(group["lines"]) < 50:
+            _, list_type, text = key.split(":", 2)
+            group["lines"].append({"list": list_type, "line": text})
         if record and len(group["records"]) < 20:
             group["records"].append(record[:8])
         group["count"] += 1

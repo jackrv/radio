@@ -1,5 +1,30 @@
   // ---------- Аналіз: якість ----------
   // Плитки зверху (за весь час і сьогодні), таблиця по днях, розбір помилок «що заважає без правок».
+  function showAnalysisTab(name) {
+    const valid = new Set(["overview", "errors", "conditions", "callsigns", "numbers", "training"]);
+    if (!valid.has(name)) name = "overview";
+    if (typeof document !== "undefined") {
+      for (const b of document.querySelectorAll("[data-analysis-tab]")) {
+        const active = b.dataset.analysisTab === name;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-selected", String(active));
+      }
+      for (const panel of document.querySelectorAll("[data-analysis-panel]")) {
+        panel.hidden = panel.dataset.analysisPanel !== name;
+      }
+    }
+    try { localStorage.setItem("radio345:analysis-tab", name); } catch (_) {}
+    if (typeof fitAnalysis === "function") requestAnimationFrame(() => fitAnalysis());
+  }
+  if (typeof document !== "undefined") {
+    for (const b of document.querySelectorAll("[data-analysis-tab]")) {
+      b.addEventListener("click", () => showAnalysisTab(b.dataset.analysisTab));
+    }
+  }
+  let savedAnalysisTab = "overview";
+  try { savedAnalysisTab = localStorage.getItem("radio345:analysis-tab") || "overview"; } catch (_) {}
+  showAnalysisTab(savedAnalysisTab);
+
   const dayKey = (shift = 0) => { const d = new Date(); d.setDate(d.getDate() + shift);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   function qualityTile(label, value, extra, tone = "", title = "", go = null) {
@@ -119,7 +144,7 @@
       return line;
     };
     $("errors-words").replaceChildren(...[chips("Вигадані:", e.inserted), chips("Пропущені:", e.deleted)].filter(Boolean));
-    drawEffort(e); drawConditions(e.conditions); drawCallsigns(e);
+    drawEffort(e); drawConditions(e.conditions); drawCallsigns(e); drawNumberConfusions(e);
   }
   // Плитка «≤ 1 правка»: фрази без правок або з одним хибним словом — прогрес видно раніше, ніж фрази стануть ідеальними.
   function drawEffort(e) {
@@ -187,6 +212,23 @@
     const extra = (e.invented_only || []).length
       ? [el("p", "muted small", `Вигадані, хоча в еталонах їх немає: ${e.invented_only.map(i => `${cap(i.name)} ×${i.count}`).join(", ")}.`)] : [];
     box.replaceChildren(...rows, ...extra);
+  }
+  // Числа: скільки разів конкретне почуте число відрізнялось від еталону.
+  function drawNumberConfusions(e) {
+    const box = $("errors-numbers"), list = e.number_confusions || [];
+    if (!list.length) {
+      box.replaceChildren(el("p", "muted", "Повторюваних плутанин конкретних чисел немає."));
+      return;
+    }
+    const rows = list.map(pair => {
+      const row = el("div", "number-confusion-row"), open = el("button", "live-open", "показати →");
+      open.type = "button"; open.title = "Відкрити записи з цими числами";
+      open.addEventListener("click", () => showIds(pair.ids));
+      row.append(el("b", "sub-from", pair.from), el("span", "sub-arrow", "→"),
+                 el("b", "sub-to", pair.to), el("b", "", `×${pair.count}`), open);
+      return row;
+    });
+    box.replaceChildren(...rows);
   }
   $("errors-days").addEventListener("change", () => action(async () => { await qualityErrors(); if (typeof fitAnalysis === "function") fitAnalysis(); }));
 

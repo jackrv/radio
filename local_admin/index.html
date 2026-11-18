@@ -297,24 +297,41 @@
       <section data-panel="quality" hidden>
         <!-- Плитки: головні показники якості за весь час і сьогодні. -->
         <div id="quality-tiles" class="archive-stats workdesk" aria-live="polite"></div>
-        <!-- Широкий екран: у висоту вікна; ліворуч розбір помилок, праворуч дні й набір для дообучення. -->
+        <div class="analysis-subtabs" role="tablist" aria-label="Розділи аналізу">
+          <button type="button" class="analysis-subtab active" role="tab" aria-selected="true" data-analysis-tab="overview">Огляд</button>
+          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="errors">Помилки</button>
+          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="conditions">Умови</button>
+          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="callsigns">Позивні</button>
+          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="numbers">Числа</button>
+          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="training">Дообучення</button>
+        </div>
         <div class="analysis-split">
-          <div class="analysis-col">
-            <article class="panel"><div class="panel-head"><h2>Що заважає тексту без правок</h2>
-                <select id="errors-days" class="small-select" aria-label="Період розбору"><option value="0">увесь архів</option><option value="7">7 днів</option><option value="1">24 год</option></select></div>
-              <div id="errors-kinds" class="error-kinds"></div></article>
-            <article class="panel"><div class="panel-head"><h2>Де розпізнавання гірше</h2><span class="muted small">«без правок» за умовами запису</span></div>
-              <div id="errors-conditions" class="error-conditions"></div></article>
-            <article class="panel"><div class="panel-head"><h2>Найчастіші заміни слів</h2><span class="muted small">почуто → правильно</span></div>
-              <div id="errors-subs" class="error-subs"></div><div id="errors-words" class="error-words"></div></article>
-          </div>
-          <div class="analysis-col">
+          <div class="analysis-subpanel" data-analysis-panel="overview">
             <article class="panel"><div class="panel-head"><h2>По днях</h2><span class="muted small">за вашими еталонами мовлення</span></div>
               <div class="table-wrap"><table id="quality-days" class="compact quality-table"></table></div>
               <details class="small page-help"><summary>Що означають колонки</summary>
                 <p class="muted">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». <b>«Без правок»</b> — частка фраз, де підсумковий текст збігся з вашим еталоном слово в слово (головна мета). «Пропущено» — мовлення, з якого тексту не вийшло зовсім. «Помилка в словах» — частка слів, записаних не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після словників, шаблонів і навчених правил. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p></details></article>
+          </div>
+          <div class="analysis-subpanel" data-analysis-panel="errors" hidden>
+            <article class="panel"><div class="panel-head"><h2>Що заважає тексту без правок</h2>
+                <select id="errors-days" class="small-select" aria-label="Період розбору"><option value="0">увесь архів</option><option value="7">7 днів</option><option value="1">24 год</option></select></div>
+              <div id="errors-kinds" class="error-kinds"></div></article>
+            <article class="panel"><div class="panel-head"><h2>Найчастіші заміни слів</h2><span class="muted small">почуто → правильно</span></div>
+              <div id="errors-subs" class="error-subs"></div><div id="errors-words" class="error-words"></div></article>
+          </div>
+          <div class="analysis-subpanel" data-analysis-panel="conditions" hidden>
+            <article class="panel"><div class="panel-head"><h2>Де розпізнавання гірше</h2><span class="muted small">«без правок» за умовами запису</span></div>
+              <div id="errors-conditions" class="error-conditions"></div></article>
+          </div>
+          <div class="analysis-subpanel" data-analysis-panel="callsigns" hidden>
             <article class="panel"><div class="panel-head"><h2>Позивні</h2><span class="muted small">почуто вірно · з чим плутається · вигадано</span></div>
               <div id="errors-callsigns" class="error-callsigns"></div></article>
+          </div>
+          <div class="analysis-subpanel" data-analysis-panel="numbers" hidden>
+            <article class="panel"><div class="panel-head"><h2>Плутанина чисел</h2><span class="muted small">почуто → еталон, повторювані пари</span></div>
+              <div id="errors-numbers" class="error-numbers"></div></article>
+          </div>
+          <div class="analysis-subpanel" data-analysis-panel="training" hidden>
             <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>
               <div id="training"></div>
               <details class="small page-help"><summary>Навіщо й як</summary>

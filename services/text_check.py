@@ -36,6 +36,13 @@ def _cased(new, old):
     return new[:1].upper() + new[1:] if old[:1].isupper() else new
 
 
+def _callsign_cased(new, old):
+    """Назва зі словника завжди повертається в установленому великому написанні позивного."""
+    if old.isupper() and len(old) > 1:
+        return new.upper()
+    return new[:1].upper() + new[1:].lower()
+
+
 def _format_rules():
     """(шаблон, заміна або функція, повідомлення) — по черзі, кожне окремим зауваженням."""
     return [
@@ -98,7 +105,7 @@ def _dictionary_spelling(text, names):
         heard = basic_normalize(match.group())
         name = folded.get(heard.translate(FOLD))
         if name and name != heard and heard not in names:
-            new = _cased(name, match.group())
+            new = _callsign_cased(name, match.group())
             issues.append(_issue("spelling", f"Можливо, «{new}», а не «{match.group()}»?", text,
                                  text[:match.start()] + new + text[match.end():]))
     return issues
@@ -112,6 +119,7 @@ def _spelling_issues(text, callsigns, known):
     from core.template_text import split_code_pairs
     text = split_code_pairs(text)
     issues = _dictionary_spelling(text, set(callsigns.names) | set(known))
+    canonical_callsigns = {name.translate(FOLD): name for name in callsigns.names}
     suggested = template_text(text, callsigns, known)
     if suggested == text:
         return issues
@@ -120,6 +128,9 @@ def _spelling_issues(text, callsigns, known):
     if len(old) != len(new):
         return issues + [_issue("spelling", "Можливо, опечатка: перевірте позивні й звороти", text, suggested)]
     for match, word in zip(old, new):
+        canonical = canonical_callsigns.get(word.translate(FOLD))
+        if canonical:
+            word = _callsign_cased(canonical, match.group())
         if match.group() != word:
             issues.append(_issue("spelling", f"Можливо, «{word}», а не «{match.group()}»?", text,
                                  text[:match.start()] + word + text[match.end():]))
@@ -387,7 +398,12 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):
         issues.append(_issue("info", f"Російська літера «{letter}» — перевірте, чи це українське слово"))
     tidy = tidy_text(text, callsigns, commands)
-    if tidy != text and tidy_text(format_text(text), callsigns, commands) != format_text(text):
+    tidy_after_format = tidy_text(format_text(text), callsigns, commands)
+    case_only_duplicate = (
+        any(issue["kind"] == "spelling" for issue in issues)
+        and tidy_after_format.casefold() == format_text(text).casefold()
+    )
+    if tidy != text and tidy_after_format != format_text(text) and not case_only_duplicate:
         issues.append(_issue("format", "Коми між групами й великі літери позивних", text, tidy))
     formatted = tidy_text(format_text(text), callsigns, commands)
     return {"issues": issues, "formatted": formatted if formatted != text else None}

@@ -33,6 +33,18 @@ def test_analysis_counts_records_processing_and_top_substitutions():
     assert result["substitutions"][0] == {"from": "клей", "to": "клен", "count": 2, "kind": "callsign", "ids": ["b" * 32, "c" * 32]}
 
 
+def test_analysis_reports_number_confusions():
+    records = [
+        {"id": f"{i:032x}", "reference": "Клен 37, прийом", "raw_text": "", "final_text": "Клен 87, прийом"}
+        for i in range(3)
+    ]
+    result = analyse(records, NAMES)
+    assert result["number_confusions"][0] == {
+        "from": "87", "to": "37", "count": 3,
+        "ids": [f"{i:032x}" for i in range(3)],
+    }
+
+
 def test_effort_conditions_and_callsign_accuracy():
     rows = []
     for i in range(8):

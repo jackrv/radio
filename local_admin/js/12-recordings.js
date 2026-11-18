@@ -38,8 +38,9 @@
       document.body.append(undoToast);
     }
     if (!undoStack.length) { undoToast.hidden = true; clearTimeout(undoTimer); return; }
-    // Плашка — одразу під кнопками типу активної картки (туди щойно клікали); без картки — по центру екрана.
-    const anchor = typeof activeReview !== "undefined" && activeReview?.card?.querySelector?.(".recording-type");
+    // Плашка — у заголовку активної картки праворуч (там порожньо, одразу над кнопками типу): нічого не закриває.
+    // Без картки — по центру екрана.
+    const anchor = typeof activeReview !== "undefined" && activeReview?.card?.querySelector?.(".recording-header");
     if (anchor) { if (undoToast.parentElement !== anchor) anchor.append(undoToast); undoToast.classList.add("anchored"); }
     else { if (undoToast.parentElement !== document.body) document.body.append(undoToast); undoToast.classList.remove("anchored"); }
     const last = undoStack[undoStack.length - 1];
@@ -706,6 +707,7 @@
       // Esc у полі тексту — застосувати правки оформлення (як «Виправити оформлення»), якщо вони є.
       // Перевірку робимо одразу, а не чекаємо паузи після набору; підказки «Можливо, …?» не застосовуються.
       async function applyFormatting() {
+        if (spellingPending) await spellingPending;
         if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) return false;
         clearTimeout(lintTimer);
         const text = input.value, revision = ++lintRevision;
@@ -717,6 +719,29 @@
         input.value = formatted; grow(); updateDirty(); checkText(0);
         return true;
       }
+      async function applySpellingOnLeave() {
+        if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) return false;
+        clearTimeout(lintTimer);
+        const text = input.value, revision = ++lintRevision;
+        let result;
+        try { result = await request("/api/text-check", "POST", { text, at: item.created }); } catch (_) { return false; }
+        if (revision !== lintRevision || input.value !== text) return false;
+        renderLint(result);
+        const spelling = (result?.issues || []).find(issue =>
+          issue.kind === "spelling" && issue.fixed_text && issue.fixed_text !== text);
+        if (!spelling) return false;
+        input.value = spelling.fixed_text; grow(); updateDirty(); checkText(0);
+        return true;
+      }
+      // Виправлення написання при виході з поля — асинхронне: «Зберегти» й Esc спершу чекають на нього,
+      // інакше зберігся б ще не виправлений текст (а поле виправилось би вже після збереження).
+      let spellingPending = null;
+      input.addEventListener("blur", () => {
+        spellingPending = applySpellingOnLeave()
+          .then(changed => { if (changed) note("Підозріле написання виправлено автоматично."); return changed; })
+          .catch(() => false)
+          .finally(() => { spellingPending = null; });
+      });
 
       // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
       const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
@@ -786,6 +811,7 @@
       }
       async function submit(quickUndo = null) {
         if (saving) return;
+        if (spellingPending) await spellingPending;   // спершу виправлення написання з виходу з поля
         saving = true; save.disabled = true; showSave("Зберігаю…");
         // Стан у базі до збереження — для «Скасувати» швидкої розмітки.
         const previous = { reference: item.reference ?? null, label: item.reference == null ? null : item.label ?? null,
@@ -846,7 +872,7 @@
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
-      const controller = { card, audio, item, applyFormatting, loadWave: custom.loadWave, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
+      const controller = { card, audio, item, applyFormatting, applySpellingOnLeave, loadWave: custom.loadWave, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
                            refreshHints: () => { if (!textField.hidden) { suggest(); checkText(0); } } };
       reviewCards.push(controller);
@@ -1039,6 +1065,7 @@
       event.preventDefault();
       if (current.audio.paused) current.audio.play().catch(() => {}); else current.audio.pause();
     } else if (["1", "2", "3", "4", "5"].includes(event.key)) {
+      event.preventDefault();
       current.setCategory(["speech", "noise", "notification", "unclear", "room"][Number(event.key) - 1], true);
       if (["1", "4"].includes(event.key)) current.focusText();
     } else if (event.key === "j" || event.key === "о" || event.key === "ArrowDown") { event.preventDefault(); stepReview(1); }

@@ -1133,11 +1133,17 @@ button.stat-tile.goal { background: linear-gradient(160deg, rgba(184, 239, 134, 
 .small-select { padding: 3px 8px; font-size: 12px; border-radius: 99px; width: auto; }
 .page-help { margin-top: 8px; } .page-help summary { color: var(--muted); cursor: pointer; }
 .page-help p { margin: 6px 0 0; }
+.analysis-subtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.analysis-subtab { border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--muted); padding: 5px 11px !important; font-size: 12px; }
+.analysis-subtab.active { color: var(--lime); border-color: rgba(184, 239, 134, .45); background: rgba(184, 239, 134, .08); }
+.analysis-subpanel { min-width: 0; }
+.error-numbers { display: grid; gap: 3px; }
+.number-confusion-row { display: grid; grid-template-columns: minmax(70px, 1fr) 18px minmax(70px, 1fr) 44px auto; align-items: center; gap: 8px; min-height: 34px; font-size: 13px; }
+.number-confusion-row .sub-from { color: var(--bad); } .number-confusion-row .sub-to { color: var(--lime); }
+.number-confusion-row .sub-arrow { color: var(--muted); text-align: center; }
 @media (min-width: 1100px) {
   main:has(> section[data-panel="quality"]:not([hidden])) { padding-bottom: 12px; }
-  .analysis-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; height: var(--analysis-h, auto); }
-  .analysis-col { min-height: 0; overflow-y: auto; padding-right: 2px; }
-  .analysis-col > .panel:last-child { margin-bottom: 0; }
+  .analysis-split { max-width: 1100px; }
 }
 /* Таблиця по днях — спокійніша: лаймові смуги «добре», приглушено-червоні «погано» */
 .quality-table th { font-size: 10px; }
@@ -1171,7 +1177,6 @@ button.stat-tile.goal { background: linear-gradient(160deg, rgba(184, 239, 134, 
 .error-words { display: grid; gap: 6px; margin-top: 10px; }
 .word-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .word-chip { padding: 1px 8px; border-radius: 99px; background: var(--surface2); font-size: 12px; }
-@media (min-width: 1100px) { .analysis-split { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
 .quality-table th, .quality-table td { padding-left: 6px; padding-right: 6px; }
 .quality-table .bar-cell { min-width: 64px; }
 /* Набір для дообучення — тонкі смуги, як на Огляді */
@@ -1250,3 +1255,11 @@ button.stat-tile.goal { background: linear-gradient(160deg, rgba(184, 239, 134, 
 .recording-row.doubtful .row-kind::after { content: " ?"; color: var(--warn); font-weight: 800; }
 .recording-title .rec-doubt { font-size: 11px; font-weight: 700; color: var(--warn); padding: 1px 8px; border-radius: 99px;
   border: 1px dashed rgba(240, 196, 108, .6); background: rgba(240, 196, 108, .08); cursor: help; }
+/* Список після «＋ Вставити в список»: рядки вписано, але не збережено */
+button.needs-save { box-shadow: 0 0 0 3px rgba(240, 196, 108, .35); animation: drafts-glow 1.8s ease-in-out infinite; }
+/* «Скасувати» — у заголовку картки праворуч, не поверх поля тексту */
+.recording-header { position: relative; }
+.recording-header > .undo-toast.anchored { position: absolute; left: auto; right: 0; top: 50%; transform: translateY(-50%); z-index: 20;
+  padding: 5px 8px 7px 12px; gap: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); animation: undo-in-head .2s ease-out; }
+.recording-header > .undo-toast.anchored .undo-button { padding: 3px 12px !important; }
+@keyframes undo-in-head { from { opacity: 0; transform: translate(6px, -50%); } }

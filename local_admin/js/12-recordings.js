@@ -438,12 +438,18 @@
   let reviewPrefs = { speed: "1", autoplay: true };
   try { reviewPrefs = { ...reviewPrefs, ...JSON.parse(localStorage.getItem(REVIEW_PREFS) || "{}") }; } catch (_) { /* типово */ }
   const savePrefs = () => { try { localStorage.setItem(REVIEW_PREFS, JSON.stringify(reviewPrefs)); } catch (_) { /* сесія */ } };
-  $("recording-speed").value = reviewPrefs.speed;
   $("recording-autoplay").checked = reviewPrefs.autoplay;
-  $("recording-speed").addEventListener("change", () => {
-    reviewPrefs.speed = $("recording-speed").value; savePrefs();
-    for (const c of reviewCards) c.audio.playbackRate = Number(reviewPrefs.speed);
-  });
+  // Швидкість для всіх карток; ] / [ (і «ї» / «х» в українській розкладці) — на крок швидше чи повільніше.
+  const SPEEDS = [...$("recording-speed").options].map(o => o.value);
+  function setSpeed(value, announce = false) {
+    reviewPrefs.speed = value; savePrefs();
+    $("recording-speed").value = value;
+    for (const c of reviewCards) c.audio.playbackRate = Number(value);
+    if (announce) note(`Швидкість відтворення: ${String(value).replace(".", ",")}×`);
+  }
+  if (!SPEEDS.includes(String(reviewPrefs.speed))) reviewPrefs.speed = "1";
+  $("recording-speed").value = reviewPrefs.speed;
+  $("recording-speed").addEventListener("change", () => setSpeed($("recording-speed").value));
   $("recording-autoplay").addEventListener("change", () => { reviewPrefs.autoplay = $("recording-autoplay").checked; savePrefs(); });
   document.addEventListener("play", event => {
     if (event.target instanceof HTMLMediaElement && event.target.closest('[data-panel="recordings"]'))
@@ -489,6 +495,11 @@
     } else if (event.key === "j" || event.key === "о" || event.key === "ArrowDown") { event.preventDefault(); stepReview(1); }
     else if (event.key === "k" || event.key === "л" || event.key === "ArrowUp") { event.preventDefault(); stepReview(-1); }
     else if (event.key === "r" || event.key === "к") { current.audio.currentTime = 0; current.audio.play().catch(() => {}); }
+    else if (["]", "ї", "[", "х"].includes(event.key)) {
+      const step = ["]", "ї"].includes(event.key) ? 1 : -1;
+      const index = Math.max(0, Math.min(SPEEDS.length - 1, SPEEDS.indexOf(String(reviewPrefs.speed)) + step));
+      setSpeed(SPEEDS[index], true);
+    }
     else if (event.key === "Enter") { event.preventDefault(); current.focusText(); }
   });
 

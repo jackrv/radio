@@ -762,6 +762,17 @@
   // закрита вкладка не залишить приймач вимкненим довше ніж на ~10 с.
   const HOLD_KEY = "radio345:hold-while-listening";
   const holdBox = $("hold-while-listening");
+  // Квадрат на всю висоту шапки: висоту дає сітка, ширину рівняємо до неї (CSS сам цього надійно не вміє).
+  {
+    const square = holdBox.closest?.(".mic-square");
+    if (square && typeof ResizeObserver !== "undefined") {
+      let last = 0;
+      new ResizeObserver(() => {
+        const side = Math.round(Math.min(150, Math.max(84, square.offsetHeight)));
+        if (Math.abs(side - last) > 1) { last = side; square.style.width = `${side}px`; }
+      }).observe(square);
+    }
+  }
   try { holdBox.checked = localStorage.getItem(HOLD_KEY) !== "off"; } catch (_) { /* лишаємо типово */ }
   holdBox.addEventListener("change", () => {
     try { localStorage.setItem(HOLD_KEY, holdBox.checked ? "on" : "off"); } catch (_) { /* лише поточна сесія */ }

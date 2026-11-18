@@ -809,3 +809,10 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .todo-count { margin-left: auto; background: rgba(140, 196, 255, .16); color: var(--cyan); border-radius: 99px; padding: 0 7px;
   font-size: 12px; font-variant-numeric: tabular-nums; }
 .todo-count:not([hidden]) + .draft-count { margin-left: 4px; }
+
+/* ===== Шапка: мікрофон — квадрат на всю висоту блоку; фільтри — на всю ширину ===== */
+.archive-bar > .mic-square { align-self: stretch; height: auto; min-height: 84px; aspect-ratio: auto; }
+.archive-filters { display: flex; flex-wrap: wrap; }
+.archive-filters > select { flex: 1 1 0; min-width: 150px; max-width: none !important; }
+.archive-filters > #recording-view { flex-grow: 1.6; }
+.archive-filters .archive-switches { display: none; }

@@ -217,6 +217,35 @@
     }, delay);
   }
   edited.addEventListener("input", () => checkText());
+
+  // ---------- Автовиправлення при виході з поля (як в «Аудіоархіві» панелі) ----------
+  // Лише якщо текст змінили з моменту входу в поле: спершу написання позивних і зворотів,
+  // потім оформлення (коми, цифри групами). «Зберегти» чекає на це, тож зберігається вже виправлене.
+  let valueOnFocus = null;
+  let autoFixPending = null;
+  async function autoFix() {
+    let text = edited.value;
+    if (!text.trim()) return false;
+    const check = async value => window.Radio345.request("/api/corrections/check", "PUT", { text: value, fix_id: fixId });
+    let result = await check(text);
+    if (edited.value !== text) return false;   // тим часом знову друкували
+    const spelling = (result?.issues || []).find(i => i.kind === "spelling" && i.fixed_text && i.fixed_text !== text);
+    if (spelling) {
+      text = spelling.fixed_text;
+      result = await check(text);
+    }
+    if (result?.formatted && result.formatted !== text) text = result.formatted;
+    if (text === edited.value) return false;
+    useText(text);
+    feedback.textContent = "Написання й оформлення виправлено автоматично — перевірте й збережіть.";
+    return true;
+  }
+  edited.addEventListener("focus", () => { valueOnFocus = edited.value; });
+  edited.addEventListener("blur", () => {
+    if (valueOnFocus === null || edited.value === valueOnFocus) return;
+    valueOnFocus = null;
+    autoFixPending = autoFix().catch(() => false).finally(() => { autoFixPending = null; });
+  });
   window.addEventListener("resize", () => { if (draft) fitText(); });
   document.addEventListener("radio345:view", event => {
     if (event.detail === "corrections" && draft) fitText();
@@ -264,6 +293,7 @@
 
   save.addEventListener("click", async () => {
     if (!draft || busy) return;
+    if (autoFixPending) await autoFixPending;   // спершу автовиправлення з виходу з поля
     const corrected = edited.value.trim();
     if (!corrected) {
       feedback.textContent = "Текст виправлення не може бути порожнім.";

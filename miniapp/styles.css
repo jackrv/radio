@@ -153,3 +153,20 @@ body:not([data-role="admin"]) .admin-only { display: none !important; }
 .text-check > .outline-button { align-self: flex-start; }
 .text-check-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); line-height: 1.45; }
 .text-check-item.spelling { color: var(--text); }
+
+/* ---------- Як у локальній панелі (стиль «Аудіоархіву») ---------- */
+/* Рядки журналу: час ГГ:ХХ жирно, дата дрібно (лише не сьогодні) */
+.data-card { padding: 9px 4px; }
+.phrase-time { display: inline-flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.phrase-time b { font-size: 15px; font-weight: 800; color: #e9f1f7; }
+.phrase-time small { padding: 0 6px; border-radius: 99px; font-size: 10px; line-height: 16px; color: var(--muted); background: var(--surface2); }
+/* ▶ — круглий, як у плеєрі архіву */
+.card-actions .icon-button { border-radius: 50%; width: 32px; height: 32px; background: rgba(184, 239, 134, .08); border: 1.5px solid rgba(184, 239, 134, .5); }
+/* Кнопки — тоновані, суцільний лайм лише для головної дії (зберегти) */
+.outline-button { background: linear-gradient(160deg, rgba(184, 239, 134, .16), rgba(184, 239, 134, .05) 70%); border-color: rgba(184, 239, 134, .45); font-weight: 600; }
+.outline-button:active, .icon-button:active { transform: scale(.97); }
+.mini-button:enabled { background: linear-gradient(160deg, rgba(184, 239, 134, .22), rgba(184, 239, 134, .08) 70%), var(--surface); border-color: rgba(184, 239, 134, .5); color: var(--lime); }
+.panel { border-radius: 12px; }
+/* Підказки оформлення в редакторі — як в архіві */
+.text-check-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px;
+  background: var(--surface2); font-size: 12.5px; margin-top: 6px; }

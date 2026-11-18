@@ -515,3 +515,36 @@ test("viewer never requests personal notification controls", async () => {
   await tick();
   assert.equal(calls.length, 0);
 });
+
+test("leaving the edited text applies spelling and formatting fixes, and Save sends the fixed text", async () => {
+  const { doc, get } = documentFixture();
+  const calls = [];
+  const context = {
+    document: doc, URLSearchParams, URL, localStorage: { getItem: () => null, setItem() {} },
+    window: {
+      location: { search: "?fix_id=mem:" + "b".repeat(32) }, addEventListener() {},
+      setTimeout: callback => callback(), clearTimeout() {}, Telegram: { WebApp: { close() {} } },
+      Radio345: { request: async (path, method, body) => {
+        calls.push({ path, method, body });
+        if (method === "GET") return { original_text: "Вишня 48", current_text: "Вишня 48", has_audio: false, learning: null };
+        if (path === "/api/corrections/check") {
+          if (body.text === "вішня 48 прийом") return { issues: [{ kind: "spelling", message: "Можливо", fixed_text: "Вишня 48 прийом" }], formatted: null };
+          if (body.text === "Вишня 48 прийом") return { issues: [{ kind: "format", message: "Коми" }], formatted: "Вишня 48, прийом" };
+          return { issues: [], formatted: null };
+        }
+        return { corrected_text: body.corrected_text, saved: true, text_changed: true, learning: null };
+      } },
+    },
+  };
+  vm.runInNewContext(source("correction-editor.js"), context);
+  await tick();
+  const field = get("corrected-text");
+  await field.fire("focus");
+  field.value = "вішня 48 прийом";   // оператор дописав і помилився в назві
+  await field.fire("input");
+  await field.fire("blur");
+  await get("save-correction-button").fire("click");
+  await tick();
+  const saved = calls.find(call => call.path === "/api/corrections/draft" && call.method === "PUT");
+  assert.equal(saved.body.corrected_text, "Вишня 48, прийом");
+});

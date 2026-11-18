@@ -41,10 +41,21 @@
     }) : "—";
   }
 
+  // Час — як у переліку «Аудіоархіву»: ГГ:ХХ жирно, дата дрібно (лише не сьогодні). Повна дата — у підказці.
+  function phraseTime(value) {
+    const box = node("span", undefined, "phrase-time");
+    if (!value) { box.textContent = "—"; return box; }
+    const at = new Date(value.replace(" ", "T") + "Z"), pad = n => String(n).padStart(2, "0");
+    box.append(node("b", `${pad(at.getHours())}:${pad(at.getMinutes())}`));
+    if (at.toDateString() !== new Date().toDateString()) box.append(node("small", `${pad(at.getDate())}.${pad(at.getMonth() + 1)}`));
+    box.title = localDate(value);
+    return box;
+  }
+
   function phraseCard(item) {
     const card = node("article", undefined, "data-card");
     const head = node("div", undefined, "card-head");
-    head.append(node("span", localDate(item.created_at), "subtle-note"));
+    head.append(phraseTime(item.created_at));
     const actions = node("div", undefined, "card-actions");
     head.append(actions);
     card.append(head, node("p", item.current_text, "phrase-text"));

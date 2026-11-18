@@ -67,10 +67,41 @@
   const VIEW_SHORT = { radio: "Ефір", person: "Правки людини", speech: "Інше мовлення", filtered: "Відсіяне", reviewed: "Розмічені", miniapp: "Mini App",
                        telegram: "Telegram", all: "Усі", false_text: "Хибний текст", missed: "Пропущене", no_roles: "Без ролей",
                        unclear: "Нерозбірливі" };
+  // ---------- Пігулки легенди над переліком: клік — такі записи першими ----------
+  // Сортування лише на екрані (серед завантажених), стабільне; повторний клік — звичайний порядок.
+  let rowMark = null;
+  const ROW_MARK = {
+    todo: row => row.classList.contains("todo"), done: row => row.classList.contains("done"),
+    remarks: row => row.classList.contains("has-remarks") || row.classList.contains("dirty"),
+    conflict: row => row.classList.contains("conflict"),
+    miniapp: row => row.dataset.miniapp === "1", telegram: row => row.dataset.telegram === "1",
+  };
+  function applyRowMark() {
+    if (typeof document === "undefined" || !document.querySelectorAll) return;
+    const box = $("recording-rows"), rows = [...box.children];
+    rows.forEach((row, i) => { if (row.dataset.order === undefined) row.dataset.order = String(i); });
+    const original = rows.sort((a, b) => Number(a.dataset.order) - Number(b.dataset.order));
+    const ordered = rowMark ? [...original.filter(ROW_MARK[rowMark]), ...original.filter(r => !ROW_MARK[rowMark](r))] : original;
+    box.append(...ordered);
+    for (const pill of document.querySelectorAll(".row-legend [data-mark]")) {
+      pill.classList.toggle("on", pill.dataset.mark === rowMark);
+      pill.setAttribute("aria-pressed", String(pill.dataset.mark === rowMark));
+    }
+    box.scrollTop = 0;
+  }
+  if (typeof document !== "undefined" && document.querySelectorAll) {
+    for (const pill of document.querySelectorAll(".row-legend [data-mark]")) {
+      const pick = () => { rowMark = rowMark === pill.dataset.mark ? null : pill.dataset.mark; applyRowMark(); };
+      pill.addEventListener("click", pick);
+      pill.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(); } });
+    }
+  }
   const ROW_KIND = { speech: "Мовлення", unclear: "Нерозбірливо", noise: "Шум", notification: "Сигнал", room: "Кімната" };
   function recordingRow(item, controller) {
     const row = el("div", "recording-row");
     row.tabIndex = 0; row.setAttribute?.("role", "button");
+    // Для сортування за пігулками легенди: правки з Mini App і надіслане в Telegram.
+    if (row.dataset) { row.dataset.miniapp = item.corrections?.length ? "1" : ""; row.dataset.telegram = item.data?.fix_id ? "1" : ""; }
     const at = new Date(item.created * 1000);
     const today = at.toDateString() === new Date().toDateString();
     // Час — найпомітніше в рядку: години й хвилини великим, секунди дрібно; не сьогодні — ще й дата.
@@ -906,6 +937,7 @@
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
     if (typeof fitArchive === "function") fitArchive();
+    if (rowMark && typeof applyRowMark === "function") applyRowMark();   // обране сортування легенди — і для нових рядків
     // Одразу перший запис, щоб редактор не був порожнім.
     if (reset && reviewCards.length && typeof activateReview === "function") activateReview(reviewCards[0], false);
   }

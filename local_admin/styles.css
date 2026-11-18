@@ -1269,3 +1269,8 @@ button.needs-save { box-shadow: 0 0 0 3px rgba(240, 196, 108, .35); animation: d
   box-shadow: 0 6px 18px rgba(0, 0, 0, .45); animation: undo-in-side .2s ease-out; }
 .recording-type > .undo-toast.anchored .undo-button { padding: 3px 12px !important; }
 @keyframes undo-in-side { from { opacity: 0; transform: translate(-6px, -50%); } }
+/* Пігулки легенди — кнопки сортування: обрана підсвічена */
+.row-legend .lg-item[data-mark] { cursor: pointer; user-select: none; transition: background .12s, color .12s; }
+.row-legend .lg-item[data-mark]:hover { background: rgba(184, 239, 134, .12); color: var(--text); }
+.row-legend .lg-item.on { background: rgba(184, 239, 134, .2); color: var(--lime); box-shadow: inset 0 0 0 1px rgba(184, 239, 134, .5); }
+.row-legend .lg-item[data-mark]:focus-visible { outline: 2px solid var(--lime2); outline-offset: 1px; }

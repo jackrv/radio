@@ -680,6 +680,20 @@
       }
       input.addEventListener("input", () => checkText());
       if (item.text_check) renderLint(item.text_check);
+      // Esc у полі тексту — застосувати правки оформлення (як «Виправити оформлення»), якщо вони є.
+      // Перевірку робимо одразу, а не чекаємо паузи після набору; підказки «Можливо, …?» не застосовуються.
+      async function applyFormatting() {
+        if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) return false;
+        clearTimeout(lintTimer);
+        const text = input.value, revision = ++lintRevision;
+        let result;
+        try { result = await request("/api/text-check", "POST", { text, at: item.created }); } catch (_) { return false; }
+        if (revision !== lintRevision || input.value !== text) return false;   // тим часом текст змінили
+        renderLint(result);
+        if (!formatted || formatted === text) return false;
+        input.value = formatted; grow(); updateDirty(); checkText(0);
+        return true;
+      }
 
       // Кілька передач в одному записі: VAD злив сегменти. Окрема позначка для оцінки.
       const multiBox = el("input"); multiBox.type = "checkbox"; multiBox.checked = item.multiple_messages === 1;
@@ -809,7 +823,7 @@
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
-      const controller = { card, audio, item, loadWave: custom.loadWave, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
+      const controller = { card, audio, item, applyFormatting, loadWave: custom.loadWave, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
                            refreshHints: () => { if (!textField.hidden) { suggest(); checkText(0); } } };
       reviewCards.push(controller);
@@ -985,7 +999,12 @@
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault(); (activeReview || reviewCards[0]).submit(); return;
     }
-    if (event.key === "Escape" && typing) { event.target.blur(); return; }
+    if (event.key === "Escape" && typing) {
+      const editor = activeReview, inText = event.target.tagName === "TEXTAREA" && editor?.card?.contains?.(event.target);
+      event.target.blur();
+      if (inText) editor.applyFormatting?.().then(changed => { if (changed) note("Оформлення виправлено автоматично (Esc)."); });
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && ["z", "я"].includes(event.key.toLowerCase()) && !typing && undoStack.length) {
       event.preventDefault(); undoLast(); return;
     }

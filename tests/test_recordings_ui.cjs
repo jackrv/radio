@@ -34,6 +34,7 @@ function harness(page, extraSummary = {}, options = {}) {
     urls.push(url);
     if (method==='PUT') return options.review ? options.review(body) : {...body,revision:body.expected_revision+1};
     if (url.includes('suggest-roles') && options.callsigns) return {callsigns:options.callsigns};
+    if (url.includes('/text-check') && options.textCheck) return options.textCheck(body);
     if (url.includes('/restore')) { (options.restored||[]).push(body); return {...body, revision:body.expected_revision+1}; }
     return url.includes('/summary') ? summary : response;
   },
@@ -248,4 +249,17 @@ test('every section loader names a function defined in the panel script', () => 
   for (const [, key, value] of loaders.matchAll(/(\w+): (\w+)(?=[,}])/g)) {
     assert.match(script, new RegExp(`(async )?function ${value}\\(`), `loader «${key}» → ${value} is not a function`);
   }
+});
+
+test('leaving the text with Esc applies the formatting fixes (not the spelling guesses)', async () => {
+  const ui = harness({items:[{...item, reference:null, label:null, revision:0}], total:1}, {}, {textCheck: body => body.text === 'клен 48 прийом'
+    ? {issues:[{kind:'format', message:'Коми'}, {kind:'spelling', message:'Можливо', fixed_text:'інше'}], formatted:'Клен 48, прийом'}
+    : {issues:[], formatted:body.text}});
+  await ui.load();
+  const {input} = editor(ui);
+  input.value = 'клен 48 прийом';
+  assert.equal(await ui.cards()[0].applyFormatting(), true);
+  assert.equal(input.value, 'Клен 48, прийом');
+  assert.equal(ui.cards()[0].dirty, true);
+  assert.equal(await ui.cards()[0].applyFormatting(), false, 'already formatted — nothing to do');
 });

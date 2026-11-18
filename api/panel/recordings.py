@@ -66,6 +66,16 @@ def register(app, ctx):
                 roles = {"recipient": fmt(to_found) if len(to_found) == 1 else None, "sender": fmt(from_found)}
             elif len(items) == 2 and len(to_found) == 1 and len(from_found) == 1:
                 roles = {"recipient": fmt(to_found), "sender": fmt(from_found)}
+            elif len({fmt([i]) for i in items}) == 1:
+                # Один позивний і сталий зворот (за розміткою оператора 18.11.2026):
+                # «Клен 15, посилку отримав» — говорить сам Клен 15 → «від» (17 із 17 збігів);
+                # «Клен 15, прийнято, прийом» — відповідають Клену 15 → «кому».
+                from core.text_metrics import metric_words
+                words, name = " ".join(metric_words(payload.text)), fmt(items[:1])
+                if "посилку отримав" in words:
+                    roles = {"recipient": None, "sender": name}
+                elif re.search(r"(?<!\w)прийнято(?!\w)", words):
+                    roles = {"recipient": name, "sender": None}
         return {"callsigns": found, "roles": roles}
 
     @app.post("/api/text-check")

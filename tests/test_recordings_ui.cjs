@@ -69,11 +69,11 @@ test('period and editor filters are sent with the selected view', async () => {
   const ui = harness({items:[],total:0});
   ui.$('recording-view').value = 'reviewed';
   ui.$('recording-period').value = '24';
-  ui.$('recording-edits').value = 'miniapp';
+  ui.$('recording-edits').value = '42';   // правки людини — прихований фільтр зі сторінки людини
   await ui.load();
   const url = new URL(ui.urls[0], 'http://localhost');
   assert.equal(url.searchParams.get('view'), 'reviewed');
-  assert.equal(url.searchParams.get('edits'), 'miniapp');
+  assert.equal(url.searchParams.get('edits'), '42');
   const since = Number(url.searchParams.get('since'));
   assert.ok(Math.abs(since - (Math.floor(Date.now()/1000)-86400)) <= 2);
 });

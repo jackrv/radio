@@ -87,6 +87,7 @@ def register(app, ctx):
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
             raise HTTPException(422, "Некоректні параметри")
         from services.recordings import VIEWS
+        view = {"recent": "reviewed"}.get(view, view)   # старі посилання на «Нещодавно розмічені»
         if (view not in VIEWS) or any(v is not None and not 0 <= v <= 4e9 for v in (since, until)):
             raise HTTPException(422, "Некоректні параметри")
         from services import user_activity

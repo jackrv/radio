@@ -114,18 +114,25 @@
                 <option value="filtered">Шум, сигнали й короткі (відсіяне програмою)</option>
               </optgroup>
               <optgroup label="Перегляд">
-                <option value="reviewed">Розмічені</option>
-                <option value="recent">Нещодавно розмічені (за часом розмітки)</option>
+                <option value="reviewed">Розмічені (останні першими)</option>
+                <option value="miniapp">Правки з Mini App</option>
                 <option value="telegram">Надіслано в Telegram</option>
                 <option value="all">Усі записи</option>
+              </optgroup>
+              <optgroup label="Перевірити — помилки програми й неповна розмітка">
+                <option value="false_text">Хибний текст на шумі / сигналі</option>
+                <option value="missed">Пропущене мовлення (тексту не вийшло)</option>
+                <option value="no_roles">Мовлення без ролей</option>
+                <option value="unclear">Нерозбірливі</option>
               </optgroup>
             </select>
             <select id="recording-period" aria-label="Період" title="Період">
               <option value="">увесь час</option><option value="today">сьогодні</option>
               <option value="yesterday">вчора</option><option value="daybefore">позавчора</option>
-              <option value="24">останні 24 год</option><option value="168">останні 7 днів</option>
+              <option value="24">останні 24 год</option>
             </select>
-            <select id="recording-edits" aria-label="Правки" title="Правки з Mini App"><option value="">Будь-хто правив або ні</option><option value="miniapp">Лише правки з Mini App</option></select>
+            <!-- Фільтр «правки людини» — лише переходом зі сторінки людини; у шапці — плитка з «✕ зняти». -->
+            <input id="recording-edits" type="hidden" value="">
             <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
             <button id="recording-refresh" class="ghost" type="button" role="status" aria-live="polite" title="Оновити список. Автоматично картки не перерисовуються, щоб не загубити чернетки й аудіо.">⟳ Оновити</button>
             <span class="archive-switches">

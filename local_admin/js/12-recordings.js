@@ -74,8 +74,8 @@
     const duration = d.signal?.duration_s;
     const meta = [item.corrections?.length ? "✎" : "", typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "",
                   event ? `№${event[1]}` : "", d.fix_id ? "✈" : "",
-                  // У «Нещодавно розмічених» — ще й коли розмічено.
-                  item.reviewed_at && $("recording-view").value === "recent"
+                  // У розмічених (вони йдуть за часом розмітки) — ще й коли розмічено.
+                  item.reviewed_at && ["reviewed", "miniapp"].includes($("recording-view").value)
                     ? `✓ ${new Date(item.reviewed_at * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}` : ""].filter(Boolean).join(" · ");
     // Еталон оператора — звичайним; текст Whisper нерозміченого запису — приглушено.
     const heard = (d.raw_text || "").trim();
@@ -227,8 +227,7 @@
     window.addEventListener?.("resize", draw);
     return { node, drafts, loadWave: () => loadWave().then(draw), draw };
   }
-  let pendingEdits = "";   // збережений фільтр «правки користувача», доки варіанти ще не завантажено
-  const editsValue = () => $("recording-edits").value || pendingEdits;
+  const editsValue = () => $("recording-edits").value;   // ID людини (перехід зі сторінки людини) або ""
   // Календарні доби («сьогодні», «вчора», «позавчора») — від опівночі; числа — останні N годин.
   const DAYS_BACK = { today: 0, yesterday: 1, daybefore: 2 };
   function midnight(daysBack) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - daysBack); return Math.floor(d.getTime() / 1000); }
@@ -337,15 +336,6 @@
     if (reset) archiveBaseline = {query: JSON.stringify(recordingFilterIds.map(id => $(id).value)), total: page.total, first: page.items[0]?.id};
     showArchiveFresh(false);
     loadedRecordingFilters = Object.fromEntries(recordingFilterIds.map(id => [id, $(id).value]));
-    // Правки з Mini App: усі або конкретного користувача (журнал дій з 16.11.2026).
-    const editsSelect = $("recording-edits"), chosenEdits = editsValue();
-    pendingEdits = "";
-    for (const option of [...editsSelect.options].slice(2)) option.remove();
-    for (const person of page.editors || []) {
-      const option = el("option", "", `Правки: ${person.name} (${person.corrections})`);
-      option.value = String(person.user_id); editsSelect.append(option);
-    }
-    if ([...editsSelect.options].some(o => o.value === chosenEdits)) editsSelect.value = chosenEdits;
     // Кількість записів у кожному виді — за обраний період.
     for (const option of $("recording-view").options) {
       option.dataset.title ||= option.textContent;
@@ -396,6 +386,13 @@
         const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });
         const found = tile("Пошук", `«${searchQuery()}»`, "", "search"); found.append(clear); tiles.push(found);
+      }
+      if (editsValue()) {   // правки конкретної людини (перехід зі сторінки людини)
+        const person = (page.editors || []).find(p => String(p.user_id) === editsValue());
+        const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
+        clear.addEventListener("click", () => { $("recording-edits").value = ""; action(() => recordings(true)); });
+        const who = tile("Правки людини", person?.name || editsValue(), person ? `правок: ${num(person.corrections)}` : "", "search");
+        who.append(clear); tiles.push(who);
       }
       $("recording-summary").replaceChildren(...tiles);
     }
@@ -841,20 +838,18 @@
   // Обраний вид і період запам’ятовуються в цьому браузері.
   const VIEW_KEY = "radio345:archive-view";
   const saveArchiveView = () => {
-    try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value, edits: $("recording-edits").value })); } catch (_) { /* лише поточна сесія */ }
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value })); } catch (_) { /* лише поточна сесія */ }
   };
   try {
     const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}");
-    // Варіанти «правки користувача» з’являються після першого завантаження архіву.
-    if ([...$("recording-edits").options].some(o => o.value === saved.edits)) $("recording-edits").value = saved.edits;
-    else if (saved.edits) pendingEdits = String(saved.edits);
+    if (saved.view === "recent") saved.view = "reviewed";   // колишній окремий вид
+    if (saved.edits === "miniapp") saved.view = "miniapp";   // колишній фільтр «Лише правки з Mini App»
     if ([...$("recording-view").options].some(o => o.value === saved.view)) $("recording-view").value = saved.view;
     if ([...$("recording-period").options].some(o => o.value === saved.period)) $("recording-period").value = saved.period;
   } catch (_) { /* типовий вибір */ }
   for (const id of ["recording-view", "recording-period"]) {
     $(id).addEventListener("change", () => { saveArchiveView(); action(() => recordings(true)); });
   }
-  $("recording-edits").addEventListener("change", () => { saveArchiveView(); action(() => recordings(true)); });
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));
   // Enter — шукати; очищене поле (зокрема хрестиком) — знову звичайний список.
   $("recording-search").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); action(() => recordings(true)); } });

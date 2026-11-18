@@ -55,14 +55,20 @@ VIEWS = {
     "radio": ("pending", RADIO_GROUP),
     "speech": ("pending", f"({SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "filtered": ("pending", f"(NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
-    "reviewed": ("reviewed", "1"),
-    "recent": ("reviewed", "1"),   # ті самі розмічені, але за часом розмітки — знайти щойно зроблене
+    "reviewed": ("reviewed", "1"),                                   # за часом розмітки, останні першими
+    "miniapp": ("reviewed", "reference_source='miniapp'"),           # еталон — правка з Mini App
     "telegram": ("all", "json_extract(data,'$.fix_id') IS NOT NULL"),   # усе, що надіслано в Telegram
     "all": ("all", "1"),
+    # «Перевірити»: де помиляється програма або розмітка неповна.
+    "false_text": ("reviewed", "label IN ('noise','notification') AND TRIM(COALESCE(json_extract(data,'$.final_text'),''))<>''"),
+    "missed": ("reviewed", "label='speech' AND TRIM(COALESCE(json_extract(data,'$.final_text'),''))=''"
+                           " AND TRIM(COALESCE(json_extract(data,'$.raw_text'),''))=''"),
+    "no_roles": ("reviewed", "label='speech' AND reference_recipient IS NULL AND COALESCE(multiple_messages,0)=0"),
+    "unclear": ("reviewed", "label='unclear'"),
 }
 _REVIEW_SQL = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}
-# Вид «Нещодавно розмічені»: період і порядок — за часом розмітки, а не запису.
-_TIME_COLUMN = {"recent": "reviewed_at"}
+# Розмічені: період і порядок — за часом розмітки, а не запису (зверху щойно зроблене).
+_TIME_COLUMN = {"reviewed": "reviewed_at", "miniapp": "reviewed_at"}
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 

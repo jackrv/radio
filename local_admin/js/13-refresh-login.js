@@ -68,7 +68,7 @@
     if (query) $("recording-search").value = query.slice(0, 200);
     // &filters=off — показати знайдене без виду, періоду й фільтра правок (вибір у браузері не змінюється).
     if (new URLSearchParams(location.search).get("filters") === "off") {
-      $("recording-view").value = "all"; $("recording-period").value = ""; $("recording-edits").value = ""; pendingEdits = "";
+      $("recording-view").value = "all"; $("recording-period").value = ""; $("recording-edits").value = "";
     }
     if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted, { history: "replace" }); }
   });

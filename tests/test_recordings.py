@@ -381,19 +381,40 @@ def test_audio_supports_byte_ranges_for_seeking():
     assert ranged_audio(data, 'items=1-2').status_code == 200
 
 
-def test_recent_view_orders_and_filters_by_review_time(tmp_path):
+def test_reviewed_view_orders_and_filters_by_review_time(tmp_path):
     store=RecordingStore(tmp_path/'archive')
     old=store.save(pcm(),16000,{'status':'ready','raw_text':'клен','final_text':'клен'})
     new=store.save(pcm(),16000,{'status':'ready','raw_text':'дуб','final_text':'дуб'})
     store.review(new,'','noise',0)
     store.review(old,'','room',0)   # older recording, reviewed last
-    assert [i['id'] for i in store.listing(view='recent')['items']]==[old,new]
-    assert [i['id'] for i in store.listing(view='reviewed')['items']]==[new,old]
+    assert [i['id'] for i in store.listing(view='reviewed')['items']]==[old,new]
+    assert [i['id'] for i in store.listing(view='all')['items']]==[new,old]
     with store.connect() as db:
         db.execute("UPDATE recordings SET reviewed_at=? WHERE id=?",(1000.0,new))
-    assert [i['id'] for i in store.listing(view='recent',since=2000)['items']]==[old]
+    assert [i['id'] for i in store.listing(view='reviewed',since=2000)['items']]==[old]
     counts=store.view_counts(since=2000)
-    assert counts['recent']==1 and counts['reviewed']==2
+    assert counts['reviewed']==1 and counts['all']==2
+
+
+def test_check_views_find_program_errors_and_incomplete_labels(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    false_text=store.save(pcm(),16000,{'status':'ready','raw_text':'клен','final_text':'клен'})
+    missed=store.save(pcm(),16000,{'status':'empty_text','raw_text':'','final_text':''})
+    no_roles=store.save(pcm(),16000,{'status':'ready','raw_text':'дуб 7','final_text':'дуб 7'})
+    with_roles=store.save(pcm(),16000,{'status':'ready','raw_text':'дуб 7','final_text':'дуб 7'})
+    unclear=store.save(pcm(),16000,{'status':'ready','raw_text':'щось','final_text':'щось'})
+    store.review(false_text,'','noise',0)
+    store.review(missed,'клен сорок','speech',0,reference_recipient='клен')
+    store.review(no_roles,'дуб 7','speech',0)
+    store.review(with_roles,'дуб 7','speech',0,reference_recipient='',reference_sender='дуб 7')
+    store.review(unclear,'щось','unclear',0)
+    ids=lambda view:[i['id'] for i in store.listing(view=view)['items']]
+    assert ids('false_text')==[false_text]
+    assert ids('missed')==[missed]
+    assert ids('no_roles')==[no_roles]
+    assert ids('unclear')==[unclear]
+    assert store.view_counts()['no_roles']==1
+
 
 
 def test_restore_returns_a_quick_label_to_the_previous_state(tmp_path):

@@ -84,9 +84,8 @@
     const filterBy = key => { activityFilter = key; renderItems(); };
     const openEdits = () => {
       // Архів: усі записи з правками цього користувача.
-      const select = $("recording-edits"), id = String(s.user_id);
-      if (![...select.options].some(o => o.value === id)) { const o = el("option", "", `Правки: ${(result.users.find(u => String(u.user_id) === id)?.name || id)}`); o.value = id; select.append(o); }
-      select.value = id; $("recording-view").value = "all"; $("recording-period").value = "";
+      // Фільтр за людиною прихований: у шапці архіву з'явиться плитка «Правки людини · ✕ зняти».
+      $("recording-edits").value = String(s.user_id); $("recording-view").value = "all"; $("recording-period").value = "";
       if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
     };
     const filterCard = (c, key, title) => { c.dataset.filter = key; return linked(c, () => filterBy(key), title); };

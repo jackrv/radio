@@ -311,15 +311,21 @@
       let lintTimer = null;
       // «Виправити оформлення» — усі рекомендовані правки оформлення одним натисканням; кнопка всередині поля праворуч.
       let formatted = null;
-      const fixAll = el("button", "fix-all", "Виправити оформлення"); fixAll.type = "button"; fixAll.hidden = true;
-      fixAll.title = "Застосувати всі правки оформлення (пробіли, коми, цифри групами, апостроф)";
+      // Кнопка в полі завжди на місці (нічого не з’являється й не зсуває поле): без правок — приглушена.
+      const fixAll = el("button", "fix-all idle", "Оформлення ✓"); fixAll.type = "button"; fixAll.disabled = true;
+      fixAll.title = "Правок оформлення немає";
+      const showFixAll = ready => {
+        fixAll.disabled = !ready; fixAll.className = ready ? "fix-all" : "fix-all idle";
+        fixAll.textContent = ready ? "Виправити оформлення" : "Оформлення ✓";
+        fixAll.title = ready ? "Застосувати всі правки оформлення (пробіли, коми, цифри групами, апостроф)" : "Правок оформлення немає";
+      };
       fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; grow(); updateDirty(); checkText(0); input.focus(); });
       function renderLint(result) {
         lint.replaceChildren();
         const issues = result?.issues || [];
         card.classList.toggle("has-remarks", issues.length > 0);
         formatted = issues.length && result.formatted ? result.formatted : null;
-        fixAll.hidden = !formatted;
+        showFixAll(Boolean(formatted));
         if (!issues.length) return;
         const seenIssues = new Set();
         for (const issue of issues) {

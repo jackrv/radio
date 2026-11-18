@@ -500,12 +500,13 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 /* Під полем тексту: ліворуч підказки, позивні й ролі; праворуч «Зберегти» — частина самої картки:
    до правого й нижнього краю, з її заокругленням. Позначки стану — дрібно над кнопкою. */
 .recording-body { margin-top: 6px; align-items: stretch; }
-#recordings .recording-body .recording-actions { border-top: 0; padding: 0; display: flex; align-self: stretch;
+#recordings .recording-body .recording-actions { border-top: 0; padding: 0; display: flex; align-self: stretch; align-items: stretch; flex-wrap: nowrap;
   margin: 0 -12px -8px 0; border-left: 1px solid var(--border); border-radius: 0 0 13px 0; overflow: hidden; }
-.recording-body .save-actions { display: flex; flex-direction: column; gap: 0; width: 150px; margin: 0; }
+.recording-body .save-actions { display: flex; flex-direction: column; align-items: stretch; gap: 0; width: 150px; margin: 0; }
 .recording-body .save-actions .save-status, .recording-body .save-actions .dirty-badge {
   font-size: 11px; line-height: 14px; text-align: center; padding: 3px 6px 0; }
 .recording-body .save-actions .save-status { min-height: 17px; }
+.recording-body .save-actions .dirty-badge { background: none; border: 0; border-radius: 0; color: var(--warn); }
 .recording-body .save-actions .dirty-badge[hidden] { display: none; }
 .recording-body .save-actions:has(.dirty-badge:not([hidden])) .save-status { display: none; }
 .recording-body .save-actions .save-primary { flex: 1 1 auto; min-height: 56px; margin: 3px 0 0; border-radius: 0; box-shadow: none;

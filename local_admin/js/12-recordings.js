@@ -43,9 +43,10 @@
     if (conflict) row.title = speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст";
     const head = el("div", "row-head");
     head.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta));
-    // Видалення в Telegram — прямо в рядку (лише для свіжих надісланих записів).
-    if (item.telegram?.copies && item.telegram.deletable) head.append(telegramRecall(item));
-    row.append(head, text);
+    const body = el("div", "row-main"); body.append(head, text);
+    row.append(body);
+    // Видалення в Telegram — частина рядка праворуч (лише для свіжих надісланих записів).
+    if (item.telegram?.copies && item.telegram.deletable) { const recall = telegramRecall(item); recall.classList?.add("row-action"); recall.addEventListener("click", event => event.stopPropagation()); row.append(recall); }
     row.addEventListener("click", () => activateReview(controller, false));
     row.addEventListener("keydown", event => { if (event.key === "Enter") activateReview(controller, false); });   // далі Enter веде до тексту
     $("recording-rows").append(row);
@@ -180,7 +181,51 @@
     }
     const quality = summary.quality;
     $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі ефіру/сигналі: ${summary.false_text} · кімнатний шум: ${summary.room ?? 0} (з текстом: ${summary.room_false_text ?? 0}) · кілька передач у записі: ${summary.multiple_messages ?? 0} з ${summary.speech_reviewed ?? 0} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
-    $("recording-summary").textContent = `Записів: ${page.total} · перевірено: ${summary.reviewed} · WER до / після: ${pct(quality.raw_text.wer)} / ${pct(quality.final_text.wer)}`;
+    // Шапка: плитки — головна мета («Без правок», зі шкалою), сьогоднішня робота, WER до → після, записів у виді.
+    // Плитки щоразу створюються наново, тож при оновленні значення «спливають» (анімація в CSS).
+    {
+      const tile = (label, value, extra, tone = "", help = "") => {
+        const box = el("div", `stat-tile ${tone}`.trim());
+        box.append(el("span", "stat-label", label), el("span", "stat-value", value));
+        if (extra) box.append(el("span", "stat-extra", extra));
+        if (help) box.title = help;
+        return box;
+      };
+      const share = v => v == null ? "—" : `${Math.round(v * 100)} %`;
+      // Головне значення — сьогоднішній ефір (видно дію свіжих налаштувань); за весь час — дрібно нижче.
+      const speech = summary.quality.final_text.reviewed_speech || 0;
+      const total = speech && typeof summary.no_edits === "number" ? summary.no_edits / speech : null;
+      const todaySpeech = summary.speech_today || 0;
+      const clean = todaySpeech ? summary.no_edits_today / todaySpeech : total;
+      const goal = tile(todaySpeech ? "Без правок сьогодні" : "Без правок", share(clean),
+                        [todaySpeech ? `${num(summary.no_edits_today)} з ${num(todaySpeech)}` : "",
+                         total == null ? "" : `за весь час ${share(total)}`].filter(Boolean).join(" · "), "goal",
+                        "Фрази, де підсумковий текст збігся з еталоном слово в слово — головна мета розпізнавання. " +
+                        "Сьогодні — за днем запису.");
+      if (clean != null) {
+        const bar = el("span", "stat-bar"), fill = el("i");
+        fill.style && fill.style.setProperty?.("--share", `${(clean * 100).toFixed(1)}%`);
+        bar.append(fill); goal.append(bar);
+      }
+      const today = summary.reviewed_today;
+      const before = quality.raw_text.wer, after = quality.final_text.wer;
+      const delta = before != null && after != null ? after - before : null;
+      const tiles = [goal,
+        tile("Сьогодні", typeof today === "number" ? num(today) : "—", `усього ${num(summary.reviewed)}`, today ? "live" : "",
+             "Записів розмічено сьогодні; нижче — усього перевірених"),
+        tile("WER до → після", `${pct(before)} → ${pct(after)}`,
+             delta == null ? "" : `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. обробка`,
+             delta == null ? "" : delta <= 0 ? "good" : "bad",
+             "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення)"),
+        tile("У виді", num(page.total), $("recording-view").selectedOptions?.[0]?.dataset.title || "", "",
+             "Скільки записів у поточному виді й періоді")];
+      if (searchQuery()) {
+        const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
+        clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });
+        const found = tile("Пошук", `«${searchQuery()}»`, "", "search"); found.append(clear); tiles.push(found);
+      }
+      $("recording-summary").replaceChildren(...tiles);
+    }
     if (!page.total && searchQuery()) $("recordings").append(el("p", "muted", "Нічого не знайдено. Шукайте за початком ID (від 4 знаків), №події або шматком тексту."));
     else if (!page.total) $("recordings").append(el("p", "muted", TODO_VIEWS.includes($("recording-view").value)
       ? "Тут усе розмічено. Оберіть інший вид або довший період."
@@ -249,7 +294,10 @@
       const segmented = el("div", "segmented");
       const categoryButtons = {};
       for (const [value, title] of CATEGORIES) {
-        const button = el("button", "ghost", title); button.type = "button";
+        const button = el("button", "ghost"); button.type = "button";
+        const [key, ...words] = title.split(" ");
+        button.append(el("kbd", "type-key", key), el("span", "type-label", words.join(" ")));
+        button.title = `Клавіша ${key}`;
         button.addEventListener("click", () => setCategory(value, true));
         categoryButtons[value] = button; segmented.append(button);
       }
@@ -334,6 +382,7 @@
           });
           field.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); field.blur(); } });
           table.append(field);
+          const switcher = el("span", "role-switch");
           for (const [role, title] of [[recipient, "Кому"], [sender, "Від"]]) {
             const chosen = role.values().some(v => sameRole(v, name));
             const toggle = el("button", chosen ? "ghost on" : "ghost", title); toggle.type = "button";
@@ -344,8 +393,9 @@
               role.set(chosen ? list : [...list, name]);
               updateDirty(); renderChips();
             });
-            table.append(toggle);
+            switcher.append(toggle);
           }
+          table.append(switcher);
         }
         chips.append(table);
       }
@@ -443,6 +493,8 @@
       });
       multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
+      // Наслідки видно ще до натискання: еталон запису з подією оновить і її, і повідомлення в Telegram.
+      { const ev = /^db:(\d+)$/.exec(item.data?.fix_id || ""); if (ev && save.dataset) save.dataset.target = `→ подія №${ev[1]} і Telegram`; }
       const textField = el("label", "recording-text");
       const inputBox = el("div", "text-input-box"); inputBox.append(input, fixAll);
       textField.append(el("span", "muted small", "Почутий текст"), inputBox);
@@ -454,7 +506,7 @@
       segmented.setAttribute("aria-label", "Тип запису");
       // «Зберегти» — крайня праворуч, позначка незбережених змін і результат — ліворуч від неї.
       const saveActions = el("div", "save-actions"); saveActions.append(saveStatus, dirtyBadge, save);
-      actions.append(saveActions);
+      actions.append(saveActions, autoplayToggle());   // «Далі одразу» — під «Зберегти», у тій самій колонці
       const typeRow = el("div", "recording-type"); typeRow.append(segmented, chips);
       function setCategory(value, quick) {
         category.value = value;
@@ -482,6 +534,8 @@
       function showSave(text, tone = "muted") {
         saveStatus.textContent = text; saveStatus.className = `${tone} small save-status`;
         save.dataset.status = text; save.dataset.tone = tone;
+        // Короткий спалах після успіху (клас знімається й ставиться знову, щоб анімація повторилась).
+        if (tone === "ok" && save.classList?.remove) { save.classList.remove("just-saved"); void save.offsetWidth; save.classList.add("just-saved"); }
       }
       async function submit() {
         if (saving) return;
@@ -515,7 +569,7 @@
       const meta = el("div", "recording-meta"); meta.append(roles);   // «кілька передач» — позначка в рядку чипів
       // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
       // ліворуч підказки, позивні й ролі, праворуч «Зберегти» на висоту лівого блоку.
-      const fields = el("div", "recording-fields"); fields.append(lint, meta, autoplayToggle());
+      const fields = el("div", "recording-fields"); fields.append(lint, meta);
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });

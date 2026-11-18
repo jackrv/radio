@@ -38,7 +38,7 @@ function harness(page, extraSummary = {}, options = {}) {
   },
     addCallsign:async line=>{added.push(line); if (options.addError) throw new Error(options.addError);},
     window:{addEventListener:(name,cb)=>{windowEvents[name]=cb;}}, confirm:()=>options.discard !== false,
-    pct:String, fix:String, yes:String, note:text=>notes.push(text), STATUS:{ready:'Ready'}, action:cb=>cb(),
+    pct:String, num:String, fix:String, yes:String, note:text=>notes.push(text), STATUS:{ready:'Ready'}, action:cb=>cb(),
     localStorage:{getItem(){return null;}}, clearTimeout(){}, setTimeout(){return 1;}});
   vm.runInContext(block + '\nglobalThis.loadRecordings = recordings; globalThis.saveFirst = () => reviewCards[0].submit(); globalThis.cards = reviewCards;', context);
   return {$, notes, urls, added, windowEvents, cards:()=>context.cards, load:()=>context.loadRecordings(true), more:()=>context.loadRecordings(false),

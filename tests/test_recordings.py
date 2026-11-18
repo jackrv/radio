@@ -354,3 +354,15 @@ def test_listing_and_view_counts_respect_a_closed_period(tmp_path):
     since, until = now - 86400 * 2, now - 86400
     assert [i['id'] for i in store.listing(since=since, until=until)['items']] == [ids['yesterday']]
     assert store.view_counts(since, until)['all'] == 1 and store.view_counts()['all'] == 3
+
+
+def test_summary_counts_phrases_without_edits_and_todays_reviews(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    exact=store.save(pcm(),16000,{'status':'ready','raw_text':'клен сорок','final_text':'Клен, сорок.'})
+    wrong=store.save(pcm(),16000,{'status':'ready','raw_text':'клен','final_text':'клен'})
+    store.review(exact,'клен сорок','speech',0)
+    store.review(wrong,'клен сорок','speech',0)
+    summary=store.summary()
+    assert summary['no_edits']==1 and summary['quality']['final_text']['reviewed_speech']==2
+    assert summary['reviewed_today']==2
+    assert summary['speech_today']==2 and summary['no_edits_today']==1

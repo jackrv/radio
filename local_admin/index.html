@@ -131,9 +131,15 @@
               <label class="switch" title="Після збереження одразу грати наступний запис"><input id="recording-autoplay" type="checkbox" checked> ⏭ Далі одразу</label>
             </span>
           </div>
+          <div id="recording-summary" class="archive-stats" aria-live="polite"></div>
           <label class="mic-square" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked><span class="mic-icon">🎧</span><span class="mic-text">мікрофон на паузі<br>під час відтворення</span></label>
-          <p class="archive-status muted small"><span id="recording-summary"></span> <span id="archive-update-note" class="update-note" role="status"></span></p>
-          <details class="small archive-help"><summary>Як розмічати, клавіші й статистика</summary>
+          
+        </article>
+            <div id="recordings" class="list"></div>
+            <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
+            <!-- Внизу колонки, «приклеєно» до низу: статистика архіву, правила розмітки й клавіші. -->
+            <footer class="archive-footer">
+              <details class="small archive-help"><summary>Як розмічати, клавіші й статистика</summary>
             <p class="muted keys">Клавіші: <kbd>Пробіл</kbd> грати / пауза · <kbd>1</kbd>–<kbd>5</kbd> тип (2, 3 і 5 — одразу зберегти) · <kbd>Enter</kbd> до тексту · <kbd>⌘/Ctrl+Enter</kbd> зберегти й далі · <kbd>J</kbd>/<kbd>K</kbd> або <kbd>↓</kbd>/<kbd>↑</kbd> наступний / попередній · <kbd>R</kbd> з початку · <kbd>]</kbd>/<kbd>[</kbd> швидше / повільніше · <kbd>Esc</kbd> вийти з поля.</p>
             <p class="muted">Прослухайте запис і введіть почутий текст. Еталон мовлення для запису з подією стає й текстом події: оновлюються журнал і повідомлення в Telegram, правка йде в навчання правил — як у Mini App. Архів ділиться на три частини: «Ефір» — програма знайшла позивний або створила подію; «Інше мовлення» — Whisper щось почув (довше 2 с), але позивного немає; «Шум, сигнали й короткі» — усе, що програма відсіяла (тиша, сигнали, чорний список, коротке). Ролі — у рядку позивних: «Кому / Від» біля позивного; не обрано — у фразі не вказано. Перевірені записи захищені від очищення.</p>
             <p class="muted"><b>Як розмічати:</b></p>
@@ -149,11 +155,9 @@
             </ul>
             <p id="recording-summary-details" class="muted"></p>
           </details>
-        </article>
-            <div id="recordings" class="list"></div>
-            <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
+            </footer>
           </div>
-          <nav class="archive-list" aria-label="Записи"><p class="row-legend"><span class="lg-todo">●</span> не розмічено · <span class="lg-done">✓</span> розмічено · <span class="lg-warn">▌</span> зауваження / чернетка · <span class="lg-bad">⚠</span> суперечність · ✎ правка з Mini App · ✈ у Telegram</p><div id="recording-rows"></div></nav>
+          <nav class="archive-list" aria-label="Записи"><p class="row-legend"><span class="lg-todo">●</span> не розмічено · <span class="lg-done">✓</span> розмічено · <span class="lg-warn">▌</span> зауваження / чернетка · <span class="lg-bad">⚠</span> суперечність · ✎ правка з Mini App · ✈ у Telegram</p><p id="archive-update-note" class="update-note small" role="status"></p><div id="recording-rows"></div></nav>
         </div>
       </section>
 

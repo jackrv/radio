@@ -461,7 +461,20 @@ class RecordingStore:
                 "room": sum(r["label"] == "room" for r in decoded),
                 "room_false_text": sum(r["label"] == "room" and bool(r["data"].get("final_text")) for r in decoded),
                 "multiple_messages": sum(r.get("multiple_messages") == 1 for r in decoded),
-                "speech_reviewed": sum(r["label"] in ("speech", "unclear") for r in decoded)}
+                "speech_reviewed": sum(r["label"] in ("speech", "unclear") for r in decoded),
+                # Головна мета — текст без правок: підсумок збігся з еталоном слово в слово.
+                "no_edits": sum(r["label"] == "speech" and r["quality"]["final_text"]["word_errors"] == 0 for r in decoded),
+                "reviewed_today": sum((r.get("reviewed_at") or 0) >= _day_start() for r in decoded),
+                # Те саме лише для сьогоднішнього ефіру: видно дію свіжих налаштувань, а не всю історію.
+                "speech_today": sum(r["label"] == "speech" and r["created"] >= _day_start() for r in decoded),
+                "no_edits_today": sum(r["label"] == "speech" and r["created"] >= _day_start()
+                                      and r["quality"]["final_text"]["word_errors"] == 0 for r in decoded)}
+
+
+def _day_start():
+    """Початок сьогоднішньої доби за місцевим часом."""
+    now = time.localtime()
+    return time.mktime((now.tm_year, now.tm_mon, now.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
 def label_archive_from_correction(db_path, fix_id, original, corrected):

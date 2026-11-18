@@ -3,7 +3,8 @@
   const TODO_VIEWS = ["radio", "speech", "filtered"];
   const ROW_KIND = { speech: "Мовлення", unclear: "Нерозбірливо", noise: "Шум", notification: "Сигнал", room: "Кімната" };
   function recordingRow(item, controller) {
-    const row = el("button", "recording-row"); row.type = "button";
+    const row = el("div", "recording-row");
+    row.tabIndex = 0; row.setAttribute?.("role", "button");
     const at = new Date(item.created * 1000);
     const today = at.toDateString() === new Date().toDateString();
     const time = at.toLocaleString("uk-UA", today ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -14,9 +15,12 @@
     const meta = [typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "", event ? `№${event[1]}` : "", d.fix_id ? "✈" : ""]
       .filter(Boolean).join(" · ");
     // Еталон оператора — звичайним; текст Whisper нерозміченого запису — приглушено.
-    const text = el("span", item.reference != null ? "row-text" : "row-text heard", item.reference || d.raw_text || "—");
-    row.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta), text);
+    const text = el("div", item.reference != null ? "row-text" : "row-text heard", item.reference || d.raw_text || "—");
+    const head = el("div", "row-head");
+    head.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta));
+    row.append(head, text);
     row.addEventListener("click", () => activateReview(controller, false));
+    row.addEventListener("keydown", event => { if (event.key === "Enter") activateReview(controller, false); });   // далі Enter веде до тексту
     $("recording-rows").append(row);
     // Набраний текст — у рядку переліку; клас картки — так само на рядку.
     controller.card.addEventListener("input", event => { if (event.target?.tagName === "TEXTAREA") text.textContent = event.target.value || "—"; });

@@ -957,3 +957,7 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 @media (prefers-reduced-motion: reduce) {
   #recordings .recording-card .save-actions .save-primary::before { animation: none !important; }
 }
+/* «Зберегти» — «кишеня» в куті картки: скруглений лівий верхній кут із тонкою межею зверху й ліворуч */
+@media (min-width: 821px) {
+  #recordings .recording-body .recording-actions { border-top: 1px solid rgba(184, 239, 134, .22); border-radius: 14px 0 13px 0; }
+}

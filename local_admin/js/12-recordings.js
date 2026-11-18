@@ -129,7 +129,7 @@
     select.setAttribute?.("aria-label", "Швидкість відтворення");
     for (const value of SPEEDS) { const o = el("option", "", `${value.replace(".", ",")}×`); o.value = value; select.append?.(o); }
     select.value = typeof reviewPrefs === "undefined" ? "1" : String(reviewPrefs.speed);
-    select.addEventListener?.("change", () => setSpeed(select.value));
+    select.addEventListener?.("change", () => { setSpeed(select.value); select.blur?.(); });
     return select;
   }
   // ---------- Власний плеєр у стилі панелі ----------
@@ -487,8 +487,8 @@
       function applyAutoRoles(roles) {
         if (!rolesAuto) return;
         rolesAutoApplied = Boolean(roles);
-        recipient.set(roles ? [roles.recipient] : []);
-        sender.set(roles ? [roles.sender] : []);
+        recipient.set(roles?.recipient ? [roles.recipient] : []);
+        sender.set(roles?.sender ? [roles.sender] : []);
         updateDirty();
       }
       function rolesTouched() { rolesAuto = false; rolesAutoApplied = false; }
@@ -543,7 +543,7 @@
         const names = [];
         for (const name of [...suggestions.map(n => renamed.get(n) ?? n), ...recipient.values(), ...sender.values()])
           if (!names.some(n => sameRole(n, name))) names.push(name);
-        chips.title = rolesAutoApplied ? "Ролі підставлено: перший позивний — «Кому», другий — «Від». Змініть, якщо не так." : "";
+        chips.title = rolesAutoApplied ? "Ролі підставлено: позивний після «я» — «Від», перед ним — «Кому» (без «я»: перший — «Кому», другий — «Від»). Змініть, якщо не так." : "";
         if (!names.length) return;
         // Табличка: рядок на позивний — [поле з назвою][Кому][Від]; назву можна виправити.
         const table = el("div", "roles-table");
@@ -616,7 +616,7 @@
         fixAll.textContent = ready ? "Виправити оформлення" : "Оформлення ✓";
         fixAll.title = ready ? "Застосувати всі правки оформлення (пробіли, коми, цифри групами, апостроф)" : "Правок оформлення немає";
       };
-      fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; grow(); updateDirty(); checkText(0); input.focus(); });
+      fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; grow(); updateDirty(); checkText(0); });
       function renderLint(result) {
         lint.replaceChildren();
         const issues = result?.issues || [];
@@ -634,7 +634,7 @@
           row.append(el("span", "hint-kind", kind), el("span", "hint-message", issue.message));
           if (issue.fixed_text) {
             const fix = el("button", "ghost", "Виправити"); fix.type = "button";
-            fix.addEventListener("click", () => { input.value = issue.fixed_text; grow(); updateDirty(); checkText(0); input.focus(); });
+            fix.addEventListener("click", () => { input.value = issue.fixed_text; grow(); updateDirty(); checkText(0); });
             row.append(fix);
           }
           if (issue.dictionary_entry) {
@@ -811,7 +811,7 @@
       if (heardText) {
         const restore = el("button", "ghost small-button", "↺ Повернути розпізнане"); restore.type = "button";
         restore.title = "Підставити в поле текст, який дала програма (замість написаного)";
-        restore.addEventListener("click", () => { input.value = heardText; grow(); updateDirty(); checkText(0); suggest(); input.focus?.(); });
+        restore.addEventListener("click", () => { input.value = heardText; grow(); updateDirty(); checkText(0); suggest(); });
         rawRow.append(restore);
       }
       if (typeof d.notification_score === "number")
@@ -828,6 +828,12 @@
     if (reset && reviewCards.length && typeof activateReview === "function") activateReview(reviewCards[0], false);
   }
   $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
+  // Після кліку на кнопку в архіві (виправити текст, роль, тип, «у словник»…) фокус знімається з поля й
+  // кнопки: пробіл та інші клавіші одразу керують плеєром, а не друкують і не «натискають» кнопку знову.
+  $("recordings").addEventListener("click", event => {
+    if (!event.target?.closest?.("button")) return;
+    setTimeout(() => { const active = document.activeElement; if (active && active !== document.body) active.blur?.(); }, 0);
+  });
   // Обраний вид і період запам’ятовуються в цьому браузері.
   const VIEW_KEY = "radio345:archive-view";
   const saveArchiveView = () => {

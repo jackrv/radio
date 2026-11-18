@@ -254,7 +254,8 @@ def test_callsign_suggestions_and_roles_for_two_callsigns(local):
     body={"text":"Вишня 210, Вишня 210, я Клен 300, дуб, прийом"}
     assert client.post("/api/recordings/suggest-roles",json=body).status_code==403
     result=client.post("/api/recordings/suggest-roles",json=body,headers={"Origin":ORIGIN}).json()
-    assert result=={"callsigns":["вишня 210","клен 300","дуб"],"roles":None}, "без повторів; три позивні — ролі не вгадуються"
+    assert result["callsigns"]==["вишня 210","клен 300","дуб"], "без повторів"
+    assert result["roles"]=={"recipient":"вишня 210","sender":"клен 300"}, "«я Х» — Х відправник, скільки б позивних не було"
     assert client.post("/api/recordings/suggest-roles",json={"text":"шум"},headers={"Origin":ORIGIN}).json()=={"callsigns":[],"roles":None}
     two=lambda text: client.post("/api/recordings/suggest-roles",json={"text":text},headers={"Origin":ORIGIN}).json()["roles"]
     assert two("Вишня 210, я Клен 300, прийом")=={"recipient":"вишня 210","sender":"клен 300"}
@@ -262,6 +263,9 @@ def test_callsign_suggestions_and_roles_for_two_callsigns(local):
     assert two("Вишня 210, прийнято / Клен 300, прийнято") is None, "кілька передач — ролі не підставляються"
     assert two("Вишня 210, прийнято | Клен 300, прийнято") is None, "старий роздільник теж"
     assert two("Вишня 210, посилку отримав") is None, "один позивний — оператор вирішує сам"
+    assert two("я Клен 300, 48 62, прийом")=={"recipient":None,"sender":"клен 300"}, "лише «я Х» — тільки «Від»"
+    assert two("Вишня 210, дуб, я Клен 300, прийом")=={"recipient":None,"sender":"клен 300"}, "кілька адресатів — «Кому» не вгадуємо"
+    assert two("Вишня 210, прийнято / я Клен 300") is None, "кілька передач — ролі не підставляються"
 
 
 

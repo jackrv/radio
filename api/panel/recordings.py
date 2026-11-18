@@ -54,14 +54,17 @@ def register(app, ctx):
             text = fmt([item])
             if text not in found:
                 found.append(text)
-        # Ролі підставляються лише для двох різних позивних в одній передачі
-        # (за тим самим правилом, що й у приймачі); інакше оператор вирішує сам.
+        # Ролі підставляються за тим самим правилом, що й у приймачі, лише для однієї передачі:
+        # «я Х» — Х одразу «Від» (скільки б позивних не було), єдиний позивний перед «я» — «Кому»;
+        # без «я» — лише для двох різних позивних. Інакше оператор вирішує сам.
         roles = None
         from services.text_check import has_several_transmissions
-        if len(items) == 2 and not has_several_transmissions(payload.text):
-            from core.analyzer import split_roles
+        if items and not has_several_transmissions(payload.text):
+            from core.analyzer import _SELF, split_roles
             to_found, from_found = split_roles(payload.text, callsigns)
-            if len(to_found) == 1 and len(from_found) == 1:
+            if _SELF.search(payload.text) and len(from_found) == 1:
+                roles = {"recipient": fmt(to_found) if len(to_found) == 1 else None, "sender": fmt(from_found)}
+            elif len(items) == 2 and len(to_found) == 1 and len(from_found) == 1:
                 roles = {"recipient": fmt(to_found), "sender": fmt(from_found)}
         return {"callsigns": found, "roles": roles}
 

@@ -255,7 +255,9 @@
       row.append(el("span", "", STATUS[status] || status), track, el("b", "", `${num(value)}`));
       box.append(row);
     }
-    box.append(el("p", "muted small", `Усього ${num(total)} · розпізнано ${Math.round(((counters["asr.outcome.ready"] || 0) / total) * 100)}%`));
+    const retries = counters["asr.whisper_retry"] || 0, recovered = counters["asr.whisper_retry_recovered"] || 0;
+    box.append(el("p", "muted small", `Усього ${num(total)} · розпізнано ${Math.round(((counters["asr.outcome.ready"] || 0) / total) * 100)}%` +
+      (retries ? ` · другий шанс Whisper (зациклився з підказкою): ${num(retries)}, текст відновлено ${num(recovered)}` : "")));
   }
 
   function drawLatency(ready) {

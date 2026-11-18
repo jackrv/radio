@@ -534,6 +534,7 @@ def test_attention_lists_what_waits_for_the_operator(local):
         db.execute("INSERT INTO word_corrections (original, corrected, confirmations, status) VALUES ('прием','прийом',2,'active')")
     data = client.get("/api/attention").json()
     assert data["codes_missing"] is False and data["approvals"] == 1
+    assert data["approval_examples"] == ["«прием» → «прийом»"], "видно, яка саме заміна чекає дозволу"
 
 
 def test_lists_and_dictionaries_are_checked_while_typing_without_saving(local):

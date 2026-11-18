@@ -135,8 +135,16 @@
     };
     if (a.lab_running) item("warn", "Іде черга тестів лабораторії — приймач на цей час зупинено, ефір не слухається.", "Переглянути", () => show("experiments"));
     if (a.codes_missing) item("warn", `Не внесено коди доби ${a.codes_day.split("-").reverse().slice(0, 2).join(".")} (діють з 20:00 попереднього дня).`, "Внести", () => show("codes"));
-    if (a.approvals) item("warn", `Замін, що чекають вашого дозволу: ${a.approvals}.`, "Переглянути", () => show("learning"));
-    if (a.conflicts) item("bad", `Конфліктів у навчанні: ${a.conflicts} — одне слово виправлено по-різному.`, "Переглянути", () => show("learning"));
+    // «Переглянути» відкриває «Навчання» одразу з потрібним фільтром.
+    const openLearning = filter => () => {
+      try { localStorage.setItem("radio345:learning-filter", filter); } catch (_) { /* сесія */ }
+      $("learning-filter").value = filter;
+      show("learning");   // «Навчання» щоразу перезавантажується (ALWAYS_RELOAD)
+    };
+    const examples = list => list?.length ? ` — ${list.join("; ")}${list.length < 3 ? "" : "…"}` : "";
+    if (a.approvals) item("warn", `Замін, що чекають вашого дозволу: ${a.approvals}${examples(a.approval_examples)}.`, "Переглянути", openLearning("needs_approval"), null,
+      "Ви кілька разів однаково виправили звичайне слово. Таку заміну програма не вмикає сама: дозвольте її в «Навчанні», якщо вона завжди правильна, або вимкніть.");
+    if (a.conflicts) item("bad", `Конфліктів у навчанні: ${a.conflicts} — одне слово виправлено по-різному${examples(a.conflict_examples)}.`, "Переглянути", openLearning("conflict"));
     if (a.telegram_failed) item("bad", `Правок, що не дійшли в Telegram після всіх спроб: ${a.telegram_failed}.`, "Система", () => show("system"));
     // Пропозиції з розмітки, що накопичилися в усіх списках (фонова перевірка панелі).
     for (const g of a.suggestions || []) {

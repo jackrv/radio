@@ -102,7 +102,10 @@ def register(app, ctx):
         day = daily_codes.local_day()
         with get_db(db_path) as db:
             codes = daily_codes.read_day(db, day)
-        learning = learning_queue(db_path)["counts"]
+        queue = learning_queue(db_path)
+        learning = queue["counts"]
+        # Самі заміни — щоб у «Потребує уваги» було видно, що саме чекає (до 3 прикладів).
+        pairs = lambda state: [f"«{i['original']}» → «{i['corrected']}»" for i in queue["items"] if i["state"] == state][:3]
         fresh = recordings.view_counts(time.time() - 86400)
         from services import suggestions as suggestion_service
         found = suggestion_service.overview(db_path)
@@ -110,6 +113,7 @@ def register(app, ctx):
                 "suggestions_pending": bool(suggestion_worker and suggestion_worker.pending),
                 "codes_day": day, "codes_missing": not codes,
                 "approvals": learning.get("needs_approval", 0), "conflicts": learning.get("conflict", 0),
+                "approval_examples": pairs("needs_approval"), "conflict_examples": pairs("conflict"),
                 "telegram_failed": sync_status(db_path)["exhausted"],
                 "unlabeled_radio_24h": fresh["radio"], "unlabeled_speech_24h": fresh["speech"],
                 "lab_running": lab_running()}

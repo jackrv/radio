@@ -437,8 +437,8 @@
         }
       }
       const meta = el("div", "recording-meta"); meta.append(roles, multi);
-      // Зверху вниз: тип запису, ролі, текст (з «Виправити оформлення»), підказки й позивні, «Зберегти».
-      form.append(typeRow, meta, textField, lint, chips, actions);
+      // Зверху вниз: тип запису, текст (з «Виправити оформлення»), підказки й позивні, ролі, «Зберегти».
+      form.append(typeRow, textField, lint, chips, meta, actions);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,

@@ -401,6 +401,20 @@ class RecordingStore:
         except FileNotFoundError:
             raise LookupError("Аудіо недоступне") from None
 
+    def restore(self, record_id, revision, state):
+        """Повертає збережений раніше стан розмітки (для «Скасувати»); ревізія росте, як після правки."""
+        self.get(record_id)
+        multiple = state.get("multiple_messages")
+        values = (state.get("reference"), state.get("label"), state.get("reviewed_at"), state.get("reference_recipient"),
+                  state.get("reference_sender"), None if multiple is None else int(bool(multiple)), state.get("reference_source"))
+        with self.connect() as db:
+            changed = db.execute("UPDATE recordings SET reference=?, label=?, reviewed_at=?, reference_recipient=?, reference_sender=?, "
+                                 "multiple_messages=?, reference_source=?, revision=revision+1 WHERE id=? AND revision=?",
+                                 (*values, record_id, revision)).rowcount
+            if not changed:
+                raise ValueError("Запис змінено в іншому вікні. Оновіть сторінку.")
+        return self.get(record_id)
+
     def review(self, record_id, reference, label, revision, *,
                reference_recipient=UNSET, reference_sender=UNSET, multiple_messages=UNSET):
         self.get(record_id)

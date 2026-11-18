@@ -394,3 +394,22 @@ def test_recent_view_orders_and_filters_by_review_time(tmp_path):
     assert [i['id'] for i in store.listing(view='recent',since=2000)['items']]==[old]
     counts=store.view_counts(since=2000)
     assert counts['recent']==1 and counts['reviewed']==2
+
+
+def test_restore_returns_a_quick_label_to_the_previous_state(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    record_id=store.save(pcm(),16000,{'status':'ready','raw_text':'клен','final_text':'клен'})
+    before={k:store.get(record_id)[k] for k in ('reference','label','reference_recipient','reference_sender','multiple_messages','reviewed_at','reference_source')}
+    labelled=store.review(record_id,'','noise',0)
+    restored=store.restore(record_id,labelled['revision'],before)
+    assert restored['reference'] is None and restored['label'] is None and restored['reviewed_at'] is None
+    assert restored['revision']==2
+    with pytest.raises(ValueError):
+        store.restore(record_id,labelled['revision'],before)   # stale revision is refused
+    store.review(record_id,'клен сорок','speech',2,reference_recipient='клен')
+    previous=store.get(record_id)
+    state={k:previous[k] for k in before}
+    noise=store.review(record_id,'','room',3)
+    back=store.restore(record_id,noise['revision'],state)
+    assert back['reference']=='клен сорок' and back['label']=='speech' and back['reference_recipient']=='клен'
+    assert back['reviewed_at']==previous['reviewed_at']

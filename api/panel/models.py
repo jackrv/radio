@@ -12,6 +12,18 @@ class RecordingReview(BaseModel):
     multiple_messages: bool | None = None
 
 
+class RecordingRestore(BaseModel):
+    """Стан запису до швидкої розмітки — для «↶ Скасувати» (reference=None — нерозмічений)."""
+    expected_revision: int = Field(ge=0)
+    reference: str | None = Field(default=None, max_length=2000)
+    label: str | None = Field(default=None, pattern=r"^(speech|noise|notification|unclear|room)$")
+    reference_recipient: str | None = Field(default=None, max_length=300)
+    reference_sender: str | None = Field(default=None, max_length=300)
+    multiple_messages: bool | None = None
+    reviewed_at: float | None = Field(default=None, ge=0, le=4e9)
+    reference_source: str | None = Field(default=None, pattern=r"^miniapp$")
+
+
 class SuggestionDismiss(BaseModel):
     kind: str = Field(max_length=40)
 

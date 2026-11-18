@@ -18,6 +18,41 @@
     });
     return chip;
   }
+  // ---------- «↶ Скасувати» швидку розмітку ----------
+  // Кілька швидких натискань поспіль — стек: кожне «Скасувати» (кнопка чи ⌘Z / Ctrl+Z) повертає останнє.
+  const undoStack = [];
+  let undoToast = null, undoTimer = null;
+  const UNDO_MS = 15000;
+  function offerUndo(entry) {
+    undoStack.push(entry); if (undoStack.length > 10) undoStack.shift();
+    renderUndo(true);
+  }
+  function renderUndo(restart) {
+    if (typeof document === "undefined" || !document.body?.append) return;
+    if (!undoToast) {
+      undoToast = el("div", "undo-toast"); undoToast.setAttribute("role", "status");
+      const text = el("span", "undo-text"), button = el("button", "undo-button", "↶ Скасувати"), bar = el("i", "undo-bar");
+      button.type = "button"; button.title = "Повернути запис, як був до цієї розмітки (⌘Z / Ctrl+Z)";
+      button.addEventListener("click", () => undoLast());
+      undoToast.append(text, button, el("kbd", "undo-key", "⌘Z"), bar); undoToast.hidden = true;
+      document.body.append(undoToast);
+    }
+    if (!undoStack.length) { undoToast.hidden = true; clearTimeout(undoTimer); return; }
+    const last = undoStack[undoStack.length - 1];
+    undoToast.querySelector(".undo-text").textContent = `Позначено «${last.title}»${undoStack.length > 1 ? ` · і ще ${undoStack.length - 1}` : ""}`;
+    undoToast.hidden = false;
+    if (restart) {
+      const bar = undoToast.querySelector(".undo-bar"); bar.style.animation = "none"; void bar.offsetWidth; bar.style.animation = "";
+      clearTimeout(undoTimer);
+      undoTimer = setTimeout(() => { undoStack.length = 0; renderUndo(); }, UNDO_MS);
+    }
+  }
+  async function undoLast() {
+    const entry = undoStack.pop(); renderUndo(false);
+    if (!entry) return;
+    try { await entry.run(); note(`Розмітку «${entry.title}» скасовано.`); }
+    catch (error) { note(`Не вдалося скасувати: ${error.message}`); }
+  }
   const ROW_KIND = { speech: "Мовлення", unclear: "Нерозбірливо", noise: "Шум", notification: "Сигнал", room: "Кімната" };
   function recordingRow(item, controller) {
     const row = el("div", "recording-row");
@@ -477,6 +512,8 @@
                 absent: () => { absent = true; value.value = ""; update(); },
                 values: () => absent ? [] : splitRoles(value.value),
                 set: list => { absent = false; value.value = list.join(", "); update(); },
+                state: () => ({ absent, text: value.value }),
+                restore: saved => { absent = saved.absent; value.value = saved.text; update(); },
               };
       }
       const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від", item.reference_sender);
@@ -663,11 +700,16 @@
       actions.append(saveActions, autoplayToggle());   // «Далі одразу» — під «Зберегти», у тій самій колонці
       const typeRow = el("div", "recording-type"); typeRow.append(segmented, chips);
       function setCategory(value, quick) {
+        // Швидка розмітка без мовлення зберігається одразу (клавіші 2/3/5 і клік мишкою однаково):
+        // запам'ятовуємо, що було в картці, щоб «↶ Скасувати» повернуло все як було.
+        const before = quick && !["speech", "unclear"].includes(value)
+          ? { category: category.value, typed: input.value, roles: [recipient.state(), sender.state()], multi: multiBox.checked, saved: savedSnapshot }
+          : null;
         category.value = value;
         for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
         const speechLike = ["speech", "unclear"].includes(value);
         textField.hidden = !speechLike; roles.hidden = !speechLike; chips.hidden = !speechLike; multi.hidden = !speechLike; lint.hidden = !speechLike;
-        if (!speechLike) { input.value = ""; recipient.absent(); sender.absent(); if (quick) submit(); }
+        if (!speechLike) { input.value = ""; recipient.absent(); sender.absent(); if (quick) submit(before); }
         else if (quick) suggest();
         if (quick) updateDirty();
       }
@@ -691,9 +733,15 @@
         // Короткий спалах після успіху (клас знімається й ставиться знову, щоб анімація повторилась).
         if (tone === "ok" && save.classList?.remove) { save.classList.remove("just-saved"); void save.offsetWidth; save.classList.add("just-saved"); }
       }
-      async function submit() {
+      async function submit(quickUndo = null) {
         if (saving) return;
         saving = true; save.disabled = true; showSave("Зберігаю…");
+        // Стан у базі до збереження — для «Скасувати» швидкої розмітки.
+        const previous = { reference: item.reference ?? null, label: item.reference == null ? null : item.label ?? null,
+                           reference_recipient: item.reference_recipient ?? null, reference_sender: item.reference_sender ?? null,
+                           multiple_messages: item.multiple_messages == null ? null : Boolean(item.multiple_messages),
+                           reviewed_at: item.reviewed_at ?? null, reference_source: item.reference_source ?? null };
+        const wasDone = controller.done;
         try {
           const speechLike = ["speech", "unclear"].includes(category.value);
           const sentSnapshot = snapshot();
@@ -703,7 +751,10 @@
           // Reviewed rows leave the pending query; keep the next page's offset aligned.
           if (item.reference === null && TODO_VIEWS.includes($("recording-view").value)) recordingOffset = Math.max(0, recordingOffset - 1);
           item.revision = result.revision; item.reference = result.reference; item.label = result.label;
+          for (const key of ["reviewed_at", "reference_recipient", "reference_sender", "multiple_messages", "reference_source"]) item[key] = result[key];
           showQuality(result);
+          if (quickUndo && typeof offerUndo === "function")
+            offerUndo({ title: ROW_KIND[result.label] || result.label, controller, run: () => undoQuick(previous, wasDone, quickUndo) });
           controller.done = true;
           updateDirty();
           card.classList.add("done");
@@ -719,6 +770,23 @@
         } finally {
           saving = false; save.disabled = false;
         }
+      }
+      // «↶ Скасувати»: запис у базі — як був до швидкої розмітки; картка — з тим самим текстом і ролями.
+      async function undoQuick(previous, wasDone, before) {
+        const result = await request(`/api/recordings/${item.id}/restore`, "POST", { ...previous, expected_revision: item.revision });
+        for (const key of ["revision", "reference", "label", "reviewed_at", "reference_recipient", "reference_sender", "multiple_messages", "reference_source"])
+          item[key] = result[key];
+        if (result.reference === null && TODO_VIEWS.includes($("recording-view").value)) recordingOffset += 1;
+        controller.done = wasDone; card.classList.toggle("done", wasDone);
+        setCategory(before.category, false);
+        input.value = before.typed; grow();
+        recipient.restore(before.roles[0]); sender.restore(before.roles[1]); multiBox.checked = before.multi;
+        renderChips();
+        savedSnapshot = before.saved; updateDirty();
+        save.textContent = result.reference === null ? "Зберегти еталон" : "Оновити еталон";
+        showSave("↶ Розмітку скасовано");
+        if (result.reference !== null) showQuality(result);
+        if (typeof activateReview === "function") { for (const c of reviewCards) c.audio.pause(); activateReview(controller); }
       }
       const meta = el("div", "recording-meta"); meta.append(roles);   // «кілька передач» — позначка в рядку чипів
       // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
@@ -799,7 +867,7 @@
   rememberValue("learning-filter", "radio345:learning-filter");
   rememberValue("role", "radio345:preview-role");
 
-  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: archiveCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
+  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";
@@ -892,6 +960,9 @@
       event.preventDefault(); (activeReview || reviewCards[0]).submit(); return;
     }
     if (event.key === "Escape" && typing) { event.target.blur(); return; }
+    if ((event.metaKey || event.ctrlKey) && ["z", "я"].includes(event.key.toLowerCase()) && !typing && undoStack.length) {
+      event.preventDefault(); undoLast(); return;
+    }
     if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!activeReview) activateReview(reviewCards[0], false);
     const current = activeReview;

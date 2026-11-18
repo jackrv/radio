@@ -8,7 +8,7 @@ from fastapi.responses import Response
 
 from services.notification_samples import add_sample
 from services.sqlite_connection import get_db
-from api.panel.models import RecordingReview, RoleSuggestion, TextCheck, ListeningHold, SampleConfirmation
+from api.panel.models import RecordingRestore, RecordingReview, RoleSuggestion, TextCheck, ListeningHold, SampleConfirmation
 
 _RANGE = re.compile(r"bytes=(\d*)-(\d*)\Z")
 
@@ -178,6 +178,20 @@ def register(app, ctx):
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
         result["event_sync"] = sync_event_from_reference(result, admin)
+        return result
+
+    @app.post("/api/recordings/{record_id}/restore")
+    def recording_restore(record_id: str, payload: RecordingRestore, admin=Depends(actor)):
+        """«↶ Скасувати» швидку розмітку: повернути запис у стан до неї (у т. ч. нерозмічений)."""
+        if (payload.reference is None) != (payload.label is None):
+            raise HTTPException(422, "Некоректний попередній стан")
+        try:
+            result = recordings.restore(record_id, payload.expected_revision, payload.model_dump(exclude={"expected_revision"}))
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        result["event_sync"] = sync_event_from_reference(result, admin)   # повернутий еталон мовлення — знову текст події
         return result
 
     def sync_event_from_reference(record, admin):

@@ -35,15 +35,16 @@ function harness(page, extraSummary = {}, options = {}) {
     urls.push(url);
     if (method==='PUT') return options.review ? options.review(body) : {...body,revision:body.expected_revision+1};
     if (url.includes('suggest-roles') && options.callsigns) return {callsigns:options.callsigns};
+    if (url.includes('/restore')) { (options.restored||[]).push(body); return {...body, revision:body.expected_revision+1}; }
     return url.includes('/summary') ? summary : response;
   },
     addCallsign:async line=>{added.push(line); if (options.addError) throw new Error(options.addError);},
     window:{addEventListener:(name,cb)=>{windowEvents[name]=cb;}}, confirm:()=>options.discard !== false,
     pct:String, num:String, fix:String, yes:String, note:text=>notes.push(text), STATUS:{ready:'Ready'}, action:cb=>cb(),
     localStorage:{getItem(){return null;}}, clearTimeout(){}, setTimeout:options.timers ? cb=>{cb(); return 1;} : ()=>1});
-  vm.runInContext(block + '\nglobalThis.loadRecordings = recordings; globalThis.saveFirst = () => reviewCards[0].submit(); globalThis.cards = reviewCards;', context);
+  vm.runInContext(block + '\nglobalThis.loadRecordings = recordings; globalThis.saveFirst = () => reviewCards[0].submit(); globalThis.cards = reviewCards; globalThis.undoLast = undoLast;', context);
   return {$, notes, urls, added, windowEvents, cards:()=>context.cards, load:()=>context.loadRecordings(true), more:()=>context.loadRecordings(false),
-    save:()=>context.saveFirst(), set:page=>{response=page;}};
+    save:()=>context.saveFirst(), undo:()=>context.undoLast(), set:page=>{response=page;}};
 }
 
 const item = {id:'a'.repeat(32),created:1,status:'ready',data:{raw_text:'текст',final_text:'текст'},reference:null,revision:0};
@@ -223,4 +224,30 @@ test('role callsign field is flagged when that callsign is not in the text', asy
   assert.doesNotMatch(field.title, /немає в тексті/);
   field.value = 'дуб 7'; field.listeners.input();
   assert.match(field.title, /«дуб 7» немає в тексті/);
+});
+
+test('a quick label (key or mouse) can be undone: the record returns to its previous state and the card keeps its text', async () => {
+  const restored = [];
+  const ui = harness({items:[{...item, reference:null, label:null, revision:0, reviewed_at:null, data:{raw_text:'клен сорок', final_text:'клен сорок'}}], total:1}, {}, {restored});
+  await ui.load();
+  const {input} = editor(ui);
+  input.value = 'клен сорок вісім';
+  ui.cards()[0].setCategory('noise', true);   // the same path as key 2 or a click on «Шум ефіру»
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.cards()[0].done, true);
+  assert.equal(input.value, '');
+  await ui.undo();
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].reference, null); assert.equal(restored[0].label, null); assert.equal(restored[0].expected_revision, 1);
+  assert.equal(ui.cards()[0].done, false);
+  assert.equal(input.value, 'клен сорок вісім');
+  await ui.undo();   // nothing left to undo
+  assert.equal(restored.length, 1);
+});
+
+test('every section loader names a function defined in the panel script', () => {
+  const loaders = script.slice(script.indexOf('  const loaders ='), script.indexOf('\n', script.indexOf('  const loaders =')));
+  for (const [, key, value] of loaders.matchAll(/(\w+): (\w+)(?=[,}])/g)) {
+    assert.match(script, new RegExp(`(async )?function ${value}\\(`), `loader «${key}» → ${value} is not a function`);
+  }
 });

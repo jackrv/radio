@@ -961,3 +961,29 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 @media (min-width: 821px) {
   #recordings .recording-body .recording-actions { border-top: 1px solid rgba(184, 239, 134, .22); border-radius: 14px 0 13px 0; }
 }
+
+/* «↶ Скасувати» швидку розмітку — плашка внизу по центру, з полоскою часу, що лишився */
+.undo-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px 12px 16px; border-radius: 12px; background: var(--surface2); border: 1px solid rgba(184, 239, 134, .4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); overflow: hidden; animation: undo-in .2s ease-out; font-size: 13px; }
+.undo-toast .undo-text { color: var(--text); white-space: nowrap; }
+.undo-toast .undo-button { padding: 6px 14px; border-radius: 99px; background: var(--lime); color: #172414; font-weight: 700; }
+.undo-toast .undo-key { font: 700 11px ui-monospace, Menlo, monospace; color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
+.undo-toast .undo-bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--lime); transform-origin: left;
+  animation: undo-time 15s linear forwards; }
+@keyframes undo-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@keyframes undo-time { to { transform: scaleX(0); } }
+
+/* ===== Кнопки типу 1–5 — у мові «Зберегти»: темна поверхня з лаймовим відтінком, клавіша — круглий знак ===== */
+.recording-type .segmented { border-color: rgba(184, 239, 134, .3); background: var(--surface); }
+.recording-type .segmented button { color: var(--text); font-weight: 600; background: transparent;
+  border-color: rgba(184, 239, 134, .18) !important; }
+.recording-type .segmented button:not(.on):hover { background: linear-gradient(160deg, rgba(184, 239, 134, .15), rgba(184, 239, 134, .04) 70%); color: #fff; }
+.recording-type .type-key { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid rgba(184, 239, 134, .5);
+  background: rgba(184, 239, 134, .08); color: var(--lime); font-size: 11px; transition: transform .15s, background .2s; }
+.recording-type .segmented button:hover .type-key { transform: scale(1.08); }
+/* Обраний тип — як «Зберегти» з незбереженими змінами: відтінок сильніший, знак налитий лаймом */
+.recording-type .segmented button.on { color: var(--lime); background: linear-gradient(160deg, rgba(184, 239, 134, .24), rgba(184, 239, 134, .08) 70%);
+  border-color: rgba(184, 239, 134, .18) !important; }
+.recording-type .segmented button.on .type-key { color: #10220f; border-color: transparent;
+  background: linear-gradient(180deg, #c3ec9a 0%, #a3da8b 55%, #86c890 100%); }

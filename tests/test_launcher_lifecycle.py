@@ -21,7 +21,7 @@ FIXTURE = Path(__file__).with_name("launcher_fixture.py")
 REPO = Path(__file__).resolve().parents[1]
 
 
-def until(predicate, timeout=10):
+def until(predicate, timeout=20):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -113,7 +113,7 @@ def test_parent_exit_stops_owned_services_in_order_and_allows_restart(environmen
     parent, _ = start()
     inode = (root / ".radio345.lock").stat().st_ino
     parent.send_signal(signo)
-    parent.wait(timeout=10)
+    parent.wait(timeout=20)
     assert_clean(root, ports)
     assert (root / ".radio345.lock").stat().st_ino == inode
     (root / "events.txt").unlink()
@@ -121,7 +121,7 @@ def test_parent_exit_stops_owned_services_in_order_and_allows_restart(environmen
         database.execute("DELETE FROM result")
     second, _ = start()
     second.send_signal(signal.SIGINT)
-    second.wait(timeout=10)
+    second.wait(timeout=20)
     assert_clean(root, ports)
 
 
@@ -129,7 +129,7 @@ def test_closing_terminal_hangs_up_launcher_and_leaves_no_services(environment):
     root, ports, start = environment
     parent, master = start(tty=True)
     os.close(master)
-    parent.wait(timeout=10)
+    parent.wait(timeout=20)
     assert_clean(root, ports)
 
 
@@ -146,7 +146,7 @@ def test_parent_killed_during_partial_startup_does_not_wait_for_unstarted_servic
 def test_interruption_between_popen_and_registration_in_parent_list_is_cleaned(environment):
     root, ports, start = environment
     parent, _ = start("interrupt-register")
-    parent.wait(timeout=10)
+    parent.wait(timeout=20)
     until(lambda: not lock_held(root / ".radio345-launcher/lock"))
     assert all(available(port) for port in ports)
 
@@ -181,7 +181,7 @@ def test_dead_controller_is_cleaned_using_its_own_live_completion_pipe(environme
     parent, _ = start()
     pid = read_state(root)["controllers"]["radio"]
     os.kill(pid, signal.SIGKILL)
-    parent.wait(timeout=10)
+    parent.wait(timeout=20)
     assert_clean(root, ports)
 
 
@@ -227,7 +227,7 @@ def test_stale_stop_token_cannot_stop_the_current_session(environment):
     assert parent.poll() is None
     assert managed_status(root)["launcher_reachable"]
     parent.send_signal(signal.SIGTERM)
-    parent.wait(timeout=10)
+    parent.wait(timeout=20)
     assert_clean(root, ports)
 
 

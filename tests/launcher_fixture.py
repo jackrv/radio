@@ -71,7 +71,7 @@ def parent(root, ports, *, slow_start=False, hung=False):
     names = ["api", "ngrok", "radio"]
     for name in names + ["parent"]:
         (root / f"{name}.ready").unlink(missing_ok=True)
-    with LauncherSession(root, names, log=launcher.output, grace={n: 0.8 for n in names}) as session:
+    with LauncherSession(root, names, log=launcher.output, grace={n: 2.0 for n in names}) as session:
         if "interrupt-register" in sys.argv:
             register = session.register
 

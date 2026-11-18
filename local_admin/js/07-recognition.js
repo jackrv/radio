@@ -214,19 +214,29 @@
     area.setAttribute("aria-label", title);
     const fit = () => { area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
     const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
-    let inserted = 0;
+    let inserted = 0, beforeInsert = null, insertedLines = [];
     if (pendingListInsert?.list === type) {
+      beforeInsert = area.value;
       const result = insertListLines(area.value, pendingListInsert);
       area.value = result.text; inserted = result.added;
+      insertedLines = pendingListInsert.lines.map(l => l.callsign ? `${l.callsign}: ${l.line}` : l.line);
       pendingListInsert = null;
     }
     fit(); area.addEventListener("input", fit);
     const warnings = el("ul", "warn-list");
     liveCheck(area, warnings, `/api/text-lists/${type}/check`, list.warnings || []);
+    let undoInsert = null;
     if (inserted) {
-      status.textContent = `Вставлено ${inserted} — перевірте й натисніть «Зберегти»`; status.className = "warn small";
+      status.textContent = `Вставлено ${inserted}: ${insertedLines.join("; ")} — перевірте й натисніть «Зберегти»`; status.className = "warn small";
       save.classList.add("needs-save");
       area.dispatchEvent?.(new Event("input"));   // одразу та сама перевірка, що й під час набору
+      // Не сподобалось — повернути список, як був до вставки (поки не збережено, ніде не діє).
+      undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
+      undoInsert.addEventListener("click", () => {
+        area.value = beforeInsert; fit(); area.dispatchEvent?.(new Event("input"));
+        save.classList.remove("needs-save"); undoInsert.remove();
+        status.textContent = "Вставку прибрано — список як був"; status.className = "muted small";
+      });
     }
     save.addEventListener("click", () => action(async () => {
       try {
@@ -236,7 +246,7 @@
         await texts();
       } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
     }));
-    const actions = el("div", "list-actions"); actions.append(save, status);
+    const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
     left.append(area, actions);
     right.append(el("h2", "", title), el("p", "muted small", help), warnings);
     if (EVALUATED_LISTS.includes(type)) right.append(listEvaluation(type, area));

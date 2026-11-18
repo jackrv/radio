@@ -98,3 +98,7 @@
     show(titles[wanted] ? wanted : "overview", { history: "none" });
   });
 
+  // Логотип і назва — «додому»: Огляд і на початок сторінки.
+  function goHome() { show("overview"); window.scrollTo?.({ top: 0, behavior: "smooth" }); }
+  $("brand")?.addEventListener("click", goHome);
+  $("brand")?.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); goHome(); } });

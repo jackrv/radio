@@ -306,9 +306,12 @@ td.good { color: var(--ok); font-weight: 700; }
 /* Фірмовий стиль: емблема, неонове світіння акцентів. */
 .sidebar { background: #0d1520; }
 .emblem { width: 44px; height: 44px; flex-shrink: 0; }
-.brand .title { font-size: 17px; letter-spacing: .09em; }
-.brand .title b { color: var(--lime); text-shadow: 0 0 10px rgba(184, 239, 134, .55); font-style: italic; }
-.brand .overline { color: var(--cyan); opacity: .8; }
+.brand { cursor: pointer; border-radius: 10px; }
+.brand:hover .title, .brand:focus-visible .title { color: #fff; }
+.brand:focus-visible { outline: 1px solid var(--lime2); outline-offset: 3px; }
+.brand .title { font-size: 16px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
+.brand .title b { color: var(--lime2); font-weight: 600; }
+.brand .overline { color: var(--muted); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 9px; }
 .tagline { display: block; margin-bottom: 6px; color: var(--lime2); font-style: italic; letter-spacing: .02em; }
 nav button.active { background: linear-gradient(90deg, rgba(184, 239, 134, .16), rgba(140, 196, 255, .05)); border-color: rgba(184, 239, 134, .45); color: #eaffde; box-shadow: var(--glow); }
 button:not(.ghost):not(.danger):not(.pill):not(.tab):not(.small-button) { box-shadow: 0 0 10px rgba(184, 239, 134, .22); }

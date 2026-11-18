@@ -1126,3 +1126,54 @@ button.stat-tile.goal { background: linear-gradient(160deg, rgba(184, 239, 134, 
 .live-filter:has(input:focus-visible) { outline: 2px solid var(--lime2); outline-offset: 2px; }
 /* Плитки проблем — не ширші за звичайну плитку */
 [data-panel="overview"] .cards { grid-template-columns: repeat(auto-fill, minmax(170px, 230px)); }
+
+/* ===================== Аналіз → Якість ===================== */
+[data-panel="quality"] .panel { padding: 13px 16px; border-radius: 12px; margin: 0 0 12px; }
+[data-panel="quality"] .panel-head h2 { font-size: 14px; }
+.small-select { padding: 3px 8px; font-size: 12px; border-radius: 99px; width: auto; }
+.page-help { margin-top: 8px; } .page-help summary { color: var(--muted); cursor: pointer; }
+.page-help p { margin: 6px 0 0; }
+@media (min-width: 1100px) {
+  main:has(> section[data-panel="quality"]:not([hidden])) { padding-bottom: 12px; }
+  .analysis-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; height: var(--analysis-h, auto); }
+  .analysis-col { min-height: 0; overflow-y: auto; padding-right: 2px; }
+  .analysis-col > .panel:last-child { margin-bottom: 0; }
+}
+/* Таблиця по днях — спокійніша: лаймові смуги «добре», приглушено-червоні «погано» */
+.quality-table th { font-size: 10px; }
+.quality-table td { padding-top: 5px; padding-bottom: 5px; }
+.quality-table tr.total td { font-weight: 700; border-bottom: 1px solid var(--border); }
+.quality-table tr.today td:first-child { color: var(--lime); font-weight: 700; }
+.quality-table .bar-cell { height: 18px; }
+.quality-table .bar-cell i.good { background: rgba(184, 239, 134, .35); }
+.quality-table .bar-cell i.bad { background: rgba(255, 143, 143, .22); }
+/* Розбір помилок */
+.error-head { margin: 0 0 8px; font-size: 13px; color: var(--muted); } .error-head b { color: var(--text); font-size: 15px; }
+.error-kinds { display: grid; gap: 4px; }
+.error-row { display: grid; grid-template-columns: 170px minmax(60px, 1fr) 44px auto; align-items: center; gap: 10px; font-size: 13px; padding: 2px 0; }
+.error-row .error-label { cursor: help; }
+.error-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.error-processing { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12px; }
+.error-chip { padding: 2px 10px !important; border-radius: 99px !important; font-size: 12px; font-weight: 600; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+.error-chip.good { color: var(--lime); border-color: rgba(184, 239, 134, .4); background: rgba(184, 239, 134, .08); }
+.error-chip.bad { color: var(--bad); border-color: rgba(255, 143, 143, .45); background: rgba(255, 143, 143, .08); }
+.error-chip:disabled { opacity: .6; cursor: default; }
+.error-subs { display: grid; gap: 2px; }
+.sub-row { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) 72px 40px; align-items: center; gap: 8px; width: 100%;
+  padding: 4px 8px !important; border-radius: 8px !important; background: transparent; border: 0; color: var(--text); font-weight: 500; font-size: 13px; text-align: left; }
+.sub-row:hover { background: var(--surface2); filter: none; }
+.sub-row .sub-from { color: var(--bad); overflow-wrap: anywhere; } .sub-row .sub-to { color: var(--lime); overflow-wrap: anywhere; }
+.sub-row .sub-arrow { color: var(--muted); text-align: center; }
+.sub-row .sub-kind { justify-self: start; padding: 0 7px; border-radius: 99px; font-size: 11px; background: var(--surface2); color: var(--muted); }
+.sub-row .sub-kind.callsign { color: var(--cyan); background: rgba(140, 196, 255, .1); }
+.sub-row .sub-kind.number { color: var(--warn); background: rgba(240, 196, 108, .1); }
+.sub-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.error-words { display: grid; gap: 6px; margin-top: 10px; }
+.word-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.word-chip { padding: 1px 8px; border-radius: 99px; background: var(--surface2); font-size: 12px; }
+@media (min-width: 1100px) { .analysis-split { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+.quality-table th, .quality-table td { padding-left: 6px; padding-right: 6px; }
+.quality-table .bar-cell { min-width: 64px; }
+/* Набір для дообучення — тонкі смуги, як на Огляді */
+#training .bar-cell { height: 20px; border-radius: 99px; background: rgba(184, 239, 134, .08); margin-bottom: 6px; }
+#training .bar-cell i.good { background: linear-gradient(90deg, rgba(134, 200, 144, .55), rgba(184, 239, 134, .55)); border-radius: 99px; }

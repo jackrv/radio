@@ -291,12 +291,28 @@
 
       <!-- Система -->
       <section data-panel="quality" hidden>
-        <article class="panel"><div class="panel-head"><h2>Якість розпізнавання по днях</h2><span class="muted small">за вашими еталонами мовлення</span></div>
-          <p class="muted small page-note">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». <b>«Без правок»</b> — частка фраз, де підсумковий текст збігся з вашим еталоном слово в слово (головна мета). «Пропущено» — мовлення, з якого тексту не вийшло зовсім. «Помилка в словах» — частка слів, записаних не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після словників, шаблонів і навчених правил. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p>
-          <div class="table-wrap"><table id="quality-days" class="compact"></table></div></article>
-        <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON усього архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>
-          <p class="muted small page-note">Дообучення на вашому ефірі — найбільший запас точності: модель вивчить ваші позивні, коди й манеру мовлення. Потрібні розмічені записи «Мовлення» до 30 с; помітний ефект — від ~2 годин, добрий — ~5 годин. Вивантаження — локальна папка <code>.local-training/</code> (WAV + metadata.jsonl, останні дні — окремо для перевірки), нікуди не надсилається.</p>
-          <div id="training"></div></article>
+        <!-- Плитки: головні показники якості за весь час і сьогодні. -->
+        <div id="quality-tiles" class="archive-stats workdesk" aria-live="polite"></div>
+        <!-- Широкий екран: у висоту вікна; ліворуч розбір помилок, праворуч дні й набір для дообучення. -->
+        <div class="analysis-split">
+          <div class="analysis-col">
+            <article class="panel"><div class="panel-head"><h2>Що заважає тексту без правок</h2>
+                <select id="errors-days" class="small-select" aria-label="Період розбору"><option value="0">увесь архів</option><option value="7">7 днів</option><option value="1">24 год</option></select></div>
+              <div id="errors-kinds" class="error-kinds"></div></article>
+            <article class="panel"><div class="panel-head"><h2>Найчастіші заміни слів</h2><span class="muted small">почуто → правильно</span></div>
+              <div id="errors-subs" class="error-subs"></div><div id="errors-words" class="error-words"></div></article>
+          </div>
+          <div class="analysis-col">
+            <article class="panel"><div class="panel-head"><h2>По днях</h2><span class="muted small">за вашими еталонами мовлення</span></div>
+              <div class="table-wrap"><table id="quality-days" class="compact quality-table"></table></div>
+              <details class="small page-help"><summary>Що означають колонки</summary>
+                <p class="muted">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». <b>«Без правок»</b> — частка фраз, де підсумковий текст збігся з вашим еталоном слово в слово (головна мета). «Пропущено» — мовлення, з якого тексту не вийшло зовсім. «Помилка в словах» — частка слів, записаних не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після словників, шаблонів і навчених правил. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p></details></article>
+            <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>
+              <div id="training"></div>
+              <details class="small page-help"><summary>Навіщо й як</summary>
+                <p class="muted">Дообучення на вашому ефірі — найбільший запас точності: модель вивчить ваші позивні, коди й манеру мовлення. Потрібні розмічені записи «Мовлення» до 30 с; помітний ефект — від ~2 годин, добрий — ~5 годин. Вивантаження — локальна папка <code>.local-training/</code> (WAV + metadata.jsonl, останні дні — окремо для перевірки), нікуди не надсилається.</p></details></article>
+          </div>
+        </div>
       </section>
 
       <section data-panel="experiments" hidden>

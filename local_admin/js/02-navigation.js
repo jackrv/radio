@@ -68,6 +68,7 @@
     view = name; lastTab[group] = name;
     if (name === "recordings" && typeof fitArchive === "function") requestAnimationFrame(() => fitArchive());
     if (name === "overview" && typeof fitOverview === "function") requestAnimationFrame(() => fitOverview());
+    if (name === "quality" && typeof fitAnalysis === "function") requestAnimationFrame(() => fitAnalysis());
     const url = name === "overview" ? location.pathname : `${location.pathname}?view=${encodeURIComponent(name)}`;
     if (mode === "push" && changed) history.pushState({ view: name }, "", url);
     else if (mode === "replace") history.replaceState({ view: name }, "", location.pathname + location.search);

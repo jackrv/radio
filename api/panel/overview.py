@@ -50,6 +50,23 @@ def register(app, ctx):
         """Стрічка «Ефір зараз»: останні фрази з тим, що з ними сталося."""
         return recordings.recent(max(1, min(limit, 50)))
 
+    @app.get("/api/quality/errors")
+    def quality_errors(days: int = 0, admin=Depends(actor)):
+        """Що заважає тексту «без правок»: види розбіжностей, вплив обробки, найчастіші заміни (days=0 — увесь архів)."""
+        import json
+        from services.error_analysis import analyse, callsign_names
+        since = time.time() - max(1, min(days, 365)) * 86400 if days else 0
+        with recordings.connect() as db:
+            rows = db.execute("SELECT id, reference, data FROM recordings WHERE label='speech' AND reference IS NOT NULL "
+                              "AND created >= ? ORDER BY created DESC", (since,)).fetchall()
+        records = []
+        for record_id, reference, data in rows:
+            data = json.loads(data)
+            records.append({"id": record_id, "reference": reference, "raw_text": data.get("raw_text", ""), "final_text": data.get("final_text", "")})
+        with get_db(db_path) as db:
+            names = callsign_names(db)
+        return analyse(records, names)
+
     @app.get("/api/quality")
     def quality(days: int = 30, admin=Depends(actor)):
         """Якість розпізнавання по днях за еталонами оператора."""

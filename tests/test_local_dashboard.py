@@ -804,3 +804,18 @@ def test_workdesk_shows_queues_quality_and_todays_codes(local):
     data = client.get("/api/workdesk").json()
     assert data["queue"]["no_roles"] == 1 and data["quality"][0]["no_edits"] == 1
     assert data["codes"]["codes"] == ["48 62"] and len(data["codes"]["period"]) == 2
+
+
+def test_quality_errors_explain_what_needs_edits(local):
+    client, path, tmp = local
+    import sqlite3
+    from services.recordings import RecordingStore
+    with sqlite3.connect(path) as db:
+        db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
+        db.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'клен: 48')")
+    assert client.get("/api/quality/errors").json()["records"] == 0
+    store = RecordingStore(tmp / "recordings")
+    record = store.save(pcm(segment()), 16000, {"status": "ready", "raw_text": "клей 48", "final_text": "клей 48"})
+    store.review(record, "Клен 48", "speech", 0)
+    data = client.get("/api/quality/errors?days=7").json()
+    assert data["with_edits"] == 1 and data["categories"]["callsigns"]["ids"] == [record]

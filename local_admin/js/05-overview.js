@@ -315,7 +315,19 @@
     const extra = document.documentElement.scrollHeight - window.innerHeight;
     if (extra > 0) { height = Math.max(420, height - extra); split.style.setProperty("--overview-h", `${height}px`); }
   }
-  window.addEventListener?.("resize", () => { if (view === "overview") fitOverview(); });
+  window.addEventListener?.("resize", () => { if (view === "overview") fitOverview(); else if (view === "quality") fitAnalysis(); });
+  // Те саме для «Аналіз → Якість»: колонки прокручуються всередині, сторінка — ні.
+  function fitAnalysis() {
+    if (typeof document === "undefined" || !document.querySelector) return;
+    const split = document.querySelector(".analysis-split");
+    if (!split) return;
+    if (!window.matchMedia?.("(min-width: 1100px)").matches || split.offsetParent === null) { split.style.removeProperty("--analysis-h"); return; }
+    const top = split.getBoundingClientRect().top + window.scrollY;
+    let height = Math.max(420, Math.floor(window.innerHeight - top - 10));
+    split.style.setProperty("--analysis-h", `${height}px`);
+    const extra = document.documentElement.scrollHeight - window.innerHeight;
+    if (extra > 0) { height = Math.max(420, height - extra); split.style.setProperty("--analysis-h", `${height}px`); }
+  }
   function drawEvents(series) {
     const counts = series.counts, max = Math.max(1, ...counts), W = 720, H = 180, pad = 22, bw = (W - pad) / counts.length;
     const chart = svg("svg", { viewBox: `0 0 ${W} ${H + 20}`, role: "img", "aria-label": "Події за годинами" });

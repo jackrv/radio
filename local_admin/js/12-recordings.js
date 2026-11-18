@@ -943,9 +943,12 @@
   if (typeof ResizeObserver !== "undefined" && typeof document !== "undefined" && document.querySelector?.("main")) {
     let fitting = false;
     new ResizeObserver(() => {
-      if (fitting || !["recordings", "overview"].includes(view)) return;
+      if (fitting || !["recordings", "overview", "quality"].includes(view)) return;
       fitting = true;
-      window.requestAnimationFrame(() => { if (view === "recordings") fitArchive(); else if (typeof fitOverview === "function") fitOverview(); fitting = false; });
+      window.requestAnimationFrame(() => {
+        if (view === "recordings") fitArchive(); else if (view === "overview") fitOverview(); else if (typeof fitAnalysis === "function") fitAnalysis();
+        fitting = false;
+      });
     }).observe(document.querySelector("main"));
   }
   function activateReview(controller, scroll = true) {

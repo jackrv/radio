@@ -57,6 +57,10 @@
     try { await entry.run(); note(`Розмітку «${entry.title}» скасовано.`); }
     catch (error) { note(`Не вдалося скасувати: ${error.message}`); }
   }
+  // Короткі назви видів — для плитки «У списку» (повна назва — у підказці).
+  const VIEW_SHORT = { radio: "Ефір", speech: "Інше мовлення", filtered: "Відсіяне", reviewed: "Розмічені", miniapp: "Mini App",
+                       telegram: "Telegram", all: "Усі", false_text: "Хибний текст", missed: "Пропущене", no_roles: "Без ролей",
+                       unclear: "Нерозбірливі" };
   const ROW_KIND = { speech: "Мовлення", unclear: "Нерозбірливо", noise: "Шум", notification: "Сигнал", room: "Кімната" };
   function recordingRow(item, controller) {
     const row = el("div", "recording-row");
@@ -380,8 +384,8 @@
              delta == null ? "" : `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. обробка`,
              delta == null ? "wide" : delta <= 0 ? "good wide" : "bad wide",
              "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення)"),
-        tile("У списку", num(page.total), $("recording-view").selectedOptions?.[0]?.dataset.title || "", "compact",
-             "Скільки записів у списку праворуч — за вибраним видом, періодом і пошуком")];
+        tile("У списку", num(page.total), VIEW_SHORT[$("recording-view").value] || "", "compact",
+             `Скільки записів у списку праворуч — за вибраним видом, періодом і пошуком. Вид: ${$("recording-view").selectedOptions?.[0]?.dataset.title || "—"}`)];
       if (searchQuery()) {
         const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });

@@ -34,12 +34,13 @@ function harness(page, extraSummary = {}, options = {}) {
   const context = vm.createContext({$, el:(tag, cls, text)=>Object.assign(new Element(), {className:cls,textContent:text}), request: async (url, method, body) => {
     urls.push(url);
     if (method==='PUT') return options.review ? options.review(body) : {...body,revision:body.expected_revision+1};
+    if (url.includes('suggest-roles') && options.callsigns) return {callsigns:options.callsigns};
     return url.includes('/summary') ? summary : response;
   },
     addCallsign:async line=>{added.push(line); if (options.addError) throw new Error(options.addError);},
     window:{addEventListener:(name,cb)=>{windowEvents[name]=cb;}}, confirm:()=>options.discard !== false,
     pct:String, num:String, fix:String, yes:String, note:text=>notes.push(text), STATUS:{ready:'Ready'}, action:cb=>cb(),
-    localStorage:{getItem(){return null;}}, clearTimeout(){}, setTimeout(){return 1;}});
+    localStorage:{getItem(){return null;}}, clearTimeout(){}, setTimeout:options.timers ? cb=>{cb(); return 1;} : ()=>1});
   vm.runInContext(block + '\nglobalThis.loadRecordings = recordings; globalThis.saveFirst = () => reviewCards[0].submit(); globalThis.cards = reviewCards;', context);
   return {$, notes, urls, added, windowEvents, cards:()=>context.cards, load:()=>context.loadRecordings(true), more:()=>context.loadRecordings(false),
     save:()=>context.saveFirst(), set:page=>{response=page;}};
@@ -188,4 +189,26 @@ test('callsign hints carry the add button; no separate form, save is the last ac
   const last = actions.children.at(-1), before = actions.children.at(-2);
   assert.equal(last.className, 'save-primary');
   assert.equal(before.className, 'dirty-badge');
+});
+
+test('a callsign is either "to" or "from": choosing one role clears the other, a second click clears both', async () => {
+  let sent;
+  const reviewed = {...item, reference:'Клен 48, я Ясень 12', label:'speech', reference_recipient:'клен 48', reference_sender:''};
+  const ui = harness({items:[reviewed], total:1}, {}, {timers:true, callsigns:['клен 48'], review:body=>{sent=body; return {...body, revision:1};}});
+  await ui.load();
+  ui.cards()[0].refreshHints();   // як під час відкриття картки: чипи й підказки
+  await new Promise(resolve => setImmediate(resolve));
+  const switches = () => descendants(ui.$('recordings').children[0]).filter(n=>n.className==='role-switch');
+  const buttons = () => switches()[0].children;
+  assert.deepEqual(buttons().map(b=>[b.textContent, b.className]), [['Кому','ghost on'], ['Від','ghost']]);
+  buttons()[1].click();
+  assert.deepEqual(buttons().map(b=>b.className), ['ghost', 'ghost on']);
+  buttons()[0].click();
+  assert.deepEqual(buttons().map(b=>b.className), ['ghost on', 'ghost']);
+  buttons()[0].click();
+  assert.deepEqual(buttons().map(b=>b.className), ['ghost', 'ghost']);
+  buttons()[1].click();
+  await ui.save();
+  assert.equal(sent.reference_recipient, '');
+  assert.equal(sent.reference_sender, 'клен 48');
 });

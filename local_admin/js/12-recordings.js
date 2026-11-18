@@ -383,14 +383,20 @@
           field.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); field.blur(); } });
           table.append(field);
           const switcher = el("span", "role-switch");
-          for (const [role, title] of [[recipient, "Кому"], [sender, "Від"]]) {
+          // Перемикач: позивний або «Кому», або «Від», або ні те, ні те (повторний клік знімає вибір).
+          switcher.setAttribute?.("role", "radiogroup"); switcher.setAttribute?.("aria-label", `Роль: ${name}`);
+          for (const [role, other, title] of [[recipient, sender, "Кому"], [sender, recipient, "Від"]]) {
             const chosen = role.values().some(v => sameRole(v, name));
             const toggle = el("button", chosen ? "ghost on" : "ghost", title); toggle.type = "button";
-            toggle.setAttribute("aria-pressed", String(chosen));
+            toggle.setAttribute("role", "radio"); toggle.setAttribute("aria-checked", String(chosen));
             toggle.addEventListener("click", () => {
               rolesTouched();
               const list = role.values().filter(v => !sameRole(v, name));
               role.set(chosen ? list : [...list, name]);
+              if (!chosen) {
+                const rest = other.values();
+                if (rest.some(v => sameRole(v, name))) other.set(rest.filter(v => !sameRole(v, name)));
+              }
               updateDirty(); renderChips();
             });
             switcher.append(toggle);

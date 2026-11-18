@@ -406,7 +406,11 @@
         updateDraftCount();
       }
       form.addEventListener("input", updateDirty); form.addEventListener("change", updateDirty);
-      function showSave(text, tone = "muted") { saveStatus.textContent = text; saveStatus.className = `${tone} small save-status`; }
+      // Стан збереження — і в рядку для читачів екрана, і дрібно всередині самої кнопки.
+      function showSave(text, tone = "muted") {
+        saveStatus.textContent = text; saveStatus.className = `${tone} small save-status`;
+        save.dataset.status = text; save.dataset.tone = tone;
+      }
       async function submit() {
         if (saving) return;
         saving = true; save.disabled = true; showSave("Зберігаю…");

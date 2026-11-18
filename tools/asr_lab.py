@@ -289,6 +289,10 @@ class Lab:
         self.log = logging.getLogger("asr_lab")
         self.db_path = snapshot_database(run_dir / "events-snapshot.db")
         self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path)
+        if getattr(args, "names", None):
+            # Інший перелік назв у підказці (напр. лише ті, що звучать в ефірі): рядок — назва.
+            names = [l.strip() for l in Path(args.names).read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
+            dictionary_prompt = ", ".join(sorted(set(names)))
         phrases = Path(args.prompt_file).read_text(encoding="utf-8").strip() if args.prompt_file else PHRASES_PROMPT
         self.whisper_phrases = None
         if getattr(args, "whisper_phrases", None):
@@ -334,6 +338,7 @@ class Lab:
                 "llm_repo": config.LLM_REPO if self.llm else None, "temperature": list(self.temperature), "model": self.model, "language": self.language or "auto",
                 "prompt": self.args.prompt, "prompt_chars": len(self.prompt), "prompt_text": self.prompt,
                 "daily_codes": getattr(self.args, "daily_codes", "off"), "whisper_phrases": self.whisper_phrases,
+                "retry": getattr(self.args, "retry", "off"), "names_file": getattr(self.args, "names", None),
                 "prompt_tokens": prompt_token_count(self.prompt, self.language),
                 "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
                 "dictionary_prompt_sha256": hashlib.sha256(self.dictionary_prompt.encode()).hexdigest(),
@@ -429,6 +434,13 @@ class Lab:
         else:
             whisper = self.recognizer.transcribe(audio)
             raw = self.recognizer.extract_text(whisper)
+            # Як у приймачі: зациклився з підказкою й тексту немає — ще раз без підказки.
+            from core.recognition import is_looped
+            if getattr(self.args, "retry", "off") == "on" and not raw and self.recognizer.prompt and is_looped(whisper):
+                again = self.recognizer.transcribe(audio, prompt="")
+                result["whisper_retry"] = bool(self.recognizer.extract_text(again))
+                if result["whisper_retry"]:
+                    whisper, raw = again, self.recognizer.extract_text(again)
             result["whisper_segments"] = [{k: s.get(k) for k in ("avg_logprob", "no_speech_prob", "compression_ratio",
                                                                  "temperature", "start", "end", "text")}
                                           for s in whisper.get("segments", [])]
@@ -655,6 +667,9 @@ def main(argv=None):
     r.add_argument("--daily-codes", choices=("off", "append", "latest"), default="off",
                    help="append: додати в підказку постійні й коди доби кожного запису; latest — лише останній "
                         "код доби запису (лише --prompt receiver)")
+    r.add_argument("--retry", choices=("off", "on"), default="off",
+                   help="on: другий шанс без підказки, коли Whisper зациклився й тексту немає (як у приймачі)")
+    r.add_argument("--names", help="файл назв для підказки замість усіх назв словників (рядок — назва)")
     r.add_argument("--normalize", choices=("on", "off"), default="on")
     r.add_argument("--temperature", default="0,0.2,0.4",
                    help="температури Whisper через кому; «0» — без повторного розпізнавання")

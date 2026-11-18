@@ -55,6 +55,22 @@ def register(app, ctx):
         """Якість розпізнавання по днях за еталонами оператора."""
         return {"days": recordings.quality_by_day(max(1, min(days, 365)))}
 
+    @app.get("/api/training")
+    def training(admin=Depends(actor)):
+        """Скільки розмічено для дообучення Whisper (орієнтири — 2 і 5 годин мовлення)."""
+        from services.training_set import readiness
+        return readiness(recordings)
+
+    @app.post("/api/training/export")
+    def training_export(admin=Depends(actor)):
+        """Локальне вивантаження набору (.local-training/), нікуди не надсилається."""
+        from pathlib import Path
+        from services.training_set import export
+        try:
+            return export(recordings, Path(db_path).resolve().parent / ".local-training")
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
     @app.get("/api/experiments")
     def experiments(admin=Depends(actor)):
         from services.experiments import list_runs

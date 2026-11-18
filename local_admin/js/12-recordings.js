@@ -431,7 +431,7 @@
   $("recording-compact").addEventListener("change", applyCompact);
   applyCompact();
 
-  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality, experiments, preview: roles };
+  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

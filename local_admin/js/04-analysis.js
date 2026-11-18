@@ -34,6 +34,27 @@
     }
   }
 
+  // ---------- Аналіз: набір для дообучення ----------
+  async function training() {
+    const t = await request("/api/training");
+    const box = $("training"); box.replaceChildren();
+    const minutes = s => `${Math.floor(s / 3600)} год ${Math.round((s % 3600) / 60)} хв`;
+    for (const target of t.targets) {
+      const row = el("div", "bar-cell"), fill = el("i", "good");
+      fill.style.width = `${Math.round(target.share * 100)}%`;
+      row.append(fill, el("span", "", `${minutes(t.seconds)} з ${target.seconds / 3600} год (${Math.round(target.share * 100)}%)`));
+      box.append(row);
+    }
+    box.append(el("p", "muted small", `Придатних записів: ${t.records}${t.too_long ? ` · довших за 30 с (не входять): ${t.too_long}` : ""}`));
+  }
+  $("training-export").addEventListener("click", () => action(async () => {
+    $("training-export").disabled = true;
+    try {
+      const r = await request("/api/training/export", "POST");
+      note(`Вивантажено ${r.records} записів (${Math.round(r.seconds / 60)} хв; навчання ${r.train}, перевірка ${r.test}) у ${r.path}`);
+    } finally { $("training-export").disabled = false; }
+  }));
+
   // ---------- Аналіз: офлайн-прогони ----------
   const EXP_KEYS = [["wer", "Помилка в словах", false], ["digits_exact", "Номери точно", true], ["recipient_accuracy_from_hypothesis", "Адресат", true],
     ["missed_speech", "Пропущено мовлення", false, true], ["false_text_on_non_speech", "Текст на шумі/сигналі", false, true],

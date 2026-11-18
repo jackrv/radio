@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 import json
 import wave
 from unittest.mock import Mock
@@ -323,3 +324,19 @@ def test_quality_by_day_counts_phrases_that_needed_no_edits_and_missed_speech(tm
     day, = store.quality_by_day()
     assert day['records'] == 3 and day['no_edits'] == 1 and day['missed'] == 1
     assert round(day['no_edits_share'], 2) == 0.33
+
+
+def test_training_set_readiness_and_local_export(tmp_path):
+    import json as _json
+    from services.training_set import export, readiness
+    store = RecordingStore(tmp_path / 'archive')
+    for i, (label, reference) in enumerate((('speech', 'Клен 15, прийом / Дуб 4, прийнято'), ('speech', 'Клен 15, прийнято'),
+                                            ('noise', ''), ('unclear', 'щось'))):
+        rid = store.save(pcm(), 16000, {'status': 'ready'})
+        store.review(rid, reference, label, 0)
+    ready = readiness(store)
+    assert ready['records'] == 2 and ready['seconds'] > 0 and ready['targets'][0]['seconds'] == 7200
+    result = export(store, tmp_path / 'training')
+    rows = [_json.loads(l) for l in (Path(result['path']) / 'metadata.jsonl').read_text().splitlines()]
+    assert result['records'] == 2 and {r['text'] for r in rows} == {'Клен 15, прийом Дуб 4, прийнято', 'Клен 15, прийнято'}
+    assert all((Path(result['path']) / r['audio']).is_file() for r in rows)

@@ -78,6 +78,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/daily-codes/(.+)"), "Коди доби: {0}"),
         (re.compile(r"/api/samples(/(?!test$)[^/]+)?|/api/recordings/[^/]+/notification-sample"), "Зразки сигналів"),
         (re.compile(r"/api/backups"), "Копія бази"),
+        (re.compile(r"/api/training/export"), "Вивантажено набір для дообучення"),
         (re.compile(r"/api/receiver-pause"), "Пауза приймача"),
         (re.compile(r"/api/launcher/([a-z-]+)"), "Лаунчер: {0}"),
     )

@@ -1,6 +1,17 @@
   // ---------- Черги розмітки з поточного архіву ----------
   // Види «розмітки» показують лише нерозмічене: розмічений запис зникає зі списку.
   const TODO_VIEWS = ["radio", "speech", "filtered"];
+  // Швидкість відтворення — біля кожного плеєра; спільна для всіх карток (setSpeed нижче).
+  const SPEEDS = ["0.75", "0.85", "1", "1.25", "1.5", "1.75", "2"];
+  function speedSelect() {
+    const select = el("select", "speed-select");
+    select.title = "Швидкість відтворення (клавіші ] і [). Тон голосу не змінюється.";
+    select.setAttribute?.("aria-label", "Швидкість відтворення");
+    for (const value of SPEEDS) { const o = el("option", "", `${value.replace(".", ",")}×`); o.value = value; select.append?.(o); }
+    select.value = typeof reviewPrefs === "undefined" ? "1" : String(reviewPrefs.speed);
+    select.addEventListener?.("change", () => setSpeed(select.value));
+    return select;
+  }
   let pendingEdits = "";   // збережений фільтр «правки користувача», доки варіанти ще не завантажено
   const editsValue = () => $("recording-edits").value || pendingEdits;
   function periodSince() {
@@ -66,7 +77,7 @@
       request("/api/recordings/summary")
     ]);
     if (reset) archiveBaseline = {query: JSON.stringify(recordingFilterIds.map(id => $(id).value)), total: page.total, first: page.items[0]?.id};
-    $("archive-update-note").textContent = "Список оновлюється кнопкою, щоб зберегти чернетки й аудіо.";
+    $("archive-update-note").textContent = "";
     loadedRecordingFilters = Object.fromEntries(recordingFilterIds.map(id => [id, $(id).value]));
     // Правки з Mini App: усі або конкретного користувача (журнал дій з 16.11.2026).
     const editsSelect = $("recording-edits"), chosenEdits = editsValue();
@@ -97,7 +108,9 @@
       const eventNo = /^db:(\d+)$/.exec(d.fix_id || "");
       header.append(el("h3", "", `${new Date(item.created * 1000).toLocaleString("uk-UA")} · ${STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status)} · ${item.id.slice(0, 8)}${eventNo ? ` · №${eventNo[1]}` : ""}`));
       const audio = el("audio"); audio.controls = true; audio.preload = "none";
-      audio.src = `/api/recordings/${item.id}/audio`; header.append(audio); card.append(header);
+      audio.src = `/api/recordings/${item.id}/audio`;
+      const player = el("div", "recording-player"); player.append(audio, speedSelect());
+      header.append(player); card.append(header);
       if (typeof d.notification_score === "number" || d.fix_id) {
         // Надіслане в Telegram і оцінка спектрального фільтра; чистий сигнал можна зробити зразком.
         const tags = el("div", "recording-tags");
@@ -120,7 +133,7 @@
         card.append(tags);
       }
       const details = el("details", "recording-details");
-      details.append(el("summary", "", "Розбір і метрики"));
+      details.append(el("summary", "", "Технічні деталі"));
       details.append(el("p", "muted small", `Тривалість: ${fix(signal.duration_s)} с · рівень: ${fix(signal.rms_dbfs, 1)} dBFS · кліпінг: ${pct(signal.clipping_ratio)} · Whisper: ${fix(d.whisper_s)} с · Qwen: ${fix(d.qwen_s)} с · черга: ${fix(d.queue_wait_s)} с`));
       for (const fix of item.corrections || []) {
         const when = new Date(fix.ts * 1000).toLocaleString("uk-UA");
@@ -370,7 +383,8 @@
           saving = false; save.disabled = false;
         }
       }
-      form.append(textField, lint, chips, roles, multi, actions);
+      const meta = el("div", "recording-meta"); meta.append(roles, multi);
+      form.append(textField, lint, chips, meta, actions);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
@@ -426,10 +440,6 @@
   }
   rememberValue("learning-filter", "radio345:learning-filter");
   rememberValue("role", "radio345:preview-role");
-  rememberValue("recording-compact", "radio345:archive-compact", { checkbox: true });
-  const applyCompact = () => $("recordings").classList?.toggle("compact", $("recording-compact").checked);
-  $("recording-compact").addEventListener("change", applyCompact);
-  applyCompact();
 
   const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
 
@@ -439,17 +449,14 @@
   try { reviewPrefs = { ...reviewPrefs, ...JSON.parse(localStorage.getItem(REVIEW_PREFS) || "{}") }; } catch (_) { /* типово */ }
   const savePrefs = () => { try { localStorage.setItem(REVIEW_PREFS, JSON.stringify(reviewPrefs)); } catch (_) { /* сесія */ } };
   $("recording-autoplay").checked = reviewPrefs.autoplay;
-  // Швидкість для всіх карток; ] / [ (і «ї» / «х» в українській розкладці) — на крок швидше чи повільніше.
-  const SPEEDS = [...$("recording-speed").options].map(o => o.value);
+  // Швидкість — спільна для всіх карток, вибір біля кожного плеєра; ] / [ (ї / х) — на крок.
+  if (!SPEEDS.includes(String(reviewPrefs.speed))) reviewPrefs.speed = "1";
   function setSpeed(value, announce = false) {
-    reviewPrefs.speed = value; savePrefs();
-    $("recording-speed").value = value;
+    reviewPrefs.speed = String(value); savePrefs();
+    for (const select of document.querySelectorAll(".speed-select")) select.value = reviewPrefs.speed;
     for (const c of reviewCards) c.audio.playbackRate = Number(value);
     if (announce) note(`Швидкість відтворення: ${String(value).replace(".", ",")}×`);
   }
-  if (!SPEEDS.includes(String(reviewPrefs.speed))) reviewPrefs.speed = "1";
-  $("recording-speed").value = reviewPrefs.speed;
-  $("recording-speed").addEventListener("change", () => setSpeed($("recording-speed").value));
   $("recording-autoplay").addEventListener("change", () => { reviewPrefs.autoplay = $("recording-autoplay").checked; savePrefs(); });
   document.addEventListener("play", event => {
     if (event.target instanceof HTMLMediaElement && event.target.closest('[data-panel="recordings"]'))

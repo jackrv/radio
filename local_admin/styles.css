@@ -295,10 +295,6 @@ td.good { color: var(--ok); font-weight: 700; }
 .table-wrap { max-height: 72vh; overflow: auto; }
 .table-wrap th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 /* Компактний режим архіву для швидкої розмітки */
-#recordings.compact .recording-card { padding: 8px 12px; margin-bottom: 6px; }
-#recordings.compact .recording-details, #recordings.compact .recording-edit { display: none; }
-#recordings.compact .recording-header h3 { font-size: 12px; }
-#recordings.compact textarea { min-height: 0; }
 @media (max-width: 1100px) { #global-search { width: 200px; } }
 /* Верхня панель: яскравіші перемикачі й плашка-кнопка стану приймача. */
 .pill-button { border: 1px solid transparent; cursor: pointer; }
@@ -360,12 +356,6 @@ button.ghost:hover, .card.clickable:hover { box-shadow: none; }
 nav button.active { box-shadow: none; }
 .tabs .tab.active { text-shadow: none; }
 .switch:has(input:checked) { color: var(--text); background: #253b31; border-color: var(--lime2); }
-.archive-tools { align-items: flex-start; }
-.archive-options { margin: 0; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; }
-.archive-options summary { font-size: 12px; color: var(--text); }
-.archive-options[open] { flex-basis: 100%; }
-.archive-options .toolbar { margin: 8px 0 10px; }
-.archive-options a { display: inline-block; margin: 8px 0 12px; }
 .draft-count, .dirty-badge, .draft-indicator { color: var(--warn); font-size: 12px; }
 .draft-count { margin-left: auto; background: #41351d; border-radius: 99px; padding: 0 7px; }
 .draft-indicator { align-self: center; }
@@ -381,7 +371,6 @@ nav button.active { box-shadow: none; }
 .hint-kind { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 .hint-message { flex: 0 1 auto; }  /* кнопка — одразу за текстом підказки, а не біля правого краю */
 .text-check-item button { font-size: 12px; padding: 3px 7px; }
-#recordings.compact .recording-edit { display: block; font-size: 11px; }
 .system-controls button { display: inline-flex; align-items: center; gap: 8px; }
 .system-controls .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
 @media (max-width: 700px) {
@@ -405,3 +394,32 @@ nav button.active { box-shadow: none; }
 .link-button:hover { color: var(--text); }
 .danger-text { color: var(--bad); }
 table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--border); }
+
+/* Аудіоархів: одна щільна шапка й щільні картки */
+.archive-bar { padding: 10px 14px; }
+.archive-filters { gap: 6px; align-items: center; margin: 0; }
+.archive-filters select, .archive-filters input[type=search] { padding: 5px 8px; font-size: 12px; }
+.archive-filters #recording-view { max-width: 260px; }
+.archive-filters #recording-search { flex: 1 1 180px; min-width: 150px; }
+.archive-switches { display: flex; gap: 6px; margin-left: auto; }
+.archive-switches .switch { padding: 3px 9px; }
+.archive-status { margin: 6px 0 2px; }
+.archive-status .update-note { color: var(--warn); }
+.archive-help { margin-top: 2px; }
+.archive-help summary { color: var(--muted); cursor: pointer; }
+#recordings .recording-card { padding: 8px 12px; margin-bottom: 6px; }
+.recording-player { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 55%; }
+[data-panel="recordings"] .recording-player audio { height: 30px; width: 260px; max-width: 100%; }
+.recording-player .speed-select { padding: 3px 4px; font-size: 12px; border-radius: 6px; width: auto; }
+.recording-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0; }
+.recording-meta .recording-roles { flex: 1 1 420px; display: flex; gap: 10px; }
+.recording-meta .recording-role { flex: 1 1 0; }
+.recording-meta .check { white-space: nowrap; }
+#recordings textarea { min-height: 0; }
+.button-link { display: inline-block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; font-size: 13px; }
+.button-link:hover { border-color: var(--lime2); }
+@media (max-width: 820px) {
+  .recording-player { max-width: 100%; width: 100%; }
+  .archive-switches { margin-left: 0; }
+  .recording-meta .recording-roles { flex-direction: column; }
+}

@@ -76,35 +76,36 @@
       </section>
 
       <section data-panel="recordings" hidden>
-        <article class="panel"><h2>Перевірка розпізнавання</h2>
-
-          <div class="toolbar">
-            <label class="field-inline">Що показати
-              <select id="recording-view" aria-label="Що показати">
-                <optgroup label="Розмітка — ще не розмічені, нові першими">
-                  <option value="radio">Ефір: є позивний або подія</option>
-                  <option value="speech">Інше мовлення (часто розмови в кімнаті)</option>
-                  <option value="filtered">Шум, сигнали й короткі (відсіяне програмою)</option>
-                </optgroup>
-                <optgroup label="Перегляд">
-                  <option value="reviewed">Розмічені</option>
-                  <option value="telegram">Надіслано в Telegram</option>
-                  <option value="all">Усі записи</option>
-                </optgroup>
-              </select></label>
-            <label class="field-inline">Період
-              <select id="recording-period" aria-label="Період">
-                <option value="">увесь час</option><option value="today">сьогодні</option>
-                <option value="24">останні 24 год</option><option value="168">останні 7 днів</option>
-              </select></label>
-            <select id="recording-edits" aria-label="Правки"><option value="">Будь-хто правив або ні</option><option value="miniapp">Лише правки з Mini App</option></select>
+        <article class="panel archive-bar">
+          <div class="toolbar archive-filters">
+            <select id="recording-view" aria-label="Що показати" title="Що показати">
+              <optgroup label="Розмітка — ще не розмічені, нові першими">
+                <option value="radio">Ефір: є позивний або подія</option>
+                <option value="speech">Інше мовлення (часто розмови в кімнаті)</option>
+                <option value="filtered">Шум, сигнали й короткі (відсіяне програмою)</option>
+              </optgroup>
+              <optgroup label="Перегляд">
+                <option value="reviewed">Розмічені</option>
+                <option value="telegram">Надіслано в Telegram</option>
+                <option value="all">Усі записи</option>
+              </optgroup>
+            </select>
+            <select id="recording-period" aria-label="Період" title="Період">
+              <option value="">увесь час</option><option value="today">сьогодні</option>
+              <option value="24">останні 24 год</option><option value="168">останні 7 днів</option>
+            </select>
+            <select id="recording-edits" aria-label="Правки" title="Правки з Mini App"><option value="">Будь-хто правив або ні</option><option value="miniapp">Лише правки з Mini App</option></select>
             <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
+            <button id="recording-refresh" class="ghost" type="button" title="Оновити список. Автоматично картки не перерисовуються, щоб не загубити чернетки й аудіо.">⟳ Оновити</button>
+            <span id="archive-drafts" class="draft-indicator" role="status" hidden></span>
+            <span class="archive-switches">
+              <label class="switch" title="Після збереження одразу грати наступний запис"><input id="recording-autoplay" type="checkbox" checked> ⏭ Далі одразу</label>
+              <label class="switch" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked> 🎧 Мікрофон на паузі</label>
+            </span>
           </div>
-          <div class="toolbar archive-tools"><button id="recording-refresh">Оновити записи</button><span id="archive-drafts" class="draft-indicator" role="status" hidden></span><details class="archive-options"><summary>Відтворення й вигляд</summary><div class="toolbar">          <select id="recording-speed" aria-label="Швидкість відтворення" title="Клавіші ] і [ — швидше / повільніше"><option value="0.75">0,75×</option><option value="0.85">0,85×</option><option value="1">1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option><option value="1.75">1,75×</option><option value="2">2×</option></select><label class="switch" title="Поки в панелі звучить запис, приймач закриває мікрофон, щоб не записати звук із колонок. У навушниках можна вимкнути."><input id="hold-while-listening" type="checkbox" checked> 🎧 Мікрофон на паузі під час відтворення</label><label class="switch" title="Ховати розбір і метрики, менші відступи — для швидкої розмітки"><input id="recording-compact" type="checkbox"> ▤ Компактно</label><label class="check"><input id="recording-autoplay" type="checkbox" checked> Далі — одразу грати</label></div></details><details class="archive-options"><summary>Додатково</summary><a href="/api/recordings/export" download>Завантажити тексти й метрики JSON</a></details></div>
-          <p class="muted small keys">Клавіші: <kbd>Пробіл</kbd> грати / пауза · <kbd>1</kbd>–<kbd>5</kbd> тип (2, 3 і 5 — одразу зберегти) · <kbd>Enter</kbd> до тексту · <kbd>⌘/Ctrl+Enter</kbd> зберегти й далі · <kbd>J</kbd>/<kbd>K</kbd> або <kbd>↓</kbd>/<kbd>↑</kbd> наступний / попередній · <kbd>R</kbd> з початку · <kbd>Esc</kbd> вийти з поля.</p>
-          <p id="archive-update-note" class="muted small" role="status"></p>
-          <p id="recording-summary" class="muted small"></p>
-          <details class="small"><summary>Підказки та статистика</summary>
+          <p class="archive-status muted small"><span id="recording-summary"></span> <span id="archive-update-note" class="update-note" role="status"></span></p>
+          <details class="small archive-help"><summary>Як розмічати, клавіші й статистика</summary>
+            <p class="muted keys">Клавіші: <kbd>Пробіл</kbd> грати / пауза · <kbd>1</kbd>–<kbd>5</kbd> тип (2, 3 і 5 — одразу зберегти) · <kbd>Enter</kbd> до тексту · <kbd>⌘/Ctrl+Enter</kbd> зберегти й далі · <kbd>J</kbd>/<kbd>K</kbd> або <kbd>↓</kbd>/<kbd>↑</kbd> наступний / попередній · <kbd>R</kbd> з початку · <kbd>]</kbd>/<kbd>[</kbd> швидше / повільніше · <kbd>Esc</kbd> вийти з поля.</p>
             <p class="muted">Прослухайте запис і введіть почутий текст. Еталон мовлення для запису з подією стає й текстом події: оновлюються журнал і повідомлення в Telegram, правка йде в навчання правил — як у Mini App. Архів ділиться на три частини: «Ефір» — програма знайшла позивний або створила подію; «Інше мовлення» — Whisper щось почув (довше 2 с), але позивного немає; «Шум, сигнали й короткі» — усе, що програма відсіяла (тиша, сигнали, чорний список, коротке). У ролях розрізняйте «невідомо» і «не вказано у фразі». Перевірені записи захищені від очищення.</p>
             <p class="muted"><b>Як розмічати:</b></p>
             <ul class="muted rules">
@@ -238,7 +239,7 @@
         <article class="panel"><div class="panel-head"><h2>Якість розпізнавання по днях</h2><span class="muted small">за вашими еталонами мовлення</span></div>
           <p class="muted small page-note">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». <b>«Без правок»</b> — частка фраз, де підсумковий текст збігся з вашим еталоном слово в слово (головна мета). «Пропущено» — мовлення, з якого тексту не вийшло зовсім. «Помилка в словах» — частка слів, записаних не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після словників, шаблонів і навчених правил. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p>
           <div class="table-wrap"><table id="quality-days" class="compact"></table></div></article>
-        <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><button id="training-export" class="ghost">Вивантажити набір</button></div>
+        <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON усього архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>
           <p class="muted small page-note">Дообучення на вашому ефірі — найбільший запас точності: модель вивчить ваші позивні, коди й манеру мовлення. Потрібні розмічені записи «Мовлення» до 30 с; помітний ефект — від ~2 годин, добрий — ~5 годин. Вивантаження — локальна папка <code>.local-training/</code> (WAV + metadata.jsonl, останні дні — окремо для перевірки), нікуди не надсилається.</p>
           <div id="training"></div></article>
       </section>

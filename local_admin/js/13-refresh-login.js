@@ -10,9 +10,7 @@
     const page = await request(`/api/recordings?${params}`);
     if (view !== "recordings" || query !== JSON.stringify(recordingFilterIds.map(id => $(id).value))) return;
     const changed = archiveBaseline.query !== query || page.total !== archiveBaseline.total || page.items[0]?.id !== archiveBaseline.first;
-    $("archive-update-note").textContent = changed
-      ? "Є нові або змінені записи. Натисніть «Оновити записи», коли завершите правки."
-      : "Список актуальний. Картки не перерисовуються автоматично.";
+    $("archive-update-note").textContent = changed ? "● Є нові записи — натисніть ⟳ Оновити" : "";
   }
   async function refreshPanel() {
     if (document.visibilityState !== "visible" || busy || refreshPending) return;

@@ -1263,3 +1263,4 @@ button.needs-save { box-shadow: 0 0 0 3px rgba(240, 196, 108, .35); animation: d
   padding: 5px 8px 7px 12px; gap: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); animation: undo-in-head .2s ease-out; }
 .recording-header > .undo-toast.anchored .undo-button { padding: 3px 12px !important; }
 @keyframes undo-in-head { from { opacity: 0; transform: translate(6px, -50%); } }
+.warn-list li.ok { color: var(--lime); list-style: none; margin-left: -18px; }

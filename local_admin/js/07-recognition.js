@@ -96,10 +96,12 @@
 
   // Перевірка рядків під час набору: ті самі правила, що й «Зберегти», без запису.
   function liveCheck(area, box, path, initial = []) {
-    const render = (errors, warnings) => {
+    const render = (errors, warnings, checked = false) => {
       box.replaceChildren();
       for (const e of errors) box.append(el("li", "error", e));
       for (const w of warnings) box.append(el("li", "", w));
+      // Перевірка після правки пройшла без зауважень — кажемо це прямо, а не мовчимо.
+      if (checked && !errors.length && !warnings.length) box.append(el("li", "ok", "✓ Помилок у рядках немає"));
     };
     render([], initial);
     let timer = null, seq = 0;
@@ -109,7 +111,7 @@
         const mine = ++seq;
         try {
           const r = await request(path, "PUT", { entries: fromLines(area.value) });
-          if (mine === seq) render(r.errors || [], r.warnings || []);
+          if (mine === seq) render(r.errors || [], r.warnings || [], true);
         } catch (_) { /* підказка необов’язкова */ }
       }, 600);
     });
@@ -249,7 +251,13 @@
     const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
     left.append(area, actions);
     right.append(el("h2", "", title), el("p", "muted small", help), warnings);
-    if (EVALUATED_LISTS.includes(type)) right.append(listEvaluation(type, area));
+    if (EVALUATED_LISTS.includes(type)) {
+      const evaluation = listEvaluation(type, area);
+      right.append(evaluation);
+      // Після вставки — одразу видно, чи текст стане кращим на ваших еталонах. Запуск — коли завершиться
+      // відкриття списку: action() не пускає другу дію, поки триває перша.
+      if (inserted) { const start = () => (busy ? setTimeout(start, 100) : evaluation.run()); setTimeout(start, 0); }
+    }
     if (type === "callsign_aliases") right.append(aliasCandidates(list.entries));
     if (type === "blacklist" || type === "short_garbage") right.append(noiseCandidates(type, list.entries));
     panel.append(left, right);
@@ -284,6 +292,7 @@
       finally { run.disabled = false; }
     }));
     wrap.append(run, out);
+    wrap.run = () => run.click();   // запуск без кліку (після «＋ Вставити в список»)
     return wrap;
   }
 

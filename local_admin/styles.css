@@ -845,3 +845,7 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   .archive-split > * { min-height: 0; overflow: hidden; }
   .archive-split > .archive-list { overflow-y: auto; }
 }
+
+/* Легенда над переліком: пункти не розриваються, переносяться цілими, рівною сіткою */
+.row-legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, max-content)); gap: 2px 14px; line-height: 1.5; }
+.row-legend .lg-item { white-space: nowrap; }

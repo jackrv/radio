@@ -522,6 +522,10 @@ def keep_awake():
 
 def run(args):
     keep_awake()
+    if getattr(args, "daily_codes", None) is None:
+        # Як у приймачі: код доби в підказці, якщо його ввімкнено в config.py.
+        import config
+        args.daily_codes = "latest" if getattr(config, "WHISPER_PROMPT_DAILY_CODE", False) else "off"
     started = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = OUTPUT / f"{started}_{re.sub(r'[^A-Za-z0-9_-]+', '-', args.name)}"
     run_dir.mkdir(parents=True, mode=0o700)
@@ -682,7 +686,7 @@ def main(argv=None):
                         "+ назви); phrases — лише звороти; combined — звороти + словник")
     r.add_argument("--prompt-file", help="власний текст зворотів для phrases/combined (без номерів)")
     r.add_argument("--whisper-phrases", help="файл фраз «Підказки Whisper» замість списку з бази (для --prompt receiver)")
-    r.add_argument("--daily-codes", choices=("off", "append", "latest"), default="off",
+    r.add_argument("--daily-codes", choices=("off", "append", "latest"), default=None,
                    help="append: додати в підказку постійні й коди доби кожного запису; latest — лише останній "
                         "код доби запису (лише --prompt receiver)")
     r.add_argument("--retry", choices=("off", "on"), default="off",

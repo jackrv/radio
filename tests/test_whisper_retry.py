@@ -36,3 +36,15 @@ def test_no_retry_when_text_exists_flag_is_off_or_result_is_not_a_loop():
     w.process_segment(pcm())
     assert recognizer.transcribe_fn.call_count == 1 and not processor.process.called
     assert not is_looped({"segments": []}) and not is_looped(Mock())
+
+
+def test_prompt_takes_only_the_latest_code_of_the_current_day(tmp_path):
+    from services import daily_codes
+    from services.dictionary_store import init_db
+    from services.transcriber_factory import prompt_codes
+    path = tmp_path / "events.db"
+    init_db(path)
+    assert prompt_codes(path) == ()
+    daily_codes.write_permanent(path, "31 05")
+    daily_codes.write(path, daily_codes.local_day(), "26 42, 48 62")
+    assert prompt_codes(path) == ("48 62",), "лише останній код доби, без постійних"

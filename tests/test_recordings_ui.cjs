@@ -148,7 +148,7 @@ test('dirty badge and count follow edits and reverting them, including unsaved f
   assert.equal(ui.$('archive-drafts-nav').textContent,'1');
   const event={preventDefault(){this.prevented=true;}};ui.windowEvents.beforeunload(event);assert.equal(event.prevented,true);
   input.value=initial;form.listeners.input();
-  assert.equal(ui.cards()[0].dirty,false);assert.equal(ui.$('archive-drafts').hidden,true);
+  assert.equal(ui.cards()[0].dirty,false);assert.equal(ui.$('archive-drafts-nav').hidden,true);assert.equal(ui.cards()[0].draftsPill.disabled,true);
   const clean={preventDefault(){this.prevented=true;}};ui.windowEvents.beforeunload(clean);assert.equal(clean.prevented,undefined);
 });
 

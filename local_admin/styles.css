@@ -763,13 +763,6 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .stat-tile.compact { flex: .65 1 0; min-width: 86px; }
 .stat-tile.wide { flex: 1.7 1 0; min-width: 200px; }
 .stat-tile.wide .stat-value { font-size: 18px; }
-/* Незбережені зміни — помітна жовта плитка в тому ж ряду; клік веде до першої чернетки */
-.stat-tile.drafts { flex: .8 1 0; min-width: 110px; text-align: left; cursor: pointer; color: var(--warn); font: inherit;
-  border: 1px solid rgba(240, 190, 90, .7); background: linear-gradient(160deg, rgba(240, 190, 90, .2), rgba(240, 190, 90, .05) 75%);
-  animation: drafts-glow 1.8s ease-in-out infinite; }
-.stat-tile.drafts .stat-label, .stat-tile.drafts .stat-extra { color: var(--warn); }
-.stat-tile.drafts .stat-value { color: var(--warn); }
-.stat-tile.drafts:hover { background: rgba(240, 190, 90, .26); }
 @keyframes drafts-glow { 50% { box-shadow: 0 0 0 3px rgba(240, 190, 90, .22), 0 0 18px rgba(240, 190, 90, .25); } }
 
 /* ===== Мікрофон: справді квадрат; видно, коли мікрофон закрито ===== */
@@ -802,7 +795,7 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   #recordings .recording-deck:has(+ .recording-card:not(.active)) { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stat-tile.drafts, .mic-square.holding { animation: none; }
+  .mic-square.holding { animation: none; }
 }
 
 /* Вкладка «Аудіоархів»: блакитна цифра — ефір за 24 год без розмітки, жовта — незбережені картки */
@@ -816,3 +809,32 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .archive-filters > select { flex: 1 1 0; min-width: 150px; max-width: none !important; }
 .archive-filters > #recording-view { flex-grow: 1.6; }
 .archive-filters .archive-switches { display: none; }
+
+/* ===== Власний плеєр: кнопка, хвиля запису, час, швидкість ===== */
+#recordings .recording-deck > audio { display: none; }
+.deck-player { display: flex; align-items: center; gap: 10px; width: 100%; max-width: none; }
+.deck-play { flex: none; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
+  font-size: 14px; line-height: 1; color: #10220f; border: 0; cursor: pointer;
+  background: linear-gradient(180deg, #c3ec9a 0%, #a3da8b 55%, #86c890 100%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35);
+  transition: transform .12s, filter .12s; }
+.deck-play:hover { transform: scale(1.06); filter: brightness(1.06); }
+.deck-play:active { transform: scale(.96); }
+.deck-play.on { box-shadow: 0 0 0 3px rgba(184, 239, 134, .25), 0 0 16px rgba(184, 239, 134, .35); }
+.deck-play:focus-visible { outline: 2px solid var(--lime2); outline-offset: 2px; }
+.deck-wave { flex: 1 1 auto; min-width: 80px; height: 36px; cursor: pointer; touch-action: none;
+  --wave-played: #b8ef86; --wave-rest: rgba(160, 175, 190, .38); }
+.recording-deck.playing .deck-wave { --wave-rest: rgba(184, 239, 134, .3); }
+.deck-time { flex: none; min-width: 78px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.deck-player .speed-select { flex: none; width: auto; padding: 3px 6px; font-size: 12px; border-radius: 99px;
+  background: transparent; border: 1px solid rgba(184, 239, 134, .35); color: var(--text); cursor: pointer; }
+.deck-player .speed-select:hover { border-color: var(--lime2); }
+/* Незбережені — пігулка в плеєрі, завжди на місці: сіра «усе збережено» або жовта з кількістю */
+.deck-drafts { flex: none; min-width: 168px; padding: 4px 11px !important; font-size: 12px !important; font-weight: 600; border-radius: 99px !important;
+  text-align: center; white-space: nowrap; color: var(--muted); background: transparent; border: 1px solid var(--border) !important;
+  transition: background .25s, color .25s, border-color .25s; }
+.deck-drafts:disabled { opacity: .7; cursor: default; }
+.deck-drafts.pending { color: #2b2000; background: var(--warn); border-color: var(--warn) !important; font-weight: 700; cursor: pointer;
+  opacity: 1; animation: drafts-glow 1.8s ease-in-out infinite; }
+.deck-drafts.pending:hover { filter: brightness(1.08); }
+@media (prefers-reduced-motion: reduce) { .deck-drafts.pending { animation: none; } }
+@media (max-width: 820px) { .deck-player { flex-wrap: wrap; } .deck-wave { flex-basis: calc(100% - 60px); } }

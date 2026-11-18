@@ -90,6 +90,97 @@
     select.addEventListener?.("change", () => setSpeed(select.value));
     return select;
   }
+  // ---------- Власний плеєр у стилі панелі ----------
+  // Стандартні елементи <audio> браузер майже не дає стилізувати. Сам <audio> лишається (на ньому
+  // клавіші, автопрогравання й пауза мікрофона), керування — своє: кнопка, хвиля запису, час, швидкість.
+  // Хвиля малюється з самого WAV (PCM16) — лише коли запис відкрили чи ввімкнули, не для всіх карток.
+  const clock = s => !Number.isFinite(s) ? "0:00" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  function wavPeaks(buffer, bars) {
+    const view = new DataView(buffer);
+    let offset = 12, bits = 16, channels = 1;
+    while (offset + 8 <= view.byteLength) {
+      const id = String.fromCharCode(...new Uint8Array(buffer, offset, 4)), size = view.getUint32(offset + 4, true);
+      if (id === "fmt ") { channels = view.getUint16(offset + 10, true); bits = view.getUint16(offset + 22, true); }
+      if (id === "data") {
+        if (bits !== 16) return null;
+        const samples = new Int16Array(buffer.slice(offset + 8, offset + 8 + Math.min(size, view.byteLength - offset - 8)));
+        const step = Math.max(1, Math.floor(samples.length / channels / bars)), peaks = [];
+        for (let b = 0; b < bars; b++) {
+          let peak = 0;
+          for (let i = b * step * channels; i < Math.min(samples.length, (b + 1) * step * channels); i += channels) peak = Math.max(peak, Math.abs(samples[i]));
+          peaks.push(peak);
+        }
+        const top = Math.max(1, ...peaks);
+        return peaks.map(p => Math.sqrt(p / top));   // корінь — тихе мовлення теж видно
+      }
+      offset += 8 + size + (size % 2);
+    }
+    return null;
+  }
+  function deckPlayer(audio, url) {
+    const node = el("div", "recording-player deck-player");
+    const play = el("button", "deck-play", "▶"); play.type = "button";
+    play.title = "Грати / пауза (Пробіл)"; play.setAttribute?.("aria-label", "Грати");
+    const wave = el("canvas", "deck-wave"); wave.setAttribute?.("aria-label", "Позиція відтворення — клік, щоб перейти");
+    const time = el("span", "deck-time", "0:00");
+    // Незбережені картки — пігулка тут, біля плеєра (у шапці вона рвала ряд плиток).
+    const drafts = el("button", "deck-drafts", "✓ усе збережено"); drafts.type = "button"; drafts.disabled = true;
+    drafts.addEventListener?.("click", () => {
+      const first = reviewCards.find(card => card.dirty);
+      if (first && typeof activateReview === "function") activateReview(first);
+    });
+    node.append(play, wave, time, speedSelect(), drafts);
+    let peaks = null, loading = false, knownDuration = NaN, frame = 0;
+    const duration = () => Number.isFinite(audio.duration) ? audio.duration : knownDuration;
+    function draw() {
+      if (!wave.getContext || !wave.clientWidth) return;
+      const ratio = window.devicePixelRatio || 1, w = wave.clientWidth, h = wave.clientHeight;
+      if (wave.width !== Math.round(w * ratio)) { wave.width = Math.round(w * ratio); wave.height = Math.round(h * ratio); }
+      const ctx = wave.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, w, h);
+      const css = getComputedStyle(wave), played = css.getPropertyValue("--wave-played").trim() || "#b8ef86",
+            rest = css.getPropertyValue("--wave-rest").trim() || "rgba(160,175,190,.4)";
+      const progress = duration() > 0 ? Math.min(1, audio.currentTime / duration()) : 0;
+      const n = Math.max(8, Math.floor(w / 3)), values = peaks ? peaks : null;
+      for (let i = 0; i < n; i++) {
+        const v = values ? values[Math.min(values.length - 1, Math.floor(i * values.length / n))] : 0.08;
+        const bar = Math.max(2, v * (h - 4));
+        ctx.fillStyle = (i + 0.5) / n <= progress ? played : rest;
+        ctx.fillRect(i * 3, (h - bar) / 2, 2, bar);
+      }
+      if (progress > 0) { ctx.fillStyle = played; ctx.fillRect(Math.min(w - 2, progress * w), 0, 2, h); }
+      time.textContent = `${clock(audio.currentTime)} / ${clock(duration())}`;
+    }
+    async function loadWave() {
+      if (peaks || loading || typeof fetch === "undefined") return;
+      loading = true;
+      try {
+        const response = await fetch(url, { credentials: "same-origin" });
+        const buffer = await response.arrayBuffer();
+        peaks = wavPeaks(buffer, 240);
+        // Звук — із уже завантаженого файлу, без другого запиту (якщо ще не почали грати).
+        if (audio.paused && !audio.currentTime && !audio.readyState && typeof URL !== "undefined" && URL.createObjectURL)
+          audio.src = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+        const view = new DataView(buffer);   // тривалість із заголовка: видно ще до відтворення
+        if (buffer.byteLength > 44) knownDuration = (buffer.byteLength - 44) / Math.max(1, view.getUint32(28, true));
+      } catch (_) { /* без хвилі — просто смуга */ }
+      loading = false; draw();
+    }
+    const tick = () => { draw(); if (!audio.paused) frame = window.requestAnimationFrame?.(tick); };
+    audio.addEventListener?.("play", () => { play.textContent = "❚❚"; play.classList?.add("on"); play.setAttribute?.("aria-label", "Пауза"); loadWave(); tick(); });
+    audio.addEventListener?.("pause", () => { play.textContent = "▶"; play.classList?.remove("on"); play.setAttribute?.("aria-label", "Грати"); window.cancelAnimationFrame?.(frame); draw(); });
+    for (const name of ["loadedmetadata", "seeked", "ended"]) audio.addEventListener?.(name, draw);
+    play.addEventListener?.("click", () => { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); });
+    // Клік чи протягування по хвилі — перейти; до першого відтворення тривалість беремо з WAV.
+    const seek = event => {
+      const box = wave.getBoundingClientRect(), r = Math.max(0, Math.min(1, (event.clientX - box.left) / box.width));
+      if (duration() > 0) { audio.currentTime = r * duration(); draw(); }
+    };
+    wave.addEventListener?.("pointerdown", event => { seek(event); wave.setPointerCapture?.(event.pointerId);
+      const move = e => seek(e), up = () => { wave.removeEventListener("pointermove", move); wave.removeEventListener("pointerup", up); };
+      wave.addEventListener("pointermove", move); wave.addEventListener("pointerup", up); });
+    window.addEventListener?.("resize", draw);
+    return { node, drafts, loadWave: () => loadWave().then(draw), draw };
+  }
   let pendingEdits = "";   // збережений фільтр «правки користувача», доки варіанти ще не завантажено
   const editsValue = () => $("recording-edits").value || pendingEdits;
   // Календарні доби («сьогодні», «вчора», «позавчора») — від опівночі; числа — останні N годин.
@@ -112,12 +203,16 @@
   const recordingFilterIds = ["recording-view", "recording-period", "recording-edits", "recording-search"];
   function updateDraftCount() {
     const count = reviewCards.filter(card => card.dirty).length;
-    // Плитка в шапці (поруч зі статистикою): помітно, і клік веде до першої незбереженої картки.
-    const drafts = $("archive-drafts");
-    drafts.hidden = $("archive-drafts-nav").hidden = !count;
-    drafts.replaceChildren(el("span", "stat-label", "Не збережено"), el("span", "stat-value", String(count)),
-                           el("span", "stat-extra", "перейти →"));
-    drafts.title = `Незбережених карток: ${count}. Клік — до першої з них`;
+    // Пігулка біля плеєра кожної картки — завжди на місці (нічого не стрибає), лише перефарбовується:
+    // сіра «усе збережено» або жовта з кількістю; клік веде до першої незбереженої.
+    $("archive-drafts-nav").hidden = !count;
+    for (const card of reviewCards) {
+      const pill = card.draftsPill; if (!pill) continue;
+      pill.className = count ? "deck-drafts pending" : "deck-drafts";
+      pill.disabled = !count;
+      pill.textContent = count ? `● не збережено: ${count} →` : "✓ усе збережено";
+      pill.title = count ? `Незбережених карток: ${count}. Клік — до першої з них` : "Незбережених змін немає";
+    }
     $("archive-drafts-nav").textContent = String(count);
     $("archive-drafts-nav").title = `Незбережених карток: ${count}`;
   }
@@ -228,7 +323,7 @@
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });
         const found = tile("Пошук", `«${searchQuery()}»`, "", "search"); found.append(clear); tiles.push(found);
       }
-      $("recording-summary").replaceChildren(...tiles, $("archive-drafts"));   // плитка чернеток — у тому ж ряду
+      $("recording-summary").replaceChildren(...tiles);
     }
     if (!page.total && searchQuery()) $("recordings").append(el("p", "muted", "Нічого не знайдено. Шукайте за початком ID (від 4 знаків), №події або шматком тексту."));
     else if (!page.total) $("recordings").append(el("p", "muted", TODO_VIEWS.includes($("recording-view").value)
@@ -249,11 +344,11 @@
                    copyChip(item.id.slice(0, 8), item.id, "ID запису"));
       if (eventNo) title.append(copyChip(`№${eventNo[1]}`, eventNo[1], "Номер події"));
       header.append(title);
-      const audio = el("audio"); audio.controls = true; audio.preload = "none";
+      const audio = el("audio"); audio.controls = false; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`;
       // Плеєр — «фартушок» над карткою (як деталі під нею): завжди на виду, не губиться серед полів.
-      const player = el("div", "recording-player"); player.append(audio, speedSelect());
-      const deck = el("div", "recording-deck"); deck.append(player);
+      const custom = deckPlayer(audio, audio.src);
+      const deck = el("div", "recording-deck"); deck.append(audio, custom.node);
       card.append(header);
       // «Фартушок» під карткою: текст Whisper (з «Повернути розпізнане») і технічні деталі.
       const apron = el("div", "recording-apron");
@@ -585,7 +680,7 @@
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
-      const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit, grow,
+      const controller = { card, audio, item, loadWave: custom.loadWave, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
                            refreshHints: () => { if (!textField.hidden) { suggest(); checkText(0); } } };
       reviewCards.push(controller);
@@ -711,6 +806,7 @@
     // Нерозмічений запис приходить без перевірки тексту: перевіряємо одразу, щоб «Виправити
     // оформлення» й позивні були готові без першої правки.
     if (!controller.hinted) { controller.hinted = true; controller.refreshHints?.(); }
+    window.requestAnimationFrame?.(() => controller.loadWave?.());   // хвиля — щойно плеєр видно
     if (splitView()) controller.row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     else if (scroll) controller.card.scrollIntoView({ block: "center", behavior: "smooth" });
   }
@@ -783,10 +879,7 @@
   // Квадрат «мікрофон» показує, що зараз мікрофон справді закрито (грає запис).
   const showHold = () => holdBox.closest?.(".mic-square")?.classList.toggle("holding", holdBox.checked && playing.size > 0);
   holdBox.addEventListener("change", showHold);
-  $("archive-drafts").addEventListener("click", () => {
-    const first = reviewCards.find(card => card.dirty);
-    if (first && typeof activateReview === "function") activateReview(first);
-  });
+
   function sendHold(seconds) {
     return fetch("/api/listening-hold", { method: "PUT", credentials: "same-origin", cache: "no-store",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seconds: Math.max(0, Math.min(120, seconds)) }) })

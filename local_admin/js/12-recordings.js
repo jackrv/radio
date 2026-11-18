@@ -437,11 +437,11 @@
         }
       }
       const meta = el("div", "recording-meta"); meta.append(roles, multi);
-      // Зверху тип запису; під ним ліворуч текст (з «Виправити оформлення»), підказки, позивні й ролі,
-      // праворуч — «Зберегти» на всю висоту цих рядків.
-      const fields = el("div", "recording-fields"); fields.append(textField, lint, chips, meta);
+      // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
+      // ліворуч підказки, позивні й ролі, праворуч «Зберегти» на висоту лівого блоку.
+      const fields = el("div", "recording-fields"); fields.append(lint, chips, meta);
       const body = el("div", "recording-body"); body.append(fields, actions);
-      form.append(typeRow, body);
+      form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,

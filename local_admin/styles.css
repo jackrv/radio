@@ -497,12 +497,14 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .recording-type .segmented button { font-size: 12px; padding: 5px 8px; }
 .recording-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: stretch; }
 .recording-fields { display: grid; gap: 6px; min-width: 0; }
-/* «Зберегти» — на рівні поля тексту й тієї самої висоти; позначки стану — під кнопкою, не зсувають її.
-   Підказки й позивні ростуть лише в лівій колонці. */
-#recordings .recording-body .recording-actions { border-top: 0; padding-top: 18px; display: block; align-self: start; }
-.recording-body .save-actions { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 4px; width: 150px; margin: 0; }
-.recording-body .save-actions .save-status, .recording-body .save-actions .dirty-badge { font-size: 11px; text-align: center; min-height: 14px; }
-.recording-body .save-actions .save-primary { flex: none; height: 56px; font-size: 14px; white-space: normal; }
+/* Під полем тексту: ліворуч підказки, позивні й ролі; праворуч «Зберегти» на висоту лівого блоку.
+   Позначки стану — під кнопкою в зарезервованому рядку, тож нічого не стрибає. */
+.recording-body { margin-top: 6px; }
+#recordings .recording-body .recording-actions { border-top: 0; padding-top: 0; display: flex; align-self: stretch; }
+.recording-body .save-actions { display: flex; flex-direction: column-reverse; gap: 3px; width: 150px; margin: 0; }
+.recording-body .save-actions .save-status, .recording-body .save-actions .dirty-badge { font-size: 11px; text-align: center; line-height: 14px; }
+.recording-body .save-actions .save-status { min-height: 14px; }
+.recording-body .save-actions .save-primary { flex: 1 1 auto; min-height: 46px; font-size: 14px; white-space: normal; }
 /* «Виправити оформлення» — права частина поля вводу */
 .text-input-box { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); overflow: hidden; }
 .text-input-box:focus-within { border-color: var(--lime2); }
@@ -518,3 +520,4 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   .recording-body .save-actions { width: auto; }
   .recording-body .save-actions .save-primary { min-height: 40px; }
 }
+.recording-body .save-actions .dirty-badge[hidden] { display: block; visibility: hidden; }

@@ -256,6 +256,26 @@
     return b;
   }
 
+  let archiveCodes = null;
+  // Доба кодів запису: коди змінюються о change_hour (20:00), тож вечірній запис належить наступній добі.
+  function codesDay(created) {
+    const at = new Date(created * 1000), hour = archiveCodes?.change_hour ?? 20;
+    if (at.getHours() >= hour) at.setDate(at.getDate() + 1);
+    return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+  }
+  function codesApron(created) {
+    const box = el("div", "codes-apron");
+    if (!archiveCodes) { box.hidden = true; return box; }
+    const day = codesDay(created), entry = (archiveCodes.items || []).find(e => e.day === day);
+    const label = `${day.slice(8, 10)}.${day.slice(5, 7)}`;
+    box.append(el("span", "codes-label", `Коди доби ${label}`));
+    if (entry?.codes?.length) for (const code of entry.codes) box.append(el("b", "codes-code", code));
+    else { box.classList?.add("missing"); box.append(el("span", "codes-missing", "не внесено")); }
+    box.title = entry?.codes?.length ? `Коди доби запису (${entry.period?.join(" — ") || label}); постійні не показано. Клік — сторінка кодів`
+                                     : "Коди доби запису ще не внесено. Клік — внести";
+    box.addEventListener?.("click", event => { event.preventDefault(); if (typeof show === "function") show("codes"); });
+    return box;
+  }
   async function recordings(reset = true) {
     if (reset && reviewCards.some(card => card.dirty) && !confirm("Є незбережені зміни. Оновити список і відкинути їх?")) {
       if (loadedRecordingFilters) for (const id of recordingFilterIds) $(id).value = loadedRecordingFilters[id];
@@ -269,8 +289,9 @@
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
         (editsValue() ? `&edits=${encodeURIComponent(editsValue())}` : "")),
       request("/api/recordings/summary"),
-      request("/api/daily-codes").catch(() => null)   // нагадування: коди поточної доби
+      request("/api/daily-codes").catch(() => null)   // нагадування над полем тексту: коди доби запису
     ]);
+    archiveCodes = codes;
     if (reset) archiveBaseline = {query: JSON.stringify(recordingFilterIds.map(id => $(id).value)), total: page.total, first: page.items[0]?.id};
     showArchiveFresh(false);
     loadedRecordingFilters = Object.fromEntries(recordingFilterIds.map(id => [id, $(id).value]));
@@ -333,17 +354,6 @@
         const clear = el("button", "ghost stat-clear", "✕ зняти"); clear.type = "button";
         clear.addEventListener("click", () => { $("recording-search").value = ""; action(() => recordings(true)); });
         const found = tile("Пошук", `«${searchQuery()}»`, "", "search"); found.append(clear); tiles.push(found);
-      }
-      // Коди доби — під рукою, щоб правильно записати їх у тексті (лише добові, без постійних).
-      if (codes && codes.today) {
-        const current = (codes.items || []).find(entry => entry.day === codes.today);
-        const until = codes.today_period?.[1] || "";
-        const reminder = current?.codes?.length
-          ? tile("Коди доби", current.codes.join(" · "), until ? `діють до ${until}` : "", "codes",
-                 "Коди поточної доби (змінюються о 20:00). Клік — сторінка кодів")
-          : tile("Коди доби", "не внесено", "внести →", "codes missing", "Коди поточної доби ще не внесено. Клік — внести");
-        reminder.addEventListener?.("click", () => typeof show === "function" && show("codes"));
-        tiles.splice(1, 0, reminder);
       }
       $("recording-summary").replaceChildren(...tiles);
     }
@@ -474,8 +484,16 @@
       // Ролі одним рядком: позивні з фрази (і вже вказані) з перемикачами «Кому / Від». Не обрано —
       // роль у фразі не вказана; при кількох передачах ролі не оцінюються (див. roleField.read).
       const renamed = new Map();   // підказаний позивний → виправлений оператором варіант
+      // Позивний у табличці ролей має бути в самому тексті: інакше поле підсвічено (опечатка чи старий варіант).
+      const words = value => ` ${value.toLocaleLowerCase("uk").replace(/[ʼ'’`]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+      let roleNameFields = [];
+      function markRoleName(field) {
+        const name = field.value.trim(), missing = Boolean(name) && !words(input.value).includes(words(name));
+        field.classList?.toggle("missing", missing);
+        field.title = missing ? `«${name}» немає в тексті — перевірте написання` : "Позивний (можна виправити)";
+      }
       function renderChips() {
-        chips.replaceChildren();
+        chips.replaceChildren(); roleNameFields = [];
         // Кілька передач: ролі не оцінюються — замість чипів лише ця позначка (знімається кліком).
         if (multiBox.checked) {
           // Сама з’являється за «/» у тексті й зникає без нього — без окремого перемикача.
@@ -504,6 +522,8 @@
             rolesTouched(); updateDirty(); renderChips();
           });
           field.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); field.blur(); } });
+          field.addEventListener("input", () => markRoleName(field));
+          markRoleName(field); roleNameFields.push(field);
           table.append(field);
           const switcher = el("span", "role-switch");
           // Перемикач: позивний або «Кому», або «Від», або ні те, ні те (повторний клік знімає вибір).
@@ -540,7 +560,7 @@
           renderChips();
         }, 350);
       }
-      input.addEventListener("input", suggest);
+      input.addEventListener("input", () => { suggest(); for (const f of roleNameFields) markRoleName(f); });
 
       // Перевірка оформлення: пробіли, цифри групами, «з», апостроф, назви словника.
       // Лише підказки: зберегти можна будь-який текст.
@@ -626,7 +646,7 @@
       { const ev = /^db:(\d+)$/.exec(item.data?.fix_id || ""); if (ev && save.dataset) save.dataset.target = `→ подія №${ev[1]} і Telegram`; }
       const textField = el("label", "recording-text");
       const inputBox = el("div", "text-input-box"); inputBox.append(input, fixAll);
-      textField.append(el("span", "muted small", "Почутий текст"), inputBox);
+      textField.append(el("span", "muted small", "Почутий текст"), codesApron(item.created), inputBox);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
       const actions = el("div", "recording-actions");
       const saveStatus = el("span", "muted small save-status"); saveStatus.setAttribute("role", "status");
@@ -774,7 +794,7 @@
   rememberValue("learning-filter", "radio345:learning-filter");
   rememberValue("role", "radio345:preview-role");
 
-  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
+  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: archiveCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

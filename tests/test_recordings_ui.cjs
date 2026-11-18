@@ -212,3 +212,15 @@ test('a callsign is either "to" or "from": choosing one role clears the other, a
   assert.equal(sent.reference_recipient, '');
   assert.equal(sent.reference_sender, 'клен 48');
 });
+
+test('role callsign field is flagged when that callsign is not in the text', async () => {
+  const reviewed = {...item, reference:'Клен, 48, я Ясень 12', label:'speech', reference_recipient:'клен 48', reference_sender:''};
+  const ui = harness({items:[reviewed], total:1}, {}, {timers:true, callsigns:['клен 48']});
+  await ui.load();
+  ui.cards()[0].refreshHints();
+  await new Promise(resolve => setImmediate(resolve));
+  const field = descendants(ui.$('recordings')).find(n=>n.className==='role-name');
+  assert.doesNotMatch(field.title, /немає в тексті/);
+  field.value = 'дуб 7'; field.listeners.input();
+  assert.match(field.title, /«дуб 7» немає в тексті/);
+});

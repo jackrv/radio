@@ -772,7 +772,13 @@
       // Виправлення написання при виході з поля — асинхронне: «Зберегти» й Esc спершу чекають на нього,
       // інакше зберігся б ще не виправлений текст (а поле виправилось би вже після збереження).
       let spellingPending = null;
+      // Лише якщо текст у полі змінили з моменту входу в нього: фокус губиться й при переході на іншу вкладку чи перемальовуванні
+      // списку — тоді нічого не виправляємо сами (інакше картка «незбережена» без вашої правки).
+      let valueOnFocus = null;
+      input.addEventListener("focus", () => { valueOnFocus = input.value; });
       input.addEventListener("blur", () => {
+        if (valueOnFocus === null || input.value === valueOnFocus) return;   // текст не міняли — нічого не робимо
+        valueOnFocus = null;
         spellingPending = applySpellingOnLeave()
           .then(changed => { if (changed) note("Підозріле написання виправлено автоматично."); return changed; })
           .catch(() => false)

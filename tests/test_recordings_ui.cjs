@@ -194,7 +194,7 @@ test('saving right after leaving the field sends the spelling-fixed text',async(
   });
   await ui.load();
   const {input}=editor(ui);
-  input.value='вішня';
+  input.listeners.focus(); input.value='вішня';   // зайшли в поле й набрали
   input.listeners.blur();   // фокус пішов на «Зберегти»
   await ui.save();
   assert.equal(sent.reference,'вишня');
@@ -337,4 +337,17 @@ test('"insert into list" adds an alias to its callsign line or a new line, witho
   assert.equal(result.added, 2, 'клін уже є');
   const noise = insertListLines('пау пау', {list:'short_garbage', lines:[{line:'Пау пау'}, {line:'кхм'}]});
   assert.equal(noise.text, 'пау пау\nкхм'); assert.equal(noise.added, 1);
+});
+
+test('leaving the field without typing (tab switch, re-render) changes nothing', async () => {
+  let checks = 0;
+  const ui = harness({items:[{...item, reference:null, label:null, revision:0}], total:1}, {}, {
+    textCheck: () => { checks++; return {issues:[{kind:'spelling', message:'Можливо', fixed_text:'вишня'}], formatted:null}; }});
+  await ui.load();
+  const {input} = editor(ui);
+  input.value = 'вішня';
+  input.listeners.focus(); input.listeners.blur();   // фокус прийшов і пішов, текст не міняли
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(input.value, 'вішня');
+  assert.equal(ui.cards()[0].dirty, false);
 });

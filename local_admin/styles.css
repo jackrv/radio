@@ -305,7 +305,7 @@ td.good { color: var(--ok); font-weight: 700; }
 .switch:has(input:checked) { color: #172414; background: var(--lime); border-color: var(--lime); }
 /* Фірмовий стиль: емблема, неонове світіння акцентів. */
 .sidebar { background: #0d1520; }
-.emblem { width: 46px; height: 46px; flex-shrink: 0; filter: drop-shadow(0 0 6px rgba(184, 239, 134, .35)); }
+.emblem { width: 44px; height: 44px; flex-shrink: 0; }
 .brand .title { font-size: 17px; letter-spacing: .09em; }
 .brand .title b { color: var(--lime); text-shadow: 0 0 10px rgba(184, 239, 134, .55); font-style: italic; }
 .brand .overline { color: var(--cyan); opacity: .8; }

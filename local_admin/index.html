@@ -316,10 +316,23 @@
       </section>
 
       <section data-panel="experiments" hidden>
-        <article class="panel"><div class="panel-head"><h2>Офлайн-прогони</h2><button id="experiments-compare" class="ghost" disabled>Порівняти вибрані</button></div>
-          <p class="muted small page-note">Перевірки змін на розмічених записах архіву (без приймача й Telegram). Позначте два прогони, щоб порівняти їх на спільних записах.</p>
+        <!-- Черга тестів: що в черзі й що йде (ліворуч), які тести можна додати (праворуч). -->
+        <div class="lab-top">
+          <article class="panel lab-queue"><div class="panel-head"><h2>Черга тестів</h2><span id="lab-state" class="muted small"></span></div>
+            <div id="lab-banner" class="lab-banner" hidden></div>
+            <div id="lab-jobs" class="lab-jobs"></div>
+            <div id="lab-controls" class="lab-controls"></div>
+            <details class="small page-help"><summary>Як це працює</summary>
+              <p class="muted">Кожен тест проганяє всі розмічені записи архіву через розпізнавання з однією зміною й рахує, скільки фраз вийшло без правок, скільки слів і номерів почуто не так тощо. Ефір і Telegram тести не зачіпають. Whisper large-v3 і приймач разом не вміщаються в пам’ять, тому на час тестів черга сама зупиняє приймач і запускає його знову наприкінці — навіть якщо тест упав чи ви його зупинили. Між тестами — пауза 5 хв, щоб Mac не перегрівався. Зручно ставити на ніч: «Почати о 01:00».</p></details></article>
+          <article class="panel lab-presets"><div class="panel-head"><h2>Додати тест</h2><span class="muted small">одна зміна відносно «як зараз у приймачі»</span></div>
+            <div id="lab-presets" class="lab-preset-list"></div></article>
+        </div>
+        <article class="panel lab-results"><div class="panel-head"><h2>Результати</h2>
+            <span class="toolbar"><label class="live-filter" title="Показати й перервані прогони"><input id="experiments-incomplete" type="checkbox"> незавершені</label>
+            <button id="experiments-compare" class="ghost small-button" disabled title="Позначте два прогони">Порівняти вибрані</button></span></div>
           <div id="experiments-result"></div>
-          <div class="table-wrap"><table id="experiments-list" class="compact"></table></div></article>
+          <div class="table-wrap"><table id="experiments-list" class="compact lab-table"></table></div>
+          <p class="muted small">Зеленим — найкраще значення в колонці серед завершених. «Без правок» і помилки рахуються за вашими еталонами; для тестів «лише Whisper» — на сирому тексті, без обробки.</p></article>
       </section>
 
       <section data-panel="system" hidden>

@@ -22,7 +22,7 @@ from api.app import create_app
 from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
 from core.diagnostic_history import DiagnosticsHistory, history_directory
-from api.panel import overview, people, recognition, signals, system
+from api.panel import lab, overview, people, recognition, signals, system
 from api.panel import recordings as recordings_api
 from api.panel.common import session_value
 from api.panel.models import SessionInput
@@ -156,7 +156,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     # Ендпоінти розділів — у api/panel/*: спершу архів (він дає sync_event_from_reference).
     ctx = SimpleNamespace(db_path=db_path, recordings=recordings, actor=actor, samples_dir=samples_dir, diagnostics_path=diagnostics_path, diagnostic_history=diagnostic_history, experiments_dir=experiments_dir, suggestion_worker=suggestion_worker, backup_dir=backup_dir, bot_token=bot_token, launcher_root=launcher_root, port=port)
-    for section in (recordings_api, overview, recognition, signals, people, system):
+    for section in (recordings_api, overview, recognition, signals, people, system, lab):
         section.register(app, ctx)
 
     @app.get("/preview-bridge.js")

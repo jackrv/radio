@@ -943,10 +943,11 @@
   if (typeof ResizeObserver !== "undefined" && typeof document !== "undefined" && document.querySelector?.("main")) {
     let fitting = false;
     new ResizeObserver(() => {
-      if (fitting || !["recordings", "overview", "quality"].includes(view)) return;
+      if (fitting || !["recordings", "overview", "quality", "experiments"].includes(view)) return;
       fitting = true;
       window.requestAnimationFrame(() => {
-        if (view === "recordings") fitArchive(); else if (view === "overview") fitOverview(); else if (typeof fitAnalysis === "function") fitAnalysis();
+        if (view === "recordings") fitArchive(); else if (view === "overview") fitOverview();
+        else if (view === "quality") fitAnalysis(); else if (typeof fitLab === "function") fitLab();
         fitting = false;
       });
     }).observe(document.querySelector("main"));

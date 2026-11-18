@@ -119,7 +119,16 @@ def register(app, ctx):
                 "codes_day": day, "codes_missing": not codes,
                 "approvals": learning.get("needs_approval", 0), "conflicts": learning.get("conflict", 0),
                 "telegram_failed": sync_status(db_path)["exhausted"],
-                "unlabeled_radio_24h": fresh["radio"], "unlabeled_speech_24h": fresh["speech"]}
+                "unlabeled_radio_24h": fresh["radio"], "unlabeled_speech_24h": fresh["speech"],
+                "lab_running": lab_running()}
+
+    def lab_running():
+        """Іде черга тестів лабораторії (тоді приймач, найімовірніше, зупинено)."""
+        from services import lab_queue
+        try:
+            return lab_queue.runner_active(lab_queue.read(experiments_dir))
+        except OSError:
+            return False
 
     @app.get("/api/workdesk")
     def workdesk(admin=Depends(actor)):

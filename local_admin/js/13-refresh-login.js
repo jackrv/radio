@@ -22,6 +22,7 @@
       else if (view === "filter") await filterView();
       else if (view === "activity") await activity();
       else if (view === "recordings") await refreshArchiveNotice();
+      else if (view === "experiments") await labQueue();   // хід черги тестів
     } catch (_) {
       // Коротко в шапці; пояснення — у підказці при наведенні.
       $("updated").textContent = "⚠ не оновлено · повтор…";

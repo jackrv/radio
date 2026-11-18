@@ -133,6 +133,7 @@
       row.append(buttons);
       items.push(row);
     };
+    if (a.lab_running) item("warn", "Іде черга тестів лабораторії — приймач на цей час зупинено, ефір не слухається.", "Переглянути", () => show("experiments"));
     if (a.codes_missing) item("warn", `Не внесено коди доби ${a.codes_day.split("-").reverse().slice(0, 2).join(".")} (діють з 20:00 попереднього дня).`, "Внести", () => show("codes"));
     if (a.approvals) item("warn", `Замін, що чекають вашого дозволу: ${a.approvals}.`, "Переглянути", () => show("learning"));
     if (a.conflicts) item("bad", `Конфліктів у навчанні: ${a.conflicts} — одне слово виправлено по-різному.`, "Переглянути", () => show("learning"));
@@ -315,7 +316,19 @@
     const extra = document.documentElement.scrollHeight - window.innerHeight;
     if (extra > 0) { height = Math.max(420, height - extra); split.style.setProperty("--overview-h", `${height}px`); }
   }
-  window.addEventListener?.("resize", () => { if (view === "overview") fitOverview(); else if (view === "quality") fitAnalysis(); });
+  window.addEventListener?.("resize", () => { if (view === "overview") fitOverview(); else if (view === "quality") fitAnalysis(); else if (view === "experiments") fitLab(); });
+  // «Аналіз → Експерименти»: таблиця результатів — до низу вікна, прокручується сама.
+  function fitLab() {
+    if (typeof document === "undefined" || !document.querySelector) return;
+    const panel = document.querySelector(".lab-results");
+    if (!panel) return;
+    if (!window.matchMedia?.("(min-width: 1100px)").matches || panel.offsetParent === null) { panel.style.removeProperty("--lab-h"); return; }
+    const top = panel.getBoundingClientRect().top + window.scrollY;
+    let height = Math.max(320, Math.floor(window.innerHeight - top - 10));
+    panel.style.setProperty("--lab-h", `${height}px`);
+    const extra = document.documentElement.scrollHeight - window.innerHeight;
+    if (extra > 0) { height = Math.max(320, height - extra); panel.style.setProperty("--lab-h", `${height}px`); }
+  }
   // Те саме для «Аналіз → Якість»: колонки прокручуються всередині, сторінка — ні.
   function fitAnalysis() {
     if (typeof document === "undefined" || !document.querySelector) return;

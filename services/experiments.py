@@ -4,11 +4,12 @@ import re
 from pathlib import Path
 
 NAME = re.compile(r"[0-9]{8}T[0-9]{6}Z_[A-Za-z0-9._-]{1,80}")
-KEYS = ("wer", "cer", "digits_exact", "app_numbers_exact", "recipient_accuracy_from_hypothesis",
+KEYS = ("exact_phrases", "wer", "cer", "digits_exact", "app_numbers_exact", "recipient_accuracy_from_hypothesis",
         "sender_accuracy_from_hypothesis", "missed_speech", "false_text_on_non_speech",
         "false_text_on_room_noise", "latency_p50_s", "latency_p90_s", "speech_records", "records")
 PARAMS = ("variant", "prompt", "model", "llm", "temperature", "min_rms_gate", "bandpass", "resegment",
-          "whisper_options", "records", "labelled_only", "statuses", "started_utc", "pipeline_scope")
+          "whisper_options", "records", "labelled_only", "statuses", "started_utc", "pipeline_scope",
+          "daily_codes", "retry", "names_file", "whisper_phrases", "split")
 
 
 def _run_dir(root, name):
@@ -39,8 +40,12 @@ def list_runs(root, limit=40):
             done = sum(1 for line in (path / "results.jsonl").open(encoding="utf-8") if line.strip())
         except OSError:
             done = 0
+        shown = {k: params.get(k) for k in PARAMS if k in params}
+        for key in ("names_file", "whisper_phrases"):   # шлях до приватного файлу не показуємо — лише «свій список»
+            if key in shown:
+                shown[key] = bool(shown[key])
         runs.append({"name": path.name, "label": path.name.split("_", 1)[1],
-                     "params": {k: params.get(k) for k in PARAMS if k in params},
+                     "params": shown,
                      "done": done, "complete": summary is not None and done >= (params.get("records") or 0),
                      "summary": {k: summary.get(k) for k in KEYS if k in summary} if summary else None})
     return runs

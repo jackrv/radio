@@ -819,3 +819,27 @@ def test_quality_errors_explain_what_needs_edits(local):
     store.review(record, "Клен 48", "speech", 0)
     data = client.get("/api/quality/errors?days=7").json()
     assert data["with_edits"] == 1 and data["categories"]["callsigns"]["ids"] == [record]
+
+
+def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
+    _, path = setup
+    from services import lab_queue
+    started = []
+    monkeypatch.setattr(lab_queue, "start", lambda root, **kw: started.append(root) or True)
+    runs = tmp_path / "runs"
+    app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings", experiments_dir=runs)
+    with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 12345)) as client:
+        assert client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN}).status_code == 204
+        h = {"Origin": ORIGIN}
+        state = client.get("/api/lab/queue").json()
+        assert {p["key"] for p in state["presets"]} >= {"base", "no-prompt"} and "args" not in state["presets"][0]
+        assert client.post("/api/lab/queue/start", json={}, headers=h).status_code == 422, "порожня черга"
+        assert client.post("/api/lab/queue", json={"preset": "nope"}, headers=h).status_code == 422
+        a = client.post("/api/lab/queue", json={"preset": "base"}, headers=h).json()["jobs"][0]["id"]
+        b = client.post("/api/lab/queue", json={"preset": "no-retry", "note": "друга перевірка"}, headers=h).json()["jobs"][1]["id"]
+        order = client.post(f"/api/lab/queue/{b}/move", json={"delta": -1}, headers=h).json()["jobs"]
+        assert [j["id"] for j in order] == [b, a]
+        assert client.post("/api/lab/queue/start", json={"start_at": 4000000000}, headers=h).status_code == 200
+        assert started == [runs] and lab_queue.read(runs)["runner"]["start_at"] == 4000000000
+        assert [j["id"] for j in client.delete(f"/api/lab/queue/{a}", headers=h).json()["jobs"]] == [b]
+        assert client.post("/api/lab/queue/stop", json={"now": False}, headers=h).json()["runner"]["stop"] is True

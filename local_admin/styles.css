@@ -1177,3 +1177,54 @@ button.stat-tile.goal { background: linear-gradient(160deg, rgba(184, 239, 134, 
 /* Набір для дообучення — тонкі смуги, як на Огляді */
 #training .bar-cell { height: 20px; border-radius: 99px; background: rgba(184, 239, 134, .08); margin-bottom: 6px; }
 #training .bar-cell i.good { background: linear-gradient(90deg, rgba(134, 200, 144, .55), rgba(184, 239, 134, .55)); border-radius: 99px; }
+
+/* ===================== Аналіз → Експерименти ===================== */
+[data-panel="experiments"] .panel { padding: 13px 16px; border-radius: 12px; margin: 0 0 12px; }
+[data-panel="experiments"] .panel-head h2 { font-size: 14px; }
+.lab-top { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 12px; }
+.lab-top > .panel { margin-bottom: 12px; }
+@media (max-width: 1099px) { .lab-top { grid-template-columns: 1fr; } }
+.lab-banner { margin: 0 0 8px; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--warn);
+  background: rgba(240, 196, 108, .1); border: 1px solid rgba(240, 196, 108, .45); }
+.lab-jobs { display: grid; gap: 2px; }
+.lab-job { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 8px 6px 11px;
+  border-radius: 2px 8px 8px 2px; box-shadow: inset 3px 0 0 var(--border); }
+.lab-job:hover { background: var(--surface2); }
+.lab-job.running { box-shadow: inset 3px 0 0 var(--lime); background: rgba(184, 239, 134, .06); }
+.lab-job.done { box-shadow: inset 3px 0 0 var(--lime2); } .lab-job.failed { box-shadow: inset 3px 0 0 var(--bad); }
+.lab-job.cancelled { opacity: .6; }
+.lab-job-icon { color: var(--muted); text-align: center; } .lab-job.running .lab-job-icon { color: var(--lime); animation: stat-blink 1.6s ease-in-out infinite; }
+.lab-job.done .lab-job-icon { color: var(--lime2); } .lab-job.failed .lab-job-icon { color: var(--bad); }
+.lab-job-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lab-progress { display: block; margin-top: 4px; }
+.lab-job-tools { display: flex; gap: 2px; }
+.lab-tool { width: 26px; height: 26px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; font-size: 12px;
+  background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.lab-tool:hover { color: var(--text); border-color: var(--lime2); filter: none; }
+.lab-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.lab-controls:empty { display: none; }
+.lab-time { width: auto; padding: 5px 8px; font-size: 13px; border-radius: 8px; }
+.lab-preset-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; }
+.lab-preset { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 4px 10px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: linear-gradient(160deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 70%); }
+.lab-preset:hover { border-color: rgba(184, 239, 134, .4); }
+.lab-preset-text { grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lab-preset-text .small { line-height: 1.35; }
+.lab-preset-time { justify-self: end; } .lab-preset button { align-self: end; }
+/* Результати */
+.lab-table td.lab-what { display: flex; flex-direction: column; gap: 1px; min-width: 220px; }
+.lab-table td.best { color: var(--lime); font-weight: 700; }
+.lab-table tr.incomplete td { opacity: .55; }
+@media (min-width: 1100px) {
+  main:has(> section[data-panel="experiments"]:not([hidden])) { padding-bottom: 12px; }
+  .lab-results { display: flex; flex-direction: column; height: var(--lab-h, auto); margin-bottom: 0 !important; }
+  .lab-results > .table-wrap { flex: 1 1 auto; min-height: 120px; max-height: none; }
+}
+@media (min-width: 1100px) {
+  .lab-top > .panel { max-height: 38vh; overflow-y: auto; }
+  .lab-preset-list { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+}
+.lab-preset { padding: 6px 10px; }
+.lab-preset-text .small { font-size: 11.5px; }
+.lab-table td.lab-what .small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lab-table td.lab-what { min-width: 300px; }

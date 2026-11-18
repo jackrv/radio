@@ -429,12 +429,15 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 
 /* Аудіоархів: перелік + редактор на широкому екрані */
 .archive-list { display: none; }
-.recording-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 8px; align-items: baseline; width: 100%; text-align: left;
-  padding: 6px 10px; border: 0; border-left: 3px solid transparent; border-radius: 6px; background: transparent; color: var(--text); font-size: 12px; cursor: pointer; }
+.recording-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 3px 10px; align-items: baseline; width: 100%; text-align: left;
+  padding: 8px 12px; margin-bottom: 2px; border: 0; border-left: 3px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font-size: 13px; cursor: pointer; }
 .recording-row:hover { background: var(--surface2); }
 .recording-row .row-time { color: var(--muted); font-variant-numeric: tabular-nums; }
-.recording-row .row-kind { color: var(--cyan); font-size: 11px; }
-.recording-row .row-text { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9d6e2; }
+.recording-row .row-kind { color: var(--cyan); font-weight: 600; }
+.recording-row .row-meta { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
+.recording-row .row-text { grid-column: 1 / -1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--text); line-height: 1.35; overflow-wrap: anywhere; }
+.recording-row .row-text.heard { color: var(--muted); font-style: italic; }
 .recording-row.done { opacity: .6; }
 .recording-row.done .row-kind::after { content: " ✓"; color: var(--lime2); }
 .recording-row.has-remarks { border-left-color: var(--warn); }
@@ -442,11 +445,19 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .recording-row.dirty .row-time::after { content: " ●"; color: var(--warn); }
 .recording-row.active { background: var(--surface2); border-left-color: var(--lime2); opacity: 1; }
 @media (min-width: 1100px) {
-  .archive-split { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 10px; align-items: start; }
+  .archive-split { display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); gap: 12px; align-items: start; }
   .archive-list { display: block; position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto;
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px; }
   #recordings { position: sticky; top: 8px; }
   #recordings .recording-card:not(.active) { display: none; }
   #recordings .recording-card.active { opacity: 1; }
-  [data-panel="recordings"] .recording-player audio { width: 340px; }
+  [data-panel="recordings"] .recording-player audio { width: 220px; }
 }
+
+/* Ролі: назва, поле, «∅» — в один рядок, без випадних списків */
+.recording-meta .recording-role { display: flex; align-items: center; gap: 6px; grid-template-columns: none; }
+.recording-meta .recording-role .role-title { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.recording-meta .recording-role input { flex: 1 1 auto; min-width: 0; width: auto; grid-column: auto; padding: 5px 8px; }
+.recording-meta .recording-role input:disabled { opacity: .55; }
+.role-none { padding: 3px 8px !important; font-size: 13px !important; line-height: 1; color: var(--muted); }
+.role-none.on { color: #172414; background: var(--lime2); border-color: var(--lime2); }

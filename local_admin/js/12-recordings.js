@@ -9,8 +9,13 @@
     const time = at.toLocaleString("uk-UA", today ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     const kind = item.reference != null ? ROW_KIND[item.label] || item.label
       : ((typeof STATUS !== "undefined" && STATUS[item.status]) || item.status);
-    const text = el("span", "row-text", item.reference || item.data?.raw_text || "—");
-    row.append(el("span", "row-time", time), el("span", "row-kind", kind), text);
+    const d = item.data || {}, event = /^db:(\d+)$/.exec(d.fix_id || "");
+    const duration = d.signal?.duration_s;
+    const meta = [typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "", event ? `№${event[1]}` : "", d.fix_id ? "✈" : ""]
+      .filter(Boolean).join(" · ");
+    // Еталон оператора — звичайним; текст Whisper нерозміченого запису — приглушено.
+    const text = el("span", item.reference != null ? "row-text" : "row-text heard", item.reference || d.raw_text || "—");
+    row.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta), text);
     row.addEventListener("click", () => activateReview(controller, false));
     $("recording-rows").append(row);
     // Набраний текст — у рядку переліку; клас картки — так само на рядку.
@@ -213,27 +218,28 @@
         updateDirty();
       }
       function rolesTouched() { rolesAuto = false; rolesAutoApplied = false; }
+      // Роль без випадних списків: порожнє поле — ще не перевірено; «∅» — у фразі не вказано.
       function roleField(title, reference) {
-        const group = el("div", "recording-role"), mode = el("select"), value = el("input");
-        group.append(el("span", "", title));
-        mode.setAttribute("aria-label", `${title}: стан перевірки`);
-        for (const [key, text] of Object.entries({unknown: "Невідомо / не перевірено", absent: "Не вказано у фразі", value: "Вказати позивний"})) {
-          const option = el("option", "", text); option.value = key; mode.append(option);
-        }
-        mode.value = reference == null ? "unknown" : reference === "" ? "absent" : "value";
+        const group = el("div", "recording-role"), value = el("input"), none = el("button", "ghost role-none", "∅");
+        let absent = reference === "";
         value.type = "text"; value.maxLength = 300; value.value = reference || "";
-        value.placeholder = "Позивний і номер; декілька — через кому";
         value.setAttribute("aria-label", `${title}: позивний`);
-        const update = () => { value.hidden = mode.value !== "value"; value.required = mode.value === "value"; };
-        mode.addEventListener("change", () => { rolesTouched(); update(); renderChips(); });
+        none.type = "button"; none.title = `«${title}» у фразі не вказано (порожнє поле — ще не перевірено)`;
+        const update = () => {
+          none.className = absent ? "ghost role-none on" : "ghost role-none";
+          none.setAttribute("aria-pressed", String(absent));
+          value.disabled = absent;
+          value.placeholder = absent ? "не вказано у фразі" : "невідомо";
+        };
+        none.addEventListener("click", () => { absent = !absent; if (absent) value.value = ""; rolesTouched(); update(); renderChips(); updateDirty(); });
         value.addEventListener("input", () => { rolesTouched(); renderChips(); });
-        update(); group.append(mode, value);
-        return {node: group, read: () => mode.value === "unknown" ? null : mode.value === "absent" ? "" : value.value,
-                absent: () => { mode.value = "absent"; update(); },
-                values: () => mode.value === "value" ? splitRoles(value.value) : [],
-                set: list => { value.value = list.join(", "); mode.value = list.length ? "value" : "unknown"; update(); }};
+        update(); group.append(el("span", "role-title", title), value, none);
+        return {node: group, read: () => absent ? "" : (value.value.trim() ? value.value : null),
+                absent: () => { absent = true; value.value = ""; update(); },
+                values: () => absent ? [] : splitRoles(value.value),
+                set: list => { absent = false; value.value = list.join(", "); update(); }};
       }
-      const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від кого", item.reference_sender);
+      const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від", item.reference_sender);
 
       // Позивні зі словника, знайдені в набраному тексті: оператор сам відмічає «Кому» / «Від».
       const chips = el("div", "recording-chips");

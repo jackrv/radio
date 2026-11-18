@@ -95,6 +95,14 @@ _TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`-][^\W\d_]+)*|\d+")
 _CODE_PAIR = re.compile(r"(?<![\w:.,/-])(\d{2})(\d{2})(?![\w:/-]|[.,]\d|\s*(?:р\.|рік|році|року|роках))")
 
 
+# Крапку в кінці ставить Whisper; в еталонах оператора її немає — прибираємо одну (не «…»).
+_FINAL_PERIOD = re.compile(r"(?<![.…])\.\s*$")
+
+
+def strip_final_period(text):
+    return _FINAL_PERIOD.sub("", text.rstrip())
+
+
 def split_code_pairs(text):
     return _CODE_PAIR.sub(r"\1 \2", text)
 
@@ -217,4 +225,4 @@ def template_text(text, callsigns, known_names=()):
             pos = end
     # Шаблони цілих фраз — після слів і зворотів: виправляють лише написання почутих слів.
     from core.phrase_patterns import apply_patterns
-    return split_code_pairs(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names))
+    return strip_final_period(split_code_pairs(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names)))

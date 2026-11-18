@@ -85,3 +85,10 @@ def test_callsign_number_split_by_whisper_is_joined_only_with_a_dictionary_numbe
     assert join_callsign_numbers("клен, 700, 72 59, прийом", cs) == "клен 700, 72 59, прийом", "далі код — не склеюємо"
     assert join_callsign_numbers("дуб, 16, прийом", cs) == "дуб, 16, прийом", "16 — не номер дуба"
     assert join_callsign_numbers("вишня, 700", cs) == "вишня, 700", "не позивний"
+
+
+def test_whisper_final_period_is_dropped_but_inner_and_ellipsis_stay():
+    from core.template_text import strip_final_period
+    assert strip_final_period("Клен 15, прийом.") == "Клен 15, прийом"
+    assert strip_final_period("Клен 15, прийом. Дуб 4, прийнято.") == "Клен 15, прийом. Дуб 4, прийнято"
+    assert strip_final_period("Клен 15…") == "Клен 15…" and strip_final_period("Клен...") == "Клен..."

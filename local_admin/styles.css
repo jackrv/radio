@@ -575,3 +575,70 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .recording-type .segmented button:nth-child(3) { border-right: 0; }
 .recording-type .segmented button:nth-child(4), .recording-type .segmented button:nth-child(5) { border-bottom: 0; }
 .recording-type .segmented button:nth-child(5) { grid-column: span 2; border-right: 0; }
+
+/* Кнопки типу: вищі, з реакцією на курсор і клавіатуру */
+.recording-type .segmented button { min-height: 38px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  transition: background .12s, color .12s; }
+.recording-type .segmented button:not(.on):hover { background: rgba(184, 239, 134, .14); color: #e6f7d4; }
+.recording-type .segmented button:active { filter: brightness(.9); }
+.recording-type .segmented button:focus-visible { outline: 2px solid var(--lime2); outline-offset: -2px; }
+
+/* Ролі: табличка праворуч у стилі кнопок — [позивний (поле)][Кому][Від] */
+.recording-type .recording-chips { justify-content: flex-end; }
+.roles-table { display: grid; grid-template-columns: minmax(120px, 190px) auto auto; margin-left: auto;
+  border: 1px solid rgba(184, 239, 134, .4); border-radius: 9px; overflow: hidden; }
+.roles-table > * { border-bottom: 1px solid rgba(184, 239, 134, .25); }
+.roles-table > :nth-last-child(-n+3) { border-bottom: 0; }
+.roles-table .role-name { min-width: 0; border: 0; border-right: 1px solid rgba(184, 239, 134, .25); border-radius: 0;
+  background: transparent; color: var(--text); font-weight: 700; padding: 7px 10px; font-size: 13px; }
+.roles-table .role-name:focus { outline: none; background: var(--surface2); }
+.roles-table button { margin: 0; border: 0; border-radius: 0 !important; box-shadow: none; min-height: 34px; padding: 6px 12px;
+  font-size: 12px; cursor: pointer; }
+.roles-table button + button { border-left: 1px solid rgba(184, 239, 134, .25); }
+.roles-table button:not(.on):hover { background: rgba(184, 239, 134, .14); }
+
+/* «Далі одразу» — унизу блоку підказок, поруч із «Зберегти»; у шапці його більше немає */
+.recording-fields .autoplay-toggle { justify-self: end; align-self: end; padding: 3px 10px !important; font-size: 12px !important;
+  border-radius: 99px !important; color: var(--muted); border-color: var(--border); }
+.recording-fields .autoplay-toggle.on { color: #172414; background: var(--lime2); border-color: var(--lime2); }
+.archive-switches label:has(#recording-autoplay) { display: none; }
+
+/* Заголовок картки: час — найпомітніший, дата дрібно, статус із підказкою, ID і №події копіюються */
+.recording-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.recording-title .rec-time { font-size: 20px; font-weight: 800; letter-spacing: .02em; color: #fff; font-variant-numeric: tabular-nums; }
+.recording-title .rec-date { font-size: 12px; color: var(--muted); }
+.recording-title .rec-status { font-size: 12px; color: var(--cyan); border-bottom: 1px dotted rgba(140, 196, 255, .6); cursor: help; }
+.recording-title .rec-copy { padding: 1px 8px !important; font-size: 12px !important; font-family: ui-monospace, Menlo, monospace;
+  background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px !important; cursor: copy; font-weight: 600; }
+.recording-title .rec-copy:hover { border-color: var(--lime2); color: #fff; }
+/* «Фартушок» під карткою: розпізнане й технічні деталі */
+.recording-apron { margin: -6px 22px 10px; padding: 12px 14px 8px; background: var(--surface2); border: 1px solid var(--border);
+  border-top: 0; border-radius: 0 0 12px 12px; font-size: 12px; }
+.recording-apron .apron-raw { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.recording-apron .recording-raw { margin: 0; }
+.recording-apron .recording-details { margin-top: 6px; }
+.recording-apron .recording-details pre { max-height: 260px; overflow: auto; font-size: 11px; }
+#recordings .recording-card { position: relative; z-index: 1; }
+@media (min-width: 1100px) {
+  #recordings .recording-card:not(.active) + .recording-apron { display: none; }
+}
+
+/* Шапка архіву: праворуч квадратна кнопка «мікрофон на паузі» на всю висоту; пошук — лише коли задано */
+.archive-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.archive-bar > * { grid-column: 1; }
+.archive-bar > .mic-square { grid-column: 2; grid-row: 1 / span 3; align-self: stretch; }
+.mic-square { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 96px; min-height: 72px;
+  border: 1px solid var(--border); border-radius: 10px; cursor: pointer; user-select: none; color: var(--muted); text-align: center;
+  transition: background .12s, border-color .12s; }
+.mic-square input { position: absolute; opacity: 0; pointer-events: none; }
+.mic-square .mic-icon { font-size: 24px; line-height: 1; filter: grayscale(1); opacity: .6; }
+.mic-square .mic-text { font-size: 10px; line-height: 1.25; }
+.mic-square:hover { border-color: var(--lime2); }
+.mic-square:has(input:checked) { background: rgba(184, 239, 134, .13); border-color: var(--lime2); color: #d9f3c8; }
+.mic-square:has(input:checked) .mic-icon { filter: none; opacity: 1; }
+.mic-square:has(input:focus-visible) { outline: 2px solid var(--lime2); outline-offset: 2px; }
+#recording-search:placeholder-shown { display: none; }
+/* «Оновити» над переліком */
+.archive-list > #recording-refresh { margin: 2px 6px 6px; padding: 5px 10px; font-size: 12px; }
+/* Видалення в Telegram — у рядку переліку */
+.recording-row .row-head button { padding: 1px 8px !important; font-size: 11px !important; margin-left: 4px; }

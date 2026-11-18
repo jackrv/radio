@@ -50,7 +50,7 @@ const item = {id:'a'.repeat(32),created:1,status:'ready',data:{raw_text:'тек�
 test('archive renders current views and retains pagination', async () => {
   const ui = harness({items:[item], total:30, views:{radio:30, speech:2}});
   await ui.load();
-  assert.equal(ui.$('recordings').children.length, 1);
+  assert.equal(ui.$('recordings').children.filter(c => c.className.includes('recording-card')).length, 1);
   assert.equal(ui.$('recording-more').hidden, false);
   assert.equal(ui.$('recording-view').options[0].textContent, 'radio · 30');
   assert.match(ui.urls[0], /view=radio/);

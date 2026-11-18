@@ -1,6 +1,23 @@
   // ---------- Черги розмітки з поточного архіву ----------
   // Види «розмітки» показують лише нерозмічене: розмічений запис зникає зі списку.
   const TODO_VIEWS = ["radio", "speech", "filtered"];
+  const STATUS_HELP = {
+    ready: "Текст дійшов до обробки: шукаються позивні й команди; подія й Telegram — за режимами користувачів",
+    ready_fallback: "Обробка тексту дала збій — далі пішов текст Whisper без виправлень",
+    empty_text: "Whisper тексту не дав (часто тиша або зациклення)", low_rms: "Затихо — до Whisper не дійшло",
+    blacklist: "Текст збігся з фразою-галюцинацією з чорного списку — відкинуто", garbage: "Довге сміття Whisper — відкинуто",
+    short_garbage: "Короткий шум зі списку — відкинуто", bare_callsign: "Лише позивний без змісту — відкинуто",
+    notification: "Фільтр сигналів визнав звуком сповіщення — до Whisper не дійшло",
+    dictionary_echo: "Whisper переписав перелік назв із підказки — відкинуто", low_confidence: "Коротка фраза з низькою впевненістю — відкинуто",
+  };
+  function copyChip(text, value, what) {
+    const chip = el("button", "rec-copy", text); chip.type = "button"; chip.title = `${what}: клік — скопіювати`;
+    chip.addEventListener?.("click", event => {
+      event.stopPropagation?.();
+      navigator.clipboard?.writeText(value).then(() => note(`${what} скопійовано: ${value}`), () => note(value));
+    });
+    return chip;
+  }
   const ROW_KIND = { speech: "Мовлення", unclear: "Нерозбірливо", noise: "Шум", notification: "Сигнал", room: "Кімната" };
   function recordingRow(item, controller) {
     const row = el("div", "recording-row");
@@ -26,6 +43,8 @@
     if (conflict) row.title = speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст";
     const head = el("div", "row-head");
     head.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta));
+    // Видалення в Telegram — прямо в рядку (лише для свіжих надісланих записів).
+    if (item.telegram?.copies && item.telegram.deletable) head.append(telegramRecall(item));
     row.append(head, text);
     row.addEventListener("click", () => activateReview(controller, false));
     row.addEventListener("keydown", event => { if (event.key === "Enter") activateReview(controller, false); });   // далі Enter веде до тексту
@@ -40,6 +59,23 @@
       new MutationObserver(sync).observe(controller.card, { attributes: true, attributeFilter: ["class"] }); sync();
     }
     return row;
+  }
+
+  // «Далі одразу» — біля «Зберегти» в кожній картці; одне спільне значення (reviewPrefs.autoplay).
+  function autoplayToggle() {
+    const on = typeof reviewPrefs === "undefined" ? true : reviewPrefs.autoplay;
+    const toggle = el("button", on ? "ghost autoplay-toggle on" : "ghost autoplay-toggle", "⏭ Далі одразу"); toggle.type = "button";
+    toggle.title = "Після збереження одразу грати наступний запис";
+    toggle.setAttribute?.("aria-pressed", String(on));
+    toggle.addEventListener?.("click", () => {
+      reviewPrefs.autoplay = !reviewPrefs.autoplay; savePrefs();
+      $("recording-autoplay").checked = reviewPrefs.autoplay;
+      for (const t of document.querySelectorAll(".autoplay-toggle")) {
+        t.className = reviewPrefs.autoplay ? "ghost autoplay-toggle on" : "ghost autoplay-toggle";
+        t.setAttribute("aria-pressed", String(reviewPrefs.autoplay));
+      }
+    });
+    return toggle;
   }
 
   // Швидкість відтворення — біля кожного плеєра; спільна для всіх карток (setSpeed нижче).
@@ -98,8 +134,8 @@
       return old;
     }
     const hours = Math.max(1, Math.floor((t.deletable_until * 1000 - Date.now()) / 3600000));
-    const b = el("button", "ghost small-button danger-text", `🗑 Видалити в Telegram у всіх (${t.copies})`); b.type = "button";
-    b.title = `Повідомлення зникне в усіх ${t.copies} отримувачів і в журналі. Можна ще ≈${hours} год.`;
+    const b = el("button", "ghost small-button danger-text", `🗑 у всіх (${t.copies})`); b.type = "button";
+    b.title = `Видалити в Telegram у всіх: повідомлення зникне в ${t.copies} отримувачів і в журналі. Можна ще ≈${hours} год.`;
     b.addEventListener("click", () => action(async () => {
       if (!confirm(`Видалити це повідомлення в Telegram в усіх отримувачів (${t.copies})? Фраза також зникне з журналу й Mini App. Скасувати не можна.`)) return;
       const r = await request(`/api/recordings/${item.id}/telegram-delete`, "POST");
@@ -154,22 +190,24 @@
       const card = el("article", "panel recording-card");
       const header = el("div", "recording-header");
       const eventNo = /^db:(\d+)$/.exec(d.fix_id || "");
-      header.append(el("h3", "", `${new Date(item.created * 1000).toLocaleString("uk-UA")} · ${STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status)} · ${item.id.slice(0, 8)}${eventNo ? ` · №${eventNo[1]}` : ""}`));
+      // Заголовок: час — найпомітніше, дата дрібно; статус — що програма зробила із записом;
+      // ID і №події копіюються кліком.
+      const at = new Date(item.created * 1000);
+      const title = el("div", "recording-title");
+      const status = el("span", "rec-status", STATUS[item.status] || (item.status === "vad_short" ? "Закоротко (VAD)" : item.status));
+      status.title = STATUS_HELP[item.status] || "Що програма зробила із записом";
+      title.append(el("span", "rec-time", at.toLocaleTimeString("uk-UA")), el("span", "rec-date", at.toLocaleDateString("uk-UA")), status,
+                   copyChip(item.id.slice(0, 8), item.id, "ID запису"));
+      if (eventNo) title.append(copyChip(`№${eventNo[1]}`, eventNo[1], "Номер події"));
+      header.append(title);
       const audio = el("audio"); audio.controls = true; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`;
       const player = el("div", "recording-player"); player.append(audio, speedSelect());
       header.append(player); card.append(header);
-      if (typeof d.notification_score === "number" || d.fix_id) {
-        // Надіслане в Telegram і оцінка спектрального фільтра; чистий сигнал можна зробити зразком.
-        const tags = el("div", "recording-tags");
-        if (d.fix_id) tags.append(el("span", "badge", eventNo ? `надіслано в Telegram · подія №${eventNo[1]}` : "надіслано в Telegram"));
-        if (item.telegram) tags.append(telegramRecall(item));
-        if (typeof d.notification_score === "number") {
-          const badge = el("span", `badge ${d.notification_candidate ? "cand" : ""}`, `спектр ${fix(d.notification_score)}${d.notification_candidate ? " · кандидат" : ""}`);
-          badge.title = `Схожість на зразок сигналу. Поза збігом: ${fix(d.notification_outside_s)} с · стороння енергія: ${pct(d.notification_extra)}`;
-          tags.append(badge);
-        }
-        const sample = el("button", "ghost small-button", "＋ До зразків"); sample.type = "button";
+      // «Фартушок» під карткою: текст Whisper (з «Повернути розпізнане») і технічні деталі.
+      const apron = el("div", "recording-apron");
+      {
+        const sample = el("button", "ghost small-button", "＋ До зразків сигналу"); sample.type = "button";
         sample.title = "Зробити цей звук зразком фільтра сигналів (лише чистий сигнал без мовлення)";
         sample.addEventListener("click", () => action(async () => {
           if (!confirm("Додати цей запис як зразок звуку сповіщення? Лише якщо в ньому чистий сигнал без мовлення. Діє після перезапуску.")) return;
@@ -177,8 +215,7 @@
           sample.disabled = true; sample.textContent = "✓ у зразках";
           note("Зразок додано. Він почне діяти після перезапуску (кнопка внизу меню).");
         }));
-        tags.append(sample);
-        card.append(tags);
+        apron.sample = sample;
       }
       const details = el("details", "recording-details");
       details.append(el("summary", "", "Технічні деталі"));
@@ -191,7 +228,7 @@
       }
       if (!item.corrections && item.reference_source === "miniapp")
         card.append(el("p", "recording-edit small muted", "✎ Еталон із правки в Mini App (автор невідомий: до журналу дій)"));
-      card.append(el("p", "recording-raw", `Whisper: ${d.raw_text || "Текст відсутній / розпізнавання не виконувалось"}`));
+      const rawLine = el("p", "recording-raw", `Whisper: ${d.raw_text || "Текст відсутній / розпізнавання не виконувалось"}`);
       if (d.before_llm && d.before_llm !== d.raw_text) details.append(el("p", "", `До Qwen: ${d.before_llm}`));
       if (d.llm_text !== undefined) details.append(el("p", "", `Пропозиція Qwen (${d.llm_accepted ? "прийнято" : "відхилено"}): ${d.llm_text}`));
       details.append(el("p", "", `Вихід конвеєра: ${d.final_text || "Не передано далі"}`));
@@ -216,7 +253,7 @@
         button.addEventListener("click", () => setCategory(value, true));
         categoryButtons[value] = button; segmented.append(button);
       }
-      input.value = item.reference ?? (d.final_text || d.raw_text || "");
+      input.value = item.reference ?? (d.final_text || d.raw_text || "").replace(/\s*\.\s*$/, "");
       input.rows = 2; input.maxLength = 2000; input.placeholder = "Введіть те, що справді чутно…";
       // Поле росте разом із текстом (без внутрішньої прокрутки).
       const grow = () => { if (!input.style) return; input.style.height = "auto"; if (input.scrollHeight) input.style.height = `${input.scrollHeight + 2}px`; };
@@ -265,6 +302,7 @@
       let suggestions = [], suggestTimer = null;
       // Ролі одним рядком: позивні з фрази (і вже вказані) з перемикачами «Кому / Від». Не обрано —
       // роль у фразі не вказана; при кількох передачах ролі не оцінюються (див. roleField.read).
+      const renamed = new Map();   // підказаний позивний → виправлений оператором варіант
       function renderChips() {
         chips.replaceChildren();
         // Кілька передач: ролі не оцінюються — замість чипів лише ця позначка (знімається кліком).
@@ -274,26 +312,42 @@
           chips.title = "У тексті є «/»: ролі для такого запису не позначаються"; return;
         }
         const names = [];
-        for (const name of [...suggestions, ...recipient.values(), ...sender.values()])
+        for (const name of [...suggestions.map(n => renamed.get(n) ?? n), ...recipient.values(), ...sender.values()])
           if (!names.some(n => sameRole(n, name))) names.push(name);
         chips.title = rolesAutoApplied ? "Ролі підставлено: перший позивний — «Кому», другий — «Від». Змініть, якщо не так." : "";
+        if (!names.length) return;
+        // Табличка: рядок на позивний — [поле з назвою][Кому][Від]; назву можна виправити.
+        const table = el("div", "roles-table");
         for (const name of names) {
-          const chip = el("span", "chip");
-          chip.append(el("b", "", name));
-          for (const [field, title] of [[recipient, "Кому"], [sender, "Від"]]) {
-            const chosen = field.values().some(v => sameRole(v, name));
+          const field = el("input", "role-name"); field.type = "text"; field.value = name; field.maxLength = 80;
+          field.title = "Позивний (можна виправити)"; field.setAttribute?.("aria-label", "Позивний");
+          field.addEventListener("change", () => {
+            const value = field.value.trim();
+            if (!value || sameRole(value, name)) { field.value = name; return; }
+            const source = suggestions.find(n => sameRole(renamed.get(n) ?? n, name));
+            if (source) renamed.set(source, value);
+            for (const role of [recipient, sender]) {
+              const list = role.values();
+              if (list.some(v => sameRole(v, name))) role.set(list.map(v => sameRole(v, name) ? value : v));
+            }
+            rolesTouched(); updateDirty(); renderChips();
+          });
+          field.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); field.blur(); } });
+          table.append(field);
+          for (const [role, title] of [[recipient, "Кому"], [sender, "Від"]]) {
+            const chosen = role.values().some(v => sameRole(v, name));
             const toggle = el("button", chosen ? "ghost on" : "ghost", title); toggle.type = "button";
             toggle.setAttribute("aria-pressed", String(chosen));
             toggle.addEventListener("click", () => {
               rolesTouched();
-              const list = field.values().filter(v => !sameRole(v, name));
-              field.set(chosen ? list : [...list, name]);
+              const list = role.values().filter(v => !sameRole(v, name));
+              role.set(chosen ? list : [...list, name]);
               updateDirty(); renderChips();
             });
-            chip.append(toggle);
+            table.append(toggle);
           }
-          chips.append(chip);
         }
+        chips.append(table);
       }
       function suggest() {
         clearTimeout(suggestTimer);
@@ -461,7 +515,7 @@
       const meta = el("div", "recording-meta"); meta.append(roles);   // «кілька передач» — позначка в рядку чипів
       // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
       // ліворуч підказки, позивні й ролі, праворуч «Зберегти» на висоту лівого блоку.
-      const fields = el("div", "recording-fields"); fields.append(lint, meta);
+      const fields = el("div", "recording-fields"); fields.append(lint, meta, autoplayToggle());
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
@@ -475,9 +529,21 @@
       setCategory(category.value, false);
       renderChips();
       savedSnapshot = snapshot();
-      // «Технічні деталі» — над формою: «Зберегти» внизу праворуч доходить до краю картки.
+      // Фартушок: розпізнане Whisper (його можна повернути в поле) і технічні деталі.
+      const heardText = (d.final_text || d.raw_text || "").replace(/\s*\.\s*$/, "");
+      const rawRow = el("div", "apron-raw"); rawRow.append(rawLine);
+      if (heardText) {
+        const restore = el("button", "ghost small-button", "↺ Повернути розпізнане"); restore.type = "button";
+        restore.title = "Підставити в поле текст, який дала програма (замість написаного)";
+        restore.addEventListener("click", () => { input.value = heardText; grow(); updateDirty(); checkText(0); suggest(); input.focus?.(); });
+        rawRow.append(restore);
+      }
+      if (typeof d.notification_score === "number")
+        details.append(el("p", "muted small", `Фільтр сигналів: схожість ${fix(d.notification_score)}${d.notification_candidate ? " (кандидат)" : ""} · поза збігом ${fix(d.notification_outside_s)} с · стороннє ${pct(d.notification_extra)}`));
+      details.append(apron.sample);
       details.append(el("pre", "", JSON.stringify(d, null, 2)));
-      card.append(details, form); $("recordings").append(card);
+      apron.append(rawRow, details);
+      card.append(form); $("recordings").append(card, apron);
     }
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
@@ -557,13 +623,17 @@
     const split = document.querySelector(".archive-split"), list = document.querySelector(".archive-list");
     const main = document.querySelector(".archive-main"), more = $("recording-more");
     if (!split || !list || !main || !more) return;
+    const refresh = $("recording-refresh"), filters = document.querySelector(".archive-filters");
     if (splitView() && split.offsetParent !== null) {
       const top = split.getBoundingClientRect().top + window.scrollY;
       split.style.setProperty("--archive-h", `${Math.max(360, Math.floor(window.innerHeight - top - 10))}px`);
       if (more.parentElement !== list) list.append(more);
+      // «Оновити» — над переліком, який він і оновлює.
+      if (refresh && refresh.parentElement !== list) list.prepend(refresh);
     } else {
       split.style.removeProperty("--archive-h");
       if (more.parentElement !== main) main.append(more);
+      if (refresh && filters && refresh.parentElement !== filters) filters.append(refresh);
     }
   }
   window.addEventListener?.("resize", () => fitArchive());
@@ -572,6 +642,9 @@
     for (const c of reviewCards) c.card.classList.toggle("active", c === controller);
     // Прихована картка не мала висоти: поле тексту підганяємо, щойно вона показана.
     window.requestAnimationFrame?.(() => controller.grow?.());
+    // Нерозмічений запис приходить без перевірки тексту: перевіряємо одразу, щоб «Виправити
+    // оформлення» й позивні були готові без першої правки.
+    if (!controller.hinted) { controller.hinted = true; controller.refreshHints?.(); }
     if (splitView()) controller.row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     else if (scroll) controller.card.scrollIntoView({ block: "center", behavior: "smooth" });
   }

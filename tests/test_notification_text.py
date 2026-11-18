@@ -70,9 +70,9 @@ def test_event_and_notification_get_dictionary_words_heard_text_is_kept_as_raw()
     telegram, save = Mock(), Mock(return_value=7)
     heard = "Злата 42 42, злата, кем 25 15, прийом."
     processor(telegram, save=save).process(heard, b"\0\0")
-    assert save.call_args.args[4] == "Злива 42 42, злата, кем 25 15, прийом."
+    assert save.call_args.args[4] == "Злива 42 42, злата, кем 25 15, прийом"
     assert save.call_args.kwargs["raw_text"] == heard
-    assert telegram.notify.call_args.args[3] == "Злива 42 42, злата, кем 25 15, прийом."
+    assert telegram.notify.call_args.args[3] == "Злива 42 42, злата, кем 25 15, прийом"
     assert telegram.notify.call_args.kwargs["commands_str"] == "злива 42 42"
 
 

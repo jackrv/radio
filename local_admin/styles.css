@@ -804,3 +804,8 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 @media (prefers-reduced-motion: reduce) {
   .stat-tile.drafts, .mic-square.holding { animation: none; }
 }
+
+/* Вкладка «Аудіоархів»: блакитна цифра — ефір за 24 год без розмітки, жовта — незбережені картки */
+.todo-count { margin-left: auto; background: rgba(140, 196, 255, .16); color: var(--cyan); border-radius: 99px; padding: 0 7px;
+  font-size: 12px; font-variant-numeric: tabular-nums; }
+.todo-count:not([hidden]) + .draft-count { margin-left: 4px; }

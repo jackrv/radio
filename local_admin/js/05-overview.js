@@ -112,6 +112,12 @@
     try { a = await request("/api/attention"); } catch (_) { return; }
     // Після правки перевірка йде у фоні кілька секунд — тоді оновлюємо список ще раз.
     clearTimeout(attentionRetry);
+    // На вкладці «Аудіоархів»: ефір за 24 год, ще не розмічений (шум, кімнату й інше мовлення не рахуємо).
+    {
+      const todo = $("archive-todo-nav"), count = a.unlabeled_radio_24h || 0;
+      todo.hidden = !count; todo.textContent = count > 99 ? "99+" : String(count);
+      todo.title = `Ефір за останні 24 год, ще не розмічено: ${count}`;
+    }
     if (a.suggestions_pending && view === "overview") attentionRetry = setTimeout(() => attention(true), 6000);
     const items = [];
     const item = (tone, text, label, go, extra, hint) => {

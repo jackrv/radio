@@ -1245,3 +1245,8 @@ button.stat-tile.goal { background: linear-gradient(160deg, rgba(184, 239, 134, 
 .callsign-invented.bad { font-weight: 700; color: var(--bad); }
 .stat-tile.effort { border-color: rgba(184, 239, 134, .3); }
 .stat-tile.effort .stat-value { color: #d6f5b5; }
+
+/* Сумнівні записи (Whisper найменш упевнений): «?» у рядку переліку, «сумнівно» в заголовку картки */
+.recording-row.doubtful .row-kind::after { content: " ?"; color: var(--warn); font-weight: 800; }
+.recording-title .rec-doubt { font-size: 11px; font-weight: 700; color: var(--warn); padding: 1px 8px; border-radius: 99px;
+  border: 1px dashed rgba(240, 196, 108, .6); background: rgba(240, 196, 108, .08); cursor: help; }

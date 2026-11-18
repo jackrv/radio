@@ -145,6 +145,10 @@
               <option value="yesterday">вчора</option><option value="daybefore">позавчора</option>
               <option value="24">останні 24 год</option>
             </select>
+            <select id="recording-order" aria-label="Порядок" title="Порядок записів у переліку">
+              <option value="new">нові першими</option>
+              <option value="doubtful">сумнівні першими</option>
+            </select>
             <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
             <button id="recording-refresh" class="ghost" type="button" role="status" aria-live="polite" title="Оновити список. Автоматично картки не перерисовуються, щоб не загубити чернетки й аудіо.">⟳ Оновити</button>
             <span class="archive-switches">

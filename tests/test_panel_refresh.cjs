@@ -13,7 +13,7 @@ function refreshHarness(view='dictionaries') {
   document:{visibilityState:'visible',addEventListener:(n,f)=>{events[n]=f;}},window:{addEventListener:(n,f)=>{events[n]=f;}},
   overview:async()=>{calls.push('overview');},system:async()=>{calls.push('system');},
   filterView:async()=>{calls.push('filter');},activity:async()=>{calls.push('activity');},
-  periodSince:()=>null,periodUntil:()=>null,searchQuery:()=>'',recordingFilterIds:['recording-view','recording-period','recording-search'],apiView:()=>'radio',editsValue:()=>'',
+  periodSince:()=>null,periodUntil:()=>null,searchQuery:()=>'',recordingFilterIds:['recording-view','recording-period','recording-order','recording-search'],apiView:()=>'radio',editsValue:()=>'',orderValue:()=>'new',
   archiveBaseline:null,showArchiveFresh:fresh=>calls.push(fresh?'fresh':'same'),URLSearchParams,request:async()=>({total:2,items:[{id:'new'}]}),setInterval(){},clearInterval(){}});
  const block=source.slice(source.indexOf('  let refreshPending ='),source.indexOf('  // ---------- Вхід ----------'));
  vm.runInContext(block+'\nglobalThis.refresh=refreshPanel;',context);
@@ -37,7 +37,7 @@ test('slow background requests cannot overlap',async()=>{
  const first=h.context.refresh();await h.context.refresh();assert.deepEqual(h.calls,['slow']);finish();await first;
 });
 test('archive refresh announces changed records without replacing editable cards',async()=>{
- const h=refreshHarness('recordings');h.context.archiveBaseline={query:JSON.stringify(['radio','','']),total:1,first:'old'};
+ const h=refreshHarness('recordings');h.context.archiveBaseline={query:JSON.stringify(['radio','','','']),total:1,first:'old'};
  await h.context.refresh();assert.deepEqual(h.calls,['overview','fresh']);
 });
 

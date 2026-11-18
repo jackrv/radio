@@ -434,3 +434,17 @@ def test_restore_returns_a_quick_label_to_the_previous_state(tmp_path):
     back=store.restore(record_id,noise['revision'],state)
     assert back['reference']=='клен сорок' and back['label']=='speech' and back['reference_recipient']=='клен'
     assert back['reviewed_at']==previous['reviewed_at']
+
+
+def test_doubtful_order_puts_least_confident_first_and_threshold_needs_enough_labels(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    shaky=store.save(pcm(),16000,{'status':'ready','raw_text':'дуб','final_text':'дуб','whisper_segments':[{'avg_logprob':-1.3}]})
+    sure=store.save(pcm(),16000,{'status':'ready','raw_text':'клен','final_text':'клен','whisper_segments':[{'avg_logprob':-0.2}]})
+    empty=store.save(pcm(),16000,{'status':'empty_text','raw_text':'','final_text':''})
+    assert [i['id'] for i in store.listing(order='doubtful')['items']]==[empty,shaky,sure], "без тексту й найменш упевнені — першими"
+    assert [i['id'] for i in store.listing()['items']]==[empty,sure,shaky], "типово — нові першими"
+    assert store.confidence_threshold() is None, "менше 20 розмічених фраз — межі немає"
+    for n in range(20):
+        r=store.save(pcm(),16000,{'status':'ready','raw_text':'х','final_text':'х','whisper_segments':[{'avg_logprob':-n/10}]})
+        store.review(r,'х','speech',0)
+    assert store.confidence_threshold()==-1.4

@@ -69,6 +69,8 @@ VIEWS = {
 _REVIEW_SQL = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}
 # Розмічені: період і порядок — за часом розмітки, а не запису (зверху щойно зроблене).
 _TIME_COLUMN = {"reviewed": "reviewed_at", "miniapp": "reviewed_at"}
+# Упевненість Whisper — середня ймовірність слів по сегментах (ближче до 0 — упевненіше); без тексту — найменш упевнено.
+CONFIDENCE_SQL = "(SELECT AVG(json_extract(value,'$.avg_logprob')) FROM json_each(data,'$.whisper_segments'))"
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -249,7 +251,8 @@ class RecordingStore:
                                           + "".join(f" AND {b}" for b in bounds), params).fetchone()[0]
         return {name: counts[name] for name in VIEWS}
 
-    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None, until=None):
+    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None, until=None, order="new"):
+        """order="doubtful" — спершу записи, у яких Whisper найменш упевнений (найімовірніше треба правити)."""
         review, condition = VIEWS[view]
         reviewed = _REVIEW_SQL[review]
         params = ()
@@ -273,9 +276,17 @@ class RecordingStore:
         with self.connect() as db:
             db.execute("BEGIN")
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
-            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY {moment} DESC,id DESC LIMIT ? OFFSET ?",
+            sort = f"COALESCE({CONFIDENCE_SQL}, -99) ASC, {moment} DESC, id DESC" if order == "doubtful" else f"{moment} DESC, id DESC"
+            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY {sort} LIMIT ? OFFSET ?",
                               (*params, limit, offset)).fetchall()
         return {"items": [self.decode(row) for row in rows], "total": total}
+
+    def confidence_threshold(self, share=0.25):
+        """Межа найменш упевнених (частка share) серед розміченого мовлення; None — замало розмітки."""
+        with self.connect() as db:
+            values = sorted(v for (v,) in db.execute(f"SELECT {CONFIDENCE_SQL} FROM recordings WHERE label='speech' "
+                                                     "AND reference IS NOT NULL") if v is not None)
+        return values[int(len(values) * share)] if len(values) >= 20 else None
 
     def get(self, record_id):
         if not ID.fullmatch(record_id):

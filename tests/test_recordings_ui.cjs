@@ -33,7 +33,7 @@ function harness(page, extraSummary = {}, options = {}) {
   const context = vm.createContext({$, el:(tag, cls, text)=>Object.assign(new Element(), {className:cls,textContent:text}), request: async (url, method, body) => {
     urls.push(url);
     if (method==='PUT') return options.review ? options.review(body) : {...body,revision:body.expected_revision+1};
-    if (url.includes('suggest-roles') && options.callsigns) return {callsigns:options.callsigns};
+    if (url.includes('suggest-roles') && options.callsigns) return {callsigns:options.callsigns, roles:options.roles || null};
     if (url.includes('/text-check') && options.textCheck) return options.textCheck(body);
     if (url.includes('/restore')) { (options.restored||[]).push(body); return {...body, revision:body.expected_revision+1}; }
     return url.includes('/summary') ? summary : response;
@@ -272,4 +272,25 @@ test('analysis "show" links fit the archive search limit and find every record',
   const query = idsQuery(ids);
   assert.ok(query.length <= 200, `query is ${query.length} chars`);
   assert.deepEqual(query.split(','), ids.map(id => id.slice(0, 8)));
+});
+
+test('doubtful order is sent and low-confidence unlabeled records are marked', async () => {
+  const shaky = {...item, id:'d'.repeat(32), reference:null, data:{raw_text:'щось', final_text:'щось', whisper_segments:[{avg_logprob:-1.1}]}};
+  const sure = {...item, id:'e'.repeat(32), reference:null, data:{raw_text:'клен', final_text:'клен', whisper_segments:[{avg_logprob:-0.2}]}};
+  const ui = harness({items:[shaky, sure], total:2, confidence_low:-0.77});
+  ui.$('recording-order').value = 'doubtful';
+  await ui.load();
+  assert.match(ui.urls[0], /order=doubtful/);
+  assert.equal(descendants(ui.$('recordings')).filter(n => n.className === 'rec-doubt').length, 1);
+});
+
+test('roles the program fills into a fresh card are its starting state, not an unsaved draft', async () => {
+  const fresh = {...item, id:'f'.repeat(32), reference:null, label:null, revision:0, reference_recipient:null, reference_sender:null,
+                 data:{raw_text:'клен 48, я дуб 7, прийом', final_text:'клен 48, я дуб 7, прийом'}};
+  const ui = harness({items:[fresh], total:1}, {}, {timers:true, callsigns:['клен 48', 'дуб 7'], roles:{recipient:'клен 48', sender:'дуб 7'}});
+  await ui.load();
+  ui.cards()[0].refreshHints();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.cards()[0].dirty, false);
+  assert.equal(ui.$('archive-drafts-nav').hidden, true);
 });

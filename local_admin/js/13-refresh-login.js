@@ -3,7 +3,7 @@
   async function refreshArchiveNotice() {
     if (!archiveBaseline) return;
     const query = JSON.stringify(recordingFilterIds.map(id => $(id).value));
-    const params = new URLSearchParams({view: apiView(), limit: "1"});
+    const params = new URLSearchParams({view: apiView(), limit: "1", order: orderValue()});
     const since = periodSince(); if (since) params.set("since", since);
     const until = periodUntil(); if (until) params.set("until", until);
     if (searchQuery()) params.set("q", searchQuery());

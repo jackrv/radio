@@ -90,6 +90,7 @@
     const conflict = item.reference != null && (speechLike ? !reference : Boolean(reference));
     row.classList.toggle("conflict", conflict);
     row.classList.toggle("empty", item.reference == null && !heard);
+    if (doubtful(item)) { row.classList.add("doubtful"); row.title = row.title || "Whisper не впевнений — найімовірніше, текст треба правити"; }
     if (conflict) row.title = speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст";
     const head = el("div", "row-head");
     head.append(time, el("span", "row-kind", kind), el("span", "row-meta", meta));
@@ -259,7 +260,19 @@
   const reviewCards = [];
   let archiveBaseline = null;
   let loadedRecordingFilters = null;
-  const recordingFilterIds = ["recording-view", "recording-period", "recording-search"];
+  const recordingFilterIds = ["recording-view", "recording-period", "recording-order", "recording-search"];
+  // «Сумнівні першими»: спершу записи, де Whisper найменш упевнений — їх найімовірніше треба правити.
+  const orderValue = () => $("recording-order")?.value === "doubtful" ? "doubtful" : "new";
+  let confidenceLow = null;   // межа найменш упевнених 25 % розміченого мовлення (з сервера)
+  const recordConfidence = d => {
+    const values = (d.whisper_segments || []).map(s => s.avg_logprob).filter(v => typeof v === "number");
+    return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+  };
+  const doubtful = item => {   // лише нерозмічені: розмічене вже перевірено
+    if (confidenceLow == null || item.reference != null) return false;
+    const c = recordConfidence(item.data || {});
+    return c != null && c < confidenceLow;
+  };
   // Нові записи — на самій кнопці «Оновити» (окремого рядка немає): текст і колір.
   function showArchiveFresh(fresh) {
     const button = $("recording-refresh");
@@ -339,7 +352,7 @@
     if (reset) { recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); $("recording-rows").replaceChildren(); }
     const since = periodSince(), until = periodUntil();
     const [page, summary, codes] = await Promise.all([
-      request(`/api/recordings?offset=${recordingOffset}&view=${apiView()}` +
+      request(`/api/recordings?offset=${recordingOffset}&view=${apiView()}&order=${orderValue()}` +
         (since ? `&since=${since}` : "") + (until ? `&until=${until}` : "") +
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
         (editsValue() ? `&edits=${encodeURIComponent(editsValue())}` : "")),
@@ -347,6 +360,7 @@
       request("/api/daily-codes").catch(() => null)   // нагадування над полем тексту: коди доби запису
     ]);
     archiveCodes = codes;
+    confidenceLow = page.confidence_low ?? null;
     if (reset) archiveBaseline = {query: JSON.stringify(recordingFilterIds.map(id => $(id).value)), total: page.total, first: page.items[0]?.id};
     showArchiveFresh(false);
     loadedRecordingFilters = Object.fromEntries(recordingFilterIds.map(id => [id, $(id).value]));
@@ -427,6 +441,11 @@
       title.append(el("span", "rec-time", at.toLocaleTimeString("uk-UA")), el("span", "rec-date", at.toLocaleDateString("uk-UA")), status,
                    copyChip(item.id.slice(0, 8), item.id, "ID запису"));
       if (eventNo) title.append(copyChip(`№${eventNo[1]}`, eventNo[1], "Номер події"));
+      if (doubtful(item)) {
+        const chip = el("span", "rec-doubt", "сумнівно");
+        chip.title = "Whisper найменш упевнений (нижня чверть) — серед таких фраз без правок майже немає; уважно прослухайте";
+        title.append(chip);
+      }
       header.append(title);
       const audio = el("audio"); audio.controls = false; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`;
@@ -500,9 +519,13 @@
       let rolesAutoApplied = false;
       function applyAutoRoles(roles) {
         if (!rolesAuto) return;
+        // Ролі, які програма сама підставила в нерозмічений запис, — частина вихідного стану, а не правка:
+        // щойно відкрита картка не позначається «не збережено».
+        const untouched = item.reference === null && savedSnapshot !== undefined && snapshot() === savedSnapshot;
         rolesAutoApplied = Boolean(roles);
         recipient.set(roles?.recipient ? [roles.recipient] : []);
         sender.set(roles?.sender ? [roles.sender] : []);
+        if (untouched) savedSnapshot = snapshot();
         updateDirty();
       }
       function rolesTouched() { rolesAuto = false; rolesAutoApplied = false; }
@@ -865,7 +888,7 @@
   // Обраний вид і період запам’ятовуються в цьому браузері.
   const VIEW_KEY = "radio345:archive-view";
   const saveArchiveView = () => {
-    try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value })); } catch (_) { /* лише поточна сесія */ }
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: $("recording-view").value, period: $("recording-period").value, order: orderValue() })); } catch (_) { /* лише поточна сесія */ }
   };
   try {
     const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}");
@@ -875,8 +898,9 @@
     if (/^person:\d{1,18}$/.test(saved.view || "")) personOption(saved.view.slice(7), saved.view.slice(7), 0);
     if ([...$("recording-view").options].some(o => o.value === saved.view)) $("recording-view").value = saved.view;
     if ([...$("recording-period").options].some(o => o.value === saved.period)) $("recording-period").value = saved.period;
+    if (saved.order === "doubtful" && $("recording-order")) $("recording-order").value = "doubtful";
   } catch (_) { /* типовий вибір */ }
-  for (const id of ["recording-view", "recording-period"]) {
+  for (const id of ["recording-view", "recording-period", "recording-order"]) {
     $(id).addEventListener("change", () => { saveArchiveView(); action(() => recordings(true)); });
   }
   $("recording-more").addEventListener("click", () => action(() => recordings(false)));

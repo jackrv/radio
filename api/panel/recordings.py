@@ -80,8 +80,8 @@ def register(app, ctx):
     @app.get("/api/recordings")
     def recording_list(request: Request, offset: int = 0, limit: int = 25,
                        q: str = "", edits: str = "", view: str = "all", since: float | None = None,
-                       until: float | None = None, admin=Depends(actor)):
-        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since", "until"}
+                       until: float | None = None, order: str = "new", admin=Depends(actor)):
+        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since", "until", "order"} or order not in ("new", "doubtful")
                 or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
@@ -96,8 +96,9 @@ def register(app, ctx):
             selected = "miniapp"
         elif edits:
             selected = list(user_activity.corrections(db_path, user_id=int(edits)))
-        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since, until=until)
+        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since, until=until, order=order)
         page["views"] = recordings.view_counts(since, until)
+        page["confidence_low"] = recordings.confidence_threshold()   # нижче — «сумнівно» (найменш упевнені 25 %)
         # Хто й коли правив запис у Mini App (журнал дій з 16.11.2026).
         linked = [item["data"].get("fix_id") for item in page["items"] if item["data"].get("fix_id")]
         if linked:

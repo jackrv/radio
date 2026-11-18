@@ -34,7 +34,10 @@
     const d = item.data || {}, event = /^db:(\d+)$/.exec(d.fix_id || "");
     const duration = d.signal?.duration_s;
     const meta = [item.corrections?.length ? "✎" : "", typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "",
-                  event ? `№${event[1]}` : "", d.fix_id ? "✈" : ""].filter(Boolean).join(" · ");
+                  event ? `№${event[1]}` : "", d.fix_id ? "✈" : "",
+                  // У «Нещодавно розмічених» — ще й коли розмічено.
+                  item.reviewed_at && $("recording-view").value === "recent"
+                    ? `✓ ${new Date(item.reviewed_at * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}` : ""].filter(Boolean).join(" · ");
     // Еталон оператора — звичайним; текст Whisper нерозміченого запису — приглушено.
     const heard = (d.raw_text || "").trim();
     const text = el("div", item.reference != null ? "row-text" : "row-text heard",

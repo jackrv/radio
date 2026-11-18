@@ -56,10 +56,13 @@ VIEWS = {
     "speech": ("pending", f"({SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "filtered": ("pending", f"(NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "reviewed": ("reviewed", "1"),
+    "recent": ("reviewed", "1"),   # ті самі розмічені, але за часом розмітки — знайти щойно зроблене
     "telegram": ("all", "json_extract(data,'$.fix_id') IS NOT NULL"),   # усе, що надіслано в Telegram
     "all": ("all", "1"),
 }
 _REVIEW_SQL = {"all": "1", "pending": "reference IS NULL", "reviewed": "reference IS NOT NULL"}
+# Вид «Нещодавно розмічені»: період і порядок — за часом розмітки, а не запису.
+_TIME_COLUMN = {"recent": "reviewed_at"}
 ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -227,11 +230,18 @@ class RecordingStore:
             period.append("created >= ?"); params.append(since)
         if until:
             period.append("created < ?"); params.append(until)
-        sums = ", ".join(f"COALESCE(SUM(CASE WHEN ({_REVIEW_SQL[review]}) AND ({condition}) THEN 1 ELSE 0 END),0)"
-                         for review, condition in VIEWS.values())
+        names = [name for name in VIEWS if name not in _TIME_COLUMN]
+        sums = ", ".join(f"COALESCE(SUM(CASE WHEN ({_REVIEW_SQL[VIEWS[name][0]]}) AND ({VIEWS[name][1]}) THEN 1 ELSE 0 END),0)"
+                         for name in names)
         with self.connect() as db:
             row = db.execute(f"SELECT {sums} FROM recordings WHERE {' AND '.join(period)}", params).fetchone()
-        return dict(zip(VIEWS, row))
+            counts = dict(zip(names, row))
+            for name, column in _TIME_COLUMN.items():   # період цих видів — за своїм часом
+                review, condition = VIEWS[name]
+                bounds = ([f"{column} >= ?"] if since else []) + ([f"{column} < ?"] if until else [])
+                counts[name] = db.execute(f"SELECT COUNT(*) FROM recordings WHERE ({_REVIEW_SQL[review]}) AND ({condition})"
+                                          + "".join(f" AND {b}" for b in bounds), params).fetchone()[0]
+        return {name: counts[name] for name in VIEWS}
 
     def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None, until=None):
         review, condition = VIEWS[view]
@@ -247,16 +257,17 @@ class RecordingStore:
                 where, params = f"({reviewed})", ()
             where += " AND json_extract(data,'$.fix_id') IN (SELECT value FROM json_each(?))"
             params = (*params, json.dumps(sorted(set(edits))))
+        moment = _TIME_COLUMN.get(view, "created")
         if since is not None:
-            where += " AND created >= ?"
+            where += f" AND {moment} >= ?"
             params = (*params, float(since))
         if until is not None:
-            where += " AND created < ?"
+            where += f" AND {moment} < ?"
             params = (*params, float(until))
         with self.connect() as db:
             db.execute("BEGIN")
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
-            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY created DESC,id DESC LIMIT ? OFFSET ?",
+            rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY {moment} DESC,id DESC LIMIT ? OFFSET ?",
                               (*params, limit, offset)).fetchall()
         return {"items": [self.decode(row) for row in rows], "total": total}
 

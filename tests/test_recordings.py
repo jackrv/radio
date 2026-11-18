@@ -379,3 +379,18 @@ def test_audio_supports_byte_ranges_for_seeking():
     assert ranged_audio(data, 'bytes=-5').body == data[95:]
     assert ranged_audio(data, 'bytes=200-').status_code == 416
     assert ranged_audio(data, 'items=1-2').status_code == 200
+
+
+def test_recent_view_orders_and_filters_by_review_time(tmp_path):
+    store=RecordingStore(tmp_path/'archive')
+    old=store.save(pcm(),16000,{'status':'ready','raw_text':'клен','final_text':'клен'})
+    new=store.save(pcm(),16000,{'status':'ready','raw_text':'дуб','final_text':'дуб'})
+    store.review(new,'','noise',0)
+    store.review(old,'','room',0)   # older recording, reviewed last
+    assert [i['id'] for i in store.listing(view='recent')['items']]==[old,new]
+    assert [i['id'] for i in store.listing(view='reviewed')['items']]==[new,old]
+    with store.connect() as db:
+        db.execute("UPDATE recordings SET reviewed_at=? WHERE id=?",(1000.0,new))
+    assert [i['id'] for i in store.listing(view='recent',since=2000)['items']]==[old]
+    counts=store.view_counts(since=2000)
+    assert counts['recent']==1 and counts['reviewed']==2

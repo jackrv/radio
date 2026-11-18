@@ -905,3 +905,55 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 /* …і прилягає праворуч — правою межею точно до розділювача «Виправити оформлення» (138 px + рамка поля) */
 .recording-text .text-head .codes-apron { margin-left: auto; margin-right: 139px; max-width: calc(100% - 139px - 110px); }
 @media (max-width: 820px) { .recording-text .text-head .codes-apron { margin-right: 139px; } }
+
+/* ===== «Зберегти» у мові сторінки =====
+   Як плитки й плеєр: темна поверхня з лаймовим відтінком, яскравий лише круглий знак дії
+   (рима до ▶ плеєра). Стан читається за знаком: ↵ — є що зберегти, ◌ — зберігаю, ✓ — збережено, ! — помилка. */
+#recordings .recording-card .save-actions .save-primary {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  color: var(--lime); font-size: 15px; font-weight: 700; letter-spacing: .01em; text-shadow: none;
+  background: linear-gradient(160deg, rgba(184, 239, 134, .15), rgba(184, 239, 134, .04) 70%), var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); animation: none; transition: background .2s, color .2s; }
+#recordings .recording-card .save-actions .save-primary::before {
+  content: "↵"; display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 7px; border-radius: 50%;
+  font-size: 17px; font-weight: 800; line-height: 1; color: var(--lime); border: 1.5px solid rgba(184, 239, 134, .55);
+  background: rgba(184, 239, 134, .08); transition: transform .15s, background .2s, color .2s, border-color .2s; }
+#recordings .recording-card .save-actions .save-primary:hover { background: linear-gradient(160deg, rgba(184, 239, 134, .22), rgba(184, 239, 134, .07) 70%), var(--surface); filter: none; }
+#recordings .recording-card .save-actions .save-primary:hover::before { transform: scale(1.06); }
+#recordings .recording-card .save-actions .save-primary[data-status]::after,
+#recordings .recording-card .save-actions .save-primary:not([data-status])[data-target]::after { color: var(--muted); opacity: 1; font-weight: 500; }
+/* Є незбережені зміни — знак наливається лаймом і м'яко світиться */
+#recordings .recording-card.dirty .save-actions .save-primary { color: var(--text); animation: none;
+  background: linear-gradient(160deg, rgba(184, 239, 134, .24), rgba(184, 239, 134, .08) 70%), var(--surface); }
+#recordings .recording-card.dirty .save-actions .save-primary::before { color: #10220f; border-color: transparent;
+  background: linear-gradient(180deg, #c3ec9a 0%, #a3da8b 55%, #86c890 100%); animation: save-dot 2.2s ease-in-out infinite; }
+#recordings .recording-card .save-actions:has(.dirty-badge:not([hidden])) .save-primary::after { color: var(--warn); opacity: 1; }
+/* Зберігаю — знак крутиться */
+#recordings .recording-card .recording-body .save-actions .save-primary:disabled { cursor: progress; opacity: 1; animation: none;
+  background: linear-gradient(160deg, rgba(184, 239, 134, .15), rgba(184, 239, 134, .04) 70%), var(--surface); }
+#recordings .recording-card .recording-body .save-actions .save-primary:disabled::before { content: ""; background: transparent;
+  border: 2px solid rgba(184, 239, 134, .25); border-top-color: var(--lime); animation: save-spin .8s linear infinite; }
+/* Збережено й нічого не змінено — спокійно, знак ✓ */
+#recordings .recording-card.done:not(.dirty) .save-actions .save-primary:not(:disabled) { color: var(--lime2); box-shadow: none;
+  background: var(--surface); }
+#recordings .recording-card.done:not(.dirty) .save-actions .save-primary:not(:disabled)::before { content: "✓"; color: var(--lime);
+  border-color: rgba(184, 239, 134, .35); background: transparent; }
+#recordings .recording-card.done:not(.dirty) .save-actions .save-primary:not(:disabled):hover { background: rgba(184, 239, 134, .07); }
+/* Помилка — знак «!» і текст причини червоним */
+#recordings .recording-card .save-actions .save-primary[data-tone="alert"]::before { content: "!"; color: var(--bad); border-color: var(--bad); background: rgba(255, 143, 143, .1); animation: none; }
+#recordings .recording-card .save-actions .save-primary[data-tone="alert"]::after { color: var(--bad); font-weight: 600; }
+/* Щойно збережено — знак «підстрибує» */
+#recordings .recording-card .save-actions .save-primary.just-saved { animation: none; }
+#recordings .recording-card .save-actions .save-primary.just-saved::before { animation: save-pop .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes save-dot { 50% { box-shadow: 0 0 0 4px rgba(184, 239, 134, .18), 0 0 18px rgba(184, 239, 134, .45); } }
+@keyframes save-spin { to { transform: rotate(360deg); } }
+@keyframes save-pop { 0% { transform: scale(.6); } 100% { transform: scale(1); } }
+/* «Далі одразу» — та сама родина: тонкий розділювач, лаймовий текст, без суцільної заливки */
+#recordings .recording-actions .autoplay-toggle { border-top: 1px solid rgba(184, 239, 134, .18) !important; background: var(--surface);
+  color: var(--muted); font-weight: 600; }
+#recordings .recording-actions .autoplay-toggle.on { background: rgba(184, 239, 134, .1); color: var(--lime); }
+#recordings .recording-actions .autoplay-toggle:hover { background: rgba(184, 239, 134, .16); filter: none; }
+#recordings .recording-body .recording-actions { border-left-color: rgba(184, 239, 134, .22); }
+@media (prefers-reduced-motion: reduce) {
+  #recordings .recording-card .save-actions .save-primary::before { animation: none !important; }
+}

@@ -37,6 +37,7 @@
 .venv/bin/python -m tools.analysis conditions             # без правок за тривалістю, гучністю, упевненістю Whisper
 .venv/bin/python -m tools.analysis callsigns              # по кожному позивному: вірно, з чим плутається, вигадано
 .venv/bin/python -m tools.analysis records <вид> -n 20    # самі фрази: еталон, підсумок, сирий Whisper
+.venv/bin/python -m tools.analysis checks                 # можливі помилки в розмітці оператора (як «Потребує уваги»)
 .venv/bin/python -m tools.analysis runs [--all]           # прогони лабораторії з «без правок»
 .venv/bin/python -m tools.analysis compare <A> <B>        # два прогони на спільних записах
 .venv/bin/python -m tools.analysis queue                  # черга тестів лабораторії й рецепти
@@ -62,6 +63,7 @@
 | межа «сумнівно» | `RecordingStore.confidence_threshold()` — нижня чверть упевненості розміченого мовлення |
 | метрики слів (WER) | `core.text_metrics.metric_words`, `error_rates` |
 | прогони лабораторії | `services.experiments.list_runs`, `compare_runs`; підсумок одного — `services.lab_results.summarize` |
+| перепровірка розмітки оператора | `services.suggestions.reference_checks(db_path, store)`; нова перевірка — новий вид у `KINDS` там же |
 
 Магазин архіву: `RecordingStore(config.RECORDINGS_DIR)`.
 

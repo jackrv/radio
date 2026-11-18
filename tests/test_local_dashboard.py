@@ -843,3 +843,33 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         assert started == [runs] and lab_queue.read(runs)["runner"]["start_at"] == 4000000000
         assert [j["id"] for j in client.delete(f"/api/lab/queue/{a}", headers=h).json()["jobs"]] == [b]
         assert client.post("/api/lab/queue/stop", json={"now": False}, headers=h).json()["runner"]["stop"] is True
+
+
+def test_reference_checks_catch_doubled_words_self_role_digits_and_short_text(local):
+    client, path, tmp = local
+    import sqlite3
+    from services.recordings import RecordingStore
+    from services.suggestions import reference_checks
+    with sqlite3.connect(path) as db:
+        db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
+        db.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
+                       [(1, "клен: 48"), (2, "дуб: 7"), (3, "ясень")])
+    store = RecordingStore(tmp / "recordings")
+    import numpy as np
+    def labelled(reference, duration=3.0, **roles):
+        audio = np.full(int(16000 * duration), 2000, dtype=np.int16).tobytes()   # тривалість архів рахує зі звуку
+        record = store.save(audio, 16000, {"status": "ready", "raw_text": "щось", "final_text": "щось"})
+        store.review(record, reference, "speech", 0, **roles)
+        return record
+    double = labelled("Клен 48, прийом, прийом")
+    callsign_twice = labelled("Ясень, Ясень, я Клен 48, прийом")
+    wrong_sender = labelled("Дуб 7, я Клен 48, прийом", reference_recipient="дуб 7", reference_sender="дуб 7")
+    unknown_roles = labelled("Дуб 7, я Клен 48, прийнято, прийом")
+    digits = labelled("Клен 48, 4862, прийом")
+    year = labelled("Клен 48, у 2026 році, прийом")
+    short = labelled("Клен 48, прийом", duration=12.0)
+    found = {(s["kind"], s["record"]) for s in reference_checks(path, store)}
+    assert ("ref_repeat", double) in found and not any(r == callsign_twice for k, r in found if k == "ref_repeat")
+    assert ("ref_self", wrong_sender) in found and not any(r == unknown_roles for k, r in found if k == "ref_self")
+    assert ("ref_format", digits) in found and not any(r == year for k, r in found if k == "ref_format")
+    assert ("ref_short", short) in found

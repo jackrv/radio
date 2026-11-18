@@ -9,6 +9,7 @@
   .venv/bin/python -m tools.analysis conditions           # без правок за тривалістю, гучністю, упевненістю
   .venv/bin/python -m tools.analysis callsigns            # точність по позивних і вигадані позивні
   .venv/bin/python -m tools.analysis records numbers -n 10  # самі фрази певного виду: еталон і що вийшло
+  .venv/bin/python -m tools.analysis checks               # можливі помилки у вашій розмітці (як «Потребує уваги»)
   .venv/bin/python -m tools.analysis runs                 # прогони лабораторії з «без правок»
   .venv/bin/python -m tools.analysis compare <A> <B>      # два прогони на спільних записах
   .venv/bin/python -m tools.analysis queue                # черга тестів лабораторії
@@ -147,6 +148,24 @@ def records(args):
     print(f"({len(out)} фраз; в архіві панелі: пошук «{','.join(r['id'][:8] for r in out[:20])}»)" if out else "Таких фраз немає.")
 
 
+def checks(args):
+    """Перепровірка вашої розмітки — те саме, що «Потребує уваги» в панелі (описки, ролі, подвоєння тощо)."""
+    from collections import defaultdict
+    from services.suggestions import KINDS, reference_checks
+    found = reference_checks(config.DB_PATH, _store())
+    if args.json:
+        return found
+    groups = defaultdict(list)
+    for item in found:
+        groups[item["kind"]].append(item)
+    for kind, items in groups.items():
+        print(f"{KINDS[kind][0]} — {len(items)}")
+        for item in items[:args.limit]:
+            print(f"   {item['title']}")
+    if not found:
+        print("Зауважень до розмітки немає.")
+
+
 def runs(args):
     from services.experiments import list_runs
     items = list_runs(Path(config.BASE_DIR) / ".local-experiments", limit=args.limit)
@@ -200,6 +219,8 @@ def main(argv=None):
     p.add_argument("kind", choices=KINDS)
     p.add_argument("--days", type=int, default=0)
     p.add_argument("-n", "--limit", type=int, default=20)
+    p = sub.add_parser("checks", parents=[common], help="можливі помилки у вашій розмітці")
+    p.add_argument("-n", "--limit", type=int, default=10)
     p = sub.add_parser("runs", parents=[common], help="прогони лабораторії")
     p.add_argument("--limit", type=int, default=40)
     p.add_argument("--all", action="store_true", help="разом із незавершеними")
@@ -208,7 +229,7 @@ def main(argv=None):
     sub.add_parser("queue", parents=[common], help="черга тестів лабораторії")
     args = parser.parse_args(argv)
     result = {"summary": summary, "errors": errors, "conditions": conditions, "callsigns": callsigns, "records": records,
-              "runs": runs, "compare": compare, "queue": queue}[args.command](args)
+              "checks": checks, "runs": runs, "compare": compare, "queue": queue}[args.command](args)
     if args.json:
         json.dump(result, sys.stdout, ensure_ascii=False, indent=1, default=str)
         print()

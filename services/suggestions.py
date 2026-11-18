@@ -49,8 +49,25 @@ KINDS = {
                   "і повідомлення в Telegram ще з текстом Whisper. «Оновити всі» замінить їхній текст вашим еталоном "
                   "(підпис повідомлення в Telegram зміниться в усіх, кому воно надійшло; правка піде в навчання, як "
                   "після редагування в Mini App). Аудіо й ролі не змінюються."),
+    "ref_repeat": ("Подвоєні службові слова в еталонах", "recordings",
+                   "Службове слово двічі поспіль — найчастіше описка («прийом, прийом» замість «прийнято, прийом»). "
+                   "Прослухайте й виправте або «Готово», якщо так і казали."),
+    "ref_self": ("«Від» суперечить «я …»", "recordings",
+                 "У тексті «я Х», а в ролі «від» — інший позивний або «не вказано у фразі»."),
+    "ref_format": ("Еталон не за правилами оформлення", "recordings",
+                   "Чотири цифри разом — пишіть парами, як вимовляють («48 62»)."),
+    "ref_unchanged": ("Текст Whisper збережено без змін", "recordings",
+                      "Whisper був найменш упевнений, а еталон збігається з його текстом слово в слово. Серед таких фраз "
+                      "без правок майже не буває — можливо, запис збережено, не прослухавши."),
+    "ref_short": ("Закороткий текст для довгого запису", "recordings",
+                  "Запис довгий, а в еталоні кілька слів. Чи все записано? Якщо решта — кімната, а не ефір, — «Готово»."),
     "list_conflict": ("Рядки списків суперечать словникам", "texts", ""),
 }
+# Службові слова, яких двічі поспіль не кажуть (позивний двічі — «Клен, Клен» — за протоколом, це не описка).
+NO_REPEAT = {"прийом", "прийнято", "прийняв", "прийняла", "я", "на", "до", "та", "і", "й", "в", "у", "з", "як", "від", "за", "по", "не"}
+SHORT_MIN_S, SHORT_WORDS_PER_S = 6.0, 0.5   # довгий запис і менше пів слова на секунду (≈2 % розмітки 18.11.2026)
+_FOUR_DIGITS = re.compile(r"(?<!\d)\d{4}(?!\d)")
+_YEAR = re.compile(r"(?<!\d)(?:19|20)\d\d\s+(?:році|рік|року|роком)", re.IGNORECASE)
 REFERENCE_CHECK_DAYS = 14       # перепровірка тексту еталонів — за останні два тижні розмітки
 NON_SPEECH = ("noise", "room", "notification")
 LABEL_NAMES = {"noise": "шум ефіру", "room": "кімната", "notification": "сигнал"}
@@ -110,8 +127,13 @@ def reference_checks(db_path, store, *, now=None):
     from services.text_check import check_with_db
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     from services.text_lists import sync_aliases
+    from core.analyzer import _SELF, fmt, split_roles
+    from core.text_metrics import metric_words
+    from services.error_analysis import load_records
     now = time.time() if now is None else now
     out = []
+    speech_data = {item["id"]: item for item in load_records(store)}   # текст Whisper, тривалість, упевненість
+    threshold = store.confidence_threshold()
     with get_db(db_path) as db:
         sync_aliases(db)
         callsigns, _, _ = dictionaries_from_lines(read_dictionary_lines(db))
@@ -152,6 +174,28 @@ def reference_checks(db_path, store, *, now=None):
                 event = db.execute("SELECT text FROM radio_events WHERE id=?", (int(fix[3:]),)).fetchone()
                 if event and _words(event[0]) != _words(reference) and not is_hidden(db_path, fix, db=db):
                     out.append(_suggestion("ref_event", rid, f"{short}: подія «{event[0][:40]}»", record=rid))
+            words = metric_words(reference)
+            if speech and reference:
+                repeated = next((w for a, w in zip(words, words[1:]) if a == w and w in NO_REPEAT), None)
+                if repeated:
+                    hint = " — мабуть, «прийнято, прийом»" if repeated == "прийом" else ""
+                    out.append(_suggestion("ref_repeat", rid, f"{short}: «{repeated}, {repeated}»{hint}", record=rid))
+                if _FOUR_DIGITS.search(_YEAR.sub("", reference)):
+                    out.append(_suggestion("ref_format", rid, f"{short}: «{_FOUR_DIGITS.search(_YEAR.sub('', reference)).group(0)}» — парами", record=rid))
+            # «я Х» — Х відправник; перевіряємо лише заповнену роль (None — ролі ще не розмічено).
+            if speech and reference and not r["multiple_messages"] and r["reference_sender"] is not None and _SELF.search(reference):
+                _, said = split_roles(reference, callsigns)
+                if len(said) == 1 and metric_words(r["reference_sender"]) != metric_words(fmt(said)):
+                    shown = r["reference_sender"] or "не вказано у фразі"
+                    out.append(_suggestion("ref_self", rid, f"{short}: «я {fmt(said)}», а «від: {shown}»", record=rid))
+            data = speech_data.get(rid)
+            if label == "speech" and data and reference:
+                if threshold is not None and data["confidence"] is not None and data["confidence"] < threshold \
+                        and words == metric_words(data["raw_text"]):
+                    out.append(_suggestion("ref_unchanged", rid, f"{short}: «{reference[:40]}»", record=rid))
+                duration = data["duration"] or 0
+                if duration >= SHORT_MIN_S and len(words) / duration < SHORT_WORDS_PER_S and not r["multiple_messages"]:
+                    out.append(_suggestion("ref_short", rid, f"{short}: {duration:.0f} с, у тексті {len(words)} сл.", record=rid))
             if speech and reference and (r["reviewed_at"] or 0) >= now - REFERENCE_CHECK_DAYS * 86400:
                 # Лише описки назв зі словника. Коди доби задано не всі, а позивні й номери поза
                 # словником — звичайна справа: про них не нагадуємо.

@@ -12,10 +12,18 @@
       : ((typeof STATUS !== "undefined" && STATUS[item.status]) || item.status);
     const d = item.data || {}, event = /^db:(\d+)$/.exec(d.fix_id || "");
     const duration = d.signal?.duration_s;
-    const meta = [typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "", event ? `№${event[1]}` : "", d.fix_id ? "✈" : ""]
-      .filter(Boolean).join(" · ");
+    const meta = [item.corrections?.length ? "✎" : "", typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "",
+                  event ? `№${event[1]}` : "", d.fix_id ? "✈" : ""].filter(Boolean).join(" · ");
     // Еталон оператора — звичайним; текст Whisper нерозміченого запису — приглушено.
-    const text = el("div", item.reference != null ? "row-text" : "row-text heard", item.reference || d.raw_text || "—");
+    const heard = (d.raw_text || "").trim();
+    const text = el("div", item.reference != null ? "row-text" : "row-text heard",
+                    item.reference || heard || "Whisper: порожньо — варто прослухати");
+    // Суперечність розмітки: «мовлення» без тексту або шум / кімната / сигнал із текстом.
+    const reference = (item.reference || "").trim(), speechLike = ["speech", "unclear"].includes(item.label);
+    const conflict = item.reference != null && (speechLike ? !reference : Boolean(reference));
+    row.classList.toggle("conflict", conflict);
+    row.classList.toggle("empty", item.reference == null && !heard);
+    if (conflict) row.title = speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст";
     const head = el("div", "row-head");
     head.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta));
     row.append(head, text);
@@ -25,7 +33,10 @@
     // Набраний текст — у рядку переліку; клас картки — так само на рядку.
     controller.card.addEventListener("input", event => { if (event.target?.tagName === "TEXTAREA") text.textContent = event.target.value || "—"; });
     if (typeof MutationObserver !== "undefined") {
-      const sync = () => { for (const name of ["active", "done", "dirty", "has-remarks"]) row.classList.toggle(name, controller.card.classList.contains(name)); };
+      const sync = () => {
+        for (const name of ["active", "done", "dirty", "has-remarks"]) row.classList.toggle(name, controller.card.classList.contains(name));
+        row.classList.toggle("todo", !controller.card.classList.contains("done"));
+      };
       new MutationObserver(sync).observe(controller.card, { attributes: true, attributeFilter: ["class"] }); sync();
     }
     return row;

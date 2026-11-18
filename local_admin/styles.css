@@ -465,3 +465,17 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .recording-meta .recording-role input:disabled { opacity: .55; }
 .role-none { padding: 3px 8px !important; font-size: 13px !important; line-height: 1; color: var(--muted); }
 .role-none.on { color: #172414; background: var(--lime2); border-color: var(--lime2); }
+
+/* Перелік архіву: стани рядків */
+.row-legend { margin: 2px 6px 8px; font-size: 11px; color: var(--muted); line-height: 1.6; }
+.row-legend .lg-todo { color: var(--cyan); } .row-legend .lg-done { color: var(--lime2); }
+.row-legend .lg-warn { color: var(--warn); } .row-legend .lg-bad { color: var(--bad); }
+.recording-row.todo .row-kind::before { content: "● "; color: var(--cyan); }
+.recording-row.empty .row-text { color: var(--muted); font-style: italic; opacity: .8; }
+.recording-row.conflict { border-left-color: var(--bad); }
+.recording-row.conflict .row-kind::after { content: " ⚠"; color: var(--bad); }
+.recording-row.done { opacity: .55; }
+.recording-row.active { opacity: 1; background: rgba(184, 239, 134, .13); border-left: 4px solid var(--lime);
+  box-shadow: inset 0 0 0 1px rgba(184, 239, 134, .45); }
+.recording-row.active .row-time { color: var(--text); }
+.recording-row.active .row-text { color: #fff; font-style: normal; }

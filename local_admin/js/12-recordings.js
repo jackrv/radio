@@ -218,6 +218,9 @@
       }
       input.value = item.reference ?? (d.final_text || d.raw_text || "");
       input.rows = 2; input.maxLength = 2000; input.placeholder = "Введіть те, що справді чутно…";
+      // Поле росте разом із текстом (без внутрішньої прокрутки).
+      const grow = () => { if (!input.style) return; input.style.height = "auto"; if (input.scrollHeight) input.style.height = `${input.scrollHeight + 2}px`; };
+      input.addEventListener("input", grow);
       input.setAttribute("aria-label", "Еталонна розшифровка");
       const splitRoles = text => (text || "").split(",").map(v => v.trim()).filter(Boolean);
       const sameRole = (a, b) => a.toLocaleLowerCase("uk") === b.toLocaleLowerCase("uk");
@@ -252,20 +255,27 @@
         return {node: group, read: () => absent ? "" : (value.value.trim() ? value.value : null),
                 absent: () => { absent = true; value.value = ""; update(); },
                 values: () => absent ? [] : splitRoles(value.value),
-                set: list => { absent = false; value.value = list.join(", "); update(); }};
+                set: list => { absent = false; value.value = list.join(", "); update(); },
+                isAbsent: () => absent,
+                toggleAbsent: () => { absent = !absent; if (absent) value.value = ""; rolesTouched(); update(); }};
       }
       const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від", item.reference_sender);
 
       // Позивні зі словника, знайдені в набраному тексті: оператор сам відмічає «Кому» / «Від».
       const chips = el("div", "recording-chips");
       let suggestions = [], suggestTimer = null;
+      // Ролі одним рядком: позивні з фрази (і вже вказані чи додані вручну) з перемикачами «Кому / Від»,
+      // «∅» — роль у фразі не вказана, «＋ інший» — позивний, якого немає в тексті. Окремих полів немає.
+      let manual = [];
       function renderChips() {
         chips.replaceChildren();
-        if (!suggestions.length) return;
+        const names = [];
+        for (const name of [...suggestions, ...manual, ...recipient.values(), ...sender.values()])
+          if (!names.some(n => sameRole(n, name))) names.push(name);
         chips.append(el("span", "muted small chips-hint", rolesAutoApplied
           ? "Ролі підставлено (перший — «Кому», другий — «Від»); змініть, якщо не так:"
-          : "Позивні у фразі:"));
-        for (const name of suggestions) {
+          : names.length ? "Ролі — позивні у фразі:" : "Ролі:"));
+        for (const name of names) {
           const chip = el("span", "chip");
           chip.append(el("b", "", name));
           for (const [field, title] of [[recipient, "Кому"], [sender, "Від"]]) {
@@ -282,6 +292,24 @@
           }
           chips.append(chip);
         }
+        for (const [field, title] of [[recipient, "Кому"], [sender, "Від"]]) {
+          const none = el("button", field.isAbsent() ? "ghost on role-absent" : "ghost role-absent", `${title} ∅`); none.type = "button";
+          none.title = `«${title}» у цій фразі не вказано (без позначки — ще не перевірено)`;
+          none.setAttribute("aria-pressed", String(field.isAbsent()));
+          none.addEventListener("click", () => { field.toggleAbsent(); updateDirty(); renderChips(); });
+          chips.append(none);
+        }
+        const add = el("button", "ghost role-add", "＋ інший"); add.type = "button";
+        add.title = "Позивний, якого немає в тексті (вписати й Enter)";
+        add.addEventListener("click", () => {
+          const box = el("input", "role-add-input"); box.type = "text"; box.maxLength = 80; box.placeholder = "позивний і номер";
+          box.addEventListener("keydown", event => {
+            if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); if (box.value.trim()) manual.push(box.value.trim()); renderChips(); }
+            else if (event.key === "Escape") { event.stopPropagation(); renderChips(); }
+          });
+          add.replaceWith(box); box.focus();
+        });
+        chips.append(add, multi);
       }
       function suggest() {
         clearTimeout(suggestTimer);
@@ -305,7 +333,7 @@
       let formatted = null;
       const fixAll = el("button", "fix-all", "Виправити оформлення"); fixAll.type = "button"; fixAll.hidden = true;
       fixAll.title = "Застосувати всі правки оформлення (пробіли, коми, цифри групами, апостроф)";
-      fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; updateDirty(); checkText(0); input.focus(); });
+      fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; grow(); updateDirty(); checkText(0); input.focus(); });
       function renderLint(result) {
         lint.replaceChildren();
         const issues = result?.issues || [];
@@ -323,7 +351,7 @@
           row.append(el("span", "hint-kind", kind), el("span", "hint-message", issue.message));
           if (issue.fixed_text) {
             const fix = el("button", "ghost", "Виправити"); fix.type = "button";
-            fix.addEventListener("click", () => { input.value = issue.fixed_text; updateDirty(); checkText(0); input.focus(); });
+            fix.addEventListener("click", () => { input.value = issue.fixed_text; grow(); updateDirty(); checkText(0); input.focus(); });
             row.append(fix);
           }
           if (issue.dictionary_entry) {
@@ -447,7 +475,7 @@
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
-      const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
+      const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit, grow,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
                            refreshHints: () => { if (!textField.hidden) { suggest(); checkText(0); } } };
       reviewCards.push(controller);
@@ -455,6 +483,7 @@
       card.addEventListener("click", () => { if (typeof activateReview === "function") activateReview(controller, false); });
       if (controller.done) card.classList.add("done");
       setCategory(category.value, false);
+      renderChips();
       savedSnapshot = snapshot();
       // «Технічні деталі» — над формою: «Зберегти» внизу праворуч доходить до краю картки.
       details.append(el("pre", "", JSON.stringify(d, null, 2)));
@@ -551,6 +580,8 @@
   function activateReview(controller, scroll = true) {
     activeReview = controller;
     for (const c of reviewCards) c.card.classList.toggle("active", c === controller);
+    // Прихована картка не мала висоти: поле тексту підганяємо, щойно вона показана.
+    window.requestAnimationFrame?.(() => controller.grow?.());
     if (splitView()) controller.row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     else if (scroll) controller.card.scrollIntoView({ block: "center", behavior: "smooth" });
   }

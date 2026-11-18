@@ -646,7 +646,9 @@
       { const ev = /^db:(\d+)$/.exec(item.data?.fix_id || ""); if (ev && save.dataset) save.dataset.target = `→ подія №${ev[1]} і Telegram`; }
       const textField = el("label", "recording-text");
       const inputBox = el("div", "text-input-box"); inputBox.append(input, fixAll);
-      textField.append(el("span", "muted small", "Почутий текст"), codesApron(item.created), inputBox);
+      // «Почутий текст» і фартушок кодів доби — один рядок над полем.
+      const textHead = el("div", "text-head"); textHead.append(el("span", "muted small", "Почутий текст"), codesApron(item.created));
+      textField.append(textHead, inputBox);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
       const actions = el("div", "recording-actions");
       const saveStatus = el("span", "muted small save-status"); saveStatus.setAttribute("role", "status");

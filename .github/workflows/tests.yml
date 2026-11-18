@@ -37,7 +37,20 @@ jobs:
         run: python -m pip check
 
       - name: Run tests
-        run: python -m pytest -q -p no:cacheprovider
+        run: python -m pytest -q -p no:cacheprovider --junitxml=pytest-report.xml
+
+      - name: Report failed tests
+        # Назва й причина кожного тесту, що впав, — анотаціями (їх видно без входу, на відміну від логу).
+        if: failure()
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          for case in ET.parse("pytest-report.xml").iter("testcase"):
+              for problem in list(case.findall("failure")) + list(case.findall("error")):
+                  name = f"{case.get('classname')}::{case.get('name')}"
+                  message = (problem.get("message") or "").replace("\n", " ")[:300]
+                  print(f"::error title={name}::{message}")
+          PY
 
   javascript:
     runs-on: ubuntu-latest

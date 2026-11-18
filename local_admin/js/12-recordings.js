@@ -201,6 +201,12 @@
   let archiveBaseline = null;
   let loadedRecordingFilters = null;
   const recordingFilterIds = ["recording-view", "recording-period", "recording-edits", "recording-search"];
+  // Нові записи — на самій кнопці «Оновити» (окремого рядка немає): текст і колір.
+  function showArchiveFresh(fresh) {
+    const button = $("recording-refresh");
+    button.textContent = fresh ? "● Є нові записи — оновити" : "⟳ Оновити";
+    button.classList?.toggle("fresh", fresh);
+  }
   function updateDraftCount() {
     const count = reviewCards.filter(card => card.dirty).length;
     // Пігулка біля плеєра кожної картки — завжди на місці (нічого не стрибає), лише перефарбовується:
@@ -261,7 +267,7 @@
       request("/api/recordings/summary")
     ]);
     if (reset) archiveBaseline = {query: JSON.stringify(recordingFilterIds.map(id => $(id).value)), total: page.total, first: page.items[0]?.id};
-    $("archive-update-note").textContent = "";
+    showArchiveFresh(false);
     loadedRecordingFilters = Object.fromEntries(recordingFilterIds.map(id => [id, $(id).value]));
     // Правки з Mini App: усі або конкретного користувача (журнал дій з 16.11.2026).
     const editsSelect = $("recording-edits"), chosenEdits = editsValue();

@@ -691,8 +691,6 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   min-height: 40px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); border-radius: 12px 12px 0 0;
   background: var(--surface); font-size: 13px; font-weight: 600; color: var(--text); }
 .archive-list > #recording-refresh:hover { background: var(--surface2); color: #fff; }
-.archive-list:has(#archive-update-note:not(:empty)) > #recording-refresh { color: var(--warn); background: rgba(240, 190, 90, .1);
-  box-shadow: inset 0 -2px 0 var(--warn); }
 .recording-row { display: flex; align-items: stretch; gap: 0; }
 .recording-row .row-main { flex: 1 1 auto; min-width: 0; }
 .recording-row .row-action { flex: none; align-self: stretch; margin: -8px -12px -8px 10px !important; padding: 0 10px !important;
@@ -857,6 +855,10 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   .archive-list > #recording-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
   .archive-list > #recording-more { margin: 6px 0 0; }
 }
-/* «Є нові записи» — лише коли є що сказати; порожній рядок не лишає проміжку */
-.archive-list > #archive-update-note { margin: 0 2px 6px; }
-.archive-list > #archive-update-note:empty { display: none; }
+/* «Оновити» — по центру смуги; нові записи — жовта кнопка з пульсуючою крапкою */
+.archive-list > #recording-refresh { display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
+  letter-spacing: .02em; transition: background .2s, color .2s, box-shadow .2s; }
+.archive-list > #recording-refresh:active { background: rgba(184, 239, 134, .1); }
+.archive-list > #recording-refresh.fresh { color: #2b2000; background: var(--warn); box-shadow: none; animation: drafts-glow 1.8s ease-in-out infinite; }
+.archive-list > #recording-refresh.fresh:hover { filter: brightness(1.08); background: var(--warn); color: #2b2000; }
+@media (prefers-reduced-motion: reduce) { .archive-list > #recording-refresh.fresh { animation: none; } }

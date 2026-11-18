@@ -97,3 +97,41 @@ def test_receiver_is_restarted_even_when_the_runner_fails(tmp_path):
     with pytest.raises(OSError):
         lab_queue.run(tmp_path, launcher=launcher, spawn=spawn, sleep=lambda s: None)
     assert launcher.commands == ["receiver-stop", "receiver-start"]
+
+
+def test_windows_run_only_jobs_that_fit_and_give_the_receiver_back_between_windows(tmp_path):
+    for preset in ("base", "no-prompt", "resegment"):
+        lab_queue.add(tmp_path, preset)
+    clock, launcher, started = Clock(), FakeLauncher(), []
+    minutes = {"base": 85, "no-prompt": 85, "resegment": 100}
+
+    class Timed(FakeProcess):
+        def __init__(self, preset):
+            super().__init__(0); self.left = minutes[preset] * 60
+        def poll(self):
+            if self.left <= 0:
+                self.returncode = 0
+            return self.returncode
+
+    def spawn(args, log):
+        preset = args[args.index("--name") + 1][2:]
+        started.append((preset, clock.t))
+        process = Timed(preset)
+        original = clock.sleep
+        def sleep(seconds):
+            original(seconds); process.left -= seconds
+        clock.sleep_hook = sleep
+        return process
+
+    def sleep(seconds):
+        hook = getattr(clock, "sleep_hook", None)
+        (hook or clock.sleep)(seconds)
+
+    w1, w2 = (clock.t + 600, clock.t + 600 + 115 * 60), (clock.t + 600 + 135 * 60, clock.t + 600 + 355 * 60)
+    lab_queue.set_windows(tmp_path, [w1, w2])
+    lab_queue.run(tmp_path, launcher=launcher, spawn=spawn, sleep=sleep, now=clock.now, cooldown=300,
+                  estimate=lambda preset: minutes[preset] * 60)
+    assert [p for p, _ in started] == ["base", "no-prompt", "resegment"]
+    assert w1[0] <= started[0][1] < w1[1] and all(w2[0] <= t < w2[1] for _, t in started[1:]), "другий і третій — у другому вікні"
+    assert launcher.commands == ["receiver-stop", "receiver-start", "receiver-stop", "receiver-start"], "між вікнами приймач працює"
+    assert [j["status"] for j in lab_queue.read(tmp_path)["jobs"]] == ["done", "done", "done"]

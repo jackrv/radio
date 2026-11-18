@@ -171,6 +171,34 @@ def request_stop(root, now=False):
                     _kill(job.get("pid"))
 
 
+# Відносна тривалість рецепта (до «як зараз»): turbo швидша, повторна нарізка — довша.
+DURATION_FACTOR = {"turbo": 0.4, "resegment": 1.2}
+SECONDS_PER_RECORD = 4.0      # якщо минулих прогонів немає (18.11.2026: 2,9–4,0 с на запис)
+WINDOW_MARGIN = 1.15          # запас до кінця вікна
+
+
+def set_windows(root, windows):
+    """Вікна часу [[початок, кінець], …] (unix-час), коли можна зупиняти приймач; поза ними він працює."""
+    clean = sorted([float(a), float(b)] for a, b in (windows or []) if float(b) > float(a))
+    with _locked(root) as state:
+        state["runner"]["windows"] = clean or None
+
+
+def estimate_seconds(root, preset, records):
+    """Оцінка тривалості тесту: записів × секунд на запис з останніх завершених прогонів × множник рецепта."""
+    per_record = []
+    for folder in sorted((p for p in queue_dir(root).iterdir() if p.is_dir() and (p / "metrics.json").is_file()), reverse=True)[:6]:
+        try:
+            params = json.loads((folder / "params.json").read_text())
+            began = time.mktime(time.strptime(params["started_utc"], "%Y%m%dT%H%M%SZ")) - time.timezone
+            if params.get("records"):
+                per_record.append(((folder / "results.jsonl").stat().st_mtime - began) / params["records"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    rate = max(per_record) if per_record else SECONDS_PER_RECORD     # беремо повільніший — безпечніше для вікна
+    return records * rate * DURATION_FACTOR.get(preset, 1.0)
+
+
 def set_start_at(root, start_at):
     with _locked(root) as state:
         state["runner"]["start_at"] = float(start_at) if start_at else None
@@ -261,13 +289,23 @@ def _run_dir_for(root, name, since):
     return max(candidates, key=lambda p: p.name).name if candidates else None
 
 
-def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S):
+def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S, estimate=None):
     """Виконує тести по черзі, доки є що виконувати або не попросили зупинитись.
 
     root — тека експериментів (черга); лабораторія запускається з кореня проєкту.
     """
     root = queue_dir(root)
     launcher = launcher or Launcher(ROOT)
+    if estimate is None:
+        def estimate(preset):
+            try:
+                import config
+                from services.recordings import RecordingStore
+                with RecordingStore(Path(config.RECORDINGS_DIR)).connect() as db:
+                    records = db.execute("SELECT COUNT(*) FROM recordings WHERE reference IS NOT NULL").fetchone()[0]
+            except Exception:
+                records = 1000
+            return estimate_seconds(root, preset, records)
     spawn = spawn or (lambda args, log: subprocess.Popen(args, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT,
                                                          stdin=subprocess.DEVNULL, start_new_session=True))
     _set(root, pid=os.getpid(), started=now(), state="starting")   # «stop» скидає лише start()
@@ -278,9 +316,27 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             runner = state["runner"]
             if runner.get("stop"):
                 break
-            job = next((j for j in state["jobs"] if j["status"] == "queued"), None)
-            if job is None:
+            queued = [j for j in state["jobs"] if j["status"] == "queued"]
+            if not queued:
                 break
+            job = queued[0]
+            # Вікна часу: приймач зупиняємо лише всередині вікна, і лише для тесту, що встигне до його кінця.
+            windows = runner.get("windows")
+            window_end = None
+            if windows:
+                inside = next((w for w in windows if w[0] <= now() < w[1]), None)
+                fits = [j for j in queued if inside and now() + estimate(j["preset"]) * WINDOW_MARGIN <= inside[1]] if inside else []
+                if not fits:
+                    following = [w for w in windows if w[0] > now()]
+                    if stopped_by_us:   # поза вікном (чи нічого не встигне) — приймач працює
+                        launcher.send("receiver-start")
+                        stopped_by_us = False
+                    if not following:
+                        break
+                    _set(root, state="waiting", until=following[0][0])
+                    sleep(min(30, following[0][0] - now()))
+                    continue
+                job, window_end = fits[0], inside[1]
             start_at = runner.get("start_at")
             if start_at and now() < start_at:
                 _set(root, state="waiting", until=start_at)
@@ -311,6 +367,10 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 _set(root, state="running", current=job["id"], until=None)
                 while process.poll() is None:
                     sleep(5)
+                    if window_end and now() >= window_end - 20:   # вікно закінчується — приймач важливіший
+                        _finish_job(root, job["id"], cancel=True, error="перервано: закінчилось вікно часу")
+                        _kill(process.pid)
+                        process.wait() if hasattr(process, "wait") else None
                     run_dir = _run_dir_for(root, name, began)
                     if run_dir:
                         _finish_job(root, job["id"], run_dir=run_dir)
@@ -326,7 +386,7 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             except Exception:   # приймач не лишаємо зупиненим через збій каналу — повтор нижче
                 sleep(5)
                 launcher.send("receiver-start")
-        _set(root, pid=None, state="idle", current=None, until=None, stop=False, start_at=None, finished=now())
+        _set(root, pid=None, state="idle", current=None, until=None, stop=False, start_at=None, windows=None, finished=now())
 
 
 def main(argv=None):

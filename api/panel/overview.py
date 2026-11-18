@@ -53,20 +53,8 @@ def register(app, ctx):
     @app.get("/api/quality/errors")
     def quality_errors(days: int = 0, admin=Depends(actor)):
         """Що заважає тексту «без правок»: види розбіжностей, вплив обробки, найчастіші заміни (days=0 — увесь архів)."""
-        import json
-        from services.error_analysis import analyse, callsign_names
-        since = time.time() - max(1, min(days, 365)) * 86400 if days else 0
-        with recordings.connect() as db:
-            rows = db.execute("SELECT id, reference, data FROM recordings WHERE label='speech' AND reference IS NOT NULL "
-                              "AND created >= ? ORDER BY created DESC", (since,)).fetchall()
-        records = []
-        for record_id, reference, data in rows:
-            data = json.loads(data)
-            signal, segments = data.get("signal") or {}, [s for s in data.get("whisper_segments") or [] if s.get("avg_logprob") is not None]
-            records.append({"id": record_id, "reference": reference, "raw_text": data.get("raw_text", ""), "final_text": data.get("final_text", ""),
-                            "duration": signal.get("duration_s"), "loudness": signal.get("rms_dbfs"),
-                            # Упевненість Whisper — середня ймовірність слів по сегментах (ближче до 0 — упевненіше).
-                            "confidence": sum(s["avg_logprob"] for s in segments) / len(segments) if segments else None})
+        from services.error_analysis import analyse, callsign_names, load_records
+        records = load_records(recordings, days)
         with get_db(db_path) as db:
             names = callsign_names(db)
         return analyse(records, names)

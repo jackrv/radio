@@ -1,0 +1,77 @@
+# Radio 345 — пам'ятка для моделей і агентів
+
+Вікі проєкту — [docs/README.md](docs/README.md). Тут — лише те, що потрібно агентові, щоб працювати
+з даними проєкту, не перераховуючи все щоразу заново.
+
+## Головна мета
+
+Розпізнаний текст, який не треба правити. Зміни розпізнавання оцінюйте в такому порядку:
+1. частка **«без правок»** — підсумковий текст збігся з еталоном оператора слово в слово;
+2. пропущене мовлення;
+3. WER.
+
+Перед тим як вмикати щось, що дає більше тексту, перевірте хибний текст на шумі, сигналах і кімнаті.
+
+## Де брати аналіз: `tools/analysis.py`
+
+Ті самі методи, що й «Аналіз» у панелі, з командного рядка. Архів і `events.db` лише читаються,
+приймач зупиняти не треба. Будь-яка команда з `--json` повертає сирі дані — ті самі, що й API панелі.
+
+```bash
+.venv/bin/python -m tools.analysis summary                # без правок, ≤1 правка, черги розмітки, якість по днях
+.venv/bin/python -m tools.analysis errors [--days 7]      # що заважає без правок: номери, позивні, слова,
+                                                          # вигадані/пропущені слова, вплив обробки, найчастіші заміни
+.venv/bin/python -m tools.analysis conditions             # без правок за тривалістю, гучністю, упевненістю Whisper
+.venv/bin/python -m tools.analysis callsigns              # по кожному позивному: вірно, з чим плутається, вигадано
+.venv/bin/python -m tools.analysis records <вид> -n 20    # самі фрази: еталон, підсумок, сирий Whisper
+.venv/bin/python -m tools.analysis runs [--all]           # прогони лабораторії з «без правок»
+.venv/bin/python -m tools.analysis compare <A> <B>        # два прогони на спільних записах
+.venv/bin/python -m tools.analysis queue                  # черга тестів лабораторії й рецепти
+```
+
+Види для `records`:
+- `numbers`, `regroup`, `callsigns`, `words`, `inserted`, `deleted`, `missed`;
+- `one_word` — одна хибна;
+- `edit_free` — без правок;
+- `worse` / `better` — обробка зашкодила або допомогла;
+- `doubtful` — Whisper найменш упевнений.
+
+Бібліотечні функції (для власних скриптів):
+
+| Що | Де |
+| --- | --- |
+| розмічене мовлення з текстами, тривалістю, гучністю, упевненістю | `services.error_analysis.load_records(store, days)` |
+| розбір помилок, умови, позивні | `services.error_analysis.analyse(records, callsign_names(db))` |
+| види розбіжностей однієї фрази | `services.error_analysis.record_errors(reference, hypothesis, names)` |
+| якість по днях | `RecordingStore.quality_by_day(days)` |
+| зведення архіву | `RecordingStore.summary()` — `no_edits`, `reviewed_today`, `speech_today`, `no_edits_today` |
+| кількість у видах архіву | `RecordingStore.view_counts(since, until)`, зокрема `false_text`, `missed`, `no_roles`, `unclear` |
+| межа «сумнівно» | `RecordingStore.confidence_threshold()` — нижня чверть упевненості розміченого мовлення |
+| метрики слів (WER) | `core.text_metrics.metric_words`, `error_rates` |
+| прогони лабораторії | `services.experiments.list_runs`, `compare_runs`; підсумок одного — `services.lab_results.summarize` |
+
+Магазин архіву: `RecordingStore(config.RECORDINGS_DIR)`.
+
+## Перевірити зміну
+
+| Зміна | Інструмент | Чи зупиняти приймач |
+| --- | --- | --- |
+| лише обробка тексту (шаблони, правила, оформлення) | `tools/text_replay` | ні |
+| Whisper, підказка, нарізка, модель | `tools/asr_lab` — «Аналіз → Експерименти → Черга тестів» у панелі або `.venv/bin/python -m tools.asr_lab run …` | так: Whisper large-v3 і приймач разом не вміщаються в пам'ять Mac |
+
+Черга тестів у панелі сама зупиняє приймач і запускає його знову, з паузою між тестами від перегріву.
+Прогін з командного рядка вручну — лише з `start_radio345.py --receiver-stop`, а після нього —
+`--receiver-start`. Довгі серії робіть із паузами: Mac перегрівається.
+
+Після зміни порівнюйте з базовим прогоном через `tools.analysis compare`, а не на око.
+
+## Обмеження
+
+- **Приватність.** Виводи аналізу містять справжні позивні, коди й тексти ефіру. Показуйте їх лише локально.
+  У коміти, документацію й тести — тільки синтетичні назви й коди (див. `dictionaries.example.txt`).
+  Перед комітом перевіряйте diff.
+- **Не публікувати** `.env`, `dictionaries.txt`, `events.db`, логи, резервні копії, аудіо, діагностику й `.local-*`.
+- **Жива база.** Тести SQLite — лише на тимчасових базах. Перед записом у живу базу — резервна копія в `.local-backups/`.
+- **Розпізнавання.** Без `beam_size`. Числа ніколи не підміняються «найближчим дозволеним».
+- **Мови.** Документація, інтерфейс і повідомлення — українською. Повідомлення комітів — англійською.
+- **Тести:** `.venv/bin/python -m pytest -q` і `node --test tests/*.cjs`.

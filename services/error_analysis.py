@@ -29,6 +29,30 @@ CATEGORIES = {
 }
 
 
+def load_records(store, days=0):
+    """Розмічене мовлення з архіву для analyse(): тексти, тривалість, гучність, упевненість Whisper.
+
+    days=0 — увесь архів; інакше — записи за останні days діб. Лише читає.
+    """
+    import json
+    import time
+    since = time.time() - max(1, min(days, 365)) * 86400 if days else 0
+    with store.connect() as db:
+        rows = db.execute("SELECT id, created, reference, data FROM recordings WHERE label='speech' AND reference IS NOT NULL "
+                          "AND created >= ? ORDER BY created DESC", (since,)).fetchall()
+    records = []
+    for record_id, created, reference, data in rows:
+        data = json.loads(data)
+        signal = data.get("signal") or {}
+        segments = [s for s in data.get("whisper_segments") or [] if s.get("avg_logprob") is not None]
+        records.append({"id": record_id, "created": created, "reference": reference,
+                        "raw_text": data.get("raw_text", ""), "final_text": data.get("final_text", ""),
+                        "duration": signal.get("duration_s"), "loudness": signal.get("rms_dbfs"),
+                        # Упевненість Whisper — середня ймовірність слів по сегментах (ближче до 0 — упевненіше).
+                        "confidence": sum(s["avg_logprob"] for s in segments) / len(segments) if segments else None})
+    return records
+
+
 def callsign_names(db):
     """Назви позивних зі словника (перше слово рядка), без вимкнених записів."""
     names = set()

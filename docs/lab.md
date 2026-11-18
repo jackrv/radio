@@ -96,3 +96,17 @@
 (≈10 %) — `test`, щоб перевіряти на ефірі, якого модель не бачила. Набір нікуди не
 надсилається; навчання large-v3 на Mac із 16 ГБ — на межі можливого, тож де вчити —
 окреме рішення (записи приватні).
+
+## Аналіз із командного рядка
+
+Ті самі розбори, що й «Аналіз» у панелі (без правок, що заважає, умови запису, позивні, приклади
+фраз, прогони), — без панелі й без зупинки приймача:
+
+```bash
+.venv/bin/python -m tools.analysis summary
+.venv/bin/python -m tools.analysis errors --days 7
+.venv/bin/python -m tools.analysis records callsigns -n 10
+```
+
+`--json` — сирі дані. Повний перелік команд — `.venv/bin/python -m tools.analysis -h` і [AGENTS.md](../AGENTS.md).
+

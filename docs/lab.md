@@ -27,6 +27,9 @@
 
 > ⚠️ Спершу `start_radio345.py --receiver-stop`, після — `--receiver-start`.
 > Два Whisper одночасно на 16 ГБ підвішують Mac.
+> Прогін сам не дає Mac заснути через бездіяльність (`caffeinate`), але MacBook Air
+> без вентилятора від кількох годин Whisper поспіль перегрівається: 18.11 о 02:32 —
+> «Thermal Emergency Sleep». Довгі серії — з перервами, кришка відкрита, на живленні.
 
 ```bash
 .venv/bin/python -m tools.asr_lab run --name base  --variant whisper --ids ids.txt --prompt receiver

@@ -503,7 +503,25 @@ def roles_from_reference(reference, callsigns):
     return fmt(to_found), fmt(from_found)
 
 
+def keep_awake():
+    """Поки йде прогін, Mac не засинає через бездіяльність (без приймача мікрофон закритий).
+
+    18.11.2026 нічний прогін зупинився: при зупиненому приймачі Mac заснув за кілька хвилин.
+    caffeinate сам завершується разом із цим процесом.
+    """
+    import os
+    import shutil
+    import subprocess
+    if shutil.which("caffeinate"):
+        try:
+            subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+
 def run(args):
+    keep_awake()
     started = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = OUTPUT / f"{started}_{re.sub(r'[^A-Za-z0-9_-]+', '-', args.name)}"
     run_dir.mkdir(parents=True, mode=0o700)

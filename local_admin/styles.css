@@ -857,3 +857,6 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   .archive-list > #recording-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
   .archive-list > #recording-more { margin: 6px 0 0; }
 }
+/* «Є нові записи» — лише коли є що сказати; порожній рядок не лишає проміжку */
+.archive-list > #archive-update-note { margin: 0 2px 6px; }
+.archive-list > #archive-update-note:empty { display: none; }

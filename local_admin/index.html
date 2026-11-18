@@ -92,10 +92,13 @@
           <article class="panel"><div class="panel-head"><h2>Що сталося із сегментами</h2><span class="muted small">поточний запуск</span></div><div id="funnel"></div></article>
         </div>
         <article class="panel"><div class="panel-head"><h2>Ефір зараз</h2><span id="live-note" class="muted small"></span></div><div id="live" class="live-feed"></div></article>
-        <div class="grid two">
-          <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
-          <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
-        </div>
+        <!-- Технічне — згорнуто внизу, як довідка в архіві. -->
+        <details class="overview-tech"><summary>Технічне: затримки розпізнавання, черги й надійність</summary>
+          <div class="grid two">
+            <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
+            <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
+          </div>
+        </details>
       </section>
 
       <section data-panel="recordings" hidden>

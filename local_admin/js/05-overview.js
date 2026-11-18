@@ -220,7 +220,7 @@
       linked(card("Виправлення", num(o.corrections), `правил: ${num(o.active_rules)} активних / ${num(o.total_rules)}`, "info"), () => show("learning"), "Навчання"),
       linked(card("Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
         backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok"), () => show("system"), "Система: резервні копії"),
-      linked(card("Фільтр сповіщень", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
+      linked(card("Сигнали", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
         `зразків: ${data.samples} · відкинуто: ${num(c["asr.outcome.notification"] || 0)} · кандидатів: ${num(c["asr.spectral.candidate"] || 0)}`,
         data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn"), () => show("filter"), "Сигнали: фільтр"),
     );

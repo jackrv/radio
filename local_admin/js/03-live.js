@@ -3,7 +3,7 @@
     garbage: "warn", short_garbage: "warn", bare_callsign: "warn", dictionary_echo: "warn", empty_text: "", whisper_error: "bad" };
   async function live() {
     let r;
-    try { r = await request("/api/live?limit=15"); } catch (_) { return; }
+    try { r = await request("/api/live?limit=30"); } catch (_) { return; }
     const box = $("live");
     if ([...box.querySelectorAll("audio")].some(audio => !audio.paused && !audio.ended)) {
       $("live-note").textContent = "Стрічка оновиться після прослуховування.";

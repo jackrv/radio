@@ -87,18 +87,22 @@
       <section data-panel="overview">
         <article class="panel attention" id="attention-panel" hidden><div class="panel-head"><h2>Потребує уваги</h2><button id="suggestions-refresh" class="ghost small-button" title="Перевірити всі списки й шаблони на еталонах зараз (фоново — раз на 30 хв)">Перевірити зараз</button></div><div id="attention" class="attention-list"></div></article>
         <div class="cards" id="cards"></div>
-        <div class="grid two">
-          <article class="panel"><div class="panel-head"><h2>Події за 24 години</h2><span id="events-total" class="muted small"></span></div><div id="events-chart" class="chart"></div></article>
-          <article class="panel"><div class="panel-head"><h2>Що сталося із сегментами</h2><span class="muted small">поточний запуск</span></div><div id="funnel"></div></article>
-        </div>
-        <article class="panel"><div class="panel-head"><h2>Ефір зараз</h2><span id="live-note" class="muted small"></span></div><div id="live" class="live-feed"></div></article>
-        <!-- Технічне — згорнуто внизу, як довідка в архіві. -->
-        <details class="overview-tech"><summary>Технічне: затримки розпізнавання, черги й надійність</summary>
-          <div class="grid two">
-            <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
-            <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
+        <!-- Широкий екран: сторінка у висоту вікна (без прокрутки); ліворуч події, сегменти й технічне,
+             праворуч «Ефір зараз» на всю висоту з власною прокруткою. -->
+        <div class="overview-split">
+          <div class="overview-left">
+            <article class="panel"><div class="panel-head"><h2>Події за 24 години</h2><span id="events-total" class="muted small"></span></div><div id="events-chart" class="chart"></div></article>
+            <article class="panel"><div class="panel-head"><h2>Що сталося із сегментами</h2><span class="muted small">поточний запуск</span></div><div id="funnel"></div></article>
+            <!-- Технічне — згорнуто внизу, як довідка в архіві. -->
+            <details class="overview-tech"><summary>Технічне: затримки розпізнавання, черги й надійність</summary>
+              <div class="grid two">
+                <article class="panel"><div class="panel-head"><h2>Затримки розпізнавання</h2><span class="muted small">с · середня / p95 / максимум</span></div><div id="latency"></div></article>
+                <article class="panel"><div class="panel-head"><h2>Черги й надійність</h2></div><div id="health"></div></article>
+              </div>
+            </details>
           </div>
-        </details>
+          <article class="panel overview-live"><div class="panel-head"><h2>Ефір зараз</h2><span id="live-note" class="muted small"></span></div><div id="live" class="live-feed"></div></article>
+        </div>
       </section>
 
       <section data-panel="recordings" hidden>

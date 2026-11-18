@@ -1061,3 +1061,16 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .overview-tech { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .overview-tech > summary { color: var(--muted); cursor: pointer; font-size: 13px; margin-bottom: 8px; }
 .overview-tech > summary:hover { color: var(--text); }
+
+/* Огляд на широкому екрані — без прокрутки сторінки: ліворуч події й сегменти, праворуч «Ефір зараз» */
+@media (min-width: 1100px) {
+  main:has(> section[data-panel="overview"]:not([hidden])) { padding-bottom: 12px; }
+  .overview-split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 12px; height: var(--overview-h, auto); }
+  .overview-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+  .overview-left > .panel { margin: 0; flex: none; }
+  .overview-left > .overview-tech .grid.two { grid-template-columns: 1fr; gap: 12px; }
+  .overview-left > .overview-tech .panel { margin: 0 0 12px; }
+  .overview-split > .overview-live { display: flex; flex-direction: column; min-height: 0; margin: 0; }
+  .overview-live > .panel-head { flex: none; }
+  .overview-live > #live { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+}

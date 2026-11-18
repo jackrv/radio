@@ -943,8 +943,9 @@
   if (typeof ResizeObserver !== "undefined" && typeof document !== "undefined" && document.querySelector?.("main")) {
     let fitting = false;
     new ResizeObserver(() => {
-      if (fitting || view !== "recordings") return;
-      fitting = true; window.requestAnimationFrame(() => { fitArchive(); fitting = false; });
+      if (fitting || !["recordings", "overview"].includes(view)) return;
+      fitting = true;
+      window.requestAnimationFrame(() => { if (view === "recordings") fitArchive(); else if (typeof fitOverview === "function") fitOverview(); fitting = false; });
     }).observe(document.querySelector("main"));
   }
   function activateReview(controller, scroll = true) {

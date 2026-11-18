@@ -252,29 +252,27 @@
         none.addEventListener("click", () => { absent = !absent; if (absent) value.value = ""; rolesTouched(); update(); renderChips(); updateDirty(); });
         value.addEventListener("input", () => { rolesTouched(); renderChips(); });
         update(); group.append(el("span", "role-title", title), value, none);
-        return {node: group, read: () => absent ? "" : (value.value.trim() ? value.value : null),
+        return {node: group, read: () => value.value.trim() ? value.value : (multiBox.checked ? null : ""),
                 absent: () => { absent = true; value.value = ""; update(); },
                 values: () => absent ? [] : splitRoles(value.value),
                 set: list => { absent = false; value.value = list.join(", "); update(); },
-                isAbsent: () => absent,
-                toggleAbsent: () => { absent = !absent; if (absent) value.value = ""; rolesTouched(); update(); }};
+              };
       }
       const recipient = roleField("Кому", item.reference_recipient), sender = roleField("Від", item.reference_sender);
 
       // Позивні зі словника, знайдені в набраному тексті: оператор сам відмічає «Кому» / «Від».
       const chips = el("div", "recording-chips");
       let suggestions = [], suggestTimer = null;
-      // Ролі одним рядком: позивні з фрази (і вже вказані чи додані вручну) з перемикачами «Кому / Від»,
-      // «∅» — роль у фразі не вказана, «＋ інший» — позивний, якого немає в тексті. Окремих полів немає.
-      let manual = [];
+      // Ролі одним рядком: позивні з фрази (і вже вказані) з перемикачами «Кому / Від». Не обрано —
+      // роль у фразі не вказана; при кількох передачах ролі не оцінюються (див. roleField.read).
       function renderChips() {
         chips.replaceChildren();
         const names = [];
-        for (const name of [...suggestions, ...manual, ...recipient.values(), ...sender.values()])
+        for (const name of [...suggestions, ...recipient.values(), ...sender.values()])
           if (!names.some(n => sameRole(n, name))) names.push(name);
         chips.append(el("span", "muted small chips-hint", rolesAutoApplied
           ? "Ролі підставлено (перший — «Кому», другий — «Від»); змініть, якщо не так:"
-          : names.length ? "Ролі — позивні у фразі:" : "Ролі:"));
+          : names.length ? "Позивні у фразі — оберіть ролі:" : "Позивних у фразі не знайдено."));
         for (const name of names) {
           const chip = el("span", "chip");
           chip.append(el("b", "", name));
@@ -292,24 +290,7 @@
           }
           chips.append(chip);
         }
-        for (const [field, title] of [[recipient, "Кому"], [sender, "Від"]]) {
-          const none = el("button", field.isAbsent() ? "ghost on role-absent" : "ghost role-absent", `${title} ∅`); none.type = "button";
-          none.title = `«${title}» у цій фразі не вказано (без позначки — ще не перевірено)`;
-          none.setAttribute("aria-pressed", String(field.isAbsent()));
-          none.addEventListener("click", () => { field.toggleAbsent(); updateDirty(); renderChips(); });
-          chips.append(none);
-        }
-        const add = el("button", "ghost role-add", "＋ інший"); add.type = "button";
-        add.title = "Позивний, якого немає в тексті (вписати й Enter)";
-        add.addEventListener("click", () => {
-          const box = el("input", "role-add-input"); box.type = "text"; box.maxLength = 80; box.placeholder = "позивний і номер";
-          box.addEventListener("keydown", event => {
-            if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); if (box.value.trim()) manual.push(box.value.trim()); renderChips(); }
-            else if (event.key === "Escape") { event.stopPropagation(); renderChips(); }
-          });
-          add.replaceWith(box); box.focus();
-        });
-        chips.append(add, multi);
+        chips.append(multi);
       }
       function suggest() {
         clearTimeout(suggestTimer);

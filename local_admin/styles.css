@@ -547,18 +547,11 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
   .recording-body .save-actions .save-primary { min-height: 44px; }
 }
 
-/* ===== Права колонка дій: «Виправити оформлення» над «Зберегти», однакова ширина, до краю картки ===== */
-#recordings .recording-text .text-input-box { margin-right: -12px; border-right: 0; border-radius: 8px 0 0 8px; }
+/* ===== Поле тексту росте з текстом; спокійніший градієнт «Зберегти» ===== */
 #recordings .text-input-box textarea { resize: none; overflow: hidden; min-height: 54px; }
-.text-input-box .fix-all { width: 150px; background: rgba(184, 239, 134, .08); }
 .recording-body .save-actions .save-primary {
   background: linear-gradient(180deg, #c3ec9a 0%, #a3da8b 55%, #86c890 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); text-shadow: none; }
 /* Ролі — лише чипи: старі поля приховано (вони тільки зберігають значення) */
 #recordings .recording-roles { display: none !important; }
-.recording-chips .role-absent, .recording-chips .role-add { padding: 2px 9px !important; font-size: 12px !important; border-radius: 99px !important; }
-.recording-chips .role-absent { color: var(--muted); border-color: var(--border); }
-.recording-chips .role-absent.on { color: #172414; background: var(--lime2); border-color: var(--lime2); }
-.recording-chips .role-add-input { width: 160px; padding: 3px 9px; font-size: 12px; border-radius: 99px; border: 1px solid var(--lime2);
-  background: var(--surface2); color: var(--text); }
 .recording-chips .check { margin-left: auto; }

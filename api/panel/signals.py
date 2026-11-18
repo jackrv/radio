@@ -9,6 +9,7 @@ from services import notification_eval
 from api.panel.common import spectral_settings, read_diagnostics
 
 def register(app, ctx):
+    db_path = ctx.db_path
     recordings = ctx.recordings
     actor = ctx.actor
     samples_dir = ctx.samples_dir
@@ -21,7 +22,7 @@ def register(app, ctx):
         except ValueError:
             diagnostics = {"available": False}
         counters = diagnostics.get("counters") or {}
-        return {"spectral": spectral_settings(), "samples": len(list_samples(samples_dir)["items"]),
+        return {"spectral": spectral_settings(db_path), "samples": len(list_samples(samples_dir)["items"]),
                 # Мітки — з «Аудіоархіву»: справжній PCM приймача, зокрема відкинуті сегменти.
                 "labels": notification_eval.label_counts(recordings),
                 "updated_at": diagnostics.get("updated_at"), "started_at": diagnostics.get("started_at"),
@@ -31,7 +32,7 @@ def register(app, ctx):
 
     @app.get("/api/notification-filter/evaluation")
     def notification_evaluation(admin=Depends(actor)):
-        limits = spectral_settings()
+        limits = spectral_settings(db_path)
         return notification_eval.evaluate(recordings, samples_dir, threshold=limits["threshold"],
                                           max_outside_s=limits["max_outside_s"], max_extra=limits["max_extra"])
 
@@ -67,7 +68,7 @@ def register(app, ctx):
             raise HTTPException(422,str(exc)) from None
         with wave.open(io.BytesIO(content),"rb") as audio:
             pcm = audio.readframes(audio.getnframes())
-        settings = spectral_settings()
+        settings = spectral_settings(db_path)
         detector = SpectralNotificationMatcher.from_directory(
             samples_dir, 16000, logging.getLogger(__name__),
             **{key: settings[key] for key in ("threshold", "max_outside_s", "max_extra")})

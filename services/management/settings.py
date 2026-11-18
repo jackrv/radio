@@ -17,7 +17,7 @@ def _settings(db):
     values = {key: getattr(config, key) for key in SETTING_KEYS}
     if row:
         values.update(json.loads(row[0]))
-    return {"values": values, "revision": row[1] if row else 0,
+    return {"values": values, "revision": row[1] if row else 0, "defaults": {key: getattr(config, key) for key in SETTING_KEYS},
             "requires_restart": True, "whisper_model": config.MODEL_REPO,
             "correction_model": config.LLM_REPO, "language": config.LANGUAGE}
 
@@ -33,9 +33,11 @@ def write_settings(db_path, actor_id, values, revision):
         _require_permission(db, actor_id, "settings.write")
         if _settings(db)["revision"] != revision:
             raise ManagementConflict("Налаштування змінилися. Онови сторінку.")
+        # Лише відмінне від config.py: тоді зміна config.py діє для всього, чого не чіпали в панелі.
+        changed = {key: value for key, value in values.items() if key in SETTING_KEYS and value != getattr(config, key)}
         db.execute("""INSERT INTO recognition_settings (id, values_json, revision) VALUES (1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET values_json=excluded.values_json, revision=excluded.revision
-        """, (json.dumps(values), revision + 1))
+        """, (json.dumps(changed), revision + 1))
         return _settings(db)
 
 

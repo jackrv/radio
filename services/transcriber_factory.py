@@ -8,7 +8,7 @@ from core.transcriber import Transcriber
 from core.analyzer import correction_is_safe
 from core.notification_templates import load_templates
 from core.notification_spectral import (
-    DEFAULT_MAX_EXTRA, DEFAULT_MAX_OUTSIDE_S, DEFAULT_THRESHOLD, SpectralNotificationMatcher,
+    SpectralNotificationMatcher,
 )
 
 from services.event_store import save_event
@@ -96,12 +96,12 @@ def build_transcriber(
         log=log,
     )
 
-    daily_code = bool(getattr(config, "WHISPER_PROMPT_DAILY_CODE", False))
-    code_cache = {"at": None, "codes": ()}
+    # Вмикається в панелі («Обробка без перезапуску»); початкове значення — config.py.
+    code_cache = {"at": None, "codes": (), "enabled": bool(config.WHISPER_PROMPT_DAILY_CODE)}
 
     def todays_code():
         """Останній код поточної доби кодів (змінюються рідко — читаємо не частіше за 30 с)."""
-        if not daily_code:
+        if not code_cache["enabled"]:
             return ()
         now = time.monotonic()
         if code_cache["at"] is None or now - code_cache["at"] >= 30:
@@ -135,21 +135,13 @@ def build_transcriber(
     live_dictionaries.on_prompt(update_prompt)
     text_lists.on_change(update_prompt)
 
-    spectral_matcher = None
-    spectral_mode = getattr(config, "SPECTRAL_NOTIFICATION_MODE", "off")
-    if spectral_mode not in ("off", "shadow", "active"):
-        log.warning("Невідомий режим спектрального фільтра; використано спостереження")
-        spectral_mode = "shadow"
-    if spectral_mode != "off":
-        templates = load_templates(config.NOTIFICATION_SOUNDS_DIR, config.SR, log)
-        log.info("Фільтр звуків сповіщень: завантажено зразків — %d", len(templates))
-        if spectral_mode != "off":
-            spectral_matcher = SpectralNotificationMatcher(
-                templates, config.SR, prepared=True,
-                threshold=getattr(config, "SPECTRAL_NOTIFICATION_THRESHOLD", DEFAULT_THRESHOLD),
-                max_outside_s=getattr(config, "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S", DEFAULT_MAX_OUTSIDE_S),
-                max_extra=getattr(config, "SPECTRAL_NOTIFICATION_MAX_EXTRA", DEFAULT_MAX_EXTRA),
-            )
+    # Фільтр створюється завжди: режим і пороги змінюються в панелі на льоту (apply_settings нижче).
+    spectral_mode = config.SPECTRAL_NOTIFICATION_MODE
+    templates = load_templates(config.NOTIFICATION_SOUNDS_DIR, config.SR, log)
+    log.info("Фільтр звуків сповіщень: завантажено зразків — %d", len(templates))
+    spectral_matcher = SpectralNotificationMatcher(
+        templates, config.SR, prepared=True, threshold=config.SPECTRAL_NOTIFICATION_THRESHOLD,
+        max_outside_s=config.SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S, max_extra=config.SPECTRAL_NOTIFICATION_MAX_EXTRA)
 
     worker = Transcriber(
         segments=segments,
@@ -170,8 +162,6 @@ def build_transcriber(
         spectral_mode=spectral_mode,
     )
 
-    worker.retry_without_prompt = bool(getattr(config, "WHISPER_RETRY_WITHOUT_PROMPT", False))
-
     def apply_settings(values):
         # Застосовується в потоці розпізнавання перед наступним сегментом.
         if hasattr(cooldown, "cooldown_s"):
@@ -183,11 +173,16 @@ def build_transcriber(
             "max_words_per_s": values["GARBAGE_MAX_WORDS_PER_S"],
             "extra_words": values["GARBAGE_EXTRA_WORDS"],
         }
-
-    worker.low_confidence = {
-        "max_words": getattr(config, "LOW_CONFIDENCE_MAX_WORDS", 2),
-        "logprob": getattr(config, "LOW_CONFIDENCE_LOGPROB", -0.7),
-    }
+        worker.low_confidence = {"max_words": values["LOW_CONFIDENCE_MAX_WORDS"], "logprob": values["LOW_CONFIDENCE_LOGPROB"]}
+        worker.min_rms = values["MIN_RMS"]
+        worker.retry_without_prompt = values["WHISPER_RETRY_WITHOUT_PROMPT"]
+        worker.spectral_mode = values["SPECTRAL_NOTIFICATION_MODE"]
+        spectral_matcher.threshold = values["SPECTRAL_NOTIFICATION_THRESHOLD"]
+        spectral_matcher.max_outside_s = values["SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S"]
+        spectral_matcher.max_extra = values["SPECTRAL_NOTIFICATION_MAX_EXTRA"]
+        if code_cache["enabled"] != values["WHISPER_PROMPT_DAILY_CODE"]:
+            code_cache["enabled"], code_cache["at"] = values["WHISPER_PROMPT_DAILY_CODE"], None
+            update_prompt()
 
     live_settings = LiveRuntimeSettings(config.DB_PATH, apply_settings, log)
     live_settings.refresh(force=True)

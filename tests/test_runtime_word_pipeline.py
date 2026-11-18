@@ -29,20 +29,14 @@ def db_path(tmp_path):
 
 
 def make_worker(db_path):
-    config = SimpleNamespace(
-        USE_LLM=False,
-        LLM_REPO="unused",
-        DB_PATH=str(db_path),
-        MODEL_REPO="unused",
-        LANGUAGE="uk",
-        SR=16000,
-        SHORT_GARBAGE=set(),
-        LOG_CALLSIGNS_ONLY=True,
-        MIN_RMS=0.02,
-        NORMALIZE=True,
-        DEBUG_RMS=False,
-        BLACKLIST=(),
-    )
+    import config as real_config
+    # Справжні значення config.py (єдине джерело), лише потрібні тесту — замінено.
+    base = {key: getattr(real_config, key) for key in dir(real_config) if key.isupper()}
+    config = SimpleNamespace(**{**base, "USE_LLM": False, "LLM_REPO": "unused", "DB_PATH": str(db_path),
+                                "MODEL_REPO": "unused", "LANGUAGE": "uk", "SR": 16000, "SHORT_GARBAGE": set(),
+                                "LOG_CALLSIGNS_ONLY": True, "MIN_RMS": 0.02, "NORMALIZE": True, "DEBUG_RMS": False,
+                                "BLACKLIST": (), "WHISPER_PROMPT_DAILY_CODE": False,
+                                "NOTIFICATION_SOUNDS_DIR": db_path.parent / "no-samples"})
 
     callsigns = Callsigns.from_lines(DICTIONARY)
 

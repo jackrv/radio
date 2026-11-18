@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 import re
 
-import config
 from services.sqlite_connection import get_db
 from services.db_backup import auto_backups
 from services.user_notify_store import effective_mode
@@ -15,11 +14,12 @@ from services.user_notify_store import effective_mode
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def spectral_settings():
-    return {"mode": getattr(config, "SPECTRAL_NOTIFICATION_MODE", "off"),
-            "threshold": float(getattr(config, "SPECTRAL_NOTIFICATION_THRESHOLD", 0.85)),
-            "max_outside_s": float(getattr(config, "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S", 0.2)),
-            "max_extra": float(getattr(config, "SPECTRAL_NOTIFICATION_MAX_EXTRA", 0.02))}
+def spectral_settings(db_path):
+    """Чинні режим і межі фільтра сигналів: змінене в панелі, інакше config.py."""
+    from services.runtime_settings import read_runtime_settings
+    v = read_runtime_settings(db_path)["values"]
+    return {"mode": v["SPECTRAL_NOTIFICATION_MODE"], "threshold": v["SPECTRAL_NOTIFICATION_THRESHOLD"],
+            "max_outside_s": v["SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S"], "max_extra": v["SPECTRAL_NOTIFICATION_MAX_EXTRA"]}
 
 
 def session_value(capability):

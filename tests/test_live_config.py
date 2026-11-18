@@ -120,7 +120,8 @@ def test_runtime_settings_defaults_validation_and_conflicts(db_path):
     state = read_runtime_settings(db_path)
     assert state["revision"] == 0 and state["values"]["COOLDOWN_S"] == project_config.COOLDOWN_S
     assert state["values"]["GARBAGE_MIN_WORDS"] == 12
-    for bad in ({"COOLDOWN_S": -1}, {"GARBAGE_MIN_WORDS": 2.5}, {"LOG_CALLSIGNS_ONLY": 1}, {"MIN_RMS": 0.1}):
+    for bad in ({"COOLDOWN_S": -1}, {"GARBAGE_MIN_WORDS": 2.5}, {"LOG_CALLSIGNS_ONLY": 1}, {"MIN_RMS": 0.5},
+                {"SPECTRAL_NOTIFICATION_MODE": "loud"}, {"MODEL_REPO": "x"}):
         with pytest.raises(ValueError):
             write_runtime_settings(db_path, bad, 0)
     saved = write_runtime_settings(db_path, {"COOLDOWN_S": 10}, 0)
@@ -128,6 +129,15 @@ def test_runtime_settings_defaults_validation_and_conflicts(db_path):
     assert saved["values"]["GARBAGE_MIN_WORDS"] == 12, "інші значення не змінюються"
     with pytest.raises(RuntimeSettingsConflict):
         write_runtime_settings(db_path, {"COOLDOWN_S": 5}, 0)
+    import json
+    import sqlite3
+    with sqlite3.connect(db_path) as db:
+        stored = json.loads(db.execute("SELECT values_json FROM runtime_settings").fetchone()[0])
+    assert stored == {"COOLDOWN_S": 10.0}, "у базі — лише змінене відносно config.py"
+    write_runtime_settings(db_path, {"COOLDOWN_S": project_config.COOLDOWN_S, "SPECTRAL_NOTIFICATION_MODE": "shadow"}, 1)
+    with sqlite3.connect(db_path) as db:
+        stored = json.loads(db.execute("SELECT values_json FROM runtime_settings").fetchone()[0])
+    assert stored == {"SPECTRAL_NOTIFICATION_MODE": "shadow"}, "повернуте до config.py — більше не зберігається"
 
 
 def test_live_settings_apply_once_per_revision_and_survive_db_errors(db_path):

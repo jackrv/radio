@@ -525,7 +525,7 @@ def run(args):
     if getattr(args, "daily_codes", None) is None:
         # Як у приймачі: код доби в підказці, якщо його ввімкнено в config.py.
         import config
-        args.daily_codes = "latest" if getattr(config, "WHISPER_PROMPT_DAILY_CODE", False) else "off"
+        args.daily_codes = "latest" if config.WHISPER_PROMPT_DAILY_CODE else "off"
     started = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = OUTPUT / f"{started}_{re.sub(r'[^A-Za-z0-9_-]+', '-', args.name)}"
     run_dir.mkdir(parents=True, mode=0o700)

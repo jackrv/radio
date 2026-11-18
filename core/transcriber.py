@@ -108,7 +108,7 @@ class Transcriber:
 
     def _spectral_score(self, pcm):
         """Оцінка спектрального збігу. У режимі спостереження лише записується."""
-        if self.spectral_matcher is None or not self.spectral_matcher.templates:
+        if self.spectral_mode == "off" or self.spectral_matcher is None or not self.spectral_matcher.templates:
             return None
         try:
             with runtime.timed("asr.notification_spectral"):

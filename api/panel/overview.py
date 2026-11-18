@@ -40,7 +40,7 @@ def register(app, ctx):
         return {"receiver": read_receiver_status(db_path), "overview": overview(db_path),
                 "events_by_hour": events_by_hour(db_path), "users": users_overview(db_path),
                 "backups": backups_overview(backup_dir), "telegram_sync": sync_status(db_path),
-                "spectral": spectral_settings(),
+                "spectral": spectral_settings(db_path),
                 "samples": len(list_samples(samples_dir)["items"]),
                 "models": {"whisper": config.MODEL_REPO, "qwen": config.LLM_REPO},
                 "diagnostics": read_diagnostics(diagnostics_path)}

@@ -156,7 +156,7 @@
       const head = `Зараз фільтр ловить ${now} з ${s.notifications} розмічених сигналів` +
         (s.current.speech_dropped ? ` і помилково відкидає мовлення: ${s.current.speech_dropped} з ${s.speech}.` : `, мовлення не зачіпає (0 з ${s.speech}).`);
       box.textContent = better
-        ? `${head} Можна ловити ${best.notifications_found}: поріг ${fix(best.threshold)} і стороння енергія до ${pct(best.max_extra)} — мовлення теж не зачепить. Щоб застосувати, попросіть Claude змінити config.py.`
+        ? `${head} Можна ловити ${best.notifications_found}: поріг ${fix(best.threshold)} і стороння енергія до ${pct(best.max_extra)} — мовлення теж не зачепить. Щоб застосувати — «Розпізнавання → Налаштування → Фільтр сигналів сповіщень».`
         : `${head} Налаштування близькі до найкращих для цієї розмітки — нічого міняти не треба.`;
     } else if (s.status === "need_more") {
       box.classList.add("warn");

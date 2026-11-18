@@ -360,6 +360,12 @@
       input.id = `setting-${key}`; input.type = typeof value === "boolean" ? "checkbox" : "number";
       if (input.type === "checkbox") { input.checked = value; label.prepend(input); }
       else { input.value = value; input.step = "1"; input.required = true; label.append(input); }
+      const fallback = current.settings.defaults?.[key];
+      if (fallback !== undefined) {
+        const changed = value !== fallback;
+        label.classList.toggle("changed", changed);
+        label.append(el("span", "muted small", `${changed ? "змінено · " : ""}типово ${typeof fallback === "boolean" ? (fallback ? "так" : "ні") : fallback}`));
+      }
       $("fields").append(label);
     }
   }
@@ -367,11 +373,29 @@
   const RUNTIME_LABELS = {
     COOLDOWN_S: "Пауза між однаковими повідомленнями, с",
     LOG_CALLSIGNS_ONLY: "Записувати події з позивними навіть без команд",
-    GARBAGE_MIN_WORDS: "Сміття Whisper: перевіряти фрази від N слів",
-    GARBAGE_MIN_UNIQUE_RATIO: "Сміття: мінімальна частка різних слів (0–1)",
-    GARBAGE_MAX_WORDS_PER_S: "Сміття: максимум слів за секунду аудіо",
-    GARBAGE_EXTRA_WORDS: "Сміття: запас слів понад цю норму",
+    GARBAGE_MIN_WORDS: "Перевіряти фрази від N слів",
+    GARBAGE_MIN_UNIQUE_RATIO: "Мінімальна частка різних слів (0–1)",
+    GARBAGE_MAX_WORDS_PER_S: "Максимум слів за секунду аудіо",
+    GARBAGE_EXTRA_WORDS: "Запас слів понад цю норму",
+    LOW_CONFIDENCE_MAX_WORDS: "Коротка невпевнена фраза: до N слів (0 — вимкнено)",
+    LOW_CONFIDENCE_LOGPROB: "…і впевненість Whisper нижча за (avg_logprob)",
+    MIN_RMS: "Мінімальна гучність сегмента (RMS)",
+    WHISPER_RETRY_WITHOUT_PROMPT: "Другий шанс: зациклився з підказкою — ще раз без неї",
+    WHISPER_PROMPT_DAILY_CODE: "Останній код доби в підказці Whisper",
+    SPECTRAL_NOTIFICATION_MODE: "Режим",
+    SPECTRAL_NOTIFICATION_THRESHOLD: "Поріг схожості на зразок",
+    SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S: "Звуку поза збігом не більше, с",
+    SPECTRAL_NOTIFICATION_MAX_EXTRA: "Сторонньої енергії не більше (0–1)",
   };
+  const RUNTIME_GROUPS = [
+    ["Сповіщення", ["COOLDOWN_S", "LOG_CALLSIGNS_ONLY"]],
+    ["Whisper", ["WHISPER_RETRY_WITHOUT_PROMPT", "WHISPER_PROMPT_DAILY_CODE", "MIN_RMS"]],
+    ["Відсів сміття й невпевнених фраз", ["GARBAGE_MIN_WORDS", "GARBAGE_MIN_UNIQUE_RATIO", "GARBAGE_MAX_WORDS_PER_S", "GARBAGE_EXTRA_WORDS",
+                                          "LOW_CONFIDENCE_MAX_WORDS", "LOW_CONFIDENCE_LOGPROB"]],
+    ["Фільтр сигналів сповіщень", ["SPECTRAL_NOTIFICATION_MODE", "SPECTRAL_NOTIFICATION_THRESHOLD", "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S",
+                                   "SPECTRAL_NOTIFICATION_MAX_EXTRA"]],
+  ];
+  const RUNTIME_CHOICES = { off: "вимкнено", shadow: "лише оцінювати", active: "відкидати сигнали" };
   let runtimeCurrent = null;
   async function runtimeSettings() {
     runtimeCurrent = await request("/api/runtime-settings");
@@ -381,24 +405,58 @@
       : a.revision === runtimeCurrent.revision ? "Приймач уже використовує ці значення."
       : `Приймач: ревізія ${a.revision ?? "—"} (знімок метрик оновлюється ~30 с; самі значення діють за кілька секунд).`);
     $("runtime-fields").replaceChildren();
-    for (const [key, value] of Object.entries(runtimeCurrent.values)) {
-      const limits = runtimeCurrent.limits[key], fallback = runtimeCurrent.defaults[key];
-      const label = el("label", limits.type === "bool" ? "inline" : "", RUNTIME_LABELS[key] || key), input = el("input");
-      input.id = `runtime-${key}`;
+    const shown = new Set();
+    const groups = [...RUNTIME_GROUPS, ["Інше", Object.keys(runtimeCurrent.values).filter(k => !RUNTIME_GROUPS.some(([, keys]) => keys.includes(k)))]];
+    for (const [title, keys] of groups) {
+      const present = keys.filter(k => k in runtimeCurrent.values && !shown.has(k));
+      if (!present.length) continue;
+      const box = el("fieldset", "runtime-group"); box.append(el("legend", "", title));
+      for (const key of present) { shown.add(key); box.append(runtimeField(key)); }
+      $("runtime-fields").append(box);
+    }
+  }
+  const showValue = (value, limits) => limits.type === "str" ? RUNTIME_CHOICES[value] || value
+    : limits.type === "bool" ? (value ? "так" : "ні") : String(value).replace(".", ",");
+  // Поле налаштування: змінене відносно config.py — підсвічене, «↺» повертає значення за замовчуванням.
+  function runtimeField(key) {
+    const value = runtimeCurrent.values[key], limits = runtimeCurrent.limits[key], fallback = runtimeCurrent.defaults[key];
+    const label = el("label", limits.type === "bool" ? "inline" : "", RUNTIME_LABELS[key] || key);
+    let input;
+    if (limits.type === "str") {
+      input = el("select");
+      for (const choice of limits.choices) { const o = el("option", "", RUNTIME_CHOICES[choice] || choice); o.value = choice; input.append(o); }
+      input.value = value; label.append(input);
+    } else {
+      input = el("input");
       if (limits.type === "bool") { input.type = "checkbox"; input.checked = value; label.prepend(input); }
       else {
         input.type = "number"; input.value = value; input.required = true;
         input.min = limits.min; input.max = limits.max; input.step = limits.type === "int" ? "1" : "0.01";
-        label.append(input, el("span", "muted small", `типово ${fallback} · від ${limits.min} до ${limits.max}`));
+        label.append(input);
       }
-      $("runtime-fields").append(label);
     }
+    input.id = `runtime-${key}`;
+    const changed = value !== fallback;
+    label.classList.toggle("changed", changed);
+    const info = el("span", "muted small", `${changed ? "змінено · " : ""}типово ${showValue(fallback, limits)}` +
+      (limits.type === "int" || limits.type === "float" ? ` · від ${limits.min} до ${limits.max}` : ""));
+    if (changed) {
+      const reset = el("button", "ghost small-button", "↺"); reset.type = "button"; reset.title = "Повернути значення з config.py";
+      reset.addEventListener("click", () => {
+        if (limits.type === "bool") input.checked = fallback; else input.value = fallback;
+        note("Повернуто значення за замовчуванням — натисніть «Зберегти».");
+      });
+      info.append(" ", reset);
+    }
+    label.append(info);
+    return label;
   }
   $("runtime-settings").addEventListener("submit", e => { e.preventDefault(); action(async () => {
     const values = {};
     for (const [key, limits] of Object.entries(runtimeCurrent.limits)) {
       const input = $(`runtime-${key}`);
-      values[key] = limits.type === "bool" ? input.checked : limits.type === "int" ? parseInt(input.value, 10) : Number(input.value);
+      values[key] = limits.type === "bool" ? input.checked : limits.type === "str" ? input.value
+        : limits.type === "int" ? parseInt(input.value, 10) : Number(input.value);
     }
     const r = await request("/api/runtime-settings", "PUT", { values, expected_revision: runtimeCurrent.revision });
     await runtimeSettings();

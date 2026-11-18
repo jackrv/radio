@@ -1,8 +1,10 @@
 """Налаштування обробки, що застосовуються без перезапуску приймача.
 
-Початкові значення — з config.py; у SQLite зберігаються лише змінені в локальній
-панелі. Приймач перевіряє ревізію не частіше ніж раз на кілька секунд.
-Моделі, VAD і MIN_RMS сюди свідомо не входять.
+Значення за замовчуванням — лише в config.py (тут їх не дублюємо); у SQLite
+зберігаються тільки ті, що в панелі змінено відносно config.py. Тож зміна
+config.py діє для всього, чого оператор не чіпав. Приймач перевіряє ревізію не
+частіше ніж раз на кілька секунд. Моделі, мова й VAD — окремо, після перезапуску
+(services/management/settings.py).
 """
 
 import json
@@ -13,14 +15,23 @@ from services.sqlite_connection import get_db
 
 REFRESH_INTERVAL_S = 2.0
 
-# ключ: (тип, мінімум, максимум, атрибут config із початковим значенням, запасне значення)
+# ключ (і атрибут config із початковим значенням): (тип, мінімум або варіанти, максимум)
 FIELDS = {
-    "COOLDOWN_S": (float, 0.0, 120.0, "COOLDOWN_S", 3.0),
-    "LOG_CALLSIGNS_ONLY": (bool, None, None, "LOG_CALLSIGNS_ONLY", True),
-    "GARBAGE_MIN_WORDS": (int, 4, 200, "GARBAGE_MIN_WORDS", 12),
-    "GARBAGE_MIN_UNIQUE_RATIO": (float, 0.0, 1.0, "GARBAGE_MIN_UNIQUE_RATIO", 0.25),
-    "GARBAGE_MAX_WORDS_PER_S": (float, 1.0, 30.0, "GARBAGE_MAX_WORDS_PER_S", 5.0),
-    "GARBAGE_EXTRA_WORDS": (int, 0, 100, "GARBAGE_EXTRA_WORDS", 3),
+    "COOLDOWN_S": (float, 0.0, 120.0),
+    "LOG_CALLSIGNS_ONLY": (bool, None, None),
+    "GARBAGE_MIN_WORDS": (int, 4, 200),
+    "GARBAGE_MIN_UNIQUE_RATIO": (float, 0.0, 1.0),
+    "GARBAGE_MAX_WORDS_PER_S": (float, 1.0, 30.0),
+    "GARBAGE_EXTRA_WORDS": (int, 0, 100),
+    "LOW_CONFIDENCE_MAX_WORDS": (int, 0, 10),
+    "LOW_CONFIDENCE_LOGPROB": (float, -5.0, 0.0),
+    "MIN_RMS": (float, 0.0, 0.2),
+    "WHISPER_RETRY_WITHOUT_PROMPT": (bool, None, None),
+    "WHISPER_PROMPT_DAILY_CODE": (bool, None, None),
+    "SPECTRAL_NOTIFICATION_MODE": (str, ("off", "shadow", "active"), None),
+    "SPECTRAL_NOTIFICATION_THRESHOLD": (float, 0.3, 0.99),
+    "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S": (float, 0.0, 5.0),
+    "SPECTRAL_NOTIFICATION_MAX_EXTRA": (float, 0.0, 1.0),
 }
 
 
@@ -30,8 +41,7 @@ class RuntimeSettingsConflict(Exception):
 
 def defaults():
     import config
-    return {key: kind(getattr(config, attribute, fallback))
-            for key, (kind, _, _, attribute, fallback) in FIELDS.items()}
+    return {key: kind(getattr(config, key)) for key, (kind, _, _) in FIELDS.items()}
 
 
 def validate(values):
@@ -39,7 +49,12 @@ def validate(values):
         raise ValueError("Невідомі налаштування")
     clean = {}
     for key, value in values.items():
-        kind, low, high, _, _ = FIELDS[key]
+        kind, low, high = FIELDS[key]
+        if kind is str:
+            if value not in low:
+                raise ValueError(f"{key}: допустимо {', '.join(low)}")
+            clean[key] = value
+            continue
         if kind is bool:
             if type(value) is not bool:
                 raise ValueError(f"{key}: потрібне так/ні")
@@ -79,8 +94,9 @@ def read_runtime_settings(db_path):
     with get_db(db_path) as db:
         values, revision = _read(db)
     return {"values": values, "revision": revision, "defaults": defaults(),
-            "limits": {k: {"min": low, "max": high, "type": kind.__name__}
-                       for k, (kind, low, high, _, _) in FIELDS.items()}}
+            "limits": {k: ({"type": "str", "choices": list(low)} if kind is str else
+                           {"min": low, "max": high, "type": kind.__name__})
+                       for k, (kind, low, high) in FIELDS.items()}}
 
 
 def write_runtime_settings(db_path, values, expected_revision):
@@ -92,9 +108,12 @@ def write_runtime_settings(db_path, values, expected_revision):
         if revision != expected_revision:
             raise RuntimeSettingsConflict("Налаштування змінено в іншому вікні. Онови сторінку.")
         current.update(clean)
+        # Лише відмінне від config.py: інакше зміна config.py вже ні на що б не впливала.
+        base = defaults()
+        changed = {key: value for key, value in current.items() if value != base[key]}
         db.execute("""INSERT INTO runtime_settings (id, values_json, revision) VALUES (1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET values_json = excluded.values_json, revision = excluded.revision,
-            updated_at = CURRENT_TIMESTAMP""", (json.dumps(current), revision + 1))
+            updated_at = CURRENT_TIMESTAMP""", (json.dumps(changed), revision + 1))
     return {"saved": True, "revision": revision + 1, "values": current}
 
 

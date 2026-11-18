@@ -51,7 +51,7 @@ def parse_codes(text):
 def change_hour():
     """Година зміни кодів (місцевий час): коди «доби Д» діють з Д−1 о цій годині до Д."""
     import config
-    return int(getattr(config, "DAILY_CODES_CHANGE_HOUR", 20))
+    return int(config.DAILY_CODES_CHANGE_HOUR)
 
 
 def local_day(moment=None):

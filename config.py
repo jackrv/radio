@@ -1,6 +1,19 @@
+"""Значення за замовчуванням Radio 345 — єдине місце в коді.
+
+Частину з них оператор перекриває в локальній панелі («Розпізнавання → Налаштування»);
+у базі зберігається лише змінене відносно цього файла, тож зміна тут діє для всього,
+чого в панелі не чіпали. Поточні значення й «типово» видно в панелі.
+
+- Без перезапуску («Обробка без перезапуску»): COOLDOWN_S, LOG_CALLSIGNS_ONLY,
+  GARBAGE_*, LOW_CONFIDENCE_*, MIN_RMS, WHISPER_RETRY_WITHOUT_PROMPT,
+  WHISPER_PROMPT_DAILY_CODE, SPECTRAL_NOTIFICATION_* (services/runtime_settings.py).
+- Після перезапуску приймача («Розпізнавання»): USE_LLM, VAD_LEVEL, SILENCE_END_MS,
+  MIN_SPEECH_MS, MAX_SEGMENT_S (services/management/settings.py).
+- Решта — лише тут, діє після перезапуску. Секрети й адреси — у .env.
+"""
 from pathlib import Path
 
-# ---------- Настройки моделей и обработки ----------
+# ---------- Моделі й обробка ----------
 
 # 17.11.2026: повна large-v3 замість turbo. На розмічених записах WER 82,9 % -> 68,6 %,
 # мовлення без тексту 33 -> 7 зі 120, числа точно 23 -> 28; на нових записях 79,5 % -> 74,6 %.
@@ -9,7 +22,8 @@ from pathlib import Path
 MODEL_REPO = "mlx-community/whisper-large-v3-mlx"
 LLM_REPO = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 
-USE_LLM = True
+# Qwen вимкнено 17.11.2026: на 277 записах 0 покращень, +1,6 с на сегмент (docs/lab.md).
+USE_LLM = False
 LANGUAGE = "uk"
 BASE_DIR = Path(__file__).resolve().parent
 

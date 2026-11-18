@@ -74,7 +74,7 @@
   // Перехід в архів з чітко заданими фільтрами: попередній пошук чи вид не ховають потрібне.
   function openRecordings({view: kind = "all", period = "", search = ""} = {}) {
     $("recording-view").value = kind; $("recording-period").value = period;
-    $("recording-edits").value = ""; $("recording-search").value = search;
+    $("recording-search").value = search;
     if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
   }
 

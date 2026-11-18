@@ -84,8 +84,10 @@
     const filterBy = key => { activityFilter = key; renderItems(); };
     const openEdits = () => {
       // Архів: усі записи з правками цього користувача.
-      // Фільтр за людиною прихований: у шапці архіву з'явиться плитка «Правки людини · ✕ зняти».
-      $("recording-edits").value = String(s.user_id); $("recording-view").value = "all"; $("recording-period").value = "";
+      // Правки людини — пункт у списку «Що показати» (група «Правки людей у Mini App»).
+      const name = result.users.find(u => String(u.user_id) === String(s.user_id))?.name || String(s.user_id);
+      personOption(s.user_id, name, 0); $("recording-people").hidden = false;
+      $("recording-view").value = `person:${s.user_id}`; $("recording-period").value = "";
       if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
     };
     const filterCard = (c, key, title) => { c.dataset.filter = key; return linked(c, () => filterBy(key), title); };

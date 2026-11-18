@@ -24,7 +24,6 @@ function harness(page, extraSummary = {}, options = {}) {
   $('recording-view').options = ['radio','speech','filtered','reviewed','telegram','all'].map(value => ({value, textContent:value, dataset:{}}));
   $('recording-view').value = 'radio';
   $('recording-period').value = '';
-  $('recording-edits').options = [{value:''}, {value:'miniapp'}];
   const summary = {statuses:{ready:1}, reviewed:0, bytes:32, quality:{raw_text:{wer:null},final_text:{wer:null}}, ...extraSummary};
   let response = page;
   const notes = [];
@@ -67,12 +66,11 @@ test('empty view renders a useful message without failing', async () => {
 
 test('period and editor filters are sent with the selected view', async () => {
   const ui = harness({items:[],total:0});
-  ui.$('recording-view').value = 'reviewed';
+  ui.$('recording-view').value = 'person:42';   // «Правки: Ім'я» — пункт виду
   ui.$('recording-period').value = '24';
-  ui.$('recording-edits').value = '42';   // правки людини — прихований фільтр зі сторінки людини
   await ui.load();
   const url = new URL(ui.urls[0], 'http://localhost');
-  assert.equal(url.searchParams.get('view'), 'reviewed');
+  assert.equal(url.searchParams.get('view'), 'all');
   assert.equal(url.searchParams.get('edits'), '42');
   const since = Number(url.searchParams.get('since'));
   assert.ok(Math.abs(since - (Math.floor(Date.now()/1000)-86400)) <= 2);

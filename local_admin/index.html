@@ -125,14 +125,14 @@
                 <option value="no_roles">Мовлення без ролей</option>
                 <option value="unclear">Нерозбірливі</option>
               </optgroup>
+              <!-- Заповнюється з журналу дій: «Правки: Ім'я (N)»; значення — person:<ID>. -->
+              <optgroup id="recording-people" label="Правки людей у Mini App"></optgroup>
             </select>
             <select id="recording-period" aria-label="Період" title="Період">
               <option value="">увесь час</option><option value="today">сьогодні</option>
               <option value="yesterday">вчора</option><option value="daybefore">позавчора</option>
               <option value="24">останні 24 год</option>
             </select>
-            <!-- Фільтр «правки людини» — лише переходом зі сторінки людини; у шапці — плитка з «✕ зняти». -->
-            <input id="recording-edits" type="hidden" value="">
             <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
             <button id="recording-refresh" class="ghost" type="button" role="status" aria-live="polite" title="Оновити список. Автоматично картки не перерисовуються, щоб не загубити чернетки й аудіо.">⟳ Оновити</button>
             <span class="archive-switches">

@@ -3,11 +3,11 @@
   async function refreshArchiveNotice() {
     if (!archiveBaseline) return;
     const query = JSON.stringify(recordingFilterIds.map(id => $(id).value));
-    const params = new URLSearchParams({view: $("recording-view").value, limit: "1"});
+    const params = new URLSearchParams({view: apiView(), limit: "1"});
     const since = periodSince(); if (since) params.set("since", since);
     const until = periodUntil(); if (until) params.set("until", until);
     if (searchQuery()) params.set("q", searchQuery());
-    if ($("recording-edits").value) params.set("edits", $("recording-edits").value);
+    if (editsValue()) params.set("edits", editsValue());
     const page = await request(`/api/recordings?${params}`);
     if (view !== "recordings" || query !== JSON.stringify(recordingFilterIds.map(id => $(id).value))) return;
     const changed = archiveBaseline.query !== query || page.total !== archiveBaseline.total || page.items[0]?.id !== archiveBaseline.first;
@@ -68,7 +68,7 @@
     if (query) $("recording-search").value = query.slice(0, 200);
     // &filters=off — показати знайдене без виду, періоду й фільтра правок (вибір у браузері не змінюється).
     if (new URLSearchParams(location.search).get("filters") === "off") {
-      $("recording-view").value = "all"; $("recording-period").value = ""; $("recording-edits").value = "";
+      $("recording-view").value = "all"; $("recording-period").value = "";
     }
     if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted, { history: "replace" }); }
   });

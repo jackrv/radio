@@ -38,11 +38,16 @@
       document.body.append(undoToast);
     }
     if (!undoStack.length) { undoToast.hidden = true; clearTimeout(undoTimer); return; }
-    // Плашка — у заголовку активної картки праворуч (там порожньо, одразу над кнопками типу): нічого не закриває.
-    // Без картки — по центру екрана.
-    const anchor = typeof activeReview !== "undefined" && activeReview?.card?.querySelector?.(".recording-header");
-    if (anchor) { if (undoToast.parentElement !== anchor) anchor.append(undoToast); undoToast.classList.add("anchored"); }
-    else { if (undoToast.parentElement !== document.body) document.body.append(undoToast); undoToast.classList.remove("anchored"); }
+    // Плашка — впритул праворуч від кнопок типу активної картки, на тому самому рядку (туди щойно клікали);
+    // поле тексту під кнопками не закриває. Без картки — по центру екрана.
+    const anchor = typeof activeReview !== "undefined" && activeReview?.card?.querySelector?.(".recording-type");
+    if (anchor) {
+      if (undoToast.parentElement !== anchor) anchor.append(undoToast);
+      undoToast.classList.add("anchored");
+      const buttons = anchor.querySelector?.(".segmented");
+      if (buttons && undoToast.style) undoToast.style.left = `${buttons.offsetWidth + 10}px`;
+    }
+    else { if (undoToast.parentElement !== document.body) document.body.append(undoToast); undoToast.classList.remove("anchored"); undoToast.style.left = ""; }
     const last = undoStack[undoStack.length - 1];
     undoToast.querySelector(".undo-text").textContent = `Позначено «${last.title}»${undoStack.length > 1 ? ` · і ще ${undoStack.length - 1}` : ""}`;
     undoToast.hidden = false;

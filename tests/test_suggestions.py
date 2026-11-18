@@ -24,7 +24,10 @@ def base_db(tmp_path):
     return path
 
 
-def test_repeated_findings_become_suggestions_and_disappear_once_applied(tmp_path):
+def test_repeated_findings_become_suggestions_and_disappear_once_applied(tmp_path, monkeypatch):
+    import services.suggestions as suggestions_module
+    # Ефект алиаса на еталонах перевіряє окремий тест; тут — що кандидат доходить до пропозицій.
+    monkeypatch.setattr(suggestions_module, "_alias_effects", lambda db, store, cs: [(c, "+1 знайдених позивних") for c in cs])
     path = base_db(tmp_path)
     store = archive(tmp_path, [
         ("кльон 15, прийом", "Клен 15, прийом", "speech"), ("кльон 16, прийом", "Клен 16, прийом", "speech"),
@@ -163,3 +166,19 @@ def test_worker_rechecks_soon_after_a_poke(tmp_path):
     finally:
         worker.stop()
         module.refresh = original
+
+
+def test_alias_is_suggested_only_when_it_changes_something_on_the_references(tmp_path, monkeypatch):
+    import services.text_replay as replay
+    import services.suggestions as suggestions_module
+    path = base_db(tmp_path)
+    store = archive(tmp_path, [("кльон 15, прийом", "Клен 15, прийом", "speech")])
+    outcomes = iter([
+        {"worse": 0, "better": 0, "before": {"callsigns_hit": 5, "callsigns_false": 1}, "after": {"callsigns_hit": 5, "callsigns_false": 1}},
+        {"worse": 0, "better": 1, "before": {"callsigns_hit": 5, "callsigns_false": 1}, "after": {"callsigns_hit": 7, "callsigns_false": 1}},
+        {"worse": 0, "better": 0, "before": {"callsigns_hit": 5, "callsigns_false": 1}, "after": {"callsigns_hit": 6, "callsigns_false": 2}},
+    ])
+    monkeypatch.setattr(replay, "compare", lambda *a, **k: next(outcomes))
+    candidates = [{"heard": w, "callsign": "клен"} for w in ("нічого", "корисний", "хибний")]
+    result = suggestions_module._alias_effects(path, store, candidates)
+    assert [(c["heard"], effect) for c, effect in result] == [("корисний", "+2 знайдених позивних, краще фраз: 1")]

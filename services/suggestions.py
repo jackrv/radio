@@ -29,7 +29,8 @@ MIN_ALIAS_SIMILARITY = 50      # слабко схоже звичайне сло
 # Вид: (назва, куди веде «Переглянути», пояснення під рядком).
 KINDS = {
     "alias": ("Алиаси позивних", "texts:callsign_aliases",
-              "Так Whisper кілька разів почув позивний. Додайте рядок у список — і пропозиція зникне."),
+              "Так Whisper кілька разів почув позивний. Перевірено на ваших еталонах: з цим алиасом програма знаходить більше "
+              "позивних і не додає хибних. Додайте рядок у список — і пропозиція зникне."),
     "noise": ("Короткий шум і галюцинації", "texts:short_garbage",
               "Цей текст повторюється на записах, які ви позначили як шум. Додайте його в список, щоб він не доходив до чату."),
     "approval": ("Заміни чекають дозволу", "learning", ""),
@@ -119,6 +120,42 @@ def _suggestion(kind, key, title, count=1, record=None):
 def _words(text):
     from services.text_lists import blacklist_key
     return blacklist_key(text or "").split()
+
+
+ALIAS_CHECK_MAX = 10   # кожен кандидат — повтор обробки (~1 с), тому не більше стількох за перевірку
+
+
+def _alias_effects(db_path, store, candidates):
+    """Кандидати в алиаси, які на ваших еталонах справді щось дають, і що саме.
+
+    Повтор текстової обробки зі списком «+ цей алиас» проти чинного: лишаються ті, з якими знайдено
+    більше позивних або фрази кращі, і при цьому не більше хибних позивних і жодна фраза не гірша.
+    Решта (позивний і так знаходиться) — не пропонуються.
+    """
+    if not candidates:
+        return []
+    from services.text_replay import compare, load_records, load_setup
+    rows = load_records(store.root)
+    if not rows:
+        return []
+    dictionaries, short_garbage, values = load_setup(db_path)
+    current = {"phrases": values.get("phrase_templates", ()), "patterns": values.get("phrase_patterns", ()),
+               "aliases": (values.get("aliases", {}), values.get("callsign_aliases", {}))}
+    useful = []
+    for c in candidates:
+        aliases = dict(current["aliases"][1])
+        aliases[c["heard"]] = c["callsign"]
+        try:
+            r = compare(rows, dictionaries, short_garbage, before=current,
+                        after={**current, "aliases": (current["aliases"][0], aliases)}, show=0)
+        except Exception:
+            continue
+        found = r["after"]["callsigns_hit"] - r["before"]["callsigns_hit"]
+        if r["worse"] or r["after"]["callsigns_false"] > r["before"]["callsigns_false"] or not (found > 0 or r["better"]):
+            continue
+        parts = ([f"+{found} знайдених позивних"] if found > 0 else []) + ([f"краще фраз: {r['better']}"] if r["better"] else [])
+        useful.append((c, ", ".join(parts)))
+    return useful
 
 
 def reference_checks(db_path, store, *, now=None):
@@ -243,11 +280,13 @@ def collect(db_path, store, *, patterns=None):
     records = store.labelled_texts()
     speech = [r for r in records if r["label"] in ("speech", "unclear")]
 
-    for c in alias_collect([{"id": "", "reference": r["reference"], "raw_text": r["raw_text"]} for r in speech],
-                           callsigns, names, active.get("callsign_aliases", {})):
-        # Лише чисті кандидати: без позначок (інший словник, позивний без номера…) і помітно схожі.
-        if c["addable"] and not c["flags"] and c["similarity"] >= MIN_ALIAS_SIMILARITY and c["count"] >= MIN_REPEATS:
-            out.append(_suggestion("alias", f"{c['callsign']}:{c['heard']}", f"«{c['heard']}» → {c['callsign']} (×{c['count']})", c["count"]))
+    candidates = [c for c in alias_collect([{"id": "", "reference": r["reference"], "raw_text": r["raw_text"]} for r in speech],
+                                           callsigns, names, active.get("callsign_aliases", {}))
+                  # Лише чисті кандидати: без позначок (інший словник, позивний без номера…) і помітно схожі.
+                  if c["addable"] and not c["flags"] and c["similarity"] >= MIN_ALIAS_SIMILARITY and c["count"] >= MIN_REPEATS]
+    for c, effect in _alias_effects(db_path, store, candidates[:ALIAS_CHECK_MAX]):
+        out.append(_suggestion("alias", f"{c['callsign']}:{c['heard']}",
+                               f"«{c['heard']}» → {c['callsign']} (×{c['count']}; {effect})", c["count"]))
 
     noise_keys = {noise_key(v) for v in (*active.get("blacklist", ()), *active.get("short_garbage", ()))}
     for c in noise_collect(records, noise_keys, set(names)):

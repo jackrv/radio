@@ -488,3 +488,7 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .runtime-group legend { color: var(--cyan); font-size: 12px; font-weight: 700; padding: 0 6px; }
 #runtime-fields label.changed { border-left: 3px solid var(--warn); padding-left: 8px; }
 #fields label.changed { border-left: 3px solid var(--warn); padding-left: 8px; }
+/* Позивні у фразі: підказка — окремим рядком, чипи — рівним рядом під нею */
+.recording-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.recording-chips .chips-hint { flex-basis: 100%; margin-bottom: -2px; }
+.recording-chips .chip { flex: none; }

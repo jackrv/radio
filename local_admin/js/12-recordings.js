@@ -262,8 +262,8 @@
       function renderChips() {
         chips.replaceChildren();
         if (!suggestions.length) return;
-        chips.append(el("span", "muted small", rolesAutoApplied
-          ? "Ролі підставлено: перший позивний — «Кому», другий — «Від». Змініть, якщо не так:"
+        chips.append(el("span", "muted small chips-hint", rolesAutoApplied
+          ? "Ролі підставлено (перший — «Кому», другий — «Від»); змініть, якщо не так:"
           : "Позивні у фразі:"));
         for (const name of suggestions) {
           const chip = el("span", "chip");

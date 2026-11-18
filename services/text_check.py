@@ -184,6 +184,14 @@ def _tidy_part(part, callsigns, commands):
     if end and tokens and comma is False:
         end = ""                                   # крапка не в кінці — це просто розділювач
     fold = lambda word: basic_normalize(word).translate(FOLD)
+    # Сталий зворот зі списку «Обороти» («перевірка звʼязку», «чую та розбираю») пишеться без ком усередині.
+    from core import template_text
+    folded = [fold(word) for word, _ in tokens]
+    for phrase in sorted((tuple(fold(w) for w in p.split()) for p in template_text.PHRASES if len(p.split()) > 1), key=len, reverse=True):
+        for k in range(len(tokens) - len(phrase) + 1):
+            if tuple(folded[k:k + len(phrase)]) == phrase:
+                for j in range(k + 1, k + len(phrase)):
+                    tokens[j][1] = False
     cs_names = {name.translate(FOLD): name for name in callsigns.names} if callsigns else {}
     cmd_names = {name.translate(FOLD): name for name in commands.names} if commands else {}
 

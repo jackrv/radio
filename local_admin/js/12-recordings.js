@@ -1,6 +1,27 @@
   // ---------- Черги розмітки з поточного архіву ----------
   // Види «розмітки» показують лише нерозмічене: розмічений запис зникає зі списку.
   const TODO_VIEWS = ["radio", "speech", "filtered"];
+  const ROW_KIND = { speech: "Мовлення", unclear: "Нерозбірливо", noise: "Шум", notification: "Сигнал", room: "Кімната" };
+  function recordingRow(item, controller) {
+    const row = el("button", "recording-row"); row.type = "button";
+    const at = new Date(item.created * 1000);
+    const today = at.toDateString() === new Date().toDateString();
+    const time = at.toLocaleString("uk-UA", today ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const kind = item.reference != null ? ROW_KIND[item.label] || item.label
+      : ((typeof STATUS !== "undefined" && STATUS[item.status]) || item.status);
+    const text = el("span", "row-text", item.reference || item.data?.raw_text || "—");
+    row.append(el("span", "row-time", time), el("span", "row-kind", kind), text);
+    row.addEventListener("click", () => activateReview(controller, false));
+    $("recording-rows").append(row);
+    // Набраний текст — у рядку переліку; клас картки — так само на рядку.
+    controller.card.addEventListener("input", event => { if (event.target?.tagName === "TEXTAREA") text.textContent = event.target.value || "—"; });
+    if (typeof MutationObserver !== "undefined") {
+      const sync = () => { for (const name of ["active", "done", "dirty", "has-remarks"]) row.classList.toggle(name, controller.card.classList.contains(name)); };
+      new MutationObserver(sync).observe(controller.card, { attributes: true, attributeFilter: ["class"] }); sync();
+    }
+    return row;
+  }
+
   // Швидкість відтворення — біля кожного плеєра; спільна для всіх карток (setSpeed нижче).
   const SPEEDS = ["0.75", "0.85", "1", "1.25", "1.5", "1.75", "2"];
   function speedSelect() {
@@ -74,7 +95,7 @@
       if (loadedRecordingFilters) for (const id of recordingFilterIds) $(id).value = loadedRecordingFilters[id];
       return;
     }
-    if (reset) { recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); }
+    if (reset) { recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); $("recording-rows").replaceChildren(); }
     const since = periodSince(), until = periodUntil();
     const [page, summary] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&view=${$("recording-view").value}` +
@@ -397,6 +418,7 @@
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
                            refreshHints: () => { if (!textField.hidden) { suggest(); checkText(0); } } };
       reviewCards.push(controller);
+      controller.row = recordingRow(item, controller);
       card.addEventListener("click", () => { if (typeof activateReview === "function") activateReview(controller, false); });
       if (controller.done) card.classList.add("done");
       setCategory(category.value, false);
@@ -407,6 +429,8 @@
     }
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
+    // Праворуч одразу перший запис, щоб редактор не був порожнім.
+    if (reset && reviewCards.length && typeof activateReview === "function") activateReview(reviewCards[0], false);
   }
   $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
   // Обраний вид і період запам’ятовуються в цьому браузері.
@@ -471,10 +495,13 @@
   }, true);
 
   let activeReview = null;
+  // Широкий екран — перелік і редактор поруч: прокручується перелік, редактор завжди на місці.
+  const splitView = () => window.matchMedia?.("(min-width: 1100px)").matches;
   function activateReview(controller, scroll = true) {
     activeReview = controller;
     for (const c of reviewCards) c.card.classList.toggle("active", c === controller);
-    if (scroll) controller.card.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (splitView()) controller.row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    else if (scroll) controller.card.scrollIntoView({ block: "center", behavior: "smooth" });
   }
   function stepReview(delta) {
     if (!reviewCards.length) return;

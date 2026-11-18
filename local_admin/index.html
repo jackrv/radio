@@ -131,7 +131,11 @@
             <p id="recording-summary-details" class="muted"></p>
           </details>
         </article>
-        <div id="recordings" class="list"></div>
+        <!-- Широкий екран: ліворуч перелік записів, праворуч — активний запис цілком. Вузький — стрічка карток. -->
+        <div class="archive-split">
+          <nav class="archive-list" aria-label="Записи"><div id="recording-rows"></div></nav>
+          <div id="recordings" class="list"></div>
+        </div>
         <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
       </section>
 

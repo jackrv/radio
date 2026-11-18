@@ -846,7 +846,7 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         assert client.post("/api/lab/queue/stop", json={"now": False}, headers=h).json()["runner"]["stop"] is True
 
 
-def test_reference_checks_catch_doubled_words_self_role_digits_and_short_text(local):
+def test_reference_checks_catch_doubled_words_self_role_and_digits(local):
     client, path, tmp = local
     import sqlite3
     from services.recordings import RecordingStore
@@ -868,9 +868,7 @@ def test_reference_checks_catch_doubled_words_self_role_digits_and_short_text(lo
     unknown_roles = labelled("Дуб 7, я Клен 48, прийнято, прийом")
     digits = labelled("Клен 48, 4862, прийом")
     year = labelled("Клен 48, у 2026 році, прийом")
-    short = labelled("Клен 48, прийом", duration=12.0)
     found = {(s["kind"], s["record"]) for s in reference_checks(path, store)}
     assert ("ref_repeat", double) in found and not any(r == callsign_twice for k, r in found if k == "ref_repeat")
     assert ("ref_self", wrong_sender) in found and not any(r == unknown_roles for k, r in found if k == "ref_self")
     assert ("ref_format", digits) in found and not any(r == year for k, r in found if k == "ref_format")
-    assert ("ref_short", short) in found

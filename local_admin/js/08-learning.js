@@ -1,5 +1,9 @@
   // ---------- Користувачі ----------
   // ---------- Навчання за правками ----------
+  // Чому навчена заміна ніколи не застосовується — простими словами.
+  const BLOCK_REASONS = { service_word: "службове слово ефіру («прийом», «прийнято»…) — його майже завжди почуто правильно",
+    number: "містить число — числа не замінюються", short_word: "закоротке слово", known_name: "почуте — назва зі словника",
+    callsign_swap: "один позивний на інший", long_rewrite: "задовга заміна", format: "лише оформлення" };
   const LEARNING_QUEUE = ["needs_confirmation", "needs_approval", "conflict"];
   const LEARNING_KIND = { callsign: "позивний", word: "слово", blocked: "—" };
   let learningData = null;
@@ -14,7 +18,7 @@
       case "needs_approval": return ["warn", "Чекає вашого дозволу"];
       case "conflict": return ["bad", "Те саме слово виправлено інакше в іншій правці"];
       case "disabled": return ["off", "Вимкнено"];
-      default: return ["off", `Не застосовується: ${item.blocked_reason || "заборонено перевіркою"}`];
+      default: return ["off", `Не застосовується: ${BLOCK_REASONS[item.blocked_reason] || item.blocked_reason || "заборонено перевіркою"}`];
     }
   }
   function learningSources(sources) {

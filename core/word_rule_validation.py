@@ -13,6 +13,10 @@ MIN_WORD_LENGTH = 3
 NEAR_NAME_SIMILARITY = 80.0
 # Різна кількість слів — лише склеювання/розбиття того самого написання («на бат» → «набат»).
 SPLIT_MERGE_SIMILARITY = 85.0
+# Службові слова ефіру: їх майже завжди почуто правильно, тож навчена заміна їх на інше слово зіпсувала б
+# більшість фраз (18.11.2026: «прийом» → «прийняв» — 7 фраз краще, 204 гірше; «без правок» 45 → 16).
+SERVICE_WORDS = frozenset({"прийом", "прийнято", "прийняв", "прийняла", "так", "ні", "добре", "я", "на", "до",
+                           "розбираю", "чую", "звʼязку", "звʼязок", "посилку", "отримав", "роботу", "роботи"})
 
 
 def known_name_tuples(dictionaries) -> frozenset:
@@ -40,6 +44,8 @@ def classify_pair(original, corrected, names) -> tuple[str, str | None]:
         return "excluded", "number"
     if len(old) == 1 and len(old[0]) < MIN_WORD_LENGTH:
         return "excluded", "short_word"
+    if len(old) == 1 and old[0].replace("'", "ʼ").replace("’", "ʼ") in SERVICE_WORDS:
+        return "excluded", "service_word"
     if old in names and new in names:
         return "excluded", "callsign_swap"
     if old in names:

@@ -58,3 +58,10 @@ def test_empty_dictionaries_reject_rules():
         [("калиниця", "калина")],
         (SimpleNamespace(names=[]),),
     ) == []
+
+
+def test_service_words_never_become_learned_replacements():
+    from core.word_rule_validation import classify_pair
+    assert classify_pair("прийом", "прийняв", frozenset()) == ("excluded", "service_word")
+    assert classify_pair("Прийнято", "прийом", frozenset()) == ("excluded", "service_word")
+    assert classify_pair("приняте", "прийнято", frozenset())[0] == "word", "звичайна описка навчається як і раніше"

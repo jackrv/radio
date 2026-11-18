@@ -60,13 +60,10 @@ KINDS = {
     "ref_unchanged": ("Текст Whisper збережено без змін", "recordings",
                       "Whisper був найменш упевнений, а еталон збігається з його текстом слово в слово. Серед таких фраз "
                       "без правок майже не буває — можливо, запис збережено, не прослухавши."),
-    "ref_short": ("Закороткий текст для довгого запису", "recordings",
-                  "Запис довгий, а в еталоні кілька слів. Чи все записано? Якщо решта — кімната, а не ефір, — «Готово»."),
     "list_conflict": ("Рядки списків суперечать словникам", "texts", ""),
 }
 # Службові слова, яких двічі поспіль не кажуть (позивний двічі — «Клен, Клен» — за протоколом, це не описка).
 NO_REPEAT = {"прийом", "прийнято", "прийняв", "прийняла", "я", "на", "до", "та", "і", "й", "в", "у", "з", "як", "від", "за", "по", "не"}
-SHORT_MIN_S, SHORT_WORDS_PER_S = 6.0, 0.5   # довгий запис і менше пів слова на секунду (≈2 % розмітки 18.11.2026)
 _FOUR_DIGITS = re.compile(r"(?<!\d)\d{4}(?!\d)")
 _YEAR = re.compile(r"(?<!\d)(?:19|20)\d\d\s+(?:році|рік|року|роком)", re.IGNORECASE)
 REFERENCE_CHECK_DAYS = 14       # перепровірка тексту еталонів — за останні два тижні розмітки
@@ -230,9 +227,6 @@ def reference_checks(db_path, store, *, now=None):
                 if threshold is not None and data["confidence"] is not None and data["confidence"] < threshold \
                         and words == metric_words(data["raw_text"]):
                     out.append(_suggestion("ref_unchanged", rid, f"{short}: «{reference[:40]}»", record=rid))
-                duration = data["duration"] or 0
-                if duration >= SHORT_MIN_S and len(words) / duration < SHORT_WORDS_PER_S and not r["multiple_messages"]:
-                    out.append(_suggestion("ref_short", rid, f"{short}: {duration:.0f} с, у тексті {len(words)} сл.", record=rid))
             if speech and reference and (r["reviewed_at"] or 0) >= now - REFERENCE_CHECK_DAYS * 86400:
                 # Лише описки назв зі словника. Коди доби задано не всі, а позивні й номери поза
                 # словником — звичайна справа: про них не нагадуємо.

@@ -49,7 +49,7 @@ def test_editor_saves_text_and_word_vote(client_and_db):
         json={
             "fix_id": f"db:{eid}",
             "expected_text": "Віра 68, прийом",
-            "corrected_text": "Віра 68, приймаю",
+            "corrected_text": "Віро 68, прийом",
         },
     )
     assert response.status_code == 200
@@ -61,7 +61,7 @@ def test_editor_saves_text_and_word_vote(client_and_db):
         votes = conn.execute(
             "SELECT COUNT(*) FROM word_correction_votes"
         ).fetchone()[0]
-    assert text == "Віра 68, приймаю"
+    assert text == "Віро 68, прийом"
     assert votes >= 1
 
 
@@ -166,7 +166,7 @@ def test_failed_word_vote_rolls_back_event_edit(client_and_db):
         json={
             "fix_id": f"db:{eid}",
             "expected_text": "Віра 68, прийом",
-            "corrected_text": "Віра 68, приймаю",
+            "corrected_text": "Віро 68, прийом"   # службове «прийом» у навчання не йде — правимо інше слово,
         },
     )
     assert result.status_code == 503

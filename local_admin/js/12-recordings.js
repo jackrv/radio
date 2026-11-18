@@ -267,12 +267,12 @@
       // роль у фразі не вказана; при кількох передачах ролі не оцінюються (див. roleField.read).
       function renderChips() {
         chips.replaceChildren();
+        // Кілька передач: ролі не оцінюються — замість чипів лише ця позначка (знімається кліком).
+        if (multiBox.checked) { chips.append(multi); chips.title = ""; return; }
         const names = [];
         for (const name of [...suggestions, ...recipient.values(), ...sender.values()])
           if (!names.some(n => sameRole(n, name))) names.push(name);
-        chips.append(el("span", "muted small chips-hint", rolesAutoApplied
-          ? "Ролі підставлено (перший — «Кому», другий — «Від»); змініть, якщо не так:"
-          : names.length ? "Позивні у фразі — оберіть ролі:" : "Позивних у фразі не знайдено."));
+        chips.title = rolesAutoApplied ? "Ролі підставлено: перший позивний — «Кому», другий — «Від». Змініть, якщо не так." : "";
         for (const name of names) {
           const chip = el("span", "chip");
           chip.append(el("b", "", name));
@@ -290,7 +290,6 @@
           }
           chips.append(chip);
         }
-        chips.append(multi);
       }
       function suggest() {
         clearTimeout(suggestTimer);
@@ -371,12 +370,12 @@
       // «/» (чи старий «|») у тексті — кілька передач: відмітка ставиться сама й знімається, лише якщо її
       // поставила підстановка. Ручне перемикання вимикає підстановку в цій картці.
       let multiAuto = false, multiTouched = false;
-      multiBox.addEventListener("change", () => { multiTouched = true; multiAuto = false; suggest(); });
+      multiBox.addEventListener("change", () => { multiTouched = true; multiAuto = false; renderChips(); suggest(); });
       input.addEventListener("input", () => {
         if (multiTouched) return;
         const split = /[|/]/.test(input.value);
-        if (split && !multiBox.checked) { multiBox.checked = true; multiAuto = true; }
-        else if (!split && multiAuto) { multiBox.checked = false; multiAuto = false; }
+        if (split && !multiBox.checked) { multiBox.checked = true; multiAuto = true; renderChips(); }
+        else if (!split && multiAuto) { multiBox.checked = false; multiAuto = false; renderChips(); }
       });
       multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
@@ -392,7 +391,7 @@
       // «Зберегти» — крайня праворуч, позначка незбережених змін і результат — ліворуч від неї.
       const saveActions = el("div", "save-actions"); saveActions.append(saveStatus, dirtyBadge, save);
       actions.append(saveActions);
-      const typeRow = el("div", "recording-type"); typeRow.append(segmented);
+      const typeRow = el("div", "recording-type"); typeRow.append(segmented, chips);
       function setCategory(value, quick) {
         category.value = value;
         for (const [key, button] of Object.entries(categoryButtons)) button.className = key === value ? "ghost on" : "ghost";
@@ -452,7 +451,7 @@
       const meta = el("div", "recording-meta"); meta.append(roles, multi);
       // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
       // ліворуч підказки, позивні й ролі, праворуч «Зберегти» на висоту лівого блоку.
-      const fields = el("div", "recording-fields"); fields.append(lint, chips, meta);
+      const fields = el("div", "recording-fields"); fields.append(lint, meta);
       const body = el("div", "recording-body"); body.append(fields, actions);
       form.append(typeRow, textField, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });

@@ -555,3 +555,7 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 /* Ролі — лише чипи: старі поля приховано (вони тільки зберігають значення) */
 #recordings .recording-roles { display: none !important; }
 .recording-chips .check { margin-left: auto; }
+/* Рядок над полем: кнопки типу 1–5 і чипи позивних (або «Кілька передач у записі») */
+.recording-type { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.recording-type .recording-chips { flex: 1 1 auto; justify-content: flex-start; }
+.recording-type .recording-chips .check { margin-left: 0; color: var(--warn); }

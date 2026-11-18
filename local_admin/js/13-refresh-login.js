@@ -36,11 +36,24 @@
   window.addEventListener("online", refreshPanel);
 
   // ---------- Вхід ----------
+  // Без входу — окремий екран із причиною й способами входу, а не порожній макет.
+  function showAccessProblem(error, hadToken) {
+    const denied = error?.status === 401 || error?.status === 403;
+    $("access-reason").textContent = !denied
+      ? `Панель не змогла отримати дані (${error?.message || "немає відповіді"}). Можливо, служби саме перезапускаються — спробуйте за хвилину.`
+      : hadToken ? "Посилання з ключем не підійшло: ключ змінено (--rotate-key) або посилання застаріле. Візьміть нове — способи нижче."
+      : "Цей браузер ще не входив у панель. Вхід зберігається в самому браузері, тож у новому браузері чи приватному вікні його немає.";
+    document.querySelector(".app").hidden = true;
+    $("access-screen").hidden = false;
+  }
+  $("access-retry").addEventListener("click", () => location.reload());
+  const token = location.hash.slice(1);
   action(async () => {
-    const token = location.hash.slice(1);
     history.replaceState({ view: "overview" }, "", location.pathname + location.search);
-    if (token) await request("/session", "POST", { token });
-    await overview();
+    try {
+      if (token) await request("/session", "POST", { token });
+      await overview();
+    } catch (error) { showAccessProblem(error, Boolean(token)); return; }
     loaded.add("overview");
     $("content").hidden = false;
     note("Локальний доступ підтверджено.");
@@ -58,8 +71,4 @@
       $("recording-view").value = "all"; $("recording-period").value = ""; $("recording-edits").value = ""; pendingEdits = "";
     }
     if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted, { history: "replace" }); }
-  }).then(() => {
-    // Справжню помилку вже показано; підказку про вхід — лише якщо ключа не було.
-    if ($("content").hidden && $("feedback").textContent === "Перевіряємо доступ…")
-      note("Немає доступу. Відкрийте панель командою: .venv/bin/python -m api.local_dashboard --open");
   });

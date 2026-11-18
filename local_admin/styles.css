@@ -642,3 +642,12 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .archive-list > #recording-refresh { margin: 2px 6px 6px; padding: 5px 10px; font-size: 12px; }
 /* Видалення в Telegram — у рядку переліку */
 .recording-row .row-head button { padding: 1px 8px !important; font-size: 11px !important; margin-left: 4px; }
+/* Екран без входу */
+.access-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }
+.access-screen[hidden] { display: none; }
+.access-card { max-width: 620px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px 26px; }
+.access-card h1 { margin: 0 0 8px; font-size: 20px; }
+.access-reason { color: var(--warn); margin: 0 0 12px; }
+.access-steps { padding-left: 20px; line-height: 1.5; display: grid; gap: 6px; }
+.access-steps code { font-size: 12px; background: var(--surface2); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+.app[hidden] { display: none; }

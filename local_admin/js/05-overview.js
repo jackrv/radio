@@ -155,8 +155,7 @@
       item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
         "Переглянути", () => openTarget(g.target), extra, g.hint);
     }
-    if (a.unlabeled_radio_24h) item("info", `Нерозмічених записів «Ефіру» за добу: ${a.unlabeled_radio_24h}.`, "Розмітити",
-      () => openRecordings({view: "radio", period: "24"}));
+    // Нерозмічений ефір за добу — плиткою «Ефір без розмітки» на робочому столі, тут не дублюємо.
     if (a.suggestions_hidden) {
       const row = el("div", "attention-footer");
       const b = el("button", "link-button", `Показати приховані (${a.suggestions_hidden})`); b.type = "button";
@@ -182,8 +181,80 @@
     c.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); } });
     return c;
   }
-  const openRadioRecords = () => openRecordings({view: "radio"});
   function receiverTone(state) { return state === "listening" ? "ok" : state === "paused" ? "warn" : "bad"; }
+
+  // Стан служб — один рядок «● Назва значення»; служби з проблемою (жовті й червоні) — ще й плитками під ним.
+  function renderServices(services) {
+    const problems = services.filter(s => s[3] === "warn" || s[3] === "bad");
+    const line = [el("span", problems.length ? "health-sum warn" : "health-sum ok",
+                     problems.length ? `⚠ Потребує уваги: ${problems.map(s => s[0]).join(", ")}` : "✓ Усі служби працюють")];
+    for (const [label, value, detail, tone, go, title] of services) {
+      const item = el("button", `health-item ${tone || ""}`); item.type = "button";
+      item.append(el("span", "health-label", label), el("b", "", value));
+      item.title = `${detail ? `${detail}. ` : ""}${title}`;
+      item.addEventListener("click", go);
+      line.push(item);
+    }
+    $("health-line").replaceChildren(...line);
+    $("cards").replaceChildren(...problems.map(([label, value, detail, tone, go, title]) => linked(card(label, value, detail, tone), go, title)));
+  }
+
+  // ---------- Робочий стіл: якість сьогодні, черги розмітки, коди доби ----------
+  let workdeskAt = 0;
+  const localDay = (shift = 0) => { const d = new Date(); d.setDate(d.getDate() + shift);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  async function workdesk(force = false) {
+    if (!force && Date.now() - workdeskAt < 60000) return;
+    workdeskAt = Date.now();
+    let w;
+    try { w = await request("/api/workdesk"); } catch (_) { return; }
+    const share = v => v == null ? "—" : `${Math.round(v * 100)} %`;
+    const tile = (label, value, extra, tone, go, title) => {
+      const box = el("button", `stat-tile ${tone || ""}`.trim()); box.type = "button";
+      box.append(el("span", "stat-label", label), el("span", "stat-value", value));
+      if (extra) box.append(el("span", "stat-extra", extra));
+      box.title = title; box.addEventListener("click", go);
+      return box;
+    };
+    const byDay = Object.fromEntries((w.quality || []).map(d => [d.day, d]));
+    const today = byDay[localDay()], yesterday = byDay[localDay(-1)];
+    const goal = tile("Без правок сьогодні", share(today?.no_edits_share),
+                      [today ? `${num(today.no_edits)} з ${num(today.records)}` : "ще не розмічено", yesterday ? `вчора ${share(yesterday.no_edits_share)}` : ""].filter(Boolean).join(" · "),
+                      "goal", () => show("quality"), "Фрази сьогоднішнього ефіру, де текст збігся з еталоном слово в слово. Клік — Аналіз");
+    if (today) { const bar = el("span", "stat-bar"), fill = el("i"); fill.style.setProperty("--share", `${(today.no_edits_share * 100).toFixed(1)}%`); bar.append(fill); goal.append(bar); }
+    const q = w.queue || {};
+    const queue = (label, count, extra, view, period, title) =>
+      tile(label, num(count), extra, count ? "queue" : "compact", () => openRecordings({view, period}), title);
+    const day = w.codes?.day || "", dayLabel = day ? `${day.slice(8, 10)}.${day.slice(5, 7)}` : "";
+    const codes = w.codes?.codes?.length
+      ? tile(`Коди доби ${dayLabel}`, w.codes.codes.join(" · "), `до ${w.codes.period?.[1] || ""}`, "codes", () => show("codes"), "Коди поточної доби (змінюються о 20:00). Клік — сторінка кодів")
+      : tile(`Коди доби ${dayLabel}`, "не внесено", "внести →", "codes missing", () => show("codes"), "Коди поточної доби ще не внесено");
+    $("workdesk").replaceChildren(goal,
+      queue("Ефір без розмітки", q.radio_24h, "за 24 год", "radio", "24", "Записи з позивним чи подією за добу, ще не розмічені"),
+      queue("Без ролей", q.no_roles, "мовлення", "no_roles", "", "Розмічене мовлення без «Кому / Від»"),
+      queue("Хибний текст", q.false_text, "на шумі / сигналі", "false_text", "", "Програма дала текст там, де мовлення немає"),
+      queue("Пропущене", q.missed, "мовлення", "missed", "", "Мовлення, з якого тексту не вийшло"),
+      codes);
+    drawQualityMini(w.quality || []);
+    fitOverview();   // робочий стіл змінив висоту над стрічкою
+  }
+  // Якість за 7 днів: «Без правок» смугою, поруч пропущене й помилка в словах.
+  function drawQualityMini(days) {
+    const box = $("quality-mini");
+    if (!days.length) { box.replaceChildren(el("p", "muted", "Розмічених записів мовлення за тиждень немає.")); return; }
+    const pct0 = v => v == null ? "—" : `${Math.round(v * 100)} %`;
+    const rows = [...days].reverse().map(d => {
+      const row = el("div", d.day === localDay() ? "quality-row today" : "quality-row");
+      const track = el("span", "quality-track"), fill = el("i");
+      fill.style.width = `${Math.max(2, d.no_edits_share * 100)}%`; track.append(fill);
+      row.append(el("span", "quality-day", d.day === localDay() ? "сьогодні" : `${d.day.slice(8, 10)}.${d.day.slice(5, 7)}`), track,
+                 el("b", "", pct0(d.no_edits_share)), el("span", "quality-meta", `${num(d.records)} фраз · пропущено ${pct0(d.missed_share)} · WER ${pct0(d.wer_final)}`));
+      row.title = `Без правок: ${num(d.no_edits)} з ${num(d.records)}`;
+      return row;
+    });
+    box.replaceChildren(el("div", "quality-head", "Без правок"), ...rows);
+  }
+  $("quality-open")?.addEventListener("click", () => show("quality"));
 
   async function overview() {
     data = await request("/api/overview");
@@ -203,27 +274,26 @@
     const models = [g["models.whisper"], g["models.qwen"]].filter(Boolean);
     const lastBackup = data.backups[0];
     const backupAge = lastBackup ? now() - lastBackup.created : null;
-    const lastEvent = utcTs(o.last_event_at);
     const sync = data.telegram_sync || {};
-    $("cards").replaceChildren(
-      linked(card("Приймач", pill.textContent, d.started_at ? `сесія ${ago(now() - d.started_at)}` : "немає даних сесії", receiverTone(state)), () => show("system"), "Система: моделі, потоки, діагностика"),
-      linked(card("Розпізнавання", { ok: "Працює", stuck: "Зависло", failing: "Помилки", unknown: "Немає даних" }[health] || health,
+    // Стан служб: [назва, значення, подробиці, тон, куди веде, підказка].
+    const services = [
+      ["Приймач", pill.textContent, d.started_at ? `сесія ${ago(now() - d.started_at)}` : "немає даних сесії", receiverTone(state), () => show("system"), "Система: моделі, потоки, діагностика"],
+      ["Розпізнавання", { ok: "Працює", stuck: "Зависло", failing: "Помилки", unknown: "Немає даних" }[health] || health,
         fresh ? (models.length ? `моделі: ${models.join(" / ")}` : "") : "приймач не надсилає свіжих метрик",
-        health === "ok" ? "ok" : health === "unknown" ? "" : "bad"), () => show("settings"), "Налаштування розпізнавання"),
-      linked(card("Знімок метрик", age === null ? "—" : `${ago(age)} тому`, "оновлюється кожні ~30 с",
-        age === null ? "" : age > 120 ? "warn" : "ok"), () => show("system"), "Система: історія діагностики"),
-      linked(card("Telegram", !fresh ? "Немає даних" : g["workers.telegram_alive"] === false ? "Потік зупинено" : "Працює",
+        health === "ok" ? "ok" : health === "unknown" ? "" : "bad", () => show("settings"), "Налаштування розпізнавання"],
+      ["Метрики", age === null ? "—" : `${ago(age)} тому`, "оновлюється кожні ~30 с",
+        age === null ? "" : age > 120 ? "warn" : "ok", () => show("system"), "Система: історія діагностики"],
+      ["Telegram", !fresh ? "Немає даних" : g["workers.telegram_alive"] === false ? "Потік зупинено" : "Працює",
         `правок у черзі: ${num(sync.pending)}${sync.exhausted ? ` · не вдалося: ${sync.exhausted}` : ""}`,
-        !fresh ? (sync.exhausted ? "bad" : "") : g["workers.telegram_alive"] === false || sync.exhausted ? "bad" : sync.pending ? "warn" : "ok"),
-        () => show("system"), "Система: Telegram"),
-      linked(card("Події", num(o.events), lastEvent ? `остання ${ago(now() - lastEvent)} тому` : "ще немає", "info"), openRadioRecords, "Аудіоархів: ефір"),
-      linked(card("Виправлення", num(o.corrections), `правил: ${num(o.active_rules)} активних / ${num(o.total_rules)}`, "info"), () => show("learning"), "Навчання"),
-      linked(card("Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
-        backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok"), () => show("system"), "Система: резервні копії"),
-      linked(card("Сигнали", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
+        !fresh ? (sync.exhausted ? "bad" : "") : g["workers.telegram_alive"] === false || sync.exhausted ? "bad" : sync.pending ? "warn" : "ok", () => show("system"), "Система: Telegram"],
+      ["Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
+        backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok", () => show("system"), "Система: резервні копії"],
+      ["Сигнали", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
         `зразків: ${data.samples} · відкинуто: ${num(c["asr.outcome.notification"] || 0)} · кандидатів: ${num(c["asr.spectral.candidate"] || 0)}`,
-        data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn"), () => show("filter"), "Сигнали: фільтр"),
-    );
+        data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn", () => show("filter"), "Сигнали: фільтр"],
+    ];
+    renderServices(services);
+    workdesk();
     drawEvents(data.events_by_hour);
     drawFunnel(c);
     if (view === "overview") await live();

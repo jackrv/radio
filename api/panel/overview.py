@@ -104,6 +104,19 @@ def register(app, ctx):
                 "telegram_failed": sync_status(db_path)["exhausted"],
                 "unlabeled_radio_24h": fresh["radio"], "unlabeled_speech_24h": fresh["speech"]}
 
+    @app.get("/api/workdesk")
+    def workdesk(admin=Depends(actor)):
+        """Робочий стіл Огляду: черги розмітки, якість за 7 днів і коди поточної доби (оновлення раз на хвилину)."""
+        from services import daily_codes
+        day = daily_codes.local_day()
+        with get_db(db_path) as db:
+            codes = daily_codes.read_day(db, day)
+        counts, fresh = recordings.view_counts(), recordings.view_counts(time.time() - 86400)
+        return {"queue": {"radio_24h": fresh["radio"], "no_roles": counts["no_roles"], "false_text": counts["false_text"],
+                          "missed": counts["missed"], "unclear": counts["unclear"]},
+                "quality": recordings.quality_by_day(7),
+                "codes": {"day": day, "period": daily_codes.period(day), "codes": codes}}
+
     @app.post("/api/suggestions/sync-events")
     def suggestions_sync_events(admin=Depends(actor)):
         """Перенести еталони в події, які лишилися з текстом Whisper (журнал, підпис у Telegram, навчання)."""

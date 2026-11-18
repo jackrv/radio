@@ -1,16 +1,26 @@
   // ---------- Огляд: «Ефір зараз» ----------
   const LIVE_TONE = { ready: "ok", ready_fallback: "ok", notification: "info", low_confidence: "warn", blacklist: "warn",
     garbage: "warn", short_garbage: "warn", bare_callsign: "warn", dictionary_echo: "warn", empty_text: "", whisper_error: "bad" };
+  const LIVE_PHRASES_KEY = "radio345:live-phrases";
+  try { $("live-phrases").checked = localStorage.getItem(LIVE_PHRASES_KEY) === "on"; } catch (_) { /* типово — усе */ }
+  $("live-phrases").addEventListener("change", () => {
+    try { localStorage.setItem(LIVE_PHRASES_KEY, $("live-phrases").checked ? "on" : "off"); } catch (_) { /* лише сесія */ }
+    live();
+  });
   async function live() {
     let r;
-    try { r = await request("/api/live?limit=30"); } catch (_) { return; }
+    // «Лише фрази» — без «Кхм», коротких хибних фрагментів тощо; тоді беремо більше записів, щоб було що показати.
+    const phrasesOnly = $("live-phrases").checked;
+    try { r = await request(`/api/live?limit=${phrasesOnly ? 50 : 30}`); } catch (_) { return; }
+    if (phrasesOnly) r = { ...r, items: r.items.filter(i => ["ready", "ready_fallback"].includes(i.status) || i.fix_id || i.reference !== null) };
     const box = $("live");
     if ([...box.querySelectorAll("audio")].some(audio => !audio.paused && !audio.ended)) {
       $("live-note").textContent = "Стрічка оновиться після прослуховування.";
       return;
     }
     $("live-note").textContent = r.skipped_quiet ? `ще ${r.skipped_quiet} тихих чи закоротких не показано` : "";
-    if (!r.items.length) { box.replaceChildren(el("p", "muted", "Записів ще немає. Щойно приймач щось почує, фраза з’явиться тут.")); return; }
+    if (!r.items.length) { box.replaceChildren(el("p", "muted", phrasesOnly ? "Серед останніх записів фраз немає — зніміть «лише фрази», щоб побачити все."
+                                                                              : "Записів ще немає. Щойно приймач щось почує, фраза з’явиться тут.")); return; }
     box.replaceChildren(...r.items.map(item => {
       const row = el("div", `live-row ${LIVE_TONE[item.status] ?? ""}`);
       // Як рядок переліку архіву: час — ГГ:ХХ великим, секунди дрібно; статус — маленька пігулка.

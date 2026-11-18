@@ -788,3 +788,19 @@ def test_saved_panel_changes_are_journaled_but_checks_are_not(local):
     admin = client.get("/api/users").json()["items"][0]["user_id"]
     actions = [(i["action"], i["target"]) for i in user_activity.overview(path, admin)["items"]]
     assert actions.count(("panel", "Фільтри тексту: short_garbage")) == 1
+
+
+def test_workdesk_shows_queues_quality_and_todays_codes(local):
+    client, path, tmp = local
+    from services import daily_codes
+    from services.recordings import RecordingStore
+    data = client.get("/api/workdesk").json()
+    assert data["queue"] == {"radio_24h": 0, "no_roles": 0, "false_text": 0, "missed": 0, "unclear": 0}
+    assert data["quality"] == [] and data["codes"]["codes"] == [] and data["codes"]["day"] == daily_codes.local_day()
+    store = RecordingStore(tmp / "recordings")
+    record = store.save(pcm(segment()), 16000, {"status": "ready", "raw_text": "клен", "final_text": "клен"})
+    store.review(record, "клен", "speech", 0)
+    daily_codes.write(path, data["codes"]["day"], "48 62")
+    data = client.get("/api/workdesk").json()
+    assert data["queue"]["no_roles"] == 1 and data["quality"][0]["no_edits"] == 1
+    assert data["codes"]["codes"] == ["48 62"] and len(data["codes"]["period"]) == 2

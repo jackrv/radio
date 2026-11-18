@@ -340,3 +340,17 @@ def test_training_set_readiness_and_local_export(tmp_path):
     rows = [_json.loads(l) for l in (Path(result['path']) / 'metadata.jsonl').read_text().splitlines()]
     assert result['records'] == 2 and {r['text'] for r in rows} == {'Клен 15, прийом Дуб 4, прийнято', 'Клен 15, прийнято'}
     assert all((Path(result['path']) / r['audio']).is_file() for r in rows)
+
+
+def test_listing_and_view_counts_respect_a_closed_period(tmp_path):
+    import time as _time
+    store = RecordingStore(tmp_path / 'archive')
+    now = _time.time()
+    ids = {}
+    for name, age in (('today', 0), ('yesterday', 86400 * 1.2), ('older', 86400 * 3)):
+        ids[name] = store.save(pcm(), 16000, {'status': 'ready'})
+        with store.connect() as db:
+            db.execute("UPDATE recordings SET created=? WHERE id=?", (now - age, ids[name]))
+    since, until = now - 86400 * 2, now - 86400
+    assert [i['id'] for i in store.listing(since=since, until=until)['items']] == [ids['yesterday']]
+    assert store.view_counts(since, until)['all'] == 1 and store.view_counts()['all'] == 3

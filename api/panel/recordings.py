@@ -58,14 +58,14 @@ def register(app, ctx):
     @app.get("/api/recordings")
     def recording_list(request: Request, offset: int = 0, limit: int = 25,
                        q: str = "", edits: str = "", view: str = "all", since: float | None = None,
-                       admin=Depends(actor)):
-        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since"}
+                       until: float | None = None, admin=Depends(actor)):
+        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since", "until"}
                 or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
             raise HTTPException(422, "Некоректні параметри")
         from services.recordings import VIEWS
-        if (view not in VIEWS) or (since is not None and not 0 <= since <= 4e9):
+        if (view not in VIEWS) or any(v is not None and not 0 <= v <= 4e9 for v in (since, until)):
             raise HTTPException(422, "Некоректні параметри")
         from services import user_activity
         selected = None
@@ -73,8 +73,8 @@ def register(app, ctx):
             selected = "miniapp"
         elif edits:
             selected = list(user_activity.corrections(db_path, user_id=int(edits)))
-        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since)
-        page["views"] = recordings.view_counts(since)
+        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since, until=until)
+        page["views"] = recordings.view_counts(since, until)
         # Хто й коли правив запис у Mini App (журнал дій з 16.11.2026).
         linked = [item["data"].get("fix_id") for item in page["items"] if item["data"].get("fix_id")]
         if linked:

@@ -14,11 +14,18 @@
   }
   let pendingEdits = "";   // збережений фільтр «правки користувача», доки варіанти ще не завантажено
   const editsValue = () => $("recording-edits").value || pendingEdits;
+  // Календарні доби («сьогодні», «вчора», «позавчора») — від опівночі; числа — останні N годин.
+  const DAYS_BACK = { today: 0, yesterday: 1, daybefore: 2 };
+  function midnight(daysBack) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - daysBack); return Math.floor(d.getTime() / 1000); }
   function periodSince() {
     const value = $("recording-period").value;
     if (!value) return null;
-    if (value === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return Math.floor(d.getTime() / 1000); }
+    if (value in DAYS_BACK) return midnight(DAYS_BACK[value]);
     return Math.floor(Date.now() / 1000) - Number(value) * 3600;
+  }
+  function periodUntil() {
+    const value = $("recording-period").value;
+    return value in DAYS_BACK && DAYS_BACK[value] > 0 ? midnight(DAYS_BACK[value] - 1) : null;
   }
   let recordingOffset = 0;
   const reviewCards = [];
@@ -68,10 +75,10 @@
       return;
     }
     if (reset) { recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); }
-    const since = periodSince();
+    const since = periodSince(), until = periodUntil();
     const [page, summary] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&view=${$("recording-view").value}` +
-        (since ? `&since=${since}` : "") +
+        (since ? `&since=${since}` : "") + (until ? `&until=${until}` : "") +
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
         (editsValue() ? `&edits=${encodeURIComponent(editsValue())}` : "")),
       request("/api/recordings/summary")

@@ -13,7 +13,7 @@ function refreshHarness(view='dictionaries') {
   document:{visibilityState:'visible',addEventListener:(n,f)=>{events[n]=f;}},window:{addEventListener:(n,f)=>{events[n]=f;}},
   overview:async()=>{calls.push('overview');},system:async()=>{calls.push('system');},
   filterView:async()=>{calls.push('filter');},activity:async()=>{calls.push('activity');},
-  periodSince:()=>null,searchQuery:()=>'',recordingFilterIds:['recording-view','recording-period','recording-edits','recording-search'],
+  periodSince:()=>null,periodUntil:()=>null,searchQuery:()=>'',recordingFilterIds:['recording-view','recording-period','recording-edits','recording-search'],
   archiveBaseline:null,URLSearchParams,request:async()=>({total:2,items:[{id:'new'}]}),setInterval(){},clearInterval(){}});
  const block=source.slice(source.indexOf('  let refreshPending ='),source.indexOf('  // ---------- Вхід ----------'));
  vm.runInContext(block+'\nglobalThis.refresh=refreshPanel;',context);

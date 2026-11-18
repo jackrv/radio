@@ -220,16 +220,20 @@ class RecordingStore:
             }
         return result
 
-    def view_counts(self, since=None):
-        """Скільки записів у кожному виді (за період ``since`` — unix-час, або весь архів)."""
-        period = "created >= ?" if since else "1"
+    def view_counts(self, since=None, until=None):
+        """Скільки записів у кожному виді за період [``since``, ``until``) — unix-час; без меж — весь архів."""
+        period, params = ["1"], []
+        if since:
+            period.append("created >= ?"); params.append(since)
+        if until:
+            period.append("created < ?"); params.append(until)
         sums = ", ".join(f"COALESCE(SUM(CASE WHEN ({_REVIEW_SQL[review]}) AND ({condition}) THEN 1 ELSE 0 END),0)"
                          for review, condition in VIEWS.values())
         with self.connect() as db:
-            row = db.execute(f"SELECT {sums} FROM recordings WHERE {period}", (since,) if since else ()).fetchone()
+            row = db.execute(f"SELECT {sums} FROM recordings WHERE {' AND '.join(period)}", params).fetchone()
         return dict(zip(VIEWS, row))
 
-    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None):
+    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None, until=None):
         review, condition = VIEWS[view]
         reviewed = _REVIEW_SQL[review]
         params = ()
@@ -246,6 +250,9 @@ class RecordingStore:
         if since is not None:
             where += " AND created >= ?"
             params = (*params, float(since))
+        if until is not None:
+            where += " AND created < ?"
+            params = (*params, float(until))
         with self.connect() as db:
             db.execute("BEGIN")
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]

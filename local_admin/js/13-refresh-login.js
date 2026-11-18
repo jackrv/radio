@@ -5,6 +5,7 @@
     const query = JSON.stringify(recordingFilterIds.map(id => $(id).value));
     const params = new URLSearchParams({view: $("recording-view").value, limit: "1"});
     const since = periodSince(); if (since) params.set("since", since);
+    const until = periodUntil(); if (until) params.set("until", until);
     if (searchQuery()) params.set("q", searchQuery());
     if ($("recording-edits").value) params.set("edits", $("recording-edits").value);
     const page = await request(`/api/recordings?${params}`);
@@ -52,6 +53,10 @@
     // ?view=recordings&q=1a2b3c4d — посилання одразу на потрібні записи.
     const query = new URLSearchParams(location.search).get("q");
     if (query) $("recording-search").value = query.slice(0, 200);
+    // &filters=off — показати знайдене без виду, періоду й фільтра правок (вибір у браузері не змінюється).
+    if (new URLSearchParams(location.search).get("filters") === "off") {
+      $("recording-view").value = "all"; $("recording-period").value = ""; $("recording-edits").value = ""; pendingEdits = "";
+    }
     if (wanted && titles[wanted] && wanted !== "overview") { busy = false; show(wanted, { history: "replace" }); }
   }).then(() => {
     // Справжню помилку вже показано; підказку про вхід — лише якщо ключа не було.

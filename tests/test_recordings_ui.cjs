@@ -90,8 +90,7 @@ test('loading more preserves the existing card and its unsaved input', async () 
   const ui = harness({items:[item],total:3});
   await ui.load();
   const card = ui.$('recordings').children[0];
-  const form = card.children.find(child=>child.children.some(c=>c.className==='recording-text'));
-  const input = form.children.find(c=>c.className==='recording-text').children[1];
+  const input = descendants(card).find(n=>n.className==='text-input-box').children[0];
   input.value = 'незбережена правка';
   ui.set({items:[{...item,id:'b'.repeat(32)}],total:3});
   await ui.more();

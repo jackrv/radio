@@ -303,7 +303,7 @@
       let lintTimer = null;
       // «Виправити оформлення» — усі рекомендовані правки оформлення одним натисканням; кнопка всередині поля праворуч.
       let formatted = null;
-      const fixAll = el("button", "ghost fix-all", "Виправити оформлення"); fixAll.type = "button"; fixAll.hidden = true;
+      const fixAll = el("button", "fix-all", "Виправити оформлення"); fixAll.type = "button"; fixAll.hidden = true;
       fixAll.title = "Застосувати всі правки оформлення (пробіли, коми, цифри групами, апостроф)";
       fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; updateDirty(); checkText(0); input.focus(); });
       function renderLint(result) {
@@ -437,8 +437,11 @@
         }
       }
       const meta = el("div", "recording-meta"); meta.append(roles, multi);
-      // Зверху вниз: тип запису, текст (з «Виправити оформлення»), підказки й позивні, ролі, «Зберегти».
-      form.append(typeRow, textField, lint, chips, meta, actions);
+      // Зверху тип запису; під ним ліворуч текст (з «Виправити оформлення»), підказки, позивні й ролі,
+      // праворуч — «Зберегти» на всю висоту цих рядків.
+      const fields = el("div", "recording-fields"); fields.append(textField, lint, chips, meta);
+      const body = el("div", "recording-body"); body.append(fields, actions);
+      form.append(typeRow, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
       const controller = { card, audio, item, dirty:false, done: item.reference !== null, setCategory, submit,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,

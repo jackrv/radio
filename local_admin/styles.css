@@ -838,3 +838,10 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .deck-drafts.pending:hover { filter: brightness(1.08); }
 @media (prefers-reduced-motion: reduce) { .deck-drafts.pending { animation: none; } }
 @media (max-width: 820px) { .deck-player { flex-wrap: wrap; } .deck-wave { flex-basis: calc(100% - 60px); } }
+
+/* Архів на широкому екрані — без прокрутки самої сторінки: прокручуються лише перелік і картка */
+@media (min-width: 1100px) {
+  main:has(> section[data-panel="recordings"]:not([hidden])) { padding-bottom: 12px; }
+  .archive-split > * { min-height: 0; overflow: hidden; }
+  .archive-split > .archive-list { overflow-y: auto; }
+}

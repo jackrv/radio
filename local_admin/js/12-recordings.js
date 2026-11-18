@@ -786,8 +786,14 @@
     if (!split || !list || !main || !more) return;
     const refresh = $("recording-refresh"), filters = document.querySelector(".archive-filters");
     if (splitView() && split.offsetParent !== null) {
+      // Висота — до низу вікна з урахуванням усього, що під архівом (нижній відступ main тощо):
+      // спершу орієнтовно, далі мінус фактичне переповнення сторінки, щоб вона не прокручувалась.
       const top = split.getBoundingClientRect().top + window.scrollY;
-      split.style.setProperty("--archive-h", `${Math.max(360, Math.floor(window.innerHeight - top - 10))}px`);
+      let height = Math.max(360, Math.floor(window.innerHeight - top - 10));
+      split.style.setProperty("--archive-h", `${height}px`);
+      const extra = document.documentElement.scrollHeight - window.innerHeight;
+      if (extra > 0) { height = Math.max(360, height - extra); split.style.setProperty("--archive-h", `${height}px`); }
+      if (window.scrollY && extra > 0) window.scrollTo(0, 0);
       if (more.parentElement !== list) list.append(more);
       // «Оновити» — над переліком, який він і оновлює.
       if (refresh && refresh.parentElement !== list) list.prepend(refresh);
@@ -798,6 +804,14 @@
     }
   }
   window.addEventListener?.("resize", () => fitArchive());
+  // Щось над архівом змінило висоту (плашка, шапка розділу) — підганяємо знову; той самий розмір нічого не змінює.
+  if (typeof ResizeObserver !== "undefined" && typeof document !== "undefined" && document.querySelector?.("main")) {
+    let fitting = false;
+    new ResizeObserver(() => {
+      if (fitting || view !== "recordings") return;
+      fitting = true; window.requestAnimationFrame(() => { fitArchive(); fitting = false; });
+    }).observe(document.querySelector("main"));
+  }
   function activateReview(controller, scroll = true) {
     activeReview = controller;
     for (const c of reviewCards) c.card.classList.toggle("active", c === controller);

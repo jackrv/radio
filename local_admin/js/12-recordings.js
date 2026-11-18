@@ -452,9 +452,9 @@
       if (controller.done) card.classList.add("done");
       setCategory(category.value, false);
       savedSnapshot = snapshot();
-      card.append(form);
+      // «Технічні деталі» — над формою: «Зберегти» внизу праворуч доходить до краю картки.
       details.append(el("pre", "", JSON.stringify(d, null, 2)));
-      card.append(details); $("recordings").append(card);
+      card.append(details, form); $("recordings").append(card);
     }
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;

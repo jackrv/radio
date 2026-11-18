@@ -66,6 +66,7 @@
     }
     if (changed && view === "preview") $("preview").src = "about:blank";
     view = name; lastTab[group] = name;
+    if (name === "recordings" && typeof fitArchive === "function") requestAnimationFrame(() => fitArchive());
     const url = name === "overview" ? location.pathname : `${location.pathname}?view=${encodeURIComponent(name)}`;
     if (mode === "push" && changed) history.pushState({ view: name }, "", url);
     else if (mode === "replace") history.replaceState({ view: name }, "", location.pathname + location.search);

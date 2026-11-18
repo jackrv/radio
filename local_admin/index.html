@@ -85,7 +85,12 @@
       </section>
 
       <section data-panel="recordings" hidden>
-        <article class="panel archive-bar">
+        
+        <!-- Широкий екран: ліворуч активний запис і внизу шапка, праворуч перелік; сторінка не прокручується.
+             Вузький — шапка вгорі й стрічка карток. -->
+        <div class="archive-split">
+          <div class="archive-main">
+            <article class="panel archive-bar">
           <div class="toolbar archive-filters">
             <select id="recording-view" aria-label="Що показати" title="Що показати">
               <optgroup label="Розмітка — ще не розмічені, нові першими">
@@ -131,12 +136,11 @@
             <p id="recording-summary-details" class="muted"></p>
           </details>
         </article>
-        <!-- Широкий екран: ліворуч перелік записів, праворуч — активний запис цілком. Вузький — стрічка карток. -->
-        <div class="archive-split">
+            <div id="recordings" class="list"></div>
+            <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
+          </div>
           <nav class="archive-list" aria-label="Записи"><p class="row-legend"><span class="lg-todo">●</span> не розмічено · <span class="lg-done">✓</span> розмічено · <span class="lg-warn">▌</span> зауваження / чернетка · <span class="lg-bad">⚠</span> суперечність · ✎ правка з Mini App · ✈ у Telegram</p><div id="recording-rows"></div></nav>
-          <div id="recordings" class="list"></div>
         </div>
-        <button id="recording-more" class="ghost wide" hidden>Показати ще</button>
       </section>
 
 

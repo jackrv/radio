@@ -450,7 +450,8 @@
     }
     recordingOffset += page.items.length;
     $("recording-more").hidden = recordingOffset >= page.total;
-    // Праворуч одразу перший запис, щоб редактор не був порожнім.
+    if (typeof fitArchive === "function") fitArchive();
+    // Одразу перший запис, щоб редактор не був порожнім.
     if (reset && reviewCards.length && typeof activateReview === "function") activateReview(reviewCards[0], false);
   }
   $("recording-refresh").addEventListener("click", () => action(() => recordings(true)));
@@ -518,6 +519,23 @@
   let activeReview = null;
   // Широкий екран — перелік і редактор поруч: прокручується перелік, редактор завжди на місці.
   const splitView = () => window.matchMedia?.("(min-width: 1100px)").matches;
+  // Широкий екран: архів — точно у висоту вікна (сторінка не прокручується, лише перелік і запис);
+  // «Показати ще» — внизу переліку. Вузький — звичайна стрічка, кнопка під картками.
+  function fitArchive() {
+    if (typeof document === "undefined" || !document.querySelector) return;
+    const split = document.querySelector(".archive-split"), list = document.querySelector(".archive-list");
+    const main = document.querySelector(".archive-main"), more = $("recording-more");
+    if (!split || !list || !main || !more) return;
+    if (splitView() && split.offsetParent !== null) {
+      const top = split.getBoundingClientRect().top + window.scrollY;
+      split.style.setProperty("--archive-h", `${Math.max(360, Math.floor(window.innerHeight - top - 10))}px`);
+      if (more.parentElement !== list) list.append(more);
+    } else {
+      split.style.removeProperty("--archive-h");
+      if (more.parentElement !== main) main.append(more);
+    }
+  }
+  window.addEventListener?.("resize", () => fitArchive());
   function activateReview(controller, scroll = true) {
     activeReview = controller;
     for (const c of reviewCards) c.card.classList.toggle("active", c === controller);

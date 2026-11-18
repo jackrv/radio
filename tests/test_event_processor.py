@@ -317,7 +317,7 @@ def test_event_and_message_ids_are_noted_for_the_archive():
 
     processor, _, telegram, _ = make_processor(
         mode="commands",
-        commands=FakeDictionary({"Злива 4242": [("злива", "4242", 100)]}),
+        commands=FakeDictionary({"Злива 42 42": [("злива", "4242", 100)]}),
     )
     telegram.register_phrase_for_fix.return_value = "db:42"
     trace = {}

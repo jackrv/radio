@@ -106,3 +106,12 @@ def test_live_blacklist_is_archived_and_trace_does_not_leak_to_next_segment():
     trace = worker.recorder.submit.call_args.args[2]
     assert trace['status'] == 'low_rms'
     assert 'raw_text' not in trace
+
+
+def test_repeated_blacklisted_phrase_is_filtered_but_mixed_speech_is_not():
+    from types import SimpleNamespace
+    worker, processor = make_worker("")
+    worker.text_lists = SimpleNamespace(refresh=Mock(), blacklist={"дякую за перегляд"})
+    assert worker._is_blacklisted("Дякую за перегляд! Дякую за перегляд! Дякую за перегляд!")
+    assert not worker._is_blacklisted("Дякую за перегляд! Клен 15, прийом.")
+    assert not worker._is_blacklisted("Клен 15, дякую за перегляд, прийом")

@@ -108,6 +108,9 @@ def _spelling_issues(text, callsigns, known):
     """Слова, які шаблони написали б інакше: «Бериза 56» → «Береза 56»."""
     if callsigns is None:
         return []
+    # Цифри парами («4862» → «48 62») — справа оформлення, не описка: порівнюємо вже з парами.
+    from core.template_text import split_code_pairs
+    text = split_code_pairs(text)
     issues = _dictionary_spelling(text, set(callsigns.names) | set(known))
     suggested = template_text(text, callsigns, known)
     if suggested == text:

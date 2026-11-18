@@ -43,6 +43,9 @@ class Transcriber:
         # {"max_words": .., "logprob": ..} — відкидати короткий текст із низькою
         # впевненістю Whisper; None — правило вимкнене (задає фабрика приймача).
         self.low_confidence = None
+        # Другий шанс: якщо з підказкою Whisper зациклився й тексту не лишилося — ще раз без
+        # підказки (назви словника в підказці провокують такі петлі). Вмикає фабрика з config.
+        self.retry_without_prompt = False
         self._whisper_called = False
         self._whisper_failed = False
         self.recognizer = recognizer
@@ -73,9 +76,13 @@ class Transcriber:
         return " ".join(words)
 
     def _is_blacklisted(self, text: str) -> bool:
-        key = self._blacklist_key(text)
+        """Фраза з чорного списку цілком — або кілька її повторів («Дякую за перегляд! Дякую…»)."""
         keys = self.text_lists.blacklist if self.text_lists is not None else self.blacklist
-        return bool(key) and key in keys
+        key = self._blacklist_key(text)
+        if key and key in keys:
+            return True
+        parts = [k for k in (self._blacklist_key(p) for p in re.split(r"[.!?;…]+", text)) if k]
+        return len(parts) > 1 and all(p in keys for p in parts)
 
     def process_segment(self, pcm, generation=None):
         from core.recording_trace import _trace
@@ -187,6 +194,16 @@ class Transcriber:
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
             from core.recording_trace import note
+            from core.recognition import is_looped
+            if not raw_text and self.retry_without_prompt and getattr(self.recognizer, "prompt", "") and is_looped(result):
+                runtime.count("asr.whisper_retry")
+                with runtime.timed("asr.whisper_retry"):
+                    retry = self.recognizer.transcribe(audio, prompt="")
+                retry_text = self.recognizer.extract_text(retry)
+                note(whisper_retry=bool(retry_text))
+                if retry_text:
+                    runtime.count("asr.whisper_retry_recovered")
+                    result, raw_text = retry, retry_text
             whisper_segments = [{k: segment[k] for k in (
                 "start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "temperature") if k in segment}
                 for segment in (result.get("segments", []) if isinstance(result, dict) else [])]

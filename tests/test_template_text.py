@@ -26,7 +26,7 @@ def test_callsign_threshold_depends_on_number():
 
 
 def test_numbers_are_never_changed():
-    assert snap("Берега 5,6, 5316, приєм") == "Береза 5,6, 5316, прийом"
+    assert snap("Берега 5,6, 5316, приєм") == "Береза 5,6, 53 16, прийом"
 
 
 def test_dictionary_and_phrase_words_are_not_rewritten():
@@ -38,7 +38,7 @@ def test_alias_and_callsign_without_numbers(monkeypatch):
     import core.callsigns as callsigns
     monkeypatch.setattr(callsigns, "CALLSIGN_ALIASES", {"бук": "клен"})
     assert snap("Бук 15, прийом") == "Клен 15, прийом"
-    assert snap("Вишна 5316, прийом") == "Вишня 5316, прийом"
+    assert snap("Вишна 5316, прийом") == "Вишня 53 16, прийом"
 
 
 def test_unclear_words_stay_as_heard():
@@ -66,3 +66,11 @@ def test_event_and_notification_get_templates_heard_text_is_kept_as_raw():
     assert save.call_args.args[4] == "Береза 56, посилку отримав, прийом"
     assert save.call_args.kwargs["raw_text"] == heard
     assert telegram.notify.call_args.args[3] == "Береза 56, посилку отримав, прийом"
+
+
+def test_four_digit_codes_are_written_in_spoken_pairs():
+    from core.template_text import split_code_pairs
+    assert split_code_pairs("Клен 10, 4862, прийом") == "Клен 10, 48 62, прийом"
+    assert split_code_pairs("злива 4242") == "злива 42 42"
+    for kept in ("Клен 700", "1:29", "12.5034", "у 2026 році", "код1234", "12345"):
+        assert split_code_pairs(kept) == kept

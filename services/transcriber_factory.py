@@ -140,6 +140,8 @@ def build_transcriber(
         spectral_mode=spectral_mode,
     )
 
+    worker.retry_without_prompt = bool(getattr(config, "WHISPER_RETRY_WITHOUT_PROMPT", False))
+
     def apply_settings(values):
         # Застосовується в потоці розпізнавання перед наступним сегментом.
         if hasattr(cooldown, "cooldown_s"):

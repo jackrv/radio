@@ -2,6 +2,14 @@ import numpy as np
 import mlx_whisper
 from core.diagnostics import runtime
 
+COMPRESSION_LIMIT = 2.4   # вище — Whisper зациклився («Грозу, Грозу, Грозу…»): сегмент відкидається
+
+
+def is_looped(result):
+    """Whisper зациклився хоча б в одному сегменті (після всіх температур)."""
+    return isinstance(result, dict) and any(
+        isinstance(s, dict) and (s.get("compression_ratio") or 0) > COMPRESSION_LIMIT for s in result.get("segments", ()))
+
 
 class WhisperRecognizer:
     """Обёртка над MLX Whisper."""
@@ -36,8 +44,8 @@ class WhisperRecognizer:
             raise
         runtime.gauge("models.whisper", "ready")
 
-    def transcribe(self, audio):
-        """Распознаёт аудио с исходными параметрами проекта."""
+    def transcribe(self, audio, prompt=None):
+        """Розпізнає аудіо з параметрами проєкту. ``prompt=""`` — без підказки (другий шанс)."""
         options = {
             "condition_on_previous_text": False,
             "no_speech_threshold": 0.6,
@@ -49,7 +57,7 @@ class WhisperRecognizer:
             audio,
             path_or_hf_repo=self.model_repo,
             language=self.language,
-            initial_prompt=self.prompt,
+            initial_prompt=self.prompt if prompt is None else (prompt or None),
             temperature=self.temperature,
             **options,
         )
@@ -64,6 +72,6 @@ class WhisperRecognizer:
                 segment.get("no_speech_prob", 0.0) > 0.6
                 and segment.get("avg_logprob", 0.0) < -0.8
             )
-            and segment.get("compression_ratio", 0) <= 2.4
+            and segment.get("compression_ratio", 0) <= COMPRESSION_LIMIT
         ]
         return " ".join(parts).strip()

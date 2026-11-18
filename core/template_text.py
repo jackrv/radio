@@ -90,6 +90,15 @@ PHRASE_MIDDLE = 82               # одне слово всередині тек
 _TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`-][^\W\d_]+)*|\d+")
 
 
+# Чотири цифри поспіль у радіообміні вимовляються парами: «4862» → «48 62» (як в
+# еталонах оператора: 156 пар і жодного злитого числа). Час, дроби й частини слів не чіпаються.
+_CODE_PAIR = re.compile(r"(?<![\w:.,/-])(\d{2})(\d{2})(?![\w:/-]|[.,]\d|\s*(?:р\.|рік|році|року|роках))")
+
+
+def split_code_pairs(text):
+    return _CODE_PAIR.sub(r"\1 \2", text)
+
+
 def _fold(word):
     return basic_normalize(word).translate(FOLD)
 
@@ -181,4 +190,4 @@ def template_text(text, callsigns, known_names=()):
             pos = end
     # Шаблони цілих фраз — після слів і зворотів: виправляють лише написання почутих слів.
     from core.phrase_patterns import apply_patterns
-    return apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names)
+    return split_code_pairs(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names))

@@ -862,3 +862,13 @@ table.compact tr.total td { font-weight: 600; border-bottom: 2px solid var(--bor
 .archive-list > #recording-refresh.fresh { color: #2b2000; background: var(--warn); box-shadow: none; animation: drafts-glow 1.8s ease-in-out infinite; }
 .archive-list > #recording-refresh.fresh:hover { filter: brightness(1.08); background: var(--warn); color: #2b2000; }
 @media (prefers-reduced-motion: reduce) { .archive-list > #recording-refresh.fresh { animation: none; } }
+
+/* Час у рядку переліку — виразно: ГГ:ХХ великим, секунди й дата дрібно */
+.recording-row .row-head { align-items: center; }
+.recording-row .row-time { display: inline-flex; align-items: baseline; gap: 1px; color: var(--text); font-variant-numeric: tabular-nums; }
+.recording-row .row-time .row-hm { font-size: 16px; font-weight: 800; letter-spacing: .02em; color: #e9f1f7; }
+.recording-row .row-time .row-sec { font-size: 11px; color: var(--muted); }
+.recording-row .row-time .row-day { margin-left: 6px; padding: 0 6px; border-radius: 99px; font-size: 10px; line-height: 16px;
+  color: var(--muted); background: var(--surface2); align-self: center; }
+.recording-row.active .row-time .row-hm { color: var(--lime); }
+.recording-row.done .row-time .row-hm { color: var(--text); font-weight: 700; }

@@ -24,7 +24,11 @@
     row.tabIndex = 0; row.setAttribute?.("role", "button");
     const at = new Date(item.created * 1000);
     const today = at.toDateString() === new Date().toDateString();
-    const time = at.toLocaleString("uk-UA", today ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    // Час — найпомітніше в рядку: години й хвилини великим, секунди дрібно; не сьогодні — ще й дата.
+    const pad = n => String(n).padStart(2, "0");
+    const time = el("span", "row-time");
+    time.append(el("b", "row-hm", `${pad(at.getHours())}:${pad(at.getMinutes())}`), el("small", "row-sec", `:${pad(at.getSeconds())}`));
+    if (!today) time.append(el("small", "row-day", `${pad(at.getDate())}.${pad(at.getMonth() + 1)}`));
     const kind = item.reference != null ? ROW_KIND[item.label] || item.label
       : ((typeof STATUS !== "undefined" && STATUS[item.status]) || item.status);
     const d = item.data || {}, event = /^db:(\d+)$/.exec(d.fix_id || "");
@@ -42,7 +46,7 @@
     row.classList.toggle("empty", item.reference == null && !heard);
     if (conflict) row.title = speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст";
     const head = el("div", "row-head");
-    head.append(el("span", "row-time", time), el("span", "row-kind", kind), el("span", "row-meta", meta));
+    head.append(time, el("span", "row-kind", kind), el("span", "row-meta", meta));
     const body = el("div", "row-main"); body.append(head, text);
     row.append(body);
     // Видалення в Telegram — частина рядка праворуч (лише для свіжих надісланих записів).

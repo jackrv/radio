@@ -144,13 +144,13 @@
     const left = el("div", "list-left"), right = el("div", "list-right");
     const area = el("textarea", "list-editor");
     area.value = toLines(dictionary.entries);
-    let inserted = 0, beforeInsert = null, insertedLines = [];
+    let inserted = 0, beforeInsert = null, insertedHighlights = [];
     if (pendingDictionaryInsert?.list === kind) {
       beforeInsert = area.value;
       const result = insertDictionaryLines(area.value, pendingDictionaryInsert);
       area.value = result.text;
       inserted = result.added;
-      insertedLines = result.lines;
+      insertedHighlights = result.highlights;
       pendingDictionaryInsert = null;
     }
     area.dataset.savedValue = area.value;
@@ -159,14 +159,14 @@
     const fit = () => { area.rows = Math.min(32, Math.max(8, area.value.split("\n").length + 2)); };
     fit(); area.addEventListener("input", fit);
     const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
+    const draftEditor = inserted ? highlightDraftEditor(area, insertedHighlights) : null;
     let undoInsert = null;
     if (inserted) {
-      status.textContent = `Чернетка: ${insertedLines.join("; ")} — перевірте й натисніть «Зберегти»`;
       status.className = "warn small";
       save.classList.add("needs-save");
       undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
       undoInsert.addEventListener("click", () => {
-        area.value = beforeInsert; fit(); area.dispatchEvent(new Event("input"));
+        area.value = beforeInsert; fit(); draftEditor.clear(); area.dispatchEvent(new Event("input"));
         save.classList.remove("needs-save"); undoInsert.remove();
         status.textContent = "Вставку прибрано — список як був"; status.className = "muted small";
       });
@@ -184,9 +184,8 @@
     const hints = el("ul", "warn-list");
     liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
     if (inserted) area.dispatchEvent(new Event("input"));
-    left.append(area, actions);
-    right.append(el("h2", "", title), el("p", "muted small", help),
-      ...(inserted ? [el("p", "warn small", `Чернетка містить: ${insertedLines.join("; ")}`)] : []), hints);
+    left.append(draftEditor?.element || area, actions);
+    right.append(el("h2", "", title), el("p", "muted small", help), hints);
     panel.append(left, right);
     box.append(panel);
   }
@@ -195,26 +194,88 @@
   let pendingListInsert = null;
   let pendingDictionaryInsert = null;
   let pendingPatternEnable = [];
+  function highlightDraftEditor(area, initialRanges) {
+    let ranges = initialRanges.map(range => ({ ...range }));
+    let previous = area.value;
+    const wrapper = el("div", "list-editor-highlight-wrap");
+    const overlay = el("pre", "list-editor-highlight-overlay");
+    overlay.setAttribute("aria-hidden", "true");
+    wrapper.append(overlay, area);
+    const render = () => {
+      const text = area.value;
+      let cursor = 0;
+      overlay.replaceChildren();
+      for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+        if (range.start < cursor || range.end <= range.start || range.end > text.length) continue;
+        if (range.start > cursor) overlay.append(el("span", "", text.slice(cursor, range.start)));
+        overlay.append(el("mark", "list-editor-highlighted", text.slice(range.start, range.end)));
+        cursor = range.end;
+      }
+      overlay.append(el("span", "", text.slice(cursor)));
+      overlay.scrollTop = area.scrollTop;
+      overlay.scrollLeft = area.scrollLeft;
+    };
+    area.addEventListener("input", () => {
+      const text = area.value;
+      let prefix = 0, suffix = 0;
+      while (prefix < previous.length && prefix < text.length && previous[prefix] === text[prefix]) prefix++;
+      while (suffix < previous.length - prefix && suffix < text.length - prefix &&
+        previous[previous.length - suffix - 1] === text[text.length - suffix - 1]) suffix++;
+      const oldEnd = previous.length - suffix, delta = text.length - previous.length;
+      ranges = ranges.flatMap(range => oldEnd <= range.start
+        ? [{ start: range.start + delta, end: range.end + delta }]
+        : prefix >= range.end ? [range] : []);
+      previous = text;
+      render();
+    });
+    area.addEventListener("scroll", render);
+    render();
+    return {
+      element: wrapper,
+      clear() { ranges = []; previous = area.value; render(); },
+    };
+  }
   // Позивний аліас додається до свого рядка; шум — окремим рядком. Повтори пропускаються.
   function insertListLines(text, insert) {
     const rows = text ? text.split("\n") : [];
     const fold = s => s.trim().toLocaleLowerCase("uk");
-    let added = 0, insertedLines = [];
+    const marked = new Map();
+    const mark = (row, start, end) => marked.set(row, [...(marked.get(row) || []), { start, end }]);
+    let added = 0;
     for (const item of insert.lines) {
       if (insert.list === "callsign_aliases") {
         const at = rows.findIndex(r => r.includes(":") && fold(r.split(":")[0].replace(/^#\s*/, "")) === fold(item.callsign) && !r.trim().startsWith("#"));
-        if (at < 0) { rows.push(`${item.callsign}: ${item.line}`); added++; insertedLines.push(`${item.callsign}: ${item.line}`); continue; }
+        if (at < 0) {
+          const row = rows.length;
+          rows.push(`${item.callsign}: ${item.line}`); added++;
+          mark(row, 0, rows[row].length);
+          continue;
+        }
         const variants = rows[at].split(":").slice(1).join(":").split(",").map(fold);
         if (variants.includes(fold(item.line))) continue;
-        rows[at] = `${rows[at].replace(/[\s,]+$/, "")}, ${item.line}`; added++; insertedLines.push(`${item.callsign}: ${item.line}`);
-      } else if (!rows.some(r => fold(r) === fold(item.line))) { rows.push(item.line); added++; insertedLines.push(item.line); }
+        const previous = rows[at].replace(/[\s,]+$/, "");
+        rows[at] = `${previous}, ${item.line}`; added++;
+        mark(at, previous.length + 2, rows[at].length);
+      } else if (!rows.some(r => fold(r) === fold(item.line))) {
+        const row = rows.length;
+        rows.push(item.line); added++;
+        mark(row, 0, item.line.length);
+      }
     }
-    return { text: rows.join("\n"), added, lines: insertedLines };
+    let offset = 0;
+    const highlights = [];
+    rows.forEach((row, index) => {
+      for (const range of marked.get(index) || []) highlights.push({ start: offset + range.start, end: offset + range.end });
+      offset += row.length + 1;
+    });
+    return { text: rows.join("\n"), added, highlights };
   }
   function insertDictionaryLines(text, insert) {
     const rows = text ? text.split("\n") : [];
     const fold = value => value.trim().toLocaleLowerCase("uk");
-    let added = 0, insertedLines = [];
+    const marked = new Map();
+    const mark = (row, start, end) => marked.set(row, [...(marked.get(row) || []), { start, end }]);
+    let added = 0;
     for (const item of insert.lines) {
       const at = rows.findIndex(row => {
         const active = row.trim().replace(/^#\s*/, "");
@@ -222,9 +283,10 @@
         return fold(name) === fold(item.callsign);
       });
       if (at < 0) {
+        const row = rows.length;
         rows.push(`${item.callsign}: ${item.number}`);
         added++;
-        insertedLines.push(`${item.callsign}: ${item.number}`);
+        mark(row, 0, rows[row].length);
         continue;
       }
       const active = rows[at].trim().replace(/^#\s*/, "");
@@ -240,9 +302,16 @@
       if (!alreadyAllowed) numbers.push(item.number);
       rows[at] = `${name.trim()}: ${numbers.join(" ")}`;
       added++;
-      insertedLines.push(`${item.callsign}: ${item.number}`);
+      if (alreadyAllowed) mark(at, 0, rows[at].length);
+      else mark(at, rows[at].length - item.number.length, rows[at].length);
     }
-    return { text: rows.join("\n"), added, lines: insertedLines };
+    let offset = 0;
+    const highlights = [];
+    rows.forEach((row, index) => {
+      for (const range of marked.get(index) || []) highlights.push({ start: offset + range.start, end: offset + range.end });
+      offset += row.length + 1;
+    });
+    return { text: rows.join("\n"), added, highlights };
   }
   function phrasePatternEditor(entries, enableLines = []) {
     const requested = new Set(enableLines.map(line => line.trim()));
@@ -402,12 +471,12 @@
     }
     const getEntries = patterns ? patterns.entries : () => fromLines(area.value);
     if (patterns) left.append(patterns.element);
-    let inserted = 0, beforeInsert = null, insertedLines = [];
+    let inserted = 0, beforeInsert = null, insertedHighlights = [];
     if (area && pendingListInsert?.list === type) {
       beforeInsert = area.value;
       const result = insertListLines(area.value, pendingListInsert);
       area.value = result.text; inserted = result.added;
-      insertedLines = result.lines;
+      insertedHighlights = result.highlights;
       pendingListInsert = null;
     }
     const fit = () => { if (area) area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
@@ -415,6 +484,7 @@
     const warnings = el("ul", "warn-list");
     const check = liveCheck(patterns?.rows || area, warnings, `/api/text-lists/${type}/check`, list.warnings || [],
       getEntries, patterns ? [] : ["input"]);
+    const draftEditor = inserted ? highlightDraftEditor(area, insertedHighlights) : null;
     if (patterns) patterns.onChange(() => {
       save.classList.add("needs-save");
       save.disabled = patterns.hasBlankRows();
@@ -431,13 +501,13 @@
     }
     let undoInsert = null;
     if (inserted) {
-      status.textContent = `Вставлено ${inserted}: ${insertedLines.join("; ")} — перевірте й натисніть «Зберегти»`; status.className = "warn small";
+      status.className = "warn small";
       save.classList.add("needs-save");
       area.dispatchEvent?.(new Event("input"));   // одразу та сама перевірка, що й під час набору
       // Не сподобалось — повернути список, як був до вставки (поки не збережено, ніде не діє).
       undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
       undoInsert.addEventListener("click", () => {
-        area.value = beforeInsert; fit(); area.dispatchEvent?.(new Event("input"));
+        area.value = beforeInsert; fit(); draftEditor.clear(); area.dispatchEvent?.(new Event("input"));
         save.classList.remove("needs-save"); undoInsert.remove();
         status.textContent = "Вставку прибрано — список як був"; status.className = "muted small";
       });
@@ -451,10 +521,9 @@
       } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
     }));
     const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
-    if (area) left.append(area);
+    if (area) left.append(draftEditor?.element || area);
     left.append(actions);
-    right.append(el("h2", "", title), el("p", "muted small", help),
-      ...(inserted ? [el("p", "warn small", `Чернетка містить: ${insertedLines.join("; ")}`)] : []), warnings);
+    right.append(el("h2", "", title), el("p", "muted small", help), warnings);
     if (EVALUATED_LISTS.includes(type)) {
       const evaluation = listEvaluation(type, getEntries);
       right.append(evaluation);

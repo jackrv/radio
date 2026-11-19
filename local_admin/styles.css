@@ -249,6 +249,13 @@ table.compact td, table.compact th { padding: 4px 8px; font-size: 12px; }
 .list-layout { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .list-layout .list-editor { width: 100%; min-height: 0; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
 .list-right h2 { margin-top: 0; }
+.list-editor-highlight-wrap { position: relative; background: var(--surface2); border-radius: 8px; }
+.list-editor-highlight-wrap textarea.list-editor { position: relative; z-index: 1; background: transparent; }
+.list-editor-highlight-overlay { position: absolute; z-index: 0; inset: 0; margin: 0; padding: 9px 10px;
+  border: 1px solid transparent; border-radius: 8px; overflow: hidden; pointer-events: none;
+  color: transparent; background: transparent; white-space: pre-wrap; overflow-wrap: break-word;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.list-editor-highlighted { color: transparent; background: rgba(240, 196, 108, .48); border-radius: 2px; }
 .list-layout:has(.phrase-pattern-editor) { grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); }
 .pattern-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
 .pattern-toolbar .muted { grid-column: 1 / -1; }

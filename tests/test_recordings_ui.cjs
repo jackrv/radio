@@ -368,10 +368,10 @@ test('"insert into list" adds an alias to its callsign line or a new line, witho
   const result = insertListLines('клен: клін\n# вишня: вишна', aliases);
   assert.equal(result.text, 'клен: клін, клей\n# вишня: вишна\nдуб: дум');
   assert.equal(result.added, 2, 'клін уже є');
-  assert.deepEqual(Array.from(result.lines), ['клен: клей', 'дуб: дум']);
+  assert.deepEqual(Array.from(result.highlights, range => result.text.slice(range.start, range.end)), ['клей', 'дуб: дум']);
   const noise = insertListLines('пау пау', {list:'short_garbage', lines:[{line:'Пау пау'}, {line:'кхм'}]});
   assert.equal(noise.text, 'пау пау\nкхм'); assert.equal(noise.added, 1);
-  assert.deepEqual(Array.from(noise.lines), ['кхм']);
+  assert.deepEqual(Array.from(noise.highlights, range => noise.text.slice(range.start, range.end)), ['кхм']);
 });
 
 test('dictionary suggestion drafts merge into an existing callsign row and skip allowed codes', () => {
@@ -389,18 +389,44 @@ test('dictionary suggestion drafts merge into an existing callsign row and skip 
   });
   assert.equal(result.text, 'клен: 15\nДуб: 6 8 7\nвишня: 9');
   assert.equal(result.added, 3, 'увімкнення вимкненого рядка теж залишається чернеткою');
-  assert.deepEqual(Array.from(result.lines), ['клен: 15', 'Дуб: 7', 'вишня: 9']);
+  assert.deepEqual(Array.from(result.highlights, range => result.text.slice(range.start, range.end)), ['клен: 15', '7', 'вишня: 9']);
   const duplicate = insertDictionaryLines(result.text, {
     list: 'callsigns', lines: [{ callsign: 'Дуб', number: '7' }, { callsign: 'Дуб', number: '8' }],
   });
   assert.equal(duplicate.text, result.text);
   assert.equal(duplicate.added, 0);
-  assert.deepEqual(Array.from(duplicate.lines), []);
+  assert.deepEqual(Array.from(duplicate.highlights), []);
   const range = insertDictionaryLines('Дуб: 6-8', {
     list: 'callsigns', lines: [{ callsign: 'Дуб', number: '7' }],
   });
   assert.equal(range.text, 'Дуб: 6-8');
   assert.equal(range.added, 0);
+});
+
+test('editor highlight overlay marks every inserted fragment and tracks edits before them', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '07-recognition.js'), 'utf8');
+  const start = source.indexOf('  function highlightDraftEditor(');
+  const code = source.slice(start, source.indexOf('\n  // Позивний аліас додається', start));
+  const node = (tagName, className = '', textContent = '') => ({
+    tagName, className, textContent, children:[], listeners:{},
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    setAttribute() {},
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    dispatch(name) { this.listeners[name]?.(); },
+    scrollTop:0, scrollLeft:0,
+  });
+  const context = vm.createContext({el:node});
+  vm.runInContext(`${code}\nglobalThis.highlightDraftEditor=highlightDraftEditor;`, context);
+  const area = node('textarea'); area.value = 'old\nnew';
+  const editor = context.highlightDraftEditor(area, [{start:4,end:7}]);
+  const marks = () => editor.element.children[0].children.filter(child => child.tagName === 'mark');
+  assert.equal(marks()[0].textContent, 'new');
+  area.value = 'prefix\nold\nnew'; area.dispatch('input');
+  assert.equal(marks()[0].textContent, 'new');
+  assert.equal(marks().length, 1);
+  editor.clear();
+  assert.equal(marks().length, 0);
 });
 
 test('leaving the field without typing (tab switch, re-render) changes nothing', async () => {

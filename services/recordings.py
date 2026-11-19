@@ -205,6 +205,12 @@ class RecordingStore:
         return record_id
 
     # ---------- Режим «лише запис»: накопичене чекає розпізнавання ----------
+    def created_at(self, record_id):
+        """Час запису відкладеної фрази, щоб застосувати саме її коди доби."""
+        with self.connect() as db:
+            row = db.execute("SELECT created FROM recordings WHERE id=?", (record_id,)).fetchone()
+        return float(row[0]) if row else None
+
     def next_deferred(self):
         """Найстаріший запис «очікує розпізнавання»: (id, pcm int16) або None."""
         while True:

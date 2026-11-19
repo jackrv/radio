@@ -19,6 +19,7 @@ import sqlite3
 import core.callsigns as callsigns_module
 from core.callsigns import FOLD, NUMBER_WORDS, basic_normalize
 from core.template_text import _TOKEN, template_text
+from services.daily_codes import remove_confirmed_code_commas
 
 # Слова з апострофом, які часто пишуть без нього (ключ — без апострофа).
 APOSTROPHE_WORDS = {w.replace("ʼ", ""): w for w in (
@@ -66,7 +67,7 @@ def _issue(kind, message, text=None, fixed=None):
     return item
 
 
-def _format_issues(text):
+def _format_issues(text, codes=None, dictionaries=()):
     issues = []
     for pattern, replacement, message in _format_rules():
         for match in pattern.finditer(text):
@@ -81,11 +82,15 @@ def _format_issues(text):
             new = _cased(proper, word)
             issues.append(_issue("format", f"Пропущено апостроф: «{word}» → «{new}»", text,
                                  text[:match.start()] + new + text[match.end():]))
+    code_fixed = remove_confirmed_code_commas(text, codes, dictionaries)
+    if code_fixed != text:
+        issues.append(_issue("format", "Кома всередині підтвердженого коду доби", text, code_fixed))
     return issues
 
 
-def format_text(text):
+def format_text(text, codes=None, dictionaries=()):
     """Усі безпечні виправлення оформлення разом (до стабільного стану)."""
+    text = remove_confirmed_code_commas(text, codes, dictionaries)
     for _ in range(5):
         before = text
         for pattern, replacement, _message in _format_rules():
@@ -388,8 +393,9 @@ def _unknown_callsign_issues(text, callsigns, other_names, covered):
 def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     """Зауваження до тексту оператора; ``formatted`` — текст з усіма виправленнями оформлення."""
     text = text or ""
+    dictionaries = tuple(d for d in (callsigns, commands, watch) if d is not None)
     known = tuple((commands.names if commands else ())) + tuple((watch.names if watch else ()))
-    issues = _format_issues(text)
+    issues = _format_issues(text, codes, dictionaries)
     issues += _spelling_issues(text, callsigns, known)
     issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None], callsigns)
     covered = {basic_normalize(m) for i in issues if i["kind"] == "spelling"
@@ -400,14 +406,15 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):
         issues.append(_issue("info", f"Російська літера «{letter}» — перевірте, чи це українське слово"))
     tidy = tidy_text(text, callsigns, commands)
-    tidy_after_format = tidy_text(format_text(text), callsigns, commands)
+    formatted_text = format_text(text, codes, dictionaries)
+    tidy_after_format = tidy_text(formatted_text, callsigns, commands)
     case_only_duplicate = (
         any(issue["kind"] == "spelling" for issue in issues)
-        and tidy_after_format.casefold() == format_text(text).casefold()
+        and tidy_after_format.casefold() == formatted_text.casefold()
     )
-    if tidy != text and tidy_after_format != format_text(text) and not case_only_duplicate:
+    if tidy != text and tidy_after_format != formatted_text and not case_only_duplicate:
         issues.append(_issue("format", "Коми між групами й великі літери позивних", text, tidy))
-    formatted = tidy_text(format_text(text), callsigns, commands)
+    formatted = tidy_text(formatted_text, callsigns, commands)
     return {"issues": issues, "formatted": formatted if formatted != text else None}
 
 

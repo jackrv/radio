@@ -172,6 +172,7 @@ def test_archive_keeps_deferred_records_and_finishes_them_in_place(tmp_path):
     record_id, audio = store.next_deferred()
     assert record_id == deferred and audio == pcm()
     created = store.get(deferred)["created"]
+    assert store.created_at(deferred) == created
     store.finish_deferred(deferred, {"status": "ready", "raw_text": "клен 48", "final_text": "Клен 48"})
     item = store.get(deferred)
     assert item["status"] == "ready" and item["data"]["final_text"] == "Клен 48" and item["data"]["deferred"] is True

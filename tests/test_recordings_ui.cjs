@@ -414,7 +414,8 @@ test('editor highlight overlay marks every inserted fragment and tracks edits be
     setAttribute() {},
     addEventListener(name, callback) { this.listeners[name] = callback; },
     dispatch(name) { this.listeners[name]?.(); },
-    scrollTop:0, scrollLeft:0,
+    scrollTop:0, scrollLeft:0, scrollHeight:100,
+    scrollIntoView(options) { this.scrollIntoViewOptions = options; },
   });
   const context = vm.createContext({el:node});
   vm.runInContext(`${code}\nglobalThis.highlightDraftEditor=highlightDraftEditor;`, context);
@@ -425,8 +426,22 @@ test('editor highlight overlay marks every inserted fragment and tracks edits be
   area.value = 'prefix\nold\nnew'; area.dispatch('input');
   assert.equal(marks()[0].textContent, 'new');
   assert.equal(marks().length, 1);
+  editor.reveal();
+  assert.equal(area.scrollTop, area.scrollHeight);
+  assert.equal(editor.element.children[0].scrollTop, area.scrollTop);
+  assert.equal(area.scrollIntoViewOptions.block, 'end');
   editor.clear();
   assert.equal(marks().length, 0);
+});
+
+test('saved short-noise entries are highlighted after the list refresh', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '07-recognition.js'), 'utf8');
+  const start = source.indexOf('  function highlightExistingListLines(');
+  const code = source.slice(start, source.indexOf('\n  function insertListLines(', start));
+  const highlightExistingListLines = vm.runInNewContext(`(${code.trim().replace(/^function highlightExistingListLines/, 'function')})`);
+  const text = 'пау пау\nКхм\nкхм-2';
+  const ranges = highlightExistingListLines(text, {lines:[{line:'кхм'}]});
+  assert.deepEqual(Array.from(ranges, range => text.slice(range.start, range.end)), ['Кхм']);
 });
 
 test('leaving the field without typing (tab switch, re-render) changes nothing', async () => {

@@ -1,6 +1,7 @@
 import os
 import queue
 import re
+import sqlite3
 import time
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
@@ -80,6 +81,7 @@ class Transcriber:
         self._deferred_idle_until = 0.0   # накопиченого немає — не питати архів щосекунди
         self._unload_retry_at = 0.0
         self._restore_retry_at = 0.0
+        self.daily_code_formatter = None
 
     @staticmethod
     def _blacklist_key(value: str) -> str:
@@ -107,7 +109,7 @@ class Transcriber:
         span = {}
         try:
             with runtime.asr_segment(pcm, self.sample_rate, self.segments) as span:
-                self._process_segment(pcm, generation)
+                self._process_segment(pcm, generation, deferred_id)
         finally:
             _trace.reset(token)
             if trace is not None:
@@ -140,7 +142,7 @@ class Transcriber:
             runtime.asr_notification_score(result)
         return result
 
-    def _process_segment(self, pcm, generation=None):
+    def _process_segment(self, pcm, generation=None, deferred_id=None):
         runtime.count("asr.segments")
         if self.text_lists is not None:
             try:
@@ -302,6 +304,16 @@ class Transcriber:
                 "Помилка корекції тексту; використовується початковий текст Whisper"
             )
             text = raw_text
+        if self.daily_code_formatter is not None:
+            try:
+                recorded_at = self.deferred.created_at(deferred_id) if deferred_id is not None else time.time()
+                if recorded_at is None:
+                    self.log.warning("Час відкладеного запису недоступний; коди доби не застосовано")
+                else:
+                    text = self.daily_code_formatter(text, recorded_at)
+            except (sqlite3.Error, OSError, ValueError) as exc:
+                runtime.count("asr.daily_code_format_error")
+                self.log.warning("Коди доби не застосовано: %s", type(exc).__name__)
         if not is_current():
             runtime.asr_status("stale")
             return

@@ -41,6 +41,58 @@ test('archive refresh announces changed records without replacing editable cards
  await h.context.refresh();assert.deepEqual(h.calls,['overview','fresh']);
 });
 
+function dashboardOverviewHarness(view) {
+ const calls=[],nodes=new Map();
+ const $=id=>{if(!nodes.has(id))nodes.set(id,{className:'',textContent:'',title:''});return nodes.get(id);};
+ const values={
+  receiver:'listening',diagnostics:{updated_at:0,counters:{},gauges:{}},overview:{},backups:[],
+  telegram_sync:{},samples:0,events_by_hour:{counts:[],start:0},
+ };
+ const context=vm.createContext({$,view,now:()=>0,ago:()=>'',num:()=>'',receiverTone:()=> 'ok',SPECTRAL_MODES:{},
+  request:async path=>{calls.push(path);return values;},attention:()=>calls.push('attention'),workdesk:()=>calls.push('workdesk'),
+  renderServices:()=>calls.push('renderServices'),drawEvents:()=>calls.push('drawEvents'),
+  drawFunnel:()=>calls.push('drawFunnel'),live:async()=>calls.push('live'),drawLatency:()=>calls.push('drawLatency'),
+  drawHealth:()=>calls.push('drawHealth'),fitOverview:()=>calls.push('fitOverview')});
+ const source=fs.readFileSync(path.join(__dirname,'../local_admin/js/05-overview.js'),'utf8');
+ const start=source.indexOf('  async function overview() {');
+ const end=source.indexOf('\n  // Широкий екран:',start);
+ vm.runInContext(`let data=null;${source.slice(start,end)}\nglobalThis.refreshOverview=overview;`,context);
+ return {context,calls,nodes};
+}
+
+test('hidden overview refresh updates the header without rebuilding hidden panels',async()=>{
+ const h=dashboardOverviewHarness('texts');await h.context.refreshOverview();
+ assert.deepEqual(h.calls,['/api/overview','attention']);
+ assert.equal(h.nodes.get('updated').textContent.length>0,true);
+});
+test('visible overview still refreshes its dashboard panels',async()=>{
+ const h=dashboardOverviewHarness('overview');await h.context.refreshOverview();
+ for(const call of ['attention','workdesk','renderServices','drawEvents','drawFunnel','live','drawLatency','drawHealth','fitOverview'])
+  assert.ok(h.calls.includes(call),`${call} should run on the visible overview`);
+});
+
+function attentionRefreshHarness() {
+ let now=100000;
+ const calls=[],nodes=new Map();
+ const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,textContent:'',title:''});return nodes.get(id);};
+ class Clock extends Date { static now(){return now;} }
+ const context=vm.createContext({$,view:'texts',Date:Clock,clearTimeout(){},
+  request:async path=>{calls.push(path);return {unlabeled_radio_24h:3};}});
+ const source=fs.readFileSync(path.join(__dirname,'../local_admin/js/05-overview.js'),'utf8');
+ const start=source.indexOf('  async function attention(force = false) {');
+ const end=source.indexOf('\n  // ---------- Огляд ----------',start);
+ vm.runInContext(`let attentionAt=0,attentionRetry=null;${source.slice(start,end)}\nglobalThis.refreshAttention=attention;`,context);
+ return {context,calls,nodes,advance(ms){now+=ms;}};
+}
+test('off-overview attention refreshes the archive badge at most once per minute',async()=>{
+ const h=attentionRefreshHarness();await h.context.refreshAttention();
+ h.advance(30000);await h.context.refreshAttention();
+ assert.equal(h.calls.length,1);
+ h.advance(30000);await h.context.refreshAttention();
+ assert.equal(h.calls.length,2);
+ assert.equal(h.nodes.get('archive-todo-nav').textContent,'3');
+});
+
 function requestHarness(fetch) {
  let abort,cleared=0;
  const context=vm.createContext({fetch,AbortController,Blob,Error,

@@ -150,7 +150,8 @@
   }));
   let attentionRetry = null;
   async function attention(force = false) {
-    if (!force && Date.now() - attentionAt < 15000) return;
+    const interval = view === "overview" ? 15000 : 60000;
+    if (!force && Date.now() - attentionAt < interval) return;
     attentionAt = Date.now();
     let a;
     try { a = await request("/api/attention"); } catch (_) { return; }
@@ -162,6 +163,7 @@
       todo.hidden = !count; todo.textContent = count > 99 ? "99+" : String(count);
       todo.title = `Ефір за останні 24 год, ще не розмічено: ${count}`;
     }
+    if (view !== "overview") return;
     if (a.suggestions_pending && view === "overview") attentionRetry = setTimeout(() => attention(true), 6000);
     const items = [];
     const item = (tone, text, label, go, extra, hint) => {
@@ -311,7 +313,6 @@
 
   async function overview() {
     data = await request("/api/overview");
-    attention();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {}, o = data.overview;
     const state = data.receiver;
     const pill = $("receiver-pill");
@@ -320,6 +321,8 @@
     const age = d.updated_at ? now() - d.updated_at : null;
     $("updated").textContent = `оновлено ${new Date().toLocaleTimeString("uk-UA")}`;
     $("updated").title = "";
+    attention();
+    if (view !== "overview") return;
 
     // Стан потоків беремо зі знімка лише тоді, коли він свіжий і приймач працює.
     const fresh = age !== null && age <= 120 && (state === "listening" || state === "paused");

@@ -1,9 +1,13 @@
+import time
+import datetime
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
 import config as project_config
+from core.callsigns import Callsigns, command_dictionary
+from services import daily_codes
 from services.transcriber_factory import build_transcriber
 
 config = None
@@ -107,3 +111,26 @@ def test_factory_does_not_start_models():
         whisper.return_value.transcribe.assert_not_called()
         llm.return_value.assert_not_called()
         worker.return_value.run.assert_not_called()
+
+
+def test_recognition_formatter_uses_confirmed_codes_for_the_recording_day():
+    deps = make_dependencies()
+    deps["callsigns"] = Callsigns.from_lines(["клен: 15"])
+    deps["commands"] = command_dictionary([])
+    deps["watch"] = Callsigns.from_lines([])
+    daily_codes.write(config.DB_PATH, "2020-01-01", "60 70")
+    daily_codes.write(config.DB_PATH, daily_codes.local_day(), "61 70")
+
+    with (
+        patch("services.transcriber_factory.Transcriber") as transcriber,
+        patch("services.transcriber_factory.WhisperRecognizer"),
+        patch("services.transcriber_factory.EventProcessor"),
+        patch("services.transcriber_factory.build_text_pipeline"),
+        patch("services.transcriber_factory.build_llm_corrector"),
+    ):
+        worker = build_transcriber(**deps)
+
+    text = "Клен 15, 60, 70 67, прийом"
+    old_record = datetime.datetime(2020, 1, 1, 12).timestamp()
+    assert worker.daily_code_formatter(text, old_record) == "Клен 15, 60 70 67, прийом"
+    assert worker.daily_code_formatter(text, time.time()) == text

@@ -1,3 +1,4 @@
+import sqlite3
 import time
 
 from core.recognition import WhisperRecognizer
@@ -161,6 +162,32 @@ def build_transcriber(
         spectral_matcher=spectral_matcher,
         spectral_mode=spectral_mode,
     )
+
+    code_format_cache = {}
+
+    def format_confirmed_code_commas(text, recorded_at):
+        from services import daily_codes
+        from services.sqlite_connection import get_db
+
+        day = daily_codes.local_day(recorded_at)
+        now = time.monotonic()
+        cached = code_format_cache.get(day)
+        if cached is None or now - cached[0] >= 30:
+            try:
+                with get_db(config.DB_PATH) as db:
+                    codes = tuple(daily_codes.read(db, day))
+            except (sqlite3.Error, OSError, ValueError) as exc:
+                log.warning("Коди доби для форматування не прочитано: %s", type(exc).__name__)
+                return text
+            code_format_cache[day] = (now, codes)
+            if len(code_format_cache) > 14:
+                oldest = min(code_format_cache, key=lambda value: code_format_cache[value][0])
+                del code_format_cache[oldest]
+        else:
+            codes = cached[1]
+        return daily_codes.remove_confirmed_code_commas(text, codes, dictionaries)
+
+    worker.daily_code_formatter = format_confirmed_code_commas
 
     def apply_settings(values):
         # Застосовується в потоці розпізнавання перед наступним сегментом.

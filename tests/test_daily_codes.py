@@ -27,6 +27,24 @@ def test_parse_codes_accepts_spoken_and_merged_forms():
         daily_codes.parse_codes("48 6, 31 05")
 
 
+def test_comma_is_removed_only_between_pairs_of_a_confirmed_code():
+    text = "Клен 15, 60, 70 67, прийом"
+    assert daily_codes.remove_confirmed_code_commas(text, ["60 70"], (CALLSIGNS,)) == \
+        "Клен 15, 60 70 67, прийом"
+    assert daily_codes.remove_confirmed_code_commas(text, ["61 70"], (CALLSIGNS,)) == text
+
+
+def test_text_check_formats_confirmed_codes_but_preserves_callsign_numbers():
+    text = "Береза 68, 48, 62, прийом"
+    result = check_text(text, CALLSIGNS, COMMANDS, None, codes=CODES)
+    assert result["formatted"] == "Береза 68, 48 62, прийом"
+    assert any(issue["message"] == "Кома всередині підтвердженого коду доби" for issue in result["issues"])
+
+    callsigns = Callsigns.from_lines(["береза: 48"])
+    callsign_number = check_text("Береза 48, 62, прийом", callsigns, COMMANDS, None, codes=["48 62"])
+    assert callsign_number["formatted"] is None
+
+
 def test_hint_for_one_wrong_digit_only():
     assert hints("Береза 68, 48, 42, прийом") == [("Можливо, «48 62» — код доби, а не «48, 42»?", "Береза 68, 48 62, прийом")]
     assert hints("Береза 68, 48 62, прийом") == []

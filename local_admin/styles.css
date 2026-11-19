@@ -251,7 +251,7 @@ table.compact td, table.compact th { padding: 4px 8px; font-size: 12px; }
 .list-right h2 { margin-top: 0; }
 .list-editor-highlight-wrap { position: relative; background: var(--surface2); border-radius: 8px; }
 .list-editor-highlight-wrap textarea.list-editor { position: relative; z-index: 1; background: transparent; }
-.list-editor-highlight-overlay { position: absolute; z-index: 0; inset: 0; margin: 0; padding: 9px 10px;
+.list-editor-highlight-overlay { position: absolute; z-index: 2; inset: 0; max-height: none; margin: 0; padding: 9px 10px;
   border: 1px solid transparent; border-radius: 8px; overflow: hidden; pointer-events: none;
   color: transparent; background: transparent; white-space: pre-wrap; overflow-wrap: break-word;
   font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }

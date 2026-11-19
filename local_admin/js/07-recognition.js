@@ -159,7 +159,7 @@
     const fit = () => { area.rows = Math.min(32, Math.max(8, area.value.split("\n").length + 2)); };
     fit(); area.addEventListener("input", fit);
     const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
-    const draftEditor = inserted ? highlightDraftEditor(area, insertedHighlights) : null;
+    const draftEditor = insertedHighlights.length ? highlightDraftEditor(area, insertedHighlights) : null;
     let undoInsert = null;
     if (inserted) {
       status.className = "warn small";
@@ -233,9 +233,35 @@
     return {
       element: wrapper,
       clear() { ranges = []; previous = area.value; render(); },
+      reveal() {
+        area.scrollTop = area.scrollHeight;
+        render();
+        area.scrollIntoView({ block: "end" });
+      },
     };
   }
   // Позивний аліас додається до свого рядка; шум — окремим рядком. Повтори пропускаються.
+  function highlightExistingListLines(text, insert) {
+    const rows = text ? text.split("\n") : [];
+    const fold = value => value.trim().toLocaleLowerCase("uk");
+    const remaining = new Map();
+    for (const item of insert.lines) {
+      const key = fold(item.line);
+      remaining.set(key, (remaining.get(key) || 0) + 1);
+    }
+    const highlights = [];
+    let offset = 0;
+    rows.forEach(row => {
+      const key = fold(row), count = remaining.get(key) || 0;
+      if (count) {
+        highlights.push({ start: offset, end: offset + row.length });
+        if (count === 1) remaining.delete(key);
+        else remaining.set(key, count - 1);
+      }
+      offset += row.length + 1;
+    });
+    return highlights;
+  }
   function insertListLines(text, insert) {
     const rows = text ? text.split("\n") : [];
     const fold = s => s.trim().toLocaleLowerCase("uk");
@@ -474,7 +500,9 @@
     let inserted = 0, beforeInsert = null, insertedHighlights = [];
     if (area && pendingListInsert?.list === type) {
       beforeInsert = area.value;
-      const result = insertListLines(area.value, pendingListInsert);
+      const result = pendingListInsert.alreadySaved
+        ? { text: area.value, added: 0, highlights: highlightExistingListLines(area.value, pendingListInsert) }
+        : insertListLines(area.value, pendingListInsert);
       area.value = result.text; inserted = result.added;
       insertedHighlights = result.highlights;
       pendingListInsert = null;
@@ -484,7 +512,7 @@
     const warnings = el("ul", "warn-list");
     const check = liveCheck(patterns?.rows || area, warnings, `/api/text-lists/${type}/check`, list.warnings || [],
       getEntries, patterns ? [] : ["input"]);
-    const draftEditor = inserted ? highlightDraftEditor(area, insertedHighlights) : null;
+    const draftEditor = insertedHighlights.length ? highlightDraftEditor(area, insertedHighlights) : null;
     if (patterns) patterns.onChange(() => {
       save.classList.add("needs-save");
       save.disabled = patterns.hasBlankRows();
@@ -535,6 +563,7 @@
     if (type === "blacklist" || type === "short_garbage") right.append(noiseCandidates(type, list.entries));
     panel.append(left, right);
     box.append(panel);
+    if (draftEditor && (type === "blacklist" || type === "short_garbage")) draftEditor.reveal();
   }
 
   // Перевірка списку на розмічених записах: повтор текстової обробки, без збереження й без зупинки приймача.
@@ -659,6 +688,7 @@
               { entries: entries.concat([{ raw_line: c.text, enabled: true }]), expected_revision: textRevision });
             textRevision = r.revision;
             note(`Додано «${c.text}» (ревізія ${r.revision}).`);
+            pendingListInsert = { list: type, lines: [{ line: c.text }], alreadySaved: true };
             await texts();
           }));
           cell.append(add);

@@ -15,6 +15,7 @@ from services.sqlite_connection import get_db
 
 MAX_CODES = 20
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_CODE_COMMA = re.compile(r"(?<!\d)(?P<first>\d{2})\s*,\s*(?P<second>\d{2})(?!\d)")
 
 
 def ensure_table(db):
@@ -46,6 +47,50 @@ def parse_codes(text):
     if len(codes) > MAX_CODES:
         raise ValueError(f"Не більше {MAX_CODES} кодів на добу")
     return codes
+
+
+def remove_confirmed_code_commas(text, codes, dictionaries=()):
+    """Замінює кому між парами цифр лише для точного коду з переліку доби."""
+    valid = set()
+    for code in codes or ():
+        digits = "".join(re.findall(r"\d", str(code)))
+        if digits.isdigit() and len(digits) == 4:
+            valid.add(digits)
+    if not valid or not text:
+        return text
+
+    from core.callsigns import CALLSIGN_ALIASES
+
+    def is_dictionary_number_before(start, number):
+        prefix = text[:start]
+        for dictionary in dictionaries or ():
+            names = getattr(dictionary, "names", ())
+            numbers = getattr(dictionary, "numbers", {})
+            any_number = getattr(dictionary, "any_number", ())
+            for name in names:
+                if number not in numbers.get(name, ()) and name not in any_number:
+                    continue
+                variants = (name, *(heard for heard, canonical in CALLSIGN_ALIASES.items()
+                                    if canonical == name))
+                for variant in variants:
+                    name_pattern = r"\s+".join(re.escape(part) for part in variant.split())
+                    pattern = rf"(?<![\w]){name_pattern}\s*[,;:]?\s*$"
+                    if re.search(pattern, prefix, re.IGNORECASE):
+                        return True
+        return False
+
+    replacements = []
+    position = 0
+    while match := _CODE_COMMA.search(text, position):
+        first, second = match.group("first"), match.group("second")
+        if first + second in valid and not is_dictionary_number_before(match.start(), first):
+            replacements.append((match.start(), match.end(), f"{first} {second}"))
+            position = match.end()
+        else:
+            position = match.start("first") + len(first)
+    for start, end, replacement in reversed(replacements):
+        text = text[:start] + replacement + text[end:]
+    return text
 
 
 def change_hour():

@@ -53,6 +53,43 @@ def test_valid_segment():
     )
 
 
+def test_daily_code_formatter_runs_after_the_recognition_pipeline():
+    worker, _, _, processor = make_transcriber("Береза 68, 48, 62, прийом")
+    formatted = []
+
+    def remove_confirmed_comma(text, recorded_at):
+        formatted.append((text, recorded_at))
+        return text.replace("48, 62", "48 62")
+
+    worker.daily_code_formatter = remove_confirmed_comma
+    pcm = make_pcm()
+    worker.process_segment(pcm)
+
+    assert formatted[0][0] == "Исправлено: Береза 68, 48, 62, прийом"
+    assert formatted[0][1] > 0
+    processor.process.assert_called_once_with(
+        "Исправлено: Береза 68, 48 62, прийом", pcm, raw_text="Береза 68, 48, 62, прийом"
+    )
+
+
+def test_deferred_recognition_uses_the_original_recording_time_for_codes():
+    worker, _, _, processor = make_transcriber("Береза 68, 48, 62, прийом")
+    worker.deferred = Mock()
+    worker.recorder = Mock()
+    worker.deferred.created_at.return_value = 123.0
+    formatted = Mock(side_effect=lambda text, recorded_at: text.replace("48, 62", "48 62"))
+    worker.daily_code_formatter = formatted
+    worker._dry = True
+
+    worker.process_segment(make_pcm(), deferred_id="record-id")
+
+    formatted.assert_called_once_with("Исправлено: Береза 68, 48, 62, прийом", 123.0)
+    finish_args = worker.deferred.finish_deferred.call_args.args
+    assert finish_args[0] == "record-id"
+    assert finish_args[1]["final_text"] == "Исправлено: Береза 68, 48 62, прийом"
+    processor.process.assert_not_called()
+
+
 def test_silence_is_ignored():
     worker, recognizer, process_text, processor = make_transcriber()
 

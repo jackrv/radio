@@ -3,7 +3,7 @@ import sqlite3
 
 from services.dictionary_store import init_db
 from services import daily_codes
-from tools.asr_lab import receiver_prompt, record_codes
+from tools.asr_lab import receiver_prompt, receiver_prompt_variant, record_codes
 
 
 def test_phrases_and_record_codes_go_before_dictionary_names(tmp_path):
@@ -24,3 +24,12 @@ def test_latest_mode_takes_only_the_last_code_of_the_record_day(tmp_path):
     daily_codes.write(path, "2026-11-17", "26 42, 48 62")
     created = __import__("datetime").datetime(2026, 11, 17, 10, 0).timestamp()
     assert record_codes(path, created, "latest") == ["48 62"]
+
+
+def test_receiver_prompt_can_remove_phrase_or_dictionary_component(tmp_path):
+    path = tmp_path / "events.db"
+    init_db(path)
+    phrases = ["злива 42"]
+    assert receiver_prompt_variant(path, "клен 15", phrases, "receiver-no-phrases") == "клен 15"
+    assert receiver_prompt_variant(path, "клен 15", phrases, "receiver-no-dictionary") == "злива 42."
+    assert receiver_prompt_variant(path, "клен 15", phrases, "receiver-no-phrases", ["48 62"]) == "48 62. клен 15"

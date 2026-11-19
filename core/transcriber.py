@@ -1,5 +1,7 @@
 import os
+import queue
 import re
+import time
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
 from core.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
@@ -64,6 +66,20 @@ class Transcriber:
         }
         self.log = log
         self.pause_gate = pause_gate
+        # Режим «лише запис» (на час тестів лабораторії): capture_only() → True — фрази лише в архів,
+        # Whisper вивантажено; on_unloaded(bool) — повідомити, що пам'ять звільнено / модель знову потрібна;
+        # deferred — накопичене: next_deferred() → (id, pcm) чи None, finish_deferred(id, trace).
+        # Задає приймач; None — вимкнено.
+        self.capture_only = None
+        self.on_unloaded = None
+        self.deferred = None
+        self._unloaded = False
+        self._capture_cache = (0.0, False)
+        self._capture_error_logged = False
+        self._dry = False          # доробка накопиченого: без подій і Telegram
+        self._deferred_idle_until = 0.0   # накопиченого немає — не питати архів щосекунди
+        self._unload_retry_at = 0.0
+        self._restore_retry_at = 0.0
 
     @staticmethod
     def _blacklist_key(value: str) -> str:
@@ -84,7 +100,7 @@ class Transcriber:
         parts = [k for k in (self._blacklist_key(p) for p in re.split(r"[.!?;…]+", text)) if k]
         return len(parts) > 1 and all(p in keys for p in parts)
 
-    def process_segment(self, pcm, generation=None):
+    def process_segment(self, pcm, generation=None, deferred_id=None):
         from core.recording_trace import _trace
         trace = {"predicted_recipient": "", "predicted_sender": "", "roles_parsed": False} if self.recorder is not None else None
         token = _trace.set(trace)
@@ -104,7 +120,10 @@ class Transcriber:
                 trace["vad"] = getattr(pcm, "vad", None)
                 trace.update(session=runtime.session, min_rms=self.min_rms, normalize=self.normalize_audio,
                              garbage_limits=dict(self.garbage_limits))
-                self.recorder.submit(pcm, self.sample_rate, trace)
+                if deferred_id is not None:
+                    self.deferred.finish_deferred(deferred_id, trace)   # той самий запис архіву, а не новий
+                else:
+                    self.recorder.submit(pcm, self.sample_rate, trace)
 
     def _spectral_score(self, pcm):
         """Оцінка спектрального збігу. У режимі спостереження лише записується."""
@@ -137,7 +156,8 @@ class Transcriber:
                 self.log.exception("Не вдалося оновити словники чи налаштування; використовую попередні")
         def is_current():
             return (
-                self.pause_gate is None
+                self._dry   # накопичене з архіву — завжди «актуальне»: подій із нього не буде
+                or self.pause_gate is None
                 or self.pause_gate.is_current(generation)
             )
 
@@ -289,6 +309,8 @@ class Transcriber:
         note(final_text=text)
         runtime.asr_text_ready(fallback=fallback)
 
+        if self._dry:
+            return   # доробка накопиченого: текст лише в архіві, без подій і Telegram
         try:
             with runtime.timed("asr.event_processing"):
                 if self.pause_gate is None:
@@ -323,23 +345,133 @@ class Transcriber:
                 None if not self._whisper_called else not self._whisper_failed
             )
 
+    # ---------- Режим «лише запис» ----------
+    def _capture_active(self):
+        if self.capture_only is None:
+            return False
+        checked, value = self._capture_cache
+        if time.monotonic() - checked >= 1.0:
+            try:
+                value = bool(self.capture_only())
+            except Exception:
+                runtime.count("asr.capture_check_error")
+                if not self._capture_error_logged:
+                    self.log.exception("Не вдалося перевірити режим «лише запис»; Whisper тимчасово не запускається")
+                    self._capture_error_logged = True
+                value = True
+            else:
+                self._capture_error_logged = False
+            self._capture_cache = (time.monotonic(), value)
+        return value
+
+    def _set_unloaded(self, unloaded):
+        if unloaded == self._unloaded:
+            return True
+        now = time.monotonic()
+        if unloaded and now < self._unload_retry_at:
+            return False
+        if not unloaded and now < self._restore_retry_at:
+            return False
+        try:
+            if unloaded:
+                self.recognizer.unload()
+            else:
+                self.recognizer.warmup()
+        except Exception:
+            runtime.count("asr.capture_model_transition_error")
+            if unloaded:
+                self._unload_retry_at = now + 10
+                self.log.exception("Не вдалося вивантажити Whisper; режим запису чекатиме")
+            else:
+                self._restore_retry_at = now + 10
+                self.log.exception("Не вдалося відновити Whisper; накопичені фрази поки не розпізнаються")
+            return False
+        self._unload_retry_at = self._restore_retry_at = 0.0
+        if unloaded:
+            self.log.info("Режим «лише запис»: Whisper вивантажено, фрази пишуться в архів для розпізнавання пізніше",
+                          extra={"console": True})
+        else:
+            self._deferred_idle_until = 0.0   # щойно з режиму — одразу доробляти накопичене
+            self.log.info("Режим «лише запис» завершено: розпізнавання відновлено", extra={"console": True})
+        self._unloaded = unloaded
+        if self.on_unloaded is not None:
+            try:
+                self.on_unloaded(unloaded)
+            except Exception:
+                self.log.exception("Не вдалося записати стан режиму «лише запис»")
+        return True
+
+    def _store_deferred(self, pcm):
+        """Фраза — в архів зі звуком і статусом «очікує розпізнавання»."""
+        runtime.count("asr.deferred")
+        if self.recorder is not None:
+            self.recorder.submit(pcm, self.sample_rate, {"status": "deferred", "session": runtime.session,
+                                                         "vad": getattr(pcm, "vad", None)})
+
+    def _process_one_deferred(self):
+        """У вільну хвилину — одну накопичену фразу: текст в архів, без подій і Telegram."""
+        if time.monotonic() < self._deferred_idle_until:
+            return False
+        try:
+            item = self.deferred.next_deferred()
+        except Exception:
+            self.log.exception("Не вдалося взяти накопичений запис з архіву")
+            return False
+        if item is None:
+            self._deferred_idle_until = time.monotonic() + 30
+            return False
+        record_id, pcm = item
+        self._dry = True
+        try:
+            self.process_segment(pcm, deferred_id=record_id)
+            runtime.count("asr.deferred_done")
+        except Exception:
+            runtime.count("asr.deferred_error")
+            self.log.exception("Не вдалося розпізнати накопичений запис %s", record_id)
+            try:
+                self.deferred.finish_deferred(record_id, {"status": "whisper_error"})
+            except Exception:
+                self.log.exception("Не вдалося зафіксувати помилку розпізнавання запису %s", record_id)
+        finally:
+            self._dry = False
+        return True
+
     def run(self):
         if self.health is not None:
             self.health.reset()
+        if self.on_unloaded is not None:
+            try:
+                self.on_unloaded(False)
+            except Exception:
+                self.log.exception("Не вдалося оновити стан моделі Whisper під час запуску")
         while True:
-            item = self.segments.get()
+            capture = self._capture_active()
+            if capture:
+                self._set_unloaded(True)
+            try:
+                # Чекаємо з таймаутом: і без ефіру помічаємо зміну режиму й доробляємо накопичене.
+                item = self.segments.get(timeout=1.0)
+            except queue.Empty:
+                if not capture and self.deferred is not None:
+                    if self._set_unloaded(False):
+                        self._process_one_deferred()
+                continue
             runtime.count("asr.dequeued")
 
-            if self.pause_gate is None:
-                self._tracked(item)
-                continue
+            generation, pcm = (None, item) if self.pause_gate is None else item
 
-            generation, pcm = item
-
-            if not self.pause_gate.is_current(generation):
+            if self.pause_gate is not None and not self.pause_gate.is_current(generation):
                 with runtime.asr_segment(pcm, self.sample_rate, self.segments):
                     runtime.asr_status("stale")
                 runtime.count("asr.stale_generation")
                 continue
 
+            if capture:
+                self._store_deferred(pcm)
+                continue
+            if not self._set_unloaded(False):
+                self._store_deferred(pcm)
+                continue
             self._tracked(pcm, generation=generation)
+            if self.deferred is not None and self.segments.empty():
+                self._process_one_deferred()

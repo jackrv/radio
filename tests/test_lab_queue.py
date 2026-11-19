@@ -16,6 +16,29 @@ class FakeLauncher:
         return True
 
 
+class FakeCapture:
+    def __init__(self, *, ready=True):
+        self.ready_state, self.events = ready, []
+        self.restored_state = True
+
+    def start(self, until):
+        self.events.append(("start", until))
+        self.restored_state = False
+
+    def renew(self, until):
+        self.events.append(("renew", until))
+
+    def ready(self):
+        return self.ready_state
+
+    def stop(self):
+        self.events.append(("stop",))
+        self.restored_state = True
+
+    def restored(self):
+        return self.restored_state
+
+
 class FakeProcess:
     pid = 4242
 
@@ -54,19 +77,31 @@ def test_queue_order_move_cancel_and_validation(tmp_path):
         lab_queue.add(tmp_path, "base", "<script>")
 
 
-def test_runner_stops_receiver_once_cools_down_and_always_restarts_it(tmp_path):
+def test_prompt_ablation_presets_keep_one_prompt_component_removed(tmp_path):
+    phrases = lab_queue.PRESETS["no-whisper-phrases"]["args"]
+    dictionary = lab_queue.PRESETS["no-dictionary-prompt"]["args"]
+    assert phrases[phrases.index("--prompt") + 1] == "receiver-no-phrases"
+    assert dictionary[dictionary.index("--prompt") + 1] == "receiver-no-dictionary"
+    assert phrases[phrases.index("--daily-codes") + 1] == "latest"
+    assert dictionary[dictionary.index("--daily-codes") + 1] == "latest"
+
+
+def test_runner_keeps_receiver_listening_and_always_restores_recognition(tmp_path):
     lab_queue.add(tmp_path, "base")
     lab_queue.add(tmp_path, "no-retry")
-    launcher, clock, started = FakeLauncher(), Clock(), []
+    launcher, capture, clock, started = FakeLauncher(), FakeCapture(), Clock(), []
 
     def spawn(args, log):
         started.append(args)
         return FakeProcess(0 if len(started) == 1 else 3)
 
-    lab_queue.run(tmp_path, launcher=launcher, spawn=spawn, sleep=clock.sleep, now=clock.now, cooldown=300)
+    lab_queue.run(tmp_path, launcher=launcher, capture=capture, spawn=spawn, sleep=clock.sleep,
+                  now=clock.now, cooldown=300)
     jobs = lab_queue.read(tmp_path)["jobs"]
     assert [j["status"] for j in jobs] == ["done", "failed"]
-    assert launcher.commands == ["receiver-stop", "receiver-start"], "приймач зупинено один раз і запущено знову"
+    assert launcher.commands == [], "приймач не зупиняється"
+    assert [event[0] for event in capture.events] == ["start", "stop"]
+    assert capture.events[0][1] > jobs[0]["started"]
     assert started[0][3:6] == ["run", "--name", "q-base"] and "--retry" in started[1]
     assert jobs[1]["started"] - jobs[0]["finished"] >= 300, "пауза між тестами"
     assert lab_queue.read(tmp_path)["runner"]["state"] == "idle"
@@ -77,32 +112,36 @@ def test_runner_waits_for_start_time_and_honours_stop(tmp_path):
     clock = Clock()
     lab_queue.set_start_at(tmp_path, clock.t + 100)
     launcher = FakeLauncher()
-    lab_queue.run(tmp_path, launcher=launcher, spawn=lambda a, l: FakeProcess(0), sleep=clock.sleep, now=clock.now)
+    lab_queue.run(tmp_path, launcher=launcher, capture=FakeCapture(), spawn=lambda a, l: FakeProcess(0),
+                  sleep=clock.sleep, now=clock.now)
     job = lab_queue.read(tmp_path)["jobs"][0]
     assert job["started"] >= 1100
     lab_queue.add(tmp_path, "base")
     lab_queue.request_stop(tmp_path)
     launcher = FakeLauncher()
-    lab_queue.run(tmp_path, launcher=launcher, spawn=lambda a, l: FakeProcess(0), sleep=clock.sleep, now=clock.now)
+    lab_queue.run(tmp_path, launcher=launcher, capture=FakeCapture(), spawn=lambda a, l: FakeProcess(0),
+                  sleep=clock.sleep, now=clock.now)
     assert lab_queue.read(tmp_path)["jobs"][-1]["status"] == "queued" and launcher.commands == []
 
 
-def test_receiver_is_restarted_even_when_the_runner_fails(tmp_path):
+def test_capture_mode_is_disabled_even_when_the_runner_fails(tmp_path):
     lab_queue.add(tmp_path, "base")
     launcher = FakeLauncher()
 
     def spawn(args, log):
         raise OSError("no python")
 
+    capture = FakeCapture()
     with pytest.raises(OSError):
-        lab_queue.run(tmp_path, launcher=launcher, spawn=spawn, sleep=lambda s: None)
-    assert launcher.commands == ["receiver-stop", "receiver-start"]
+        lab_queue.run(tmp_path, launcher=launcher, capture=capture, spawn=spawn, sleep=lambda s: None)
+    assert launcher.commands == []
+    assert [event[0] for event in capture.events] == ["start", "stop"]
 
 
-def test_windows_run_only_jobs_that_fit_and_give_the_receiver_back_between_windows(tmp_path):
+def test_windows_run_only_jobs_that_fit_and_restore_recognition_between_windows(tmp_path):
     for preset in ("base", "no-prompt", "resegment"):
         lab_queue.add(tmp_path, preset)
-    clock, launcher, started = Clock(), FakeLauncher(), []
+    clock, launcher, capture, started = Clock(), FakeLauncher(), FakeCapture(), []
     minutes = {"base": 85, "no-prompt": 85, "resegment": 100}
 
     class Timed(FakeProcess):
@@ -129,12 +168,35 @@ def test_windows_run_only_jobs_that_fit_and_give_the_receiver_back_between_windo
 
     w1, w2 = (clock.t + 600, clock.t + 600 + 115 * 60), (clock.t + 600 + 135 * 60, clock.t + 600 + 355 * 60)
     lab_queue.set_windows(tmp_path, [w1, w2])
-    lab_queue.run(tmp_path, launcher=launcher, spawn=spawn, sleep=sleep, now=clock.now, cooldown=300,
+    lab_queue.run(tmp_path, launcher=launcher, capture=capture, spawn=spawn, sleep=sleep, now=clock.now, cooldown=300,
                   estimate=lambda preset: minutes[preset] * 60)
     assert [p for p, _ in started] == ["base", "no-prompt", "resegment"]
     assert w1[0] <= started[0][1] < w1[1] and all(w2[0] <= t < w2[1] for _, t in started[1:]), "другий і третій — у другому вікні"
-    assert launcher.commands == ["receiver-stop", "receiver-start", "receiver-stop", "receiver-start"], "між вікнами приймач працює"
+    assert launcher.commands == [], "приймач не зупиняється"
+    assert [event[0] for event in capture.events] == ["start", "stop", "start", "stop"]
     assert [j["status"] for j in lab_queue.read(tmp_path)["jobs"]] == ["done", "done", "done"]
+
+
+def test_runner_does_not_start_whisper_test_until_receiver_confirms_unload(tmp_path):
+    lab_queue.add(tmp_path, "base")
+    clock, capture, started = Clock(), FakeCapture(ready=False), []
+    lab_queue.run(tmp_path, launcher=FakeLauncher(), capture=capture,
+                  spawn=lambda args, log: started.append(args), sleep=clock.sleep, now=clock.now)
+    job = lab_queue.read(tmp_path)["jobs"][0]
+    assert job["status"] == "failed" and "не вивантажив Whisper" in job["error"]
+    assert started == []
+    assert [event[0] for event in capture.events] == ["start", "stop"]
+
+
+def test_runner_does_not_enable_capture_when_receiver_is_stopped(tmp_path):
+    lab_queue.add(tmp_path, "base")
+    launcher, capture = FakeLauncher(), FakeCapture()
+    launcher.stopped = True
+    lab_queue.run(tmp_path, launcher=launcher, capture=capture,
+                  spawn=lambda args, log: pytest.fail("тест не має запускатися"), sleep=lambda _: None)
+    job = lab_queue.read(tmp_path)["jobs"][0]
+    assert job["status"] == "failed" and "Приймач вимкнений" in job["error"]
+    assert capture.events == []
 
 
 def test_estimates_scale_with_records_and_preset(tmp_path):

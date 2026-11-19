@@ -123,6 +123,7 @@
               <optgroup label="Розмітка — ще не розмічені, нові першими">
                 <option value="radio">Ефір: є позивний або подія</option>
                 <option value="speech">Інше мовлення (часто розмови в кімнаті)</option>
+                <option value="deferred">Очікують розпізнавання</option>
                 <option value="filtered">Шум, сигнали й короткі (відсіяне програмою)</option>
               </optgroup>
               <optgroup label="Перегляд">
@@ -235,7 +236,7 @@
 
       <section data-panel="texts" hidden>
         <article class="panel"><h2>Застосування без перезапуску</h2>
-          <p class="muted">Приймач перевіряє зміни кожні кілька секунд і застосовує їх до наступного сегмента. Рядок, що починається з <code>#</code>, зберігається, але не діє. Позивні, команди й числа захищені: такі рядки не збережуться.</p>
+          <p class="muted">Приймач перевіряє зміни кожні кілька секунд і застосовує їх до наступного сегмента. Рядок, що починається з <code>#</code>, зберігається, але не діє; для шаблонів фраз є окремі перемикачі. Позивні, команди й числа захищені: такі рядки не збережуться.</p>
           <p id="texts-status" class="muted small"></p></article>
         <div id="text-lists"></div>
       </section>
@@ -303,6 +304,7 @@
           <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="conditions">Умови</button>
           <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="callsigns">Позивні</button>
           <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="numbers">Числа</button>
+          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="impact">Вплив правил</button>
           <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="training">Дообучення</button>
         </div>
         <div class="analysis-split">
@@ -330,6 +332,12 @@
           <div class="analysis-subpanel" data-analysis-panel="numbers" hidden>
             <article class="panel"><div class="panel-head"><h2>Плутанина чисел</h2><span class="muted small">почуто → еталон, повторювані пари</span></div>
               <div id="errors-numbers" class="error-numbers"></div></article>
+          </div>
+          <div class="analysis-subpanel" data-analysis-panel="impact" hidden>
+            <article class="panel"><div class="panel-head"><h2>Контр-перевірка текстових правил</h2>
+                <button id="text-impact-run" class="ghost small-button" type="button">Перевірити зараз</button></div>
+              <p class="muted">Кожне активне текстове правило вимикається по одному й повторно проганяється на тих самих розмічених фразах і прикладах шуму, сигналів та кімнати. Приріст «без правок», менше пропусків, нижчий WER і менше хибного тексту — ознаки користі; різниця показана як «з правилом мінус без нього». Підказки Whisper перевіряйте в «Експериментах»: порівняйте «Як зараз у приймачі» з тестами «Без фраз із підказки», «Без словників у підказці» та «Без коду доби».</p>
+              <div id="text-impact-results"></div></article>
           </div>
           <div class="analysis-subpanel" data-analysis-panel="training" hidden>
             <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>

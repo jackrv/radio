@@ -18,7 +18,7 @@ class QueueMove(BaseModel):
 
 class QueueStart(BaseModel):
     start_at: float | None = Field(default=None, ge=0, le=4e9)
-    # Вікна часу [[початок, кінець], …] (unix-час): приймач зупиняється лише в них.
+    # Вікна часу [[початок, кінець], …] (unix-час): режим «лише запис» вмикається лише в них.
     windows: list[tuple[float, float]] | None = Field(default=None, max_length=8)
 
 
@@ -40,6 +40,9 @@ def register(app, ctx):
     def state():
         data = lab_queue.read(root)
         records = labelled_records()
+        from services.receiver_control import capture_state
+        capture = capture_state(ctx.db_path)
+        capture["pending_records"] = ctx.recordings.count_status("deferred")
         for job in data["jobs"]:
             job["progress"] = lab_queue.progress(root, job) if job["status"] in ("running", "done", "failed", "cancelled") else None
         presets = [{"key": key, **{k: v for k, v in p.items() if k != "args"}} for key, p in lab_queue.PRESETS.items()]
@@ -47,7 +50,7 @@ def register(app, ctx):
         estimates = {key: lab_queue.estimate_seconds(root, key, records) for key in lab_queue.PRESETS}
         return {"presets": presets, "jobs": data["jobs"], "runner": {**data["runner"], "active": lab_queue.runner_active(data)},
                 "cooldown_s": lab_queue.COOLDOWN_S, "margin": lab_queue.WINDOW_MARGIN, "estimates": estimates,
-                "records": records, "now": time.time()}
+                "records": records, "capture": capture, "now": time.time()}
 
     @app.get("/api/lab/queue")
     def queue(admin=Depends(actor)):
@@ -63,6 +66,9 @@ def register(app, ctx):
 
     @app.post("/api/lab/queue/start")
     def queue_start(payload: QueueStart, admin=Depends(actor)):
+        import config
+        if not config.RECORD_AUDIO:
+            raise HTTPException(409, "Для режиму «лише запис» потрібно ввімкнути архів аудіо")
         if not any(j["status"] == "queued" for j in lab_queue.read(root)["jobs"]):
             raise HTTPException(422, "Черга порожня — додайте тест")
         now = time.time()

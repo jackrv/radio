@@ -62,6 +62,21 @@ class WhisperRecognizer:
             **options,
         )
 
+    def unload(self):
+        """Вивантажити модель Whisper і повернути пам'ять (режим «лише запис»); наступний transcribe завантажить знову."""
+        import gc
+        import importlib
+        module = importlib.import_module("mlx_whisper.transcribe")
+        holder = getattr(module, "ModelHolder", None)
+        if holder is None:
+            raise RuntimeError("У встановленій mlx-whisper не знайдено кеш моделі")
+        holder.model = None
+        holder.model_path = None
+        gc.collect()
+        import mlx.core as mx
+        mx.clear_cache()
+        runtime.gauge("models.whisper", "unloaded")
+
     @staticmethod
     def extract_text(result):
         """Отбирает пригодные для дальнейшей обработки фрагменты."""

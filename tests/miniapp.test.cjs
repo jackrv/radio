@@ -34,7 +34,10 @@ class Element {
   before(item) { this.beforeItem = item; }
   click() {}
   addEventListener(name, callback) { (this.events[name] ||= []).push(callback); }
-  async fire(name) { for (const callback of this.events[name] || []) await callback({ preventDefault() {} }); await tick(); }
+  async fire(name, event = {}) {
+    for (const callback of this.events[name] || []) await callback({ preventDefault() {}, ...event });
+    await tick();
+  }
 }
 
 function documentFixture() {
@@ -542,9 +545,71 @@ test("leaving the edited text applies spelling and formatting fixes, and Save se
   await field.fire("focus");
   field.value = "вішня 48 прийом";   // оператор дописав і помилився в назві
   await field.fire("input");
-  await field.fire("blur");
+  await field.fire("blur", { relatedTarget: new Element("button") });
   await get("save-correction-button").fire("click");
   await tick();
   const saved = calls.find(call => call.path === "/api/corrections/draft" && call.method === "PUT");
   assert.equal(saved.body.corrected_text, "Вишня 48, прийом");
+});
+
+test("daily-code hints are not auto-corrected when leaving the field", async () => {
+  const { doc, get } = documentFixture();
+  const calls = [];
+  const context = {
+    document: doc, URLSearchParams, URL, localStorage: { getItem: () => null, setItem() {} },
+    window: {
+      location: { search: "?fix_id=mem:" + "c".repeat(32) }, addEventListener() {},
+      setTimeout: callback => callback(), clearTimeout() {},
+      Radio345: { request: async (path, method, body) => {
+        calls.push({ path, method, body });
+        if (method === "GET") return { original_text: "Береза 68, 48, 42", current_text: "Береза 68, 48, 42", has_audio: false };
+        if (path === "/api/corrections/check") return {
+          issues: [{ kind: "spelling", manual_only: true, message: "Можливо, код доби", fixed_text: "Береза 68, 48 62" }],
+          formatted: null
+        };
+        return { corrected_text: body.corrected_text, saved: true, text_changed: true, learning: null };
+      } },
+    },
+  };
+  vm.runInNewContext(source("correction-editor.js"), context);
+  await tick();
+  const field = get("corrected-text");
+  await field.fire("focus");
+  field.value = "Береза 68, 48, 42";
+  await field.fire("input");
+  await field.fire("blur", { relatedTarget: new Element("button") });
+  await get("save-correction-button").fire("click");
+  const saved = calls.find(call => call.path === "/api/corrections/draft" && call.method === "PUT");
+  assert.equal(saved.body.corrected_text, "Береза 68, 48, 42");
+});
+
+test("saving from the edited field does not trigger auto-correction", async () => {
+  const { doc, get } = documentFixture();
+  const calls = [];
+  const context = {
+    document: doc, URLSearchParams, URL, localStorage: { getItem: () => null, setItem() {} },
+    window: {
+      location: { search: "?fix_id=mem:" + "d".repeat(32) }, addEventListener() {},
+      setTimeout: callback => callback(), clearTimeout() {},
+      Radio345: { request: async (path, method, body) => {
+        calls.push({ path, method, body });
+        if (method === "GET") return { original_text: "Вишня 48", current_text: "Вишня 48", has_audio: false };
+        if (path === "/api/corrections/check") return {
+          issues: [{ kind: "spelling", message: "Можливо, «Вишня»", fixed_text: "Вишня 48" }],
+          formatted: null
+        };
+        return { corrected_text: body.corrected_text, saved: true, text_changed: true, learning: null };
+      } },
+    },
+  };
+  vm.runInNewContext(source("correction-editor.js"), context);
+  await tick();
+  const field = get("corrected-text");
+  await field.fire("focus");
+  field.value = "Вішня 48";
+  await field.fire("input");
+  await field.fire("blur", { relatedTarget: get("save-correction-button") });
+  await get("save-correction-button").fire("click");
+  const saved = calls.find(call => call.path === "/api/corrections/draft" && call.method === "PUT");
+  assert.equal(saved.body.corrected_text, "Вішня 48");
 });

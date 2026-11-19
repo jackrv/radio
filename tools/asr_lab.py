@@ -43,7 +43,8 @@ OUTPUT = ROOT / ".local-experiments"
 PHRASES_PROMPT = ("Радіообмін. Перевірка зв’язку. На зв’язку. Чую та розбираю добре. "
                   "Прийнято, прийом. Прийняв, прийом. Посилку отримав. "
                   "До роботи приступив. Роботу закінчив. Повторіть, голос не пройшов.")
-PROMPTS = ("dictionary", "receiver", "none", "phrases", "combined")
+PROMPTS = ("dictionary", "receiver", "receiver-no-phrases", "receiver-no-dictionary", "none", "phrases", "combined")
+RECEIVER_PROMPTS = ("receiver", "receiver-no-phrases", "receiver-no-dictionary")
 
 SPLIT_BLOCK_S = 20 * 60
 VARIANTS = ("whisper", "rules", "qwen", "pipeline")
@@ -193,6 +194,17 @@ def receiver_prompt(db_path, dictionary_prompt, phrases=None, extra=()):
     return compose_prompt((*phrases, *extra), dictionary_prompt)
 
 
+def receiver_prompt_variant(db_path, dictionary_prompt, phrases, mode, extra=()):
+    """Вимкнути окремо фразовий або словниковий складник підказки приймача."""
+    if mode == "receiver-no-phrases":
+        phrases = ()
+    elif mode == "receiver-no-dictionary":
+        dictionary_prompt = ""
+    elif mode != "receiver":
+        raise ValueError(f"Невідомий режим підказки приймача: {mode}")
+    return receiver_prompt(db_path, dictionary_prompt, phrases, extra)
+
+
 def record_codes(db_path, created, mode="append"):
     """Коди доби запису (доба за межею 20:00) зі знімка бази.
 
@@ -298,12 +310,12 @@ class Lab:
         if getattr(args, "whisper_phrases", None):
             self.whisper_phrases = [line.strip() for line in Path(args.whisper_phrases).read_text(encoding="utf-8").splitlines()
                                     if line.strip() and not line.startswith("#")]
-        if args.prompt == "receiver":
-            self.prompt = receiver_prompt(self.db_path, dictionary_prompt, self.whisper_phrases)
+        if args.prompt in RECEIVER_PROMPTS:
+            self.prompt = receiver_prompt_variant(self.db_path, dictionary_prompt, self.whisper_phrases, args.prompt)
         else:
             self.prompt = {"dictionary": dictionary_prompt, "none": "", "phrases": phrases,
                            "combined": f"{phrases} {dictionary_prompt}".strip()}[args.prompt]
-        self.dictionary_prompt = dictionary_prompt
+        self.dictionary_prompt = "" if args.prompt == "receiver-no-dictionary" else dictionary_prompt
         self.language = None if args.language == "auto" else args.language
         self.model = args.model or config.MODEL_REPO
         self.sample_rate = config.SR
@@ -545,10 +557,11 @@ def run(args):
                 pcm, sr = read_pcm(args.archive, record["id"])
                 if sr != lab.sample_rate:
                     raise ValueError("Інша частота дискретизації")
-                if getattr(args, "daily_codes", "off") != "off" and args.prompt == "receiver":
+                if getattr(args, "daily_codes", "off") != "off" and args.prompt in RECEIVER_PROMPTS:
                     # Як могло б бути в приймачі: коди доби саме цього запису — у підказці.
-                    lab.recognizer.prompt = receiver_prompt(lab.db_path, lab.dictionary_prompt, lab.whisper_phrases,
-                                                            record_codes(lab.db_path, record["created"], args.daily_codes))
+                    lab.recognizer.prompt = receiver_prompt_variant(
+                        lab.db_path, lab.dictionary_prompt, lab.whisper_phrases, args.prompt,
+                        record_codes(lab.db_path, record["created"], args.daily_codes))
                 output, timing = lab.process(pcm)
             except Exception as exc:  # один зіпсований запис не зупиняє експеримент
                 output, timing = {"error": type(exc).__name__}, {}

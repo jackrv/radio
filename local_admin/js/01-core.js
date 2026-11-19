@@ -8,6 +8,7 @@
     short_garbage: "Короткий хибний фрагмент", bare_callsign: "Лише позивний без номера", low_rms: "Тихо (нижче MIN_RMS)", short: "Закоротко (VAD)",
     notification: "Звук сповіщення", blacklist: "Чорний список", garbage: "Сміття Whisper", low_confidence: "Низька впевненість", dictionary_echo: "Перелік назв із підказки",
     empty_text: "Порожній текст", whisper_error: "Помилка Whisper", stale: "Після паузи", discarded: "Відкинуто",
+    deferred: "Очікує розпізнавання",
   };
   const SPECTRAL_MODES = { shadow: "Спостереження", active: "Активний", off: "Спектральний вимкнено" };
   const pct = v => (typeof v === "number" ? `${(v * 100).toFixed(1)}%` : "—");

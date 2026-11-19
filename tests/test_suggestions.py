@@ -40,6 +40,9 @@ def test_repeated_findings_become_suggestions_and_disappear_once_applied(tmp_pat
     assert fresh and len(fresh) == len(current)
     groups = {g["kind"]: g for g in overview(path)["groups"]}
     assert groups["noise"]["new"] == 1 and groups["noise"]["target"] == "texts:short_garbage"
+    assert groups["dictionary"]["lines"] == [
+        {"list": "callsigns", "callsign": "клен", "number": "17"},
+    ]
     assert refresh(path, store)[1] == [], "повторна перевірка нових не додає"
     data = read_lists(path)
     entries = [{"raw_line": e["raw_line"], "enabled": e["enabled"]} for e in data["lists"]["short_garbage"]["entries"]]
@@ -56,6 +59,40 @@ def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path):
     refresh(path, store, deep=True)
     groups = {g["kind"]: g for g in overview(path)["groups"]}
     assert groups["pattern"]["count"] == 1 and "{П}, прийнято, прийом" in groups["pattern"]["examples"][0]
+    assert groups["pattern"]["lines"] == [
+        {"list": "phrase_patterns", "line": "{П}, прийнято, прийом"},
+    ]
+
+
+def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path):
+    from services.text_replay import countercheck
+    path = base_db(tmp_path)
+    store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])
+    data = read_lists(path)
+    write_list(path, "phrase_patterns",
+                [{"raw_line": "{П}, прийнято, прийом", "enabled": True}], data["revision"])
+    result = countercheck(store.root, path)
+    pattern = next(item for item in result["checks"] if item["kind"] == "phrase_pattern")
+    assert result["records"] == 1
+    assert pattern["effect"] == "helpful"
+    assert pattern["no_edits_delta"] == 1
+    assert pattern["worse"] == 0
+
+
+def test_text_countercheck_measures_active_blacklist_entries(tmp_path):
+    from services.text_replay import countercheck
+    path = base_db(tmp_path)
+    store = archive(tmp_path, [
+        ("дякую за перегляд", "Клен 15, прийом", "speech"),
+        ("дякую за перегляд", "", "noise"),
+    ])
+    data = read_lists(path)
+    write_list(path, "blacklist", [{"raw_line": "дякую за перегляд", "enabled": True}], data["revision"])
+    result = countercheck(store.root, path)
+    blacklist = next(item for item in result["checks"] if item["kind"] == "blacklist")
+    assert blacklist["effect"] == "mixed"
+    assert blacklist["missed_delta"] == 1
+    assert blacklist["false_text_delta"] == -1
 
 
 def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):

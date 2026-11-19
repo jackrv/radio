@@ -232,7 +232,7 @@ def parse(list_type, lines):
             errors.append(f"Рядок {number}: потрібні і правильне написання, і хоча б один варіант")
             continue
         if _has_number(canon) or any(_has_number(v) for v in variants):
-            errors.append(f"Рядок {number}: числа не можна задавати алиасами")
+            errors.append(f"Рядок {number}: числа не можна задавати аліасами")
             continue
         if list_type == "callsign_aliases" and (" " in canon or any(" " in v for v in variants)):
             errors.append(f"Рядок {number}: позивний і його варіанти — по одному слову")
@@ -276,16 +276,16 @@ def _dictionary_names(db):
 
 
 def _callsign_alias_checks(dictionaries, heard, name):
-    """Алиас позивного: (помилки, попередження).
+    """Аліас позивного: (помилки, попередження).
 
     Позивний переписувати не можна. Слово з іншого словника можна, лише якщо
-    алиас веде до позивного з номерами й ці номери не перетинаються: тоді
+    аліас веде до позивного з номерами й ці номери не перетинаються: тоді
     «злива 222» лишається командою, а «злива 34» стає позивним.
     """
     errors, warnings = [], []
     callsigns = dictionaries.get("callsigns")
     if callsigns is None or name not in callsigns.names:
-        warnings.append(f"«{name}» немає у словнику позивних — алиас не діятиме, доки його не додати")
+        warnings.append(f"«{name}» немає у словнику позивних — аліас не діятиме, доки його не додати")
         return errors, warnings
     if heard in callsigns.names:
         errors.append(f"«{heard}» — правильне словникове ім’я, його не можна переписувати")
@@ -297,7 +297,7 @@ def _callsign_alias_checks(dictionaries, heard, name):
         where = KIND_NAMES.get(kind, kind)
         if without_number:
             errors.append(f"«{heard}» є у словнику {where}, а «{name}» може бути без номера — "
-                          "алиас переписував би це слово скрізь")
+                          "аліас переписував би це слово скрізь")
             continue
         overlap = sorted(dictionary.numbers.get(heard, set()) & callsigns.numbers[name], key=int)
         if heard in dictionary.any_number:
@@ -305,7 +305,7 @@ def _callsign_alias_checks(dictionaries, heard, name):
         if overlap:
             errors.append(f"«{heard}» у словнику {where} має ті самі номери, що й «{name}»: {', '.join(overlap[:5])}")
         else:
-            warnings.append(f"«{heard}» також є у словнику {where}; алиас діє лише перед номерами «{name}», "
+            warnings.append(f"«{heard}» також є у словнику {where}; аліас діє лише перед номерами «{name}», "
                             "решта значень не зміниться")
     if name in callsigns.standalone and not errors:
         warnings.append(f"«{name}» — позивний без номера: «{heard}» вважатиметься ним у будь-якій фразі")
@@ -457,7 +457,7 @@ _synced = None
 
 
 def sync_aliases(db):
-    """Для API-процесів: застосувати актуальні алиаси, якщо ревізія змінилася."""
+    """Для API-процесів: застосувати актуальні аліаси, якщо ревізія змінилася."""
     global _synced
     ensure_tables(db)
     path = db.execute("PRAGMA database_list").fetchone()[2]
@@ -516,7 +516,7 @@ class LiveTextLists:
             return False
         self._failed = False
         configure_aliases(values["aliases"], values["callsign_aliases"])
-        # Ключі рахуються вже з новими алиасами — так само, як для розпізнаного тексту.
+        # Ключі рахуються вже з новими аліасами — так само, як для розпізнаного тексту.
         self.blacklist = frozenset(k for k in (blacklist_key(v) for v in values["blacklist"]) if k)
         self.short_garbage = frozenset(normalize(v) for v in values["short_garbage"])
         self.whisper_prompt = tuple(values.get("whisper_prompt", ()))
@@ -528,7 +528,7 @@ class LiveTextLists:
         except Exception:
             pass
         if self.log is not None:
-            self.log.info("Текстові списки %s (ревізія %d): фраз %d, шуму %d, алиасів %d, алиасів позивних %d",
+            self.log.info("Текстові списки %s (ревізія %d): фраз %d, шуму %d, аліасів %d, аліасів позивних %d",
                           "оновлено" if changed else "завантажено", revision, len(self.blacklist),
                           len(self.short_garbage), len(values["aliases"]), len(values["callsign_aliases"]))
         for callback in self._listeners:

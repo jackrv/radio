@@ -1,7 +1,7 @@
   // ---------- Аналіз: якість ----------
   // Плитки зверху (за весь час і сьогодні), таблиця по днях, розбір помилок «що заважає без правок».
   function showAnalysisTab(name) {
-    const valid = new Set(["overview", "errors", "conditions", "callsigns", "numbers", "training"]);
+    const valid = new Set(["overview", "errors", "conditions", "callsigns", "numbers", "impact", "training"]);
     if (!valid.has(name)) name = "overview";
     if (typeof document !== "undefined") {
       for (const b of document.querySelectorAll("[data-analysis-tab]")) {
@@ -232,6 +232,64 @@
   }
   $("errors-days").addEventListener("change", () => action(async () => { await qualityErrors(); if (typeof fitAnalysis === "function") fitAnalysis(); }));
 
+  const IMPACT_NAMES = {
+    phrase_template: "Шаблон звороту",
+    phrase_pattern: "Шаблон фрази",
+    text_alias: "Аліас тексту",
+    callsign_alias: "Аліас позивного",
+    short_garbage: "Фільтр короткого шуму",
+    blacklist: "Чорний список",
+  };
+  const IMPACT_LABELS = { noise: "шум", notification: "сигнал", room: "кімната" };
+  async function textImpact() {
+    const button = $("text-impact-run"), box = $("text-impact-results");
+    button.disabled = true;
+    box.replaceChildren(el("p", "muted small", "Перевіряю правила на розмічених записах…"));
+    try {
+      const report = await request("/api/quality/text-impact");
+      if (!report.records && !report.non_speech_records) {
+        box.replaceChildren(el("p", "muted", "Розмічених текстів для перевірки немає."));
+        return;
+      }
+      const signed = value => `${value > 0 ? "+" : ""}${num(value)}`;
+      const signedPp = value => `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)} п.п.`;
+      const rows = report.checks.map(item => {
+        const tone = item.effect === "harmful" ? "bad" : item.effect === "helpful" ? "ok" : "";
+        const row = el("div", `eval-item ${tone}`);
+        const title = el("b", "", `${IMPACT_NAMES[item.kind] || item.kind}: ${item.label}`);
+        const effect = item.effect === "harmful" ? "може шкодити"
+          : item.effect === "helpful" ? "допомагає"
+          : item.effect === "mixed" ? "змішаний вплив" : "не змінило розмічені фрази";
+        row.append(title, el("div", "small", `${effect} · без правок ${signed(item.no_edits_delta)} · пропущено ${signed(item.missed_delta)} · WER ${signedPp(item.wer_delta)} · хибний текст на шумі/сигналах/у кімнаті ${signed(item.false_text_delta)} · гірше ${num(item.worse)}, краще ${num(item.better)}`));
+        for (const example of item.examples) {
+          const open = el("button", "link-button small", `Запис ${example.id.slice(0, 8)}`);
+          open.type = "button"; open.addEventListener("click", () => showIds([example.id]));
+          row.append(open, el("div", "small", `з правилом: ${example.current}`),
+            el("div", "small", `без нього: ${example.without}`),
+            el("div", "small muted", `еталон: ${example.reference}`));
+        }
+        for (const example of item.false_text_examples) {
+          const open = el("button", "link-button small", `Запис ${example.id.slice(0, 8)}`);
+          open.type = "button"; open.addEventListener("click", () => showIds([example.id]));
+          row.append(open, el("div", "small muted", `${IMPACT_LABELS[example.label] || example.label}: з правилом «${example.current || "порожньо"}» · без нього «${example.without || "порожньо"}»`));
+        }
+        return row;
+      });
+      const currentNoiseText = report.current.false_text_by_label;
+      box.replaceChildren(
+        el("p", "muted small", `${num(report.records)} фраз мовлення і ${num(report.non_speech_records)} прикладів шуму, сигналів та кімнати. Поточний хибний текст: ${num(report.current.false_text)} (шум ${num(currentNoiseText.noise)}, сигнали ${num(currentNoiseText.notification)}, кімната ${num(currentNoiseText.room)}). Різниця — поточний результат мінус результат без конкретного правила.`),
+        ...(rows.length ? rows : [el("p", "muted", "Активних текстових правил для перевірки немає.")]),
+        el("p", "muted small", report.scope),
+      );
+    } catch (error) {
+      box.replaceChildren(el("p", "alert small", error.message));
+      throw error;
+    } finally {
+      button.disabled = false;
+    }
+  }
+  $("text-impact-run").addEventListener("click", () => action(textImpact));
+
   // ---------- Аналіз: набір для дообучення ----------
   async function training() {
     const t = await request("/api/training");
@@ -339,7 +397,8 @@
   }));
 
   // ---------- Черга тестів ----------
-  const LAB_STATE = { starting: "запускається…", stopping_receiver: "зупиняю приймач…", running: "іде тест", cooldown: "пауза від перегріву",
+  const LAB_STATE = { starting: "запускається…", starting_capture: "вивантажую Whisper…", capturing_audio: "лише запис аудіофрагментів",
+                      restoring_recognition: "відновлюю Whisper…", running: "іде тест", cooldown: "пауза від перегріву",
                       waiting: "чекає часу старту", idle: "не запущено" };
   const clockTime = t => new Date(t * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
   // ---------- Вікна часу для тестів ----------
@@ -439,15 +498,19 @@
     const duration = m => m >= 60 ? `${Math.floor(m / 60)} год ${m % 60} хв` : `${m} хв`;
     const minutes = queued.reduce((a, j) => a + estimate(j.preset), 0) + Math.max(0, queued.length - 1) * Math.round(q.cooldown_s / 60);
     $("lab-state").textContent = active ? LAB_STATE[runner.state] || runner.state : queued.length ? `у черзі ${queued.length} · ≈${duration(minutes)}` : "черга порожня";
-    // Банер: приймач на паузі через тести — ефір не слухається.
+    // Банер показує режим приймача та помилки відновлення Whisper.
     const banner = $("lab-banner");
-    banner.hidden = !active;
-    if (active) {
+    banner.hidden = !active && !runner.capture_error;
+    if (runner.capture_error) {
+      banner.textContent = `⚠ ${runner.capture_error}`;
+    } else if (active) {
       const until = runner.until ? ` до ${clockTime(runner.until)}` : "";
       const windowsText = (runner.windows || []).map(w => `${clockTime(w[0])}–${clockTime(w[1])}`).join(", ");
       banner.textContent = runner.state === "waiting" ? `Черга чекає ${windowsText ? `вікон ${windowsText}` : `старту о ${clockTime(runner.start_at || runner.until)}`}. Приймач поки працює.`
-        : runner.state === "cooldown" ? `Пауза між тестами${until}, щоб Mac охолов. Приймач зупинено — ефір не слухається.`
-        : `Іде тест — приймач зупинено, ефір не слухається. Після черги приймач запуститься сам.`;
+        : runner.state === "cooldown" ? `Пауза між тестами${until}, щоб Mac охолов. Приймач слухає й записує фрагменти без розпізнавання.`
+        : runner.state === "starting_capture" ? "Приймач слухає; чекаємо, поки Whisper вивантажиться перед тестом."
+        : runner.state === "restoring_recognition" ? "Тести завершені; приймач завантажує Whisper і доробить накопичені фрагменти."
+        : `Іде тест — приймач слухає й готує аудіофрагменти без розпізнавання. Очікують: ${num(q.capture?.pending_records || 0)}.`;
     }
     const STATUS_ICON = { queued: "○", running: "◉", done: "✓", failed: "⚠", cancelled: "✕" };
     const rows = jobs.map((job, index) => {
@@ -487,8 +550,8 @@
     const controls = [];
     const button = (label, cls, title, go) => { const b = el("button", cls, label); b.type = "button"; b.title = title; b.addEventListener("click", () => action(go)); controls.push(b); return b; };
     if (!active && queued.length) {
-      button("▶ Почати зараз", "", "Зупинити приймач і виконати чергу", async () => {
-        if (!confirm(`Запустити ${queued.length} тест(и), ≈${duration(minutes)}? На цей час приймач зупиниться — ефір не слухатиметься.`)) return;
+      button("▶ Почати зараз", "", "Вивантажити Whisper, записувати фрагменти під час тестів, потім доробити їх", async () => {
+        if (!confirm(`Запустити ${queued.length} тест(и), ≈${duration(minutes)}? Приймач продовжить слухати й записувати фрагменти; Whisper буде вивантажено.`)) return;
         await request("/api/lab/queue/start", "POST", {}); await labQueue();
       });
       controls.push(windowsEditor(q, queued));
@@ -496,7 +559,7 @@
     if (active) {
       button("Зупинити після поточного", "ghost", "Дочекатися кінця тесту, що йде, і зупинити чергу", async () => { await request("/api/lab/queue/stop", "POST", { now: false }); await labQueue(); });
       button("Зупинити зараз", "ghost danger-text", "Перервати тест, що йде, і зупинити чергу", async () => {
-        if (!confirm("Перервати тест, що йде? Приймач запуститься знову.")) return;
+        if (!confirm("Перервати тест, що йде? Приймач відновить розпізнавання й доробить накопичене.")) return;
         await request("/api/lab/queue/stop", "POST", { now: true }); await labQueue();
       });
     }
@@ -509,7 +572,7 @@
       card.title = p.about;   // повний опис — у підказці; у рядку — назва й початок опису
       text.append(el("b", "", p.title), el("span", "muted small lab-preset-about", p.about));
       const add = el("button", "ghost small-button", "＋ У чергу"); add.type = "button";
-      add.title = `≈${duration(estimate(p.key))} на ${num(q.records)} розмічених записах; на час тесту приймач зупиниться`;
+      add.title = `≈${duration(estimate(p.key))} на ${num(q.records)} розмічених записах; під час тесту приймач записуватиме фрагменти без розпізнавання`;
       add.addEventListener("click", () => action(async () => { await request("/api/lab/queue", "POST", { preset: p.key }); await labQueue(); note(`«${p.title}» — у черзі.`); }));
       card.append(text, el("span", "lab-preset-time muted small", `≈${duration(estimate(p.key))}`), add);
       return card;

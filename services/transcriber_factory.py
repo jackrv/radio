@@ -190,4 +190,10 @@ def build_transcriber(
     worker.refreshers = (live_dictionaries.refresh, live_settings.refresh, update_prompt)
     worker.live_dictionaries = live_dictionaries
     worker.live_settings = live_settings
+    # Режим «лише запис» (на час тестів лабораторії): прапорець у SQLite, накопичене — в архіві.
+    if recorder is not None:
+        from services.receiver_control import capture_state, mark_capture_unloaded
+        worker.capture_only = lambda: capture_state(config.DB_PATH)["active"]
+        worker.on_unloaded = lambda unloaded: mark_capture_unloaded(config.DB_PATH, unloaded)
+        worker.deferred = recorder.store
     return worker

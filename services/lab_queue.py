@@ -5,13 +5,13 @@
 .local-experiments; виконавець — окремий процес (``python -m services.lab_queue
 run``), який переживає перезапуск служб:
 
-- перед важким тестом сам зупиняє приймач через лаунчер (Whisper large-v3 і
-  приймач разом не вміщаються в пам'ять Mac) і знову запускає його наприкінці —
-  навіть після помилки чи зупинки;
+- перед важким тестом переводить приймач у режим «лише запис»: він далі слухає
+  та зберігає фрагменти, а Whisper вивантажено; після тестів модель відновлюється;
 - між тестами тримає паузу, щоб Mac не перегрівався;
 - може чекати години старту («о 01:00»).
 
-Архів і бази тест лише читає (див. tools/asr_lab).
+Сам тест (``tools.asr_lab``) читає розмічені записи; приймач паралельно додає нові
+фрагменти до архіву, щоб розпізнати їх після відновлення Whisper.
 """
 import argparse
 import fcntl
@@ -28,7 +28,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 COOLDOWN_S = 300          # пауза між важкими тестами (перегрів Mac)
-RECEIVER_WAIT_S = 120     # скільки чекати, поки лаунчер зупинить приймач
+RECEIVER_WAIT_S = 120     # скільки чекати, поки приймач вивантажить / відновить Whisper
+CAPTURE_LEASE_S = 4 * 60 * 60
+CAPTURE_RENEW_BEFORE_S = 5 * 60
 MAX_JOBS = 30
 
 # Спільне для всіх рецептів: повний шлях, як в ефірі (Whisper + обробка тексту), лише розмічені записи.
@@ -58,6 +60,12 @@ PRESETS = {
     "no-codes": {"title": "Без коду доби в підказці",
                  "about": "Підказка лише з позивними, без останнього коду доби. Чи допомагає код доби правильно чути числа.",
                  "args": _with(BASE, daily_codes="off"), "minutes": 30},
+    "no-whisper-phrases": {"title": "Без фраз із підказки",
+                           "about": "Залишити словники й код доби, але прибрати власний список фраз для Whisper.",
+                           "args": _with(BASE, prompt="receiver-no-phrases"), "minutes": 30},
+    "no-dictionary-prompt": {"title": "Без словників у підказці",
+                             "about": "Залишити власні фрази й код доби, але прибрати позивні та інші назви зі словників.",
+                             "args": _with(BASE, prompt="receiver-no-dictionary"), "minutes": 30},
     "no-retry": {"title": "Без другого шансу",
                  "about": "Не повторювати розпізнавання без підказки, коли Whisper зациклився. Скільки фраз рятує другий шанс.",
                  "args": _with(BASE, retry="off"), "minutes": 25},
@@ -190,7 +198,7 @@ WINDOW_MARGIN = 1.15          # запас до кінця вікна
 
 
 def set_windows(root, windows):
-    """Вікна часу [[початок, кінець], …] (unix-час), коли можна зупиняти приймач; поза ними він працює."""
+    """Вікна часу [[початок, кінець], …] (unix-час), коли можна вмикати режим «лише запис»."""
     clean = sorted([float(a), float(b)] for a, b in (windows or []) if float(b) > float(a))
     with _locked(root) as state:
         state["runner"]["windows"] = clean or None
@@ -271,7 +279,7 @@ def start(root=None, python=None, launcher_root=None):
 
 # ---------- Виконавець ----------
 class Launcher:
-    """Зупинка й запуск приймача через лаунчер (той самий канал, що й кнопки панелі)."""
+    """Стан приймача через лаунчер (той самий канал, що й кнопки панелі)."""
     def __init__(self, root):
         self.root = root
 
@@ -282,6 +290,34 @@ class Launcher:
     def send(self, command):
         from services.launcher_lifecycle import send_command
         return send_command(self.root, command)
+
+
+class CaptureOnly:
+    """Керування режимом запису лише з фрагментами через ту саму базу, що й приймач."""
+    def __init__(self, db_path):
+        self.db_path = db_path
+
+    def start(self, until):
+        from services.receiver_control import set_capture_only
+        set_capture_only(self.db_path, until)
+
+    def renew(self, until):
+        from services.receiver_control import set_capture_only
+        set_capture_only(self.db_path, until, reset_unloaded=False)
+
+    def ready(self):
+        from services.receiver_control import capture_state
+        state = capture_state(self.db_path)
+        return state["active"] and state["unloaded"] is not None
+
+    def stop(self):
+        from services.receiver_control import set_capture_only
+        set_capture_only(self.db_path, None)
+
+    def restored(self):
+        from services.receiver_control import capture_state
+        state = capture_state(self.db_path)
+        return not state["active"] and state["unloaded"] is None
 
 
 def _set(root, **runner):
@@ -301,13 +337,17 @@ def _run_dir_for(root, name, since):
     return max(candidates, key=lambda p: p.name).name if candidates else None
 
 
-def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S, estimate=None):
+def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S,
+        estimate=None, capture=None):
     """Виконує тести по черзі, доки є що виконувати або не попросили зупинитись.
 
     root — тека експериментів (черга); лабораторія запускається з кореня проєкту.
     """
     root = queue_dir(root)
     launcher = launcher or Launcher(ROOT)
+    if capture is None:
+        import config
+        capture = CaptureOnly(config.DB_PATH)
     if estimate is None:
         def estimate(preset):
             try:
@@ -320,19 +360,62 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             return estimate_seconds(root, preset, records)
     spawn = spawn or (lambda args, log: subprocess.Popen(args, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT,
                                                          stdin=subprocess.DEVNULL, start_new_session=True))
-    _set(root, pid=os.getpid(), started=now(), state="starting")   # «stop» скидає лише start()
-    stopped_by_us, last_finish = False, None
+    _set(root, pid=os.getpid(), started=now(), state="starting", capture_error=None)
+    capture_by_us, capture_until, last_finish = False, 0.0, None
+
+    def renew_capture():
+        nonlocal capture_until
+        if capture_by_us and now() + CAPTURE_RENEW_BEFORE_S >= capture_until:
+            capture_until = now() + CAPTURE_LEASE_S
+            capture.renew(capture_until)
+
+    def stop_capture():
+        nonlocal capture_by_us
+        if not capture_by_us:
+            return True
+        _set(root, state="restoring_recognition")
+        capture.stop()
+        capture_by_us = False
+        deadline = now() + RECEIVER_WAIT_S
+        while not capture.restored() and now() < deadline:
+            sleep(min(1, deadline - now()))
+        restored = capture.restored()
+        if not restored:
+            _set(root, capture_error="Приймач не підтвердив відновлення Whisper")
+        return restored
+
+    def start_capture(job):
+        nonlocal capture_by_us, capture_until
+        if launcher.receiver_stopped():
+            _finish_job(root, job["id"], status="failed", error="Приймач вимкнений — режим «лише запис» недоступний")
+            return False
+        _set(root, state="starting_capture")
+        capture_until = now() + CAPTURE_LEASE_S
+        capture.start(capture_until)
+        capture_by_us = True
+        deadline = now() + RECEIVER_WAIT_S
+        while not capture.ready() and now() < deadline:
+            if read(root)["runner"].get("stop"):
+                return False
+            sleep(min(1, deadline - now()))
+        if not capture.ready():
+            _finish_job(root, job["id"], status="failed", error="Приймач не вивантажив Whisper — тест не запущено")
+            return False
+        _set(root, state="capturing_audio")
+        return True
+
     try:
         while True:
             state = read(root)
             runner = state["runner"]
             if runner.get("stop"):
                 break
+            renew_capture()
             queued = [j for j in state["jobs"] if j["status"] == "queued"]
             if not queued:
                 break
             job = queued[0]
-            # Вікна часу: приймач зупиняємо лише всередині вікна, і лише для тесту, що встигне до його кінця.
+            # Вікна часу: режим «лише запис» вмикаємо тільки для тесту, що встигає до кінця вікна.
             windows = runner.get("windows")
             window_end = None
             if windows:
@@ -340,9 +423,8 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 fits = [j for j in queued if inside and now() + estimate(j["preset"]) * WINDOW_MARGIN <= inside[1]] if inside else []
                 if not fits:
                     following = [w for w in windows if w[0] > now()]
-                    if stopped_by_us:   # поза вікном (чи нічого не встигне) — приймач працює
-                        launcher.send("receiver-start")
-                        stopped_by_us = False
+                    if capture_by_us and not stop_capture():   # поза вікном — звичайне розпізнавання
+                        break
                     if not following:
                         break
                     _set(root, state="waiting", until=following[0][0])
@@ -358,16 +440,10 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 _set(root, state="cooldown", until=last_finish + cooldown)
                 sleep(min(30, last_finish + cooldown - now()))
                 continue
-            if not stopped_by_us and not launcher.receiver_stopped():
-                _set(root, state="stopping_receiver")
-                launcher.send("receiver-stop")
-                stopped_by_us = True
-                deadline = now() + RECEIVER_WAIT_S
-                while not launcher.receiver_stopped() and now() < deadline:
-                    sleep(2)
-                if not launcher.receiver_stopped():
-                    _finish_job(root, job["id"], status="failed", error="Приймач не зупинився — тест не запущено")
+            if not capture_by_us and not start_capture(job):
+                if capture_by_us:     # скасували під час очікування; режим вимикаємо в finally
                     break
+                continue
             preset = PRESETS[job["preset"]]
             name = f"q-{job['preset']}"
             logs = queue_dir(root) / "queue-logs"
@@ -379,6 +455,7 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 _set(root, state="running", current=job["id"], until=None)
                 while process.poll() is None:
                     sleep(5)
+                    renew_capture()
                     if window_end and now() >= window_end - 20:   # вікно закінчується — приймач важливіший
                         _finish_job(root, job["id"], cancel=True, error="перервано: закінчилось вікно часу")
                         _kill(process.pid)
@@ -392,13 +469,14 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                         run_dir=_run_dir_for(root, name, began))
             last_finish = now()
     finally:
-        if stopped_by_us:
+        if capture_by_us:
             try:
-                launcher.send("receiver-start")
-            except Exception:   # приймач не лишаємо зупиненим через збій каналу — повтор нижче
-                sleep(5)
-                launcher.send("receiver-start")
-        _set(root, pid=None, state="idle", current=None, until=None, stop=False, start_at=None, windows=None, finished=now())
+                if not stop_capture():
+                    _set(root, capture_error="Приймач не підтвердив відновлення Whisper")
+            except Exception as exc:
+                _set(root, capture_error=f"Не вдалося вимкнути режим «лише запис»: {exc}")
+        _set(root, pid=None, state="idle", current=None, until=None, stop=False, start_at=None, windows=None,
+             finished=now())
 
 
 def main(argv=None):

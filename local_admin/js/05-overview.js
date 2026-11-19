@@ -90,10 +90,54 @@
     if (view === "texts" && list) {
       textListType = list;
       try { localStorage.setItem("radio345:text-list", list); } catch (_) { /* сесія */ }
-      if (loaded.has("texts")) { show("texts"); action(texts); } else show("texts");
+      loaded.delete("texts");
+      show("texts");
+      return;
+    }
+    if (view === "dictionaries" && list) {
+      dictionaryKind = list;
+      try { localStorage.setItem("radio345:dictionary", list); } catch (_) { /* сесія */ }
+      loaded.delete("dictionaries");
+      show("dictionaries");
       return;
     }
     show(view);
+  }
+  let suggestionReviewPending = false;
+  async function reviewSuggestion(g) {
+    if (suggestionReviewPending) return;
+    suggestionReviewPending = true;
+    try {
+      if (g.kind === "pattern" || g.target === "texts:phrase_patterns") {
+        const lines = (g.lines || []).filter(line => line.list === "phrase_patterns").map(line => line.line);
+        if (!lines.length) throw new Error("У пропозиції немає рядка шаблону. Оновіть «Потребує уваги» й спробуйте ще раз.");
+        pendingPatternEnable = lines;
+        openTarget("texts:phrase_patterns");
+        return;
+      }
+      if (g.lines?.length) {
+        const list = g.lines[0].list;
+        if (!list || g.lines.some(line => line.list !== list)) {
+          throw new Error("У пропозиції є рядки для різних списків. Оновіть «Потребує уваги» й спробуйте ще раз.");
+        }
+        if (g.target === "dictionaries") {
+          if (list !== "callsigns" || g.lines.some(line => !line.callsign || !line.number)) {
+            throw new Error("У пропозиції немає рядка словника позивних. Оновіть «Потребує уваги» й спробуйте ще раз.");
+          }
+          pendingDictionaryInsert = { list, lines: g.lines };
+          openTarget(`dictionaries:${list}`);
+          return;
+        }
+        pendingListInsert = { list, lines: g.lines };
+        openTarget(`texts:${list}`);
+        return;
+      }
+      openTarget(g.target);
+    } catch (error) {
+      note(error.message || String(error));
+    } finally {
+      suggestionReviewPending = false;
+    }
   }
   let attentionAt = 0;
   $("suggestions-refresh").addEventListener("click", () => action(async () => {
@@ -161,16 +205,8 @@
         note(`Приховано: ${r.dismissed}. Повернути — «Показати приховані» внизу списку.`);
         await attention(true);
       })]);
-      // Алиаси й шум: «＋ Вставити в список» відкриває список і вписує рядки в поле — перевірка й «Зберегти» за оператором.
-      if (g.lines?.length) {
-        const list = g.lines[0].list, lines = g.lines.filter(l => l.list === list);
-        extra.unshift([`＋ Вставити в список${lines.length > 1 ? ` (${lines.length})` : ""}`, () => {
-          pendingListInsert = { list, lines };
-          openTarget(`texts:${list}`);
-        }]);
-      }
       item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
-        "Переглянути", () => openTarget(g.target), extra, g.hint);
+        "Переглянути", () => { void reviewSuggestion(g); }, extra, g.hint);
     }
     // Нерозмічений ефір за добу — плиткою «Ефір без розмітки» на робочому столі, тут не дублюємо.
     if (a.suggestions_hidden) {

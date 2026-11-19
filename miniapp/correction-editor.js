@@ -219,8 +219,8 @@
   edited.addEventListener("input", () => checkText());
 
   // ---------- Автовиправлення при виході з поля (як в «Аудіоархіві» панелі) ----------
-  // Лише якщо текст змінили з моменту входу в поле: спершу написання позивних і зворотів,
-  // потім оформлення (коми, цифри групами). «Зберегти» чекає на це, тож зберігається вже виправлене.
+  // Лише якщо текст змінили з моменту входу: спершу написання позивних і зворотів, потім оформлення.
+  // Перехід до «Зберегти» автоправку не запускає.
   let valueOnFocus = null;
   let autoFixPending = null;
   async function autoFix() {
@@ -229,7 +229,8 @@
     const check = async value => window.Radio345.request("/api/corrections/check", "PUT", { text: value, fix_id: fixId });
     let result = await check(text);
     if (edited.value !== text) return false;   // тим часом знову друкували
-    const spelling = (result?.issues || []).find(i => i.kind === "spelling" && i.fixed_text && i.fixed_text !== text);
+    const spelling = (result?.issues || []).find(i =>
+      i.kind === "spelling" && !i.manual_only && i.fixed_text && i.fixed_text !== text);
     if (spelling) {
       text = spelling.fixed_text;
       result = await check(text);
@@ -241,11 +242,19 @@
     return true;
   }
   edited.addEventListener("focus", () => { valueOnFocus = edited.value; });
-  edited.addEventListener("blur", () => {
+  let savePointerDown = false;
+  edited.addEventListener("blur", event => {
+    if (event.relatedTarget === save || savePointerDown) {
+      valueOnFocus = null;
+      savePointerDown = false;
+      return;
+    }
     if (valueOnFocus === null || edited.value === valueOnFocus) return;
     valueOnFocus = null;
     autoFixPending = autoFix().catch(() => false).finally(() => { autoFixPending = null; });
   });
+  save.addEventListener("pointerdown", () => { savePointerDown = true; });
+  save.addEventListener("pointerup", () => { savePointerDown = false; });
   window.addEventListener("resize", () => { if (draft) fitText(); });
   document.addEventListener("radio345:view", event => {
     if (event.detail === "corrections" && draft) fitText();

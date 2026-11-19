@@ -195,9 +195,42 @@ test('saving right after leaving the field sends the spelling-fixed text',async(
   await ui.load();
   const {input}=editor(ui);
   input.listeners.focus(); input.value='вішня';   // зайшли в поле й набрали
-  input.listeners.blur();   // фокус пішов на «Зберегти»
+  input.listeners.blur({relatedTarget:{}});   // фокус пішов з поля не на «Зберегти»
   await ui.save();
   assert.equal(sent.reference,'вишня');
+});
+
+test('daily-code spelling hints are not applied automatically on blur',async()=>{
+  let sent;
+  const ui=harness({items:[{...item, reference:null, label:null, revision:0}],total:1},{},{
+    review: body=>{sent=body; return {...body, revision:1};},
+    textCheck: ()=>({issues:[{
+      kind:'spelling', manual_only:true, message:'Можливо, код доби', fixed_text:'Береза 68, 48 62'
+    }],formatted:null})
+  });
+  await ui.load();
+  const {input}=editor(ui);
+  input.listeners.focus(); input.value='Береза 68, 48, 42';
+  input.listeners.blur({relatedTarget:{}});
+  await ui.save();
+  assert.equal(sent.reference,'Береза 68, 48, 42');
+});
+
+test('leaving the field for Save does not start spelling auto-correction',async()=>{
+  let sent;
+  const ui=harness({items:[{...item, reference:null, label:null, revision:0}],total:1},{},{
+    review: body=>{sent=body; return {...body, revision:1};},
+    textCheck: ()=>({issues:[{
+      kind:'spelling', message:'Можливо, «вишня»', fixed_text:'вишня'
+    }],formatted:null})
+  });
+  await ui.load();
+  const {input,nodes}=editor(ui);
+  const save=nodes.find(node=>node.className==='save-primary');
+  input.listeners.focus(); input.value='вішня';
+  input.listeners.blur({relatedTarget:save});
+  await ui.save();
+  assert.equal(sent.reference,'вішня');
 });
 
 test('identical hints are grouped without hiding distinct remarks',async()=>{
@@ -329,14 +362,45 @@ test('roles the program fills into a fresh card are its starting state, not an u
 test('"insert into list" adds an alias to its callsign line or a new line, without duplicates and without saving', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '07-recognition.js'), 'utf8');
   const start = source.indexOf('  function insertListLines(');
-  const code = source.slice(start, source.indexOf('\n  async function texts()', start));
+  const code = source.slice(start, source.indexOf('\n  function insertDictionaryLines(', start));
   const insertListLines = vm.runInNewContext(`(${code.trim().replace(/^function insertListLines/, 'function')})`);
   const aliases = {list:'callsign_aliases', lines:[{callsign:'клен', line:'клей'}, {callsign:'дуб', line:'дум'}, {callsign:'клен', line:'клін'}]};
   const result = insertListLines('клен: клін\n# вишня: вишна', aliases);
   assert.equal(result.text, 'клен: клін, клей\n# вишня: вишна\nдуб: дум');
   assert.equal(result.added, 2, 'клін уже є');
+  assert.deepEqual(Array.from(result.lines), ['клен: клей', 'дуб: дум']);
   const noise = insertListLines('пау пау', {list:'short_garbage', lines:[{line:'Пау пау'}, {line:'кхм'}]});
   assert.equal(noise.text, 'пау пау\nкхм'); assert.equal(noise.added, 1);
+  assert.deepEqual(Array.from(noise.lines), ['кхм']);
+});
+
+test('dictionary suggestion drafts merge into an existing callsign row and skip allowed codes', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '07-recognition.js'), 'utf8');
+  const start = source.indexOf('  function insertDictionaryLines(');
+  const code = source.slice(start, source.indexOf('\n  function phrasePatternEditor(', start));
+  const insertDictionaryLines = vm.runInNewContext(`(${code.trim().replace(/^function insertDictionaryLines/, 'function')})`);
+  const result = insertDictionaryLines('# клен: 15\nДуб: 6 8', {
+    list: 'callsigns',
+    lines: [
+      { callsign: 'клен', number: '15' },
+      { callsign: 'Дуб', number: '7' },
+      { callsign: 'вишня', number: '9' },
+    ],
+  });
+  assert.equal(result.text, 'клен: 15\nДуб: 6 8 7\nвишня: 9');
+  assert.equal(result.added, 3, 'увімкнення вимкненого рядка теж залишається чернеткою');
+  assert.deepEqual(Array.from(result.lines), ['клен: 15', 'Дуб: 7', 'вишня: 9']);
+  const duplicate = insertDictionaryLines(result.text, {
+    list: 'callsigns', lines: [{ callsign: 'Дуб', number: '7' }, { callsign: 'Дуб', number: '8' }],
+  });
+  assert.equal(duplicate.text, result.text);
+  assert.equal(duplicate.added, 0);
+  assert.deepEqual(Array.from(duplicate.lines), []);
+  const range = insertDictionaryLines('Дуб: 6-8', {
+    list: 'callsigns', lines: [{ callsign: 'Дуб', number: '7' }],
+  });
+  assert.equal(range.text, 'Дуб: 6-8');
+  assert.equal(range.added, 0);
 });
 
 test('leaving the field without typing (tab switch, re-render) changes nothing', async () => {

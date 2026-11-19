@@ -35,6 +35,13 @@ def test_hint_for_one_wrong_digit_only():
     assert hints("Береза 68, 48, 42", codes=[]) == [], "без кодів доби — без підказок"
 
 
+def test_daily_code_hint_is_manual_only():
+    issues = check_text("Береза 68, 48, 42", CALLSIGNS, COMMANDS, None, codes=CODES)["issues"]
+    hint = next(issue for issue in issues if "код доби" in issue["message"])
+    assert hint["manual_only"] is True
+    assert hint["fixed_text"] == "Береза 68, 48 62"
+
+
 def test_store_by_day_and_event_day(tmp_path):
     from services.event_store import init_db
     db_path = tmp_path / "events.db"

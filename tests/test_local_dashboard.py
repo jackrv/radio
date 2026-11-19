@@ -712,6 +712,7 @@ def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path):
                        json={'entries': [{'raw_line': '{П}, прийнято, прийом', 'enabled': True}]}).json()
         assert r['records'] == 1 and r['better'] == 1 and r['worse'] == 0
         assert r['examples'][0]['after'] == 'ліна 63, прийнято, прийом'
+        assert r['examples'][0]['matched_patterns'] == ['{П}, прийнято, прийом']
         assert client.get('/api/text-lists').json()['revision'] == revision, "перевірка нічого не зберегла"
         bad = client.put('/api/text-lists/phrase_patterns/evaluate', headers=h, json={'entries': [{'raw_line': '{Х}', 'enabled': True}]})
         assert bad.status_code == 422
@@ -824,6 +825,14 @@ def test_quality_errors_explain_what_needs_edits(local):
     assert data["with_edits"] == 1 and data["categories"]["callsigns"]["ids"] == [record]
 
 
+def test_quality_text_impact_endpoint_returns_local_countercheck(local):
+    client, _, _ = local
+    response = client.get("/api/quality/text-impact")
+    assert response.status_code == 200
+    assert response.json()["records"] == 0
+    assert response.json()["checks"] == []
+
+
 def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
     _, path = setup
     from services import lab_queue
@@ -836,6 +845,9 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         h = {"Origin": ORIGIN}
         state = client.get("/api/lab/queue").json()
         assert {p["key"] for p in state["presets"]} >= {"base", "no-prompt"} and "args" not in state["presets"][0]
+        assert state["capture"] == {
+            "active": False, "until": None, "unloaded": None, "pending_records": 0,
+        }
         assert client.post("/api/lab/queue/start", json={}, headers=h).status_code == 422, "порожня черга"
         assert client.post("/api/lab/queue", json={"preset": "nope"}, headers=h).status_code == 422
         a = client.post("/api/lab/queue", json={"preset": "base"}, headers=h).json()["jobs"][0]["id"]
@@ -846,6 +858,25 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         assert started == [runs] and lab_queue.read(runs)["runner"]["start_at"] == 4000000000
         assert [j["id"] for j in client.delete(f"/api/lab/queue/{a}", headers=h).json()["jobs"]] == [b]
         assert client.post("/api/lab/queue/stop", json={"now": False}, headers=h).json()["runner"]["stop"] is True
+
+
+def test_lab_queue_requires_audio_recording_for_capture_mode(setup, tmp_path, monkeypatch):
+    _, path = setup
+    import config
+    from services import lab_queue
+    started = []
+    monkeypatch.setattr(config, "RECORD_AUDIO", False)
+    monkeypatch.setattr(lab_queue, "start", lambda *args, **kwargs: started.append(True))
+    runs = tmp_path / "runs"
+    app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings", experiments_dir=runs)
+    with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 12345)) as client:
+        assert client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN}).status_code == 204
+        h = {"Origin": ORIGIN}
+        client.post("/api/lab/queue", json={"preset": "base"}, headers=h)
+        response = client.post("/api/lab/queue/start", json={}, headers=h)
+        assert response.status_code == 409
+        assert "архів аудіо" in response.json()["detail"]
+        assert started == []
 
 
 def test_reference_checks_catch_doubled_words_self_role_and_digits(local):

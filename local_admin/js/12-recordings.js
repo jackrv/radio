@@ -764,19 +764,24 @@
         if (revision !== lintRevision || input.value !== text) return false;
         renderLint(result);
         const spelling = (result?.issues || []).find(issue =>
-          issue.kind === "spelling" && issue.fixed_text && issue.fixed_text !== text);
+          issue.kind === "spelling" && !issue.manual_only && issue.fixed_text && issue.fixed_text !== text);
         if (!spelling) return false;
         input.value = spelling.fixed_text; grow(); updateDirty(); checkText(0);
         return true;
       }
-      // Виправлення написання при виході з поля — асинхронне: «Зберегти» й Esc спершу чекають на нього,
-      // інакше зберігся б ще не виправлений текст (а поле виправилось би вже після збереження).
+      // Виправлення написання при виході з поля асинхронне; перехід до «Зберегти» його не запускає.
       let spellingPending = null;
       // Лише якщо текст у полі змінили з моменту входу в нього: фокус губиться й при переході на іншу вкладку чи перемальовуванні
       // списку — тоді нічого не виправляємо сами (інакше картка «незбережена» без вашої правки).
       let valueOnFocus = null;
       input.addEventListener("focus", () => { valueOnFocus = input.value; });
-      input.addEventListener("blur", () => {
+      let savePointerDown = false;
+      input.addEventListener("blur", (event = {}) => {
+        if (event.relatedTarget === save || savePointerDown) {
+          valueOnFocus = null;
+          savePointerDown = false;
+          return;
+        }
         if (valueOnFocus === null || input.value === valueOnFocus) return;   // текст не міняли — нічого не робимо
         valueOnFocus = null;
         spellingPending = applySpellingOnLeave()
@@ -800,6 +805,8 @@
       });
       multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
+      save.addEventListener("pointerdown", () => { savePointerDown = true; });
+      save.addEventListener("pointerup", () => { savePointerDown = false; });
       // Наслідки видно ще до натискання: еталон запису з подією оновить і її, і повідомлення в Telegram.
       { const ev = /^db:(\d+)$/.exec(item.data?.fix_id || ""); if (ev && save.dataset) save.dataset.target = `→ подія №${ev[1]} і Telegram`; }
       const textField = el("label", "recording-text");

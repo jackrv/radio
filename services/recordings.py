@@ -54,7 +54,8 @@ def plan_prune(rows, *, cutoff, max_bytes):
 VIEWS = {
     "radio": ("pending", RADIO_GROUP),
     "speech": ("pending", f"({SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
-    "filtered": ("pending", f"(NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
+    "deferred": ("pending", "status='deferred'"),
+    "filtered": ("pending", f"(status<>'deferred' AND NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "reviewed": ("reviewed", "1"),                                   # за часом розмітки, останні першими
     "miniapp": ("reviewed", "reference_source='miniapp'"),           # еталон — правка з Mini App
     "telegram": ("all", "json_extract(data,'$.fix_id') IS NOT NULL"),   # усе, що надіслано в Telegram
@@ -203,16 +204,51 @@ class RecordingStore:
         self.prune()
         return record_id
 
+    # ---------- Режим «лише запис»: накопичене чекає розпізнавання ----------
+    def next_deferred(self):
+        """Найстаріший запис «очікує розпізнавання»: (id, pcm int16) або None."""
+        while True:
+            with self.connect() as db:
+                row = db.execute("SELECT id FROM recordings WHERE status='deferred' ORDER BY created LIMIT 1").fetchone()
+            if row is None:
+                return None
+            record_id = row[0]
+            try:
+                with wave.open(str(self.root / (record_id + ".wav")), "rb") as wav:
+                    pcm = wav.readframes(wav.getnframes())
+                if pcm:
+                    return record_id, pcm
+            except (OSError, wave.Error, EOFError):
+                pass
+            self.finish_deferred(record_id, {"status": "error"})
+
+    def finish_deferred(self, record_id, trace):
+        """Текст і стан розпізнавання — у той самий запис (час запису й звук не змінюються)."""
+        with self.connect() as db:
+            row = db.execute("SELECT data FROM recordings WHERE id=? AND status='deferred'", (record_id,)).fetchone()
+            if row is None:
+                return
+            data = json.loads(row[0])
+            data.update(json_values(dict(trace)))
+            data["deferred"] = True   # розпізнано пізніше, у Telegram не надсилалось
+            data.setdefault("status", "error")
+            if data["status"] == "deferred":
+                data["status"] = "error"
+            db.execute("UPDATE recordings SET status=?, data=? WHERE id=?",
+                       (data["status"], json.dumps(data, ensure_ascii=False, allow_nan=False), record_id))
+        self.prune()
+
     def prune(self):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            rows = db.execute(f"SELECT id, created, bytes, reference IS NOT NULL, {PRUNE_TIER_SQL} FROM recordings").fetchall()
+            # Накопичене в режимі «лише запис» захищене, як розмічене, доки його не розпізнано.
+            rows = db.execute(f"SELECT id, created, bytes, reference IS NOT NULL OR status='deferred', {PRUNE_TIER_SQL} FROM recordings").fetchall()
             plan = plan_prune([tuple(row) for row in rows], cutoff=time.time() - self.retention_days * 86400,
                               max_bytes=self.max_bytes)
             for record_id, _, _ in plan:
                 (self.root / (record_id + ".wav")).unlink(missing_ok=True)
                 # Reviewed material is the evaluation corpus and must survive retention.
-                db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL", (record_id,))
+                db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL AND status<>'deferred'", (record_id,))
 
     @staticmethod
     def decode(row):

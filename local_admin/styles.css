@@ -249,7 +249,23 @@ table.compact td, table.compact th { padding: 4px 8px; font-size: 12px; }
 .list-layout { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .list-layout .list-editor { width: 100%; min-height: 0; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
 .list-right h2 { margin-top: 0; }
+.list-layout:has(.phrase-pattern-editor) { grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); }
+.pattern-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.pattern-toolbar .muted { grid-column: 1 / -1; }
+.pattern-search { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); }
+.pattern-section-label { margin: 6px 0 2px; font-size: 12px; font-weight: 700; }
+.phrase-pattern-rows { display: grid; max-height: 58vh; overflow: auto; padding: 0 3px 0 0; }
+.phrase-pattern-disabled { margin-top: 6px; border-top: 1px solid var(--border); }
+.phrase-pattern-disabled > summary { padding: 7px 0 4px; font-size: 12px; }
+.phrase-pattern-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) 30px; gap: 6px; align-items: center; padding: 3px 2px; border-bottom: 1px solid var(--border); }
+.phrase-pattern-row .switch { gap: 4px; padding: 4px 6px; font-size: 11px; }
+.phrase-pattern-row button { width: 30px; min-height: 30px; padding: 3px; font-size: 18px; }
+.pattern-draft { padding: 3px 6px; border-radius: 6px; background: rgba(240, 190, 90, .14); color: var(--warn); font-size: 10px; font-weight: 700; white-space: nowrap; }
+.pattern-draft.temporary { background: rgba(240, 190, 90, .24); }
+.pattern-draft[hidden] { display: none; }
+.pattern-line { width: 100%; min-width: 0; height: 32px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: #0e1722; color: var(--text); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (max-width: 900px) { .list-layout { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .list-layout:has(.phrase-pattern-editor) { grid-template-columns: 1fr; } }
 /* Налаштування: підпис ліворуч, вузьке поле праворуч, підказка під підписом. */
 .settings-grid { align-items: start; }
 #fields, #runtime-fields { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 12px; }

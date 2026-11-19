@@ -338,8 +338,10 @@ def _code_issues(text, codes, names):
         near = [c for c in digits if sum(x != y for x, y in zip(c, pair)) == 1]
         if len(near) == 1:
             code = f"{near[0][:2]} {near[0][2:]}"
-            issues.append(_issue("spelling", f"Можливо, «{code}» — код доби, а не «{text[start:end]}»?", text,
-                                 text[:start] + code + text[end:]))
+            issue = _issue("spelling", f"Можливо, «{code}» — код доби, а не «{text[start:end]}»?", text,
+                           text[:start] + code + text[end:])
+            issue["manual_only"] = True
+            issues.append(issue)
     return issues
 
 

@@ -59,6 +59,12 @@ def register(app, ctx):
             names = callsign_names(db)
         return analyse(records, names)
 
+    @app.get("/api/quality/text-impact")
+    def quality_text_impact(admin=Depends(actor)):
+        """Контр-перевірка активних текстових правил на тих самих розмічених текстах."""
+        from services.text_replay import countercheck
+        return countercheck(recordings.root, db_path)
+
     @app.get("/api/quality")
     def quality(days: int = 30, admin=Depends(actor)):
         """Якість розпізнавання по днях за еталонами оператора."""
@@ -119,7 +125,7 @@ def register(app, ctx):
                 "lab_running": lab_running()}
 
     def lab_running():
-        """Іде черга тестів лабораторії (тоді приймач, найімовірніше, зупинено)."""
+        """Іде черга тестів лабораторії (приймач слухає, але Whisper вивантажено)."""
         from services import lab_queue
         try:
             return lab_queue.runner_active(lab_queue.read(experiments_dir))

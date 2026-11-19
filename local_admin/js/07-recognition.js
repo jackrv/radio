@@ -2,9 +2,9 @@
   const TEXT_LISTS = {
     blacklist: ["Фрази-галюцинації Whisper", "Відкидається лише фраза, що повністю збігається з рядком (регістр і пунктуація не важливі). Наприклад: «дякую за перегляд»."],
     short_garbage: ["Короткий шум", "Короткі хибні фрагменти. Відкидаються, лише якщо у фразі немає позивних, команд і слів спостереження."],
-    aliases: ["Алиаси тексту", "Формат «правильне: варіант, варіант». Варіант замінюється на правильне написання перед пошуком позивних і команд, наприклад «злата: зла та, злото»."],
-    callsign_aliases: ["Алиаси позивних", "Формат «позивний: почутий варіант». Для позивного з номерами діє лише перед дозволеним номером; для позивного без номера — на саме слово. Позивний має бути у словнику."],
-    phrase_patterns: ["Шаблони фраз", "Шаблон цілої передачі: «{П}, {П}, я {П}, перевірка звʼязку, прийом». {П} — позивний (слово й необов’язковий номер), {Ч} — число чи код, {К} — команда зі словника. Фраза (між . ! ? ; /), що повністю відповідає шаблону, пишеться як у шаблоні: схожі слова виправляються, слово на місці позивного стає позивним зі словника, лише якщо почутий номер є в його словнику (без номера — лише майже точний збіг). Нічого не додається й не прибирається, числа не змінюються, назви зі словників і правильно почуті «прийом / прийнято / прийняв» не переписуються. Рядки з # вимкнені: увімкніть, натисніть «Перевірити на моїх еталонах», і зберігайте, якщо гірше — 0."],
+    aliases: ["Аліаси тексту", "Формат «правильне: варіант, варіант». Варіант замінюється на правильне написання перед пошуком позивних і команд, наприклад «злата: зла та, злото»."],
+    callsign_aliases: ["Аліаси позивних", "Формат «позивний: почутий варіант». Для позивного з номерами діє лише перед дозволеним номером; для позивного без номера — на саме слово. Позивний має бути у словнику."],
+    phrase_patterns: ["Шаблони фраз", "Шаблон цілої передачі: «{П}, {П}, я {П}, перевірка звʼязку, прийом». {П} — позивний (слово й необов’язковий номер), {Ч} — число чи код, {К} — команда зі словника. Фраза (між . ! ? ; /), що повністю відповідає шаблону, пишеться як у шаблоні: схожі слова виправляються, слово на місці позивного стає позивним зі словника, лише якщо почутий номер є в його словнику (без номера — лише майже точний збіг). Нічого не додається й не прибирається, числа не змінюються, назви зі словників і правильно почуті «прийом / прийнято / прийняв» не переписуються. Керуйте шаблонами перемикачами, перевіряйте зміни на еталонах і зберігайте, якщо гірше — 0."],
     phrase_templates: ["Шаблони зворотів", "М’які шаблони: якщо почуте схоже на оборот із цього списку, воно пишеться як в обороті («посилку отримаф» → «посилку отримав»). Кожне слово має бути схожим, однослівні — лише в кінці фрази. Числа шаблони не змінюють, назви зі словників і форми звертання («Клену») захищені. Окрім цього списку діють вбудовані правила: позивний перед номером пишеться як у словнику, якщо номер є в словнику («Бериза 56» → «Береза 56»); «на 109» на місці позивного, що починається на «на…» (напр. «Набат»), → «Набат 109», лише з номером зі словника; зациклення «вишня, вишня, вишня, вишня» скорочується до двох, крім «прийом». Перевірка змін на ваших еталонах: .venv/bin/python -m tools.text_replay"],
     whisper_prompt: ["Підказка Whisper", "Фрази на початку підказки розпізнавання, по одній у рядку, так, як їх вимовляють: «дощ 42 42». Допомагають Whisper правильно записати важливі команди, але зрідка потрапляють у розпізнаний текст. З’являться хибні спрацьовування — вимкніть рядок, поставивши «#» на початку."],
   };
@@ -95,7 +95,7 @@
   }));
 
   // Перевірка рядків під час набору: ті самі правила, що й «Зберегти», без запису.
-  function liveCheck(area, box, path, initial = []) {
+  function liveCheck(area, box, path, initial = [], getEntries = () => fromLines(area.value), events = ["input"]) {
     const render = (errors, warnings, checked = false) => {
       box.replaceChildren();
       for (const e of errors) box.append(el("li", "error", e));
@@ -105,16 +105,18 @@
     };
     render([], initial);
     let timer = null, seq = 0;
-    area.addEventListener("input", () => {
+    const schedule = () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         const mine = ++seq;
         try {
-          const r = await request(path, "PUT", { entries: fromLines(area.value) });
+          const r = await request(path, "PUT", { entries: getEntries() });
           if (mine === seq) render(r.errors || [], r.warnings || [], true);
         } catch (_) { /* підказка необов’язкова */ }
       }, 600);
-    });
+    };
+    for (const event of events) area.addEventListener(event, schedule);
+    return schedule;
   }
 
   // Один словник за раз: перемикач угорі, ліворуч поле рядків, праворуч пояснення й підказки.
@@ -142,12 +144,35 @@
     const left = el("div", "list-left"), right = el("div", "list-right");
     const area = el("textarea", "list-editor");
     area.value = toLines(dictionary.entries);
+    let inserted = 0, beforeInsert = null, insertedLines = [];
+    if (pendingDictionaryInsert?.list === kind) {
+      beforeInsert = area.value;
+      const result = insertDictionaryLines(area.value, pendingDictionaryInsert);
+      area.value = result.text;
+      inserted = result.added;
+      insertedLines = result.lines;
+      pendingDictionaryInsert = null;
+    }
     area.dataset.savedValue = area.value;
     area.spellcheck = false;
     area.setAttribute("aria-label", title);
     const fit = () => { area.rows = Math.min(32, Math.max(8, area.value.split("\n").length + 2)); };
     fit(); area.addEventListener("input", fit);
     const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
+    let undoInsert = null;
+    if (inserted) {
+      status.textContent = `Чернетка: ${insertedLines.join("; ")} — перевірте й натисніть «Зберегти»`;
+      status.className = "warn small";
+      save.classList.add("needs-save");
+      undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
+      undoInsert.addEventListener("click", () => {
+        area.value = beforeInsert; fit(); area.dispatchEvent(new Event("input"));
+        save.classList.remove("needs-save"); undoInsert.remove();
+        status.textContent = "Вставку прибрано — список як був"; status.className = "muted small";
+      });
+    } else if (beforeInsert !== null) {
+      status.textContent = "Запропонований рядок уже є у словнику — нічого не додано";
+    }
     save.addEventListener("click", () => action(async () => {
       try {
         await request(`/api/dictionaries/${kind}`, "PUT", { entries: fromLines(area.value), expected_version: dictionary.version });
@@ -155,32 +180,186 @@
         await dictionaries();
       } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
     }));
-    const actions = el("div", "list-actions"); actions.append(save, status);
+    const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
     const hints = el("ul", "warn-list");
     liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
+    if (inserted) area.dispatchEvent(new Event("input"));
     left.append(area, actions);
-    right.append(el("h2", "", title), el("p", "muted small", help), hints);
+    right.append(el("h2", "", title), el("p", "muted small", help),
+      ...(inserted ? [el("p", "warn small", `Чернетка містить: ${insertedLines.join("; ")}`)] : []), hints);
     panel.append(left, right);
     box.append(panel);
   }
 
   // Рядки, які «Потребує уваги» просить вставити в список (не зберігаються самі).
   let pendingListInsert = null;
-  // Алиас — до рядка свого позивного («клен: клей, клін»), інакше новим рядком; шум — новим рядком; без повторів.
+  let pendingDictionaryInsert = null;
+  let pendingPatternEnable = [];
+  // Позивний аліас додається до свого рядка; шум — окремим рядком. Повтори пропускаються.
   function insertListLines(text, insert) {
     const rows = text ? text.split("\n") : [];
     const fold = s => s.trim().toLocaleLowerCase("uk");
-    let added = 0;
+    let added = 0, insertedLines = [];
     for (const item of insert.lines) {
       if (insert.list === "callsign_aliases") {
         const at = rows.findIndex(r => r.includes(":") && fold(r.split(":")[0].replace(/^#\s*/, "")) === fold(item.callsign) && !r.trim().startsWith("#"));
-        if (at < 0) { rows.push(`${item.callsign}: ${item.line}`); added++; continue; }
+        if (at < 0) { rows.push(`${item.callsign}: ${item.line}`); added++; insertedLines.push(`${item.callsign}: ${item.line}`); continue; }
         const variants = rows[at].split(":").slice(1).join(":").split(",").map(fold);
         if (variants.includes(fold(item.line))) continue;
-        rows[at] = `${rows[at].replace(/[\s,]+$/, "")}, ${item.line}`; added++;
-      } else if (!rows.some(r => fold(r) === fold(item.line))) { rows.push(item.line); added++; }
+        rows[at] = `${rows[at].replace(/[\s,]+$/, "")}, ${item.line}`; added++; insertedLines.push(`${item.callsign}: ${item.line}`);
+      } else if (!rows.some(r => fold(r) === fold(item.line))) { rows.push(item.line); added++; insertedLines.push(item.line); }
     }
-    return { text: rows.join("\n"), added };
+    return { text: rows.join("\n"), added, lines: insertedLines };
+  }
+  function insertDictionaryLines(text, insert) {
+    const rows = text ? text.split("\n") : [];
+    const fold = value => value.trim().toLocaleLowerCase("uk");
+    let added = 0, insertedLines = [];
+    for (const item of insert.lines) {
+      const at = rows.findIndex(row => {
+        const active = row.trim().replace(/^#\s*/, "");
+        const name = active.split(":", 1)[0];
+        return fold(name) === fold(item.callsign);
+      });
+      if (at < 0) {
+        rows.push(`${item.callsign}: ${item.number}`);
+        added++;
+        insertedLines.push(`${item.callsign}: ${item.number}`);
+        continue;
+      }
+      const active = rows[at].trim().replace(/^#\s*/, "");
+      const [name, ...tail] = active.split(":");
+      const numbers = tail.join(":").trim().split(/[,\s]+/).filter(Boolean);
+      const alreadyAllowed = numbers.some(value => {
+        if (fold(value) === fold(item.number)) return true;
+        const range = value.match(/^(\d+)-(\d+)$/);
+        return range && Number(item.number) >= Number(range[1]) && Number(item.number) <= Number(range[2]);
+      });
+      const wasDisabled = rows[at].trim().startsWith("#");
+      if (alreadyAllowed && !wasDisabled) continue;
+      if (!alreadyAllowed) numbers.push(item.number);
+      rows[at] = `${name.trim()}: ${numbers.join(" ")}`;
+      added++;
+      insertedLines.push(`${item.callsign}: ${item.number}`);
+    }
+    return { text: rows.join("\n"), added, lines: insertedLines };
+  }
+  function phrasePatternEditor(entries, enableLines = []) {
+    const requested = new Set(enableLines.map(line => line.trim()));
+    const patterns = entries.map(entry => {
+      const savedEnabled = Boolean(entry.enabled);
+      return {
+        raw_line: entry.raw_line,
+        enabled: savedEnabled || requested.has(entry.raw_line.trim()),
+        savedRawLine: entry.raw_line.trim(),
+        savedEnabled,
+      };
+    });
+    const root = el("div", "phrase-pattern-editor");
+    const toolbar = el("div", "pattern-toolbar");
+    const search = el("input", "pattern-search");
+    search.type = "search"; search.placeholder = "Знайти шаблон"; search.setAttribute("aria-label", "Знайти шаблон");
+    const add = el("button", "ghost", "＋ Додати шаблон"); add.type = "button";
+    const summary = el("span", "muted small");
+    toolbar.append(search, add, summary);
+    const activeRows = el("div", "phrase-pattern-rows");
+    const disabledGroup = el("details", "phrase-pattern-disabled");
+    const disabledSummary = el("summary", "", "Вимкнені");
+    const disabledRows = el("div", "phrase-pattern-rows");
+    disabledGroup.append(disabledSummary, disabledRows);
+    root.append(toolbar, el("p", "pattern-section-label", "Увімкнені"), activeRows, disabledGroup);
+    let onChange = () => {};
+    const updateSummary = () => {
+      const active = patterns.filter(pattern => pattern.enabled).length;
+      summary.textContent = `Увімкнено ${active} · вимкнено ${patterns.length - active}`;
+      disabledSummary.textContent = `Вимкнені (${patterns.length - active})`;
+    };
+    const getEntries = () => patterns.map(pattern => ({
+      raw_line: pattern.raw_line.trim(), enabled: pattern.enabled,
+    })).filter(pattern => pattern.raw_line);
+    const draftLabel = pattern => {
+      const changed = pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled;
+      if (!changed) return "";
+      return pattern.enabled && !pattern.savedEnabled ? "Тимчасово увімкнено" : "Чернетка";
+    };
+    const render = () => {
+      const query = search.value.trim().toLocaleLowerCase("uk");
+      if (query) disabledGroup.open = true;
+      const drawRows = (container, enabledState) => {
+        container.replaceChildren();
+        const visible = patterns.map((pattern, index) => ({ pattern, index })).filter(({ pattern }) =>
+        pattern.enabled === enabledState && (!query || pattern.raw_line.toLocaleLowerCase("uk").includes(query)));
+        if (!visible.length) {
+        const label = query ? "За запитом шаблонів не знайдено."
+          : enabledState ? "Увімкнених шаблонів немає." : "Вимкнених шаблонів немає.";
+        container.append(el("p", "muted small", label));
+        }
+        for (const { pattern, index } of visible) {
+        const row = el("div", "phrase-pattern-row");
+        const toggle = el("label", "switch");
+        const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = pattern.enabled;
+        toggle.append(enabled, pattern.enabled ? "Увімк." : "Вимк.");
+        const badge = el("span", "pattern-draft");
+        const updateBadge = () => {
+          const label = draftLabel(pattern);
+          badge.textContent = label;
+          badge.hidden = !label;
+          badge.className = `pattern-draft${label === "Тимчасово увімкнено" ? " temporary" : ""}`;
+        };
+        updateBadge();
+        const line = el("input", "pattern-line");
+        line.type = "text"; line.value = pattern.raw_line; line.spellcheck = false; line.title = pattern.raw_line;
+        line.setAttribute("aria-label", `Текст шаблону ${index + 1}`);
+        line.addEventListener("input", () => {
+          pattern.raw_line = line.value;
+          line.title = line.value;
+          updateBadge();
+          onChange();
+        });
+        enabled.addEventListener("change", () => {
+          pattern.enabled = enabled.checked;
+          if (!pattern.enabled) disabledGroup.open = true;
+          render();
+          onChange();
+        });
+        const remove = el("button", "ghost", "×"); remove.type = "button";
+        remove.setAttribute("aria-label", `Видалити шаблон ${index + 1}`);
+        remove.addEventListener("click", () => {
+          patterns.splice(index, 1);
+          render();
+          onChange();
+        });
+        row.append(toggle, badge, line, remove);
+        container.append(row);
+        }
+      };
+      drawRows(activeRows, true);
+      drawRows(disabledRows, false);
+      updateSummary();
+    };
+    search.addEventListener("input", render);
+    add.addEventListener("click", () => {
+      patterns.push({ raw_line: "", enabled: false, savedRawLine: "", savedEnabled: false });
+      search.value = ""; disabledGroup.open = true;
+      render();
+      onChange();
+      const fields = disabledRows.querySelectorAll("input");
+      fields[fields.length - 1]?.focus();
+    });
+    render();
+    return {
+      element: root,
+      rows: root,
+      entries: getEntries,
+      hasBlankRows: () => patterns.some(pattern => !pattern.raw_line.trim()),
+      hasChanges: () => patterns.some(pattern =>
+        pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled),
+      summary: () => {
+        const active = patterns.filter(pattern => pattern.enabled).length;
+        return `Увімкнено ${active} · вимкнено ${patterns.length - active}`;
+      },
+      onChange(callback) { onChange = callback; },
+    };
   }
   async function texts() {
     const data = await request("/api/text-lists");
@@ -210,23 +389,46 @@
     const type = textListType, [title, help] = TEXT_LISTS[type], list = data.lists[type];
     const panel = el("article", "panel list-layout");
     const left = el("div", "list-left"), right = el("div", "list-right");
-    const area = el("textarea", "list-editor");
-    area.value = toLines(list.entries);
-    area.spellcheck = false;
-    area.setAttribute("aria-label", title);
-    const fit = () => { area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
     const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
+    const patterns = type === "phrase_patterns"
+      ? phrasePatternEditor(list.entries, pendingPatternEnable)
+      : null;
+    if (type === "phrase_patterns") pendingPatternEnable = [];
+    const area = patterns ? null : el("textarea", "list-editor");
+    if (area) {
+      area.value = toLines(list.entries);
+      area.spellcheck = false;
+      area.setAttribute("aria-label", title);
+    }
+    const getEntries = patterns ? patterns.entries : () => fromLines(area.value);
+    if (patterns) left.append(patterns.element);
     let inserted = 0, beforeInsert = null, insertedLines = [];
-    if (pendingListInsert?.list === type) {
+    if (area && pendingListInsert?.list === type) {
       beforeInsert = area.value;
       const result = insertListLines(area.value, pendingListInsert);
       area.value = result.text; inserted = result.added;
-      insertedLines = pendingListInsert.lines.map(l => l.callsign ? `${l.callsign}: ${l.line}` : l.line);
+      insertedLines = result.lines;
       pendingListInsert = null;
     }
-    fit(); area.addEventListener("input", fit);
+    const fit = () => { if (area) area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
+    fit(); area?.addEventListener("input", fit);
     const warnings = el("ul", "warn-list");
-    liveCheck(area, warnings, `/api/text-lists/${type}/check`, list.warnings || []);
+    const check = liveCheck(patterns?.rows || area, warnings, `/api/text-lists/${type}/check`, list.warnings || [],
+      getEntries, patterns ? [] : ["input"]);
+    if (patterns) patterns.onChange(() => {
+      save.classList.add("needs-save");
+      save.disabled = patterns.hasBlankRows();
+      status.textContent = patterns.hasBlankRows()
+        ? `${patterns.summary()} · заповніть або видаліть порожній шаблон`
+        : `${patterns.summary()} · є незбережені зміни`;
+      status.className = "warn small";
+      check();
+    });
+    if (patterns?.hasChanges()) {
+      save.classList.add("needs-save");
+      save.disabled = patterns.hasBlankRows();
+      check();
+    }
     let undoInsert = null;
     if (inserted) {
       status.textContent = `Вставлено ${inserted}: ${insertedLines.join("; ")} — перевірте й натисніть «Зберегти»`; status.className = "warn small";
@@ -242,17 +444,19 @@
     }
     save.addEventListener("click", () => action(async () => {
       try {
-        const r = await request(`/api/text-lists/${type}`, "PUT", { entries: fromLines(area.value), expected_revision: textRevision });
+        const r = await request(`/api/text-lists/${type}`, "PUT", { entries: getEntries(), expected_revision: textRevision });
         textRevision = r.revision;
         note(`«${title}» збережено (ревізія ${r.revision}). Приймач застосує зміни за кілька секунд.`);
         await texts();
       } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
     }));
     const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
-    left.append(area, actions);
-    right.append(el("h2", "", title), el("p", "muted small", help), warnings);
+    if (area) left.append(area);
+    left.append(actions);
+    right.append(el("h2", "", title), el("p", "muted small", help),
+      ...(inserted ? [el("p", "warn small", `Чернетка містить: ${insertedLines.join("; ")}`)] : []), warnings);
     if (EVALUATED_LISTS.includes(type)) {
-      const evaluation = listEvaluation(type, area);
+      const evaluation = listEvaluation(type, getEntries);
       right.append(evaluation);
       // Після вставки — одразу видно, чи текст стане кращим на ваших еталонах. Запуск — коли завершиться
       // відкриття списку: action() не пускає другу дію, поки триває перша.
@@ -266,7 +470,7 @@
 
   // Перевірка списку на розмічених записах: повтор текстової обробки, без збереження й без зупинки приймача.
   const EVALUATED_LISTS = ["phrase_templates", "phrase_patterns", "callsign_aliases", "aliases"];
-  function listEvaluation(type, area) {
+  function listEvaluation(type, getEntries) {
     const wrap = el("div", "list-evaluation");
     const run = el("button", "ghost", "Перевірити на моїх еталонах"); run.type = "button";
     run.title = "Як змінився б текст розмічених записів із цим списком (зміни не зберігаються)";
@@ -274,7 +478,7 @@
     run.addEventListener("click", () => action(async () => {
       run.disabled = true; out.replaceChildren(el("p", "muted small", "Рахую…"));
       try {
-        const r = await request(`/api/text-lists/${type}/evaluate`, "PUT", { entries: fromLines(area.value) });
+        const r = await request(`/api/text-lists/${type}/evaluate`, "PUT", { entries: getEntries() });
         const b = r.before, a = r.after;
         const tone = r.worse ? "bad" : r.better ? "ok" : "";
         const summary = el("div", `summary ${tone}`);
@@ -286,6 +490,9 @@
           const link = el("a", "small", c.id.slice(0, 8)); link.href = `?view=recordings&q=${c.id.slice(0, 8)}`;
           item.append(link, el("span", "small", c.delta > 0 ? ` гірше на ${c.delta} сл.` : c.delta < 0 ? ` краще на ${-c.delta} сл.` : " так само"),
             el("div", "small", `було: ${c.before}`), el("div", "small", `стало: ${c.after}`), el("div", "small muted", `еталон: ${c.reference}`));
+          if (c.matched_patterns?.length) {
+            item.append(el("div", "small muted", `Збіг шаблону: ${c.matched_patterns.join(" · ")}`));
+          }
           out.append(item);
         }
       } catch (error) { out.replaceChildren(el("p", "alert small", error.message)); throw error; }

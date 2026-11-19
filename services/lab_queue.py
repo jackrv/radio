@@ -156,8 +156,20 @@ def cancel(root, job_id):
 
 
 def clear_finished(root):
+    """Прибрати з переліку лише успішно виконані; перервані й невдалі лишаються (їх можна повторити)."""
     with _locked(root) as state:
-        state["jobs"] = [j for j in state["jobs"] if j["status"] in ("queued", "running")]
+        state["jobs"] = [j for j in state["jobs"] if j["status"] != "done"]
+
+
+def retry(root, job_id):
+    """Перерваний чи невдалий тест — знову в чергу (той самий рецепт і примітка), старий рядок прибирається."""
+    with _locked(root) as state:
+        job = next((j for j in state["jobs"] if j["id"] == job_id), None)
+        if job is None or job["status"] not in ("cancelled", "failed"):
+            raise LookupError("Повторити можна лише перерваний чи невдалий тест")
+        state["jobs"].remove(job)
+        state["jobs"].append({"id": uuid.uuid4().hex[:12], "preset": job["preset"], "note": job.get("note", ""),
+                              "status": "queued", "added": time.time()})
 
 
 def request_stop(root, now=False):

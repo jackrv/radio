@@ -84,6 +84,14 @@ def register(app, ctx):
         lab_queue.clear_finished(root)
         return state()
 
+    @app.post("/api/lab/queue/{job_id}/retry")
+    def queue_retry(job_id: str, admin=Depends(actor)):
+        try:
+            lab_queue.retry(root, job_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        return state()
+
     @app.post("/api/lab/queue/{job_id}/move")
     def queue_move(job_id: str, payload: QueueMove, admin=Depends(actor)):
         try:

@@ -473,6 +473,8 @@
         if (position > 0) tool("↑", "Раніше", async () => { await request(`/api/lab/queue/${job.id}/move`, "POST", { delta: -1 }); await labQueue(); });
         if (position < queued.length - 1) tool("↓", "Пізніше", async () => { await request(`/api/lab/queue/${job.id}/move`, "POST", { delta: 1 }); await labQueue(); });
       }
+      if (["cancelled", "failed"].includes(job.status))
+        tool("↻", "Повторити: знову в чергу", async () => { await request(`/api/lab/queue/${job.id}/retry`, "POST"); await labQueue(); });
       tool("✕", job.status === "running" ? "Зупинити цей тест (черга піде далі)" : job.status === "queued" ? "Прибрати з черги" : "Прибрати з переліку", async () => {
         if (job.status === "running" && !confirm("Зупинити тест, що йде? Його результат буде неповним.")) return;
         await request(`/api/lab/queue/${job.id}`, "DELETE"); await labQueue();
@@ -498,13 +500,14 @@
         await request("/api/lab/queue/stop", "POST", { now: true }); await labQueue();
       });
     }
-    if (jobs.some(j => !["queued", "running"].includes(j.status)))
-      button("Прибрати виконані", "link-button", "Прибрати з переліку виконані, перервані й скасовані", async () => { await request("/api/lab/queue/clear", "POST"); await labQueue(); });
+    if (jobs.some(j => j.status === "done"))
+      button("Прибрати виконані", "link-button", "Прибрати з переліку успішно виконані (перервані лишаються — їх можна повторити)", async () => { await request("/api/lab/queue/clear", "POST"); await labQueue(); });
     $("lab-controls").replaceChildren(...controls);
     // Рецепти тестів.
     $("lab-presets").replaceChildren(...q.presets.map(p => {
       const card = el("div", "lab-preset"), text = el("div", "lab-preset-text");
-      text.append(el("b", "", p.title), el("span", "muted small", p.about));
+      card.title = p.about;   // повний опис — у підказці; у рядку — назва й початок опису
+      text.append(el("b", "", p.title), el("span", "muted small lab-preset-about", p.about));
       const add = el("button", "ghost small-button", "＋ У чергу"); add.type = "button";
       add.title = `≈${duration(estimate(p.key))} на ${num(q.records)} розмічених записах; на час тесту приймач зупиниться`;
       add.addEventListener("click", () => action(async () => { await request("/api/lab/queue", "POST", { preset: p.key }); await labQueue(); note(`«${p.title}» — у черзі.`); }));

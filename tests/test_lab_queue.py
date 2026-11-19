@@ -140,3 +140,15 @@ def test_windows_run_only_jobs_that_fit_and_give_the_receiver_back_between_windo
 def test_estimates_scale_with_records_and_preset(tmp_path):
     base, turbo, reseg = (lab_queue.estimate_seconds(tmp_path, p, 1000) for p in ("base", "turbo", "resegment"))
     assert base == 1000 * lab_queue.SECONDS_PER_RECORD and turbo < base < reseg
+
+
+def test_clear_removes_only_done_and_interrupted_jobs_can_be_retried(tmp_path):
+    a = lab_queue.add(tmp_path, "base", "еталон")
+    b = lab_queue.add(tmp_path, "no-prompt")
+    with lab_queue._locked(tmp_path) as state:
+        state["jobs"][0]["status"], state["jobs"][1]["status"] = "cancelled", "done"
+    lab_queue.clear_finished(tmp_path)
+    assert [j["id"] for j in lab_queue.read(tmp_path)["jobs"]] == [a["id"]], "перерваний лишився"
+    lab_queue.retry(tmp_path, a["id"])
+    jobs = lab_queue.read(tmp_path)["jobs"]
+    assert [(j["preset"], j["status"], j["note"]) for j in jobs] == [("base", "queued", "еталон")]

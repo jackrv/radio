@@ -18,6 +18,8 @@ class QueueMove(BaseModel):
 
 class QueueStart(BaseModel):
     start_at: float | None = Field(default=None, ge=0, le=4e9)
+    # Вікна часу [[початок, кінець], …] (unix-час): приймач зупиняється лише в них.
+    windows: list[tuple[float, float]] | None = Field(default=None, max_length=8)
 
 
 class QueueStop(BaseModel):
@@ -28,13 +30,24 @@ def register(app, ctx):
     from services import lab_queue
     actor, root, launcher_root = ctx.actor, ctx.experiments_dir, ctx.launcher_root
 
+    def labelled_records():
+        try:
+            with ctx.recordings.connect() as db:
+                return db.execute("SELECT COUNT(*) FROM recordings WHERE reference IS NOT NULL").fetchone()[0]
+        except Exception:
+            return 1000
+
     def state():
         data = lab_queue.read(root)
+        records = labelled_records()
         for job in data["jobs"]:
             job["progress"] = lab_queue.progress(root, job) if job["status"] in ("running", "done", "failed", "cancelled") else None
         presets = [{"key": key, **{k: v for k, v in p.items() if k != "args"}} for key, p in lab_queue.PRESETS.items()]
+        # Оцінка тривалості кожного рецепта — та сама, за якою виконавець вирішує, чи тест уміщається у вікно.
+        estimates = {key: lab_queue.estimate_seconds(root, key, records) for key in lab_queue.PRESETS}
         return {"presets": presets, "jobs": data["jobs"], "runner": {**data["runner"], "active": lab_queue.runner_active(data)},
-                "cooldown_s": lab_queue.COOLDOWN_S, "now": time.time()}
+                "cooldown_s": lab_queue.COOLDOWN_S, "margin": lab_queue.WINDOW_MARGIN, "estimates": estimates,
+                "records": records, "now": time.time()}
 
     @app.get("/api/lab/queue")
     def queue(admin=Depends(actor)):
@@ -52,7 +65,12 @@ def register(app, ctx):
     def queue_start(payload: QueueStart, admin=Depends(actor)):
         if not any(j["status"] == "queued" for j in lab_queue.read(root)["jobs"]):
             raise HTTPException(422, "Черга порожня — додайте тест")
-        lab_queue.set_start_at(root, payload.start_at)
+        now = time.time()
+        windows = [(a, b) for a, b in (payload.windows or [])]
+        if any(b <= a or b < now or a > now + 3 * 86400 for a, b in windows):
+            raise HTTPException(422, "Вікно має закінчуватися пізніше, ніж починається, і не раніше, ніж зараз (до 3 діб наперед)")
+        lab_queue.set_windows(root, windows)
+        lab_queue.set_start_at(root, None if windows else payload.start_at)
         lab_queue.start(root, launcher_root=launcher_root or ROOT)
         return state()
 

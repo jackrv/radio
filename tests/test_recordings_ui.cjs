@@ -351,3 +351,21 @@ test('leaving the field without typing (tab switch, re-render) changes nothing',
   assert.equal(input.value, 'вішня');
   assert.equal(ui.cards()[0].dirty, false);
 });
+
+test('time windows: next occurrence, crossing midnight, and the same plan as the queue runner', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '04-analysis.js'), 'utf8');
+  const code = source.slice(source.indexOf('  function windowTimes('), source.indexOf('  function windowsEditor('));
+  const ctx = vm.createContext({ Date });
+  vm.runInContext(code + '\nglobalThis.windowTimes = windowTimes; globalThis.planWindows = planWindows;', ctx);
+  const [late, early] = ctx.windowTimes([["23:30", "00:30"], ["01:00", "02:00"]]);
+  assert.equal(late[1] - late[0], 3600, 'через північ — година');
+  assert.ok(early[0] >= late[1], 'наступне вікно — після попереднього');
+  const windows = [[0, 115 * 60], [135 * 60, 355 * 60]];
+  const queued = ['base', 'no-prompt', 'resegment'].map(preset => ({ preset }));
+  const q = { estimates: { base: 85 * 60, 'no-prompt': 85 * 60, resegment: 100 * 60 }, margin: 1.15, cooldown_s: 300 };
+  const { plan, left } = ctx.planWindows(windows, queued, q);
+  assert.deepEqual(plan.map(s => s.jobs.map(j => j.job.preset).join(',')), ['base', 'no-prompt,resegment']);
+  assert.equal(left.length, 0);
+  const tight = ctx.planWindows([[0, 60 * 60]], queued, q);
+  assert.equal(tight.plan[0].jobs.length, 0); assert.equal(tight.left.length, 3);
+});

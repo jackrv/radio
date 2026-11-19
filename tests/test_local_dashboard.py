@@ -874,3 +874,23 @@ def test_reference_checks_catch_doubled_words_self_role_and_digits(local):
     assert ("ref_repeat", double) in found and not any(r == callsign_twice for k, r in found if k == "ref_repeat")
     assert ("ref_self", wrong_sender) in found and not any(r == unknown_roles for k, r in found if k == "ref_self")
     assert ("ref_format", digits) in found and not any(r == year for k, r in found if k == "ref_format")
+
+
+def test_lab_queue_accepts_time_windows_and_reports_estimates(setup, tmp_path, monkeypatch):
+    _, path = setup
+    import time
+    from services import lab_queue
+    monkeypatch.setattr(lab_queue, "start", lambda root, **kw: True)
+    runs = tmp_path / "runs"
+    app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings", experiments_dir=runs)
+    with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 12345)) as client:
+        assert client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN}).status_code == 204
+        h = {"Origin": ORIGIN}
+        state = client.post("/api/lab/queue", json={"preset": "base"}, headers=h).json()
+        assert set(state["estimates"]) == set(lab_queue.PRESETS) and state["records"] == 0
+        now = time.time()
+        bad = client.post("/api/lab/queue/start", json={"windows": [[now + 600, now + 60]]}, headers=h)
+        assert bad.status_code == 422
+        good = [[now + 600, now + 7000], [now + 8000, now + 20000]]
+        assert client.post("/api/lab/queue/start", json={"windows": good}, headers=h).status_code == 200
+        assert lab_queue.read(runs)["runner"]["windows"] == good

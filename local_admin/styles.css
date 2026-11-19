@@ -1327,3 +1327,16 @@ main table tr:hover td { background: rgba(255, 255, 255, .02); }
 main button.outline-button { background: linear-gradient(160deg, rgba(184, 239, 134, .2), rgba(184, 239, 134, .07) 70%), var(--surface);
   color: var(--lime); border: 1px solid rgba(184, 239, 134, .45); font-weight: 700; padding: 5px 12px; font-size: 12px; }
 main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter: none; }
+
+/* Вікна часу для тестів */
+.lab-windows { flex: 1 1 100%; display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed rgba(184, 239, 134, .35); border-radius: 10px; }
+.lab-windows-head { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.lab-window-rows { display: grid; gap: 6px; }
+.lab-window-row { display: flex; align-items: center; gap: 8px; }
+.lab-windows > .small-button { justify-self: start; }
+.lab-plan { display: grid; gap: 4px; font-size: 12.5px; }
+.lab-plan-window { display: flex; gap: 10px; align-items: baseline; }
+.lab-plan-window b { flex: none; color: var(--lime); font-variant-numeric: tabular-nums; }
+.lab-plan-left { color: var(--warn); }
+.lab-windows > button:last-child { justify-self: start; }
+@media (min-width: 1100px) { .lab-top > .lab-queue { max-height: 62vh; } }

@@ -135,3 +135,8 @@ def test_windows_run_only_jobs_that_fit_and_give_the_receiver_back_between_windo
     assert w1[0] <= started[0][1] < w1[1] and all(w2[0] <= t < w2[1] for _, t in started[1:]), "другий і третій — у другому вікні"
     assert launcher.commands == ["receiver-stop", "receiver-start", "receiver-stop", "receiver-start"], "між вікнами приймач працює"
     assert [j["status"] for j in lab_queue.read(tmp_path)["jobs"]] == ["done", "done", "done"]
+
+
+def test_estimates_scale_with_records_and_preset(tmp_path):
+    base, turbo, reseg = (lab_queue.estimate_seconds(tmp_path, p, 1000) for p in ("base", "turbo", "resegment"))
+    assert base == 1000 * lab_queue.SECONDS_PER_RECORD and turbo < base < reseg

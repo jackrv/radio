@@ -342,20 +342,110 @@
   const LAB_STATE = { starting: "запускається…", stopping_receiver: "зупиняю приймач…", running: "іде тест", cooldown: "пауза від перегріву",
                       waiting: "чекає часу старту", idle: "не запущено" };
   const clockTime = t => new Date(t * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
+  // ---------- Вікна часу для тестів ----------
+  // Рядки «з — до»; запам'ятовуються в браузері. Під ними — план: який тест у яке вікно потрапить
+  // (той самий розрахунок, що й у виконавця: тест стартує, лише якщо встигає до кінця вікна з запасом).
+  const WINDOWS_KEY = "radio345:lab-windows";
+  const loadWindows = () => { try { const w = JSON.parse(localStorage.getItem(WINDOWS_KEY)); if (Array.isArray(w) && w.length) return w; } catch (_) { /* типово */ }
+    return [["01:00", "02:55"], ["03:15", "06:55"]]; };
+  const saveWindows = list => { try { localStorage.setItem(WINDOWS_KEY, JSON.stringify(list)); } catch (_) { /* сесія */ } };
+  // «01:00–02:55» → unix-час найближчого такого вікна; наступні вікна — не раніше кінця попередніх.
+  function windowTimes(list) {
+    const out = [];
+    let floor = Date.now() - 60000;
+    for (const [from, to] of list) {
+      const at = hm => { const [h, m] = hm.split(":").map(Number); const d = new Date(floor); d.setHours(h, m, 0, 0); return d; };
+      const start = at(from);
+      while (start.getTime() < floor) start.setDate(start.getDate() + 1);
+      const end = new Date(start); const [eh, em] = to.split(":").map(Number); end.setHours(eh, em, 0, 0);
+      if (end <= start) end.setDate(end.getDate() + 1);
+      out.push([start.getTime() / 1000, end.getTime() / 1000]);
+      floor = end.getTime();
+    }
+    return out;
+  }
+  // План, як його виконає черга: у вікні — перший тест черги, що встигає; між тестами — пауза.
+  function planWindows(windows, queued, q) {
+    const left = [...queued], plan = windows.map(w => ({ window: w, jobs: [] }));
+    for (const slot of plan) {
+      let t = slot.window[0];
+      for (;;) {
+        const index = left.findIndex(job => t + (q.estimates?.[job.preset] || 1800) * (q.margin || 1.15) <= slot.window[1]);
+        if (index < 0) break;
+        const [job] = left.splice(index, 1), seconds = q.estimates?.[job.preset] || 1800;
+        slot.jobs.push({ job, start: t, end: t + seconds });
+        t += seconds + (q.cooldown_s || 300);
+      }
+    }
+    return { plan, left };
+  }
+  function windowsEditor(q, queued) {
+    const box = el("div", "lab-windows");
+    let list = loadWindows();
+    const rows = el("div", "lab-window-rows"), preview = el("div", "lab-plan");
+    const hm = t => new Date(t * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
+    const render = () => {
+      rows.replaceChildren(...list.map((w, i) => {
+        const row = el("div", "lab-window-row");
+        const from = el("input", "lab-time"), to = el("input", "lab-time");
+        from.type = to.type = "time"; from.value = w[0]; to.value = w[1];
+        from.setAttribute?.("aria-label", "Початок вікна"); to.setAttribute?.("aria-label", "Кінець вікна");
+        const change = () => { list[i] = [from.value || w[0], to.value || w[1]]; saveWindows(list); drawPlan(); };
+        from.addEventListener("change", change); to.addEventListener("change", change);
+        const remove = el("button", "lab-tool", "✕"); remove.type = "button"; remove.title = "Прибрати вікно";
+        remove.addEventListener("click", () => { list.splice(i, 1); saveWindows(list); render(); });
+        row.append(el("span", "muted small", "з"), from, el("span", "muted small", "до"), to, remove);
+        return row;
+      }));
+      drawPlan();
+    };
+    const drawPlan = () => {
+      const { plan, left } = planWindows(windowTimes(list), queued, q);
+      const lines = plan.map(slot => {
+        const line = el("div", "lab-plan-window");
+        line.append(el("b", "", `${hm(slot.window[0])}–${hm(slot.window[1])}`));
+        line.append(el("span", slot.jobs.length ? "" : "muted", slot.jobs.length
+          ? slot.jobs.map(p => `${labPresets[p.job.preset]?.title || p.job.preset} (≈${Math.round((p.end - p.start) / 60)} хв, до ${hm(p.end)})`).join(" → ")
+          : "нічого не вміщається — приймач працює"));
+        return line;
+      });
+      if (left.length) lines.push(el("div", "lab-plan-left", `Не вміститься: ${left.map(j => labPresets[j.preset]?.title || j.preset).join(", ")} — збільште вікна або приберіть тести.`));
+      preview.replaceChildren(...lines);
+      plan.windows = windowTimes(list); preview.dataset.ok = String(plan.some(s => s.jobs.length));
+    };
+    const add = el("button", "ghost small-button", "＋ вікно"); add.type = "button";
+    add.addEventListener("click", () => { const last = list[list.length - 1]; list.push(last ? [last[1], last[1]] : ["01:00", "03:00"]); saveWindows(list); render(); });
+    const go = el("button", "", "Запланувати на ці вікна"); go.type = "button";
+    go.title = "Приймач зупинятиметься лише у вікнах і лише на тести, що встигають";
+    go.addEventListener("click", () => action(async () => {
+      const windows = windowTimes(list);
+      if (!planWindows(windows, queued, q).plan.some(s => s.jobs.length)) { note("У ці вікна жоден тест не вміщається."); return; }
+      await request("/api/lab/queue/start", "POST", { windows });
+      note(`Заплановано: ${windows.map(w => `${hm(w[0])}–${hm(w[1])}`).join(", ")}. Поза вікнами приймач працює.`);
+      await labQueue();
+    }));
+    box.append(el("div", "lab-windows-head", "Вікна, коли можна зупиняти приймач"), rows, add, preview, go);
+    render();
+    return box;
+  }
   async function labQueue() {
     let q;
     try { q = await request("/api/lab/queue"); } catch (_) { return; }
     labPresets = Object.fromEntries(q.presets.map(p => [p.key, p]));
     const runner = q.runner || {}, active = runner.active, jobs = q.jobs;
     const queued = jobs.filter(j => j.status === "queued"), running = jobs.find(j => j.status === "running");
-    const minutes = queued.reduce((a, j) => a + (labPresets[j.preset]?.minutes || 30), 0) + Math.max(0, queued.length - 1) * Math.round(q.cooldown_s / 60);
-    $("lab-state").textContent = active ? LAB_STATE[runner.state] || runner.state : queued.length ? `у черзі ${queued.length} · ≈${minutes} хв` : "черга порожня";
+    // Тривалість — оцінка з реальних прогонів (сервер), а не стале число рецепта.
+    const estimate = preset => Math.round((q.estimates?.[preset] ?? (labPresets[preset]?.minutes || 30) * 60) / 60);
+    const duration = m => m >= 60 ? `${Math.floor(m / 60)} год ${m % 60} хв` : `${m} хв`;
+    const minutes = queued.reduce((a, j) => a + estimate(j.preset), 0) + Math.max(0, queued.length - 1) * Math.round(q.cooldown_s / 60);
+    $("lab-state").textContent = active ? LAB_STATE[runner.state] || runner.state : queued.length ? `у черзі ${queued.length} · ≈${duration(minutes)}` : "черга порожня";
     // Банер: приймач на паузі через тести — ефір не слухається.
     const banner = $("lab-banner");
     banner.hidden = !active;
     if (active) {
       const until = runner.until ? ` до ${clockTime(runner.until)}` : "";
-      banner.textContent = runner.state === "waiting" ? `Черга чекає старту о ${clockTime(runner.start_at || runner.until)}. Приймач поки працює.`
+      const windowsText = (runner.windows || []).map(w => `${clockTime(w[0])}–${clockTime(w[1])}`).join(", ");
+      banner.textContent = runner.state === "waiting" ? `Черга чекає ${windowsText ? `вікон ${windowsText}` : `старту о ${clockTime(runner.start_at || runner.until)}`}. Приймач поки працює.`
         : runner.state === "cooldown" ? `Пауза між тестами${until}, щоб Mac охолов. Приймач зупинено — ефір не слухається.`
         : `Іде тест — приймач зупинено, ефір не слухається. Після черги приймач запуститься сам.`;
     }
@@ -370,7 +460,7 @@
       if (job.status === "done") bits.push(`готово о ${clockTime(job.finished)}`);
       if (job.status === "failed") bits.push(job.error || `помилка (код ${job.returncode ?? "?"})`);
       if (job.status === "cancelled") bits.push("скасовано");
-      if (job.status === "queued") bits.push(`≈${preset.minutes || 30} хв`);
+      if (job.status === "queued") bits.push(`≈${duration(estimate(job.preset))}`);
       text.append(el("span", "muted small", bits.join(" · ")));
       if (job.status === "running" && job.progress?.total) {
         const bar = el("span", "quality-track lab-progress"), fill = el("i");
@@ -396,17 +486,10 @@
     const button = (label, cls, title, go) => { const b = el("button", cls, label); b.type = "button"; b.title = title; b.addEventListener("click", () => action(go)); controls.push(b); return b; };
     if (!active && queued.length) {
       button("▶ Почати зараз", "", "Зупинити приймач і виконати чергу", async () => {
-        if (!confirm(`Запустити ${queued.length} тест(и), ≈${minutes} хв? На цей час приймач зупиниться — ефір не слухатиметься.`)) return;
+        if (!confirm(`Запустити ${queued.length} тест(и), ≈${duration(minutes)}? На цей час приймач зупиниться — ефір не слухатиметься.`)) return;
         await request("/api/lab/queue/start", "POST", {}); await labQueue();
       });
-      const at = el("input", "lab-time"); at.type = "time"; at.value = "01:00"; at.title = "Час старту (сьогодні або завтра)";
-      controls.push(at);
-      button("Почати о цій порі", "ghost", "Черга запуститься в указаний час; до того приймач працює", async () => {
-        const [h, m] = at.value.split(":").map(Number), when = new Date(); when.setHours(h, m, 0, 0);
-        if (when.getTime() < Date.now()) when.setDate(when.getDate() + 1);
-        await request("/api/lab/queue/start", "POST", { start_at: when.getTime() / 1000 }); await labQueue();
-        note(`Черга запуститься о ${at.value} (${when.toLocaleDateString("uk-UA")}).`);
-      });
+      controls.push(windowsEditor(q, queued));
     }
     if (active) {
       button("Зупинити після поточного", "ghost", "Дочекатися кінця тесту, що йде, і зупинити чергу", async () => { await request("/api/lab/queue/stop", "POST", { now: false }); await labQueue(); });
@@ -423,9 +506,9 @@
       const card = el("div", "lab-preset"), text = el("div", "lab-preset-text");
       text.append(el("b", "", p.title), el("span", "muted small", p.about));
       const add = el("button", "ghost small-button", "＋ У чергу"); add.type = "button";
-      add.title = `≈${p.minutes} хв; на час тесту приймач зупиниться`;
+      add.title = `≈${duration(estimate(p.key))} на ${num(q.records)} розмічених записах; на час тесту приймач зупиниться`;
       add.addEventListener("click", () => action(async () => { await request("/api/lab/queue", "POST", { preset: p.key }); await labQueue(); note(`«${p.title}» — у черзі.`); }));
-      card.append(text, el("span", "lab-preset-time muted small", `≈${p.minutes} хв`), add);
+      card.append(text, el("span", "lab-preset-time muted small", `≈${duration(estimate(p.key))}`), add);
       return card;
     }));
   }

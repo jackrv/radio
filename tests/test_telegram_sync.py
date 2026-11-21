@@ -190,6 +190,41 @@ def test_retries_bounded_and_new_revision_retries_again(setup):
     assert sync_corrections(service(path),now=1000)==1
 
 
+@pytest.mark.parametrize('action',['retry','skip'])
+def test_admin_can_resolve_exhausted_edits_without_faking_confirmation(setup,action):
+    from services.telegram_sync import sync_status,resolve_failed_corrections
+    _,path=setup
+    fix=f'db:{save_event("","","","","Вира",path)}'
+    remember_delivery(path,fix,message(1001),'voice')
+    save_edit_draft(path,fix,'Вира','Віра')
+    with sqlite3.connect(path) as db:db.execute('UPDATE telegram_deliveries SET attempts=8')
+    assert resolve_failed_corrections(path,1001,action)['count']==1
+    assert resolve_failed_corrections(path,1001,action)['count']==0
+    status=sync_status(path)
+    assert status['exhausted']==0
+    bot=service(path)
+    if action=='retry':
+        assert status['pending']==1
+        assert sync_corrections(bot)==1
+    else:
+        assert status['pending']==0 and status['skipped']==1
+        assert sync_corrections(bot)==0
+        bot._request.assert_not_called()
+        with sqlite3.connect(path) as db:
+            assert db.execute('SELECT applied_revision FROM telegram_deliveries').fetchone()[0]==0
+        save_edit_draft(path,fix,'Віра','Віра!')
+        assert sync_status(path)['pending']==1
+        assert sync_corrections(bot)==1
+
+
+@pytest.mark.parametrize('actor',[2002,3003])
+def test_retry_or_skip_requires_admin_permission(setup,actor):
+    from services.telegram_sync import resolve_failed_corrections
+    _,path=setup
+    for action in ('retry','skip'):
+        with pytest.raises(PermissionError):resolve_failed_corrections(path,actor,action)
+
+
 def test_resolved_access_cards_are_removed_for_all_admins(setup):
     _,path=setup
     bot=service(path)

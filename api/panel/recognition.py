@@ -1,4 +1,5 @@
 """Розпізнавання: словники, коди доби, фільтри тексту, навчання, налаштування."""
+from api.panel.jobs import start_task
 from fastapi import Depends, HTTPException
 
 from services.management.common import ManagementConflict
@@ -14,6 +15,10 @@ def register(app, ctx):
     recordings = ctx.recordings
     actor = ctx.actor
     diagnostics_path = ctx.diagnostics_path
+
+    @app.post('/api/learning/archive',status_code=202)
+    def learn_archive(admin=Depends(actor)):
+        return start_task(ctx,'archive_learning',actor_id=admin)
 
     @app.get("/api/daily-codes")
     def daily_codes_list(admin=Depends(actor)):
@@ -132,34 +137,20 @@ def register(app, ctx):
             return {"errors": [str(exc)], "warnings": []}
         return {"errors": [], "warnings": []}
 
-    @app.put("/api/text-lists/{list_type}/evaluate")
+    @app.put("/api/text-lists/{list_type}/evaluate", status_code=202)
     def text_list_evaluate(list_type: str, payload: TextListCheck, admin=Depends(actor)):
         """Як змінився б текст на розмічених записах із цим (незбереженим) списком.
 
         Повтор текстової обробки на збережених виходах Whisper — без моделей, приймач працює.
         """
-        from services.text_lists import parse
-        from services.text_replay import compare, load_records, load_setup
-        if list_type not in ("phrase_templates", "phrase_patterns", "callsign_aliases", "aliases"):
+        from services import panel_jobs
+        if list_type not in panel_jobs.LISTS:
             raise HTTPException(404, "Цей список не перевіряється на еталонах")
-        lines = [(n, e.raw_line) for n, e in enumerate(payload.entries, 1) if e.enabled and e.raw_line.strip()]
-        parsed, errors = parse(list_type, lines)
-        if errors:
-            raise HTTPException(422, "; ".join(errors[:5]))
-        dictionaries, short_garbage, values = load_setup(db_path)
-        current = {"phrases": values.get("phrase_templates", ()), "patterns": values.get("phrase_patterns", ()),
-                   "aliases": (values.get("aliases", {}), values.get("callsign_aliases", {}))}
-        after = dict(current)
-        if list_type == "phrase_templates":
-            after["phrases"] = parsed
-        elif list_type == "phrase_patterns":
-            after["patterns"] = parsed
-        elif list_type == "aliases":
-            after["aliases"] = (parsed, current["aliases"][1])
-        else:
-            after["aliases"] = (current["aliases"][0], parsed)
-        rows = load_records(recordings.root)
-        return compare(rows, dictionaries, short_garbage, before=current, after=after, show=15)
+        try:
+            return start_task(ctx, "evaluate", list_type=list_type,
+                                    entries=[e.model_dump() for e in payload.entries])
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.put("/api/text-lists/{list_type}")
     def text_list_update(list_type: str, payload: TextListUpdate, admin=Depends(actor)):

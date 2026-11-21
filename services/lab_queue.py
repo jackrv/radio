@@ -54,8 +54,11 @@ PRESETS = {
              "about": "Еталон для порівняння: увесь шлях, як в ефірі — Whisper із підказкою (позивні й останній код доби), "
                       "другий шанс при зацикленні, обробка тексту. Запускайте першим і після змін словників, підказки чи налаштувань.",
              "args": BASE, "minutes": 30},
+    "dictionary-blocks": {"title":"Повні команди зі словника у підказці",
+                          "about":"Передати Whisper не тільки назви, а й повні словникові коди та групування. Порівняти з базою на тих самих записах; окремо перевірити вигадані команди на шумі/сигналах/кімнаті. Живий prompt не змінюється без перевірки.",
+                          "args":_with(BASE,prompt="receiver-command-codes"),"minutes":30},
     "no-prompt": {"title": "Без підказки Whisper",
-                  "about": "Whisper не отримує списку позивних і кодів. Покаже, чи підказка допомагає, чи змушує вигадувати позивні.",
+                  "about": "Контрольний дослід: раніше відмова від підказки погіршила якість. Повторюйте лише з новими даними для перевірки цієї залежності; це не рекомендована зміна приймача.",
                   "args": _with(BASE, prompt="none", daily_codes="off"), "minutes": 30},
     "no-codes": {"title": "Без коду доби в підказці",
                  "about": "Підказка лише з позивними, без останнього коду доби. Чи допомагає код доби правильно чути числа.",
@@ -197,6 +200,30 @@ SECONDS_PER_RECORD = 4.0      # якщо минулих прогонів нем�
 WINDOW_MARGIN = 1.15          # запас до кінця вікна
 
 
+def first_fitting(jobs, start, end, estimate):
+    """Одна умова придатності для плану панелі й реального виконавця."""
+    return next((job for job in jobs if start + estimate(job["preset"]) * WINDOW_MARGIN <= end), None)
+
+
+def plan_windows(windows, jobs, estimates, *, now, cooldown=COOLDOWN_S):
+    left = [{"id": j["id"], "preset": j["preset"]} for j in jobs if j["status"] == "queued"]
+    plan, last_finish = [], None
+    for start, end in windows:
+        slot = {"window": [start, end], "jobs": []}
+        at = max(start, now, last_finish + cooldown if last_finish is not None else start)
+        while left:
+            job = first_fitting(left, at, end, lambda key: estimates[key])
+            if job is None:
+                break
+            seconds = estimates[job["preset"]]
+            slot["jobs"].append({"job": job, "start": at, "end": at + seconds})
+            last_finish = at + seconds
+            at = last_finish + cooldown
+            left.remove(job)
+        plan.append(slot)
+    return {"plan": plan, "left": left, "cooldown_s": cooldown, "margin": WINDOW_MARGIN, "now": now}
+
+
 def set_windows(root, windows):
     """Вікна часу [[початок, кінець], …] (unix-час), коли можна вмикати режим «лише запис»."""
     clean = sorted([float(a), float(b)] for a, b in (windows or []) if float(b) > float(a))
@@ -206,15 +233,26 @@ def set_windows(root, windows):
 
 def estimate_seconds(root, preset, records):
     """Оцінка тривалості тесту: записів × секунд на запис з останніх завершених прогонів × множник рецепта."""
-    per_record = []
+    from datetime import datetime, timezone
+    import math
+    per_record, matched = [], []
     for folder in sorted((p for p in queue_dir(root).iterdir() if p.is_dir() and (p / "metrics.json").is_file()), reverse=True)[:6]:
         try:
             params = json.loads((folder / "params.json").read_text())
-            began = time.mktime(time.strptime(params["started_utc"], "%Y%m%dT%H%M%SZ")) - time.timezone
+            began = datetime.strptime(params["started_utc"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).timestamp()
             if params.get("records"):
-                per_record.append(((folder / "results.jsonl").stat().st_mtime - began) / params["records"])
+                rate = ((folder / "results.jsonl").stat().st_mtime - began) / params["records"]
+                if not math.isfinite(rate) or rate <= 0:
+                    continue
+                source_preset = folder.name.split("_q-", 1)[-1] if "_q-" in folder.name else None
+                if source_preset == preset:
+                    matched.append(rate)
+                if source_preset in PRESETS:
+                    per_record.append(rate / DURATION_FACTOR.get(source_preset, 1.0))
         except (OSError, ValueError, KeyError, TypeError):
             continue
+    if matched:
+        return records * max(matched)
     rate = max(per_record) if per_record else SECONDS_PER_RECORD     # беремо повільніший — безпечніше для вікна
     return records * rate * DURATION_FACTOR.get(preset, 1.0)
 
@@ -420,8 +458,8 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             window_end = None
             if windows:
                 inside = next((w for w in windows if w[0] <= now() < w[1]), None)
-                fits = [j for j in queued if inside and now() + estimate(j["preset"]) * WINDOW_MARGIN <= inside[1]] if inside else []
-                if not fits:
+                fitting = first_fitting(queued, now(), inside[1], estimate) if inside else None
+                if fitting is None:
                     following = [w for w in windows if w[0] > now()]
                     if capture_by_us and not stop_capture():   # поза вікном — звичайне розпізнавання
                         break
@@ -430,7 +468,7 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                     _set(root, state="waiting", until=following[0][0])
                     sleep(min(30, following[0][0] - now()))
                     continue
-                job, window_end = fits[0], inside[1]
+                job, window_end = fitting, inside[1]
             start_at = runner.get("start_at")
             if start_at and now() < start_at:
                 _set(root, state="waiting", until=start_at)

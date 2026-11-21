@@ -26,6 +26,22 @@ def wav(samples=None):
     return output.getvalue()
 
 
+@pytest.fixture(autouse=True)
+def no_background_spawn(monkeypatch):
+    from services import panel_jobs
+    monkeypatch.setattr(panel_jobs, "_launch", lambda root: None)
+
+
+def finish_job(client, path, response):
+    from services import panel_jobs
+    assert response.status_code == 202
+    job = response.json()
+    panel_jobs.work(panel_jobs.directory(path))
+    completed = client.get("/api/jobs/" + job["id"]).json()
+    assert completed["status"] == "done", completed.get("error")
+    return completed["result"]
+
+
 @pytest.fixture
 def local(setup,tmp_path):
     _,path=setup
@@ -156,8 +172,8 @@ def test_manual_backup_from_dashboard(setup,tmp_path):
     with TestClient(app,base_url=ORIGIN,client=("127.0.0.1",1)) as client:
         client.post("/session",json={"token":KEY},headers={"Origin":ORIGIN})
         assert client.post("/api/backups").status_code==403, "запис без Origin заборонено"
-        result=client.post("/api/backups",headers={"Origin":ORIGIN}).json()
-        assert result["name"].startswith("events-auto-") and len(result["items"])==1
+        result=finish_job(client, path, client.post("/api/backups",headers={"Origin":ORIGIN}))
+        assert result["name"].startswith("events-auto-")
         assert client.get("/api/backups").json()["items"][0]["name"]==result["name"]
 
 
@@ -188,7 +204,7 @@ def test_archive_labels_feed_filter_evaluation(local):
     state=client.get("/api/notification-filter").json()
     assert state["labels"]=={"notification":1,"speech":1,"noise":0} and state["samples"]==1
     assert state["spectral"]["mode"] in ("shadow","active","off")
-    report=client.get("/api/notification-filter/evaluation").json()
+    report=finish_job(client, path, client.post("/api/notification-filter/evaluation", headers={"Origin":ORIGIN}))
     by_id={i["record_id"]:i for i in report["items"]}
     assert by_id[signal]["candidate"] is True and by_id[speech]["candidate"] is False
     assert report["summary"]["status"]=="need_more"
@@ -693,7 +709,9 @@ def test_storage_status_endpoint_requires_auth_and_does_not_create_archive(setup
         assert not directory.exists()
 
 
-def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path):
+def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path, monkeypatch):
+    from services import panel_jobs as text_jobs
+    monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
     """Кнопка «Перевірити на моїх еталонах»: порівняння до/після, нічого не зберігається."""
     _, path = setup
     import sqlite3
@@ -710,13 +728,17 @@ def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path):
         revision = client.get('/api/text-lists').json()['revision']
         r = client.put('/api/text-lists/phrase_patterns/evaluate', headers=h,
                        json={'entries': [{'raw_line': '{П}, прийнято, прийом', 'enabled': True}]}).json()
+        assert r['status'] == 'queued'
+        text_jobs.work(text_jobs.directory(path))
+        r = client.get('/api/text-jobs/' + r['id']).json()['result']
         assert r['records'] == 1 and r['better'] == 1 and r['worse'] == 0
-        assert r['examples'][0]['after'] == 'ліна 63, прийнято, прийом'
+        assert r['examples'][0]['after'] == 'Ліна 63, прийнято, прийом'
         assert r['examples'][0]['matched_patterns'] == ['{П}, прийнято, прийом']
         assert client.get('/api/text-lists').json()['revision'] == revision, "перевірка нічого не зберегла"
         bad = client.put('/api/text-lists/phrase_patterns/evaluate', headers=h, json={'entries': [{'raw_line': '{Х}', 'enabled': True}]})
         assert bad.status_code == 422
-        assert client.put('/api/text-lists/blacklist/evaluate', headers=h, json={'entries': []}).status_code == 404
+        assert client.put('/api/text-lists/blacklist/evaluate', headers=h, json={'entries': []}).status_code == 202
+        assert client.put('/api/text-lists/whisper_prompt/evaluate', headers=h, json={'entries': []}).status_code == 404
 
 
 def test_stale_events_are_updated_from_references_on_request(setup, tmp_path):
@@ -732,11 +754,11 @@ def test_stale_events_are_updated_from_references_on_request(setup, tmp_path):
     with TestClient(app, base_url=ORIGIN, client=('127.0.0.1', 1)) as client:
         client.post('/session', json={'token': KEY}, headers={'Origin': ORIGIN})
         assert client.post('/api/suggestions/sync-events').status_code == 403, "без Origin панелі"
-        result = client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}).json()
+        result = finish_job(client, path, client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}))
         assert result['updated'] == 1
         with sqlite3.connect(path) as db:
             assert db.execute("SELECT text FROM radio_events WHERE id=?", (event,)).fetchone()[0] == 'Віра 68, прийом'
-        assert client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}).json()['updated'] == 0
+        assert finish_job(client, path, client.post('/api/suggestions/sync-events', headers={'Origin': ORIGIN}))['updated'] == 0
 
 
 def test_done_button_hides_a_suggestion_kind_and_can_be_undone(local):
@@ -825,12 +847,33 @@ def test_quality_errors_explain_what_needs_edits(local):
     assert data["with_edits"] == 1 and data["categories"]["callsigns"]["ids"] == [record]
 
 
-def test_quality_text_impact_endpoint_returns_local_countercheck(local):
-    client, _, _ = local
-    response = client.get("/api/quality/text-impact")
-    assert response.status_code == 200
-    assert response.json()["records"] == 0
-    assert response.json()["checks"] == []
+def test_quality_text_impact_endpoint_returns_local_countercheck(local, monkeypatch):
+    from services import panel_jobs as text_jobs
+    monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
+    client, path, _ = local
+    response = client.post("/api/quality/text-impact", headers={"Origin": ORIGIN})
+    assert response.status_code == 202
+    job = response.json()
+    assert job["status"] == "queued"
+    text_jobs.work(text_jobs.directory(path))
+    result = client.get("/api/text-jobs/" + job["id"]).json()["result"]
+    assert result["records"] == 0
+    assert result["checks"] == []
+
+
+def test_suggestions_refresh_is_a_resumable_background_job(local, monkeypatch):
+    from services import panel_jobs as text_jobs
+    monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
+    client, path, _ = local
+    assert client.post("/api/suggestions/refresh").status_code == 403
+    response = client.post("/api/suggestions/refresh", headers={"Origin": ORIGIN})
+    assert response.status_code == 202 and response.json()["status"] == "queued"
+    job_id = response.json()["id"]
+    text_jobs.work(text_jobs.directory(path))
+    result = client.get("/api/text-jobs/" + job_id).json()
+    assert result["status"] == "done"
+    assert set(result["result"]) == {"total", "new"}
+    assert "entries" not in client.get("/api/text-jobs").json()["items"][0]
 
 
 def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
@@ -839,7 +882,7 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
     started = []
     monkeypatch.setattr(lab_queue, "start", lambda root, **kw: started.append(root) or True)
     runs = tmp_path / "runs"
-    app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings", experiments_dir=runs)
+    app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings", experiments_dir=runs, diagnostics_path=tmp_path / "diagnostics.json")
     with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 12345)) as client:
         assert client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN}).status_code == 204
         h = {"Origin": ORIGIN}
@@ -847,6 +890,8 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         assert {p["key"] for p in state["presets"]} >= {"base", "no-prompt"} and "args" not in state["presets"][0]
         assert state["capture"] == {
             "active": False, "until": None, "unloaded": None, "pending_records": 0,
+            "archive": {"saved": 0, "pending": 0, "processed": 0, "last_recorded_at": None, "audio_seconds": 0},
+            "write_errors": 0, "capture_write_errors": 0,
         }
         assert client.post("/api/lab/queue/start", json={}, headers=h).status_code == 422, "порожня черга"
         assert client.post("/api/lab/queue", json={"preset": "nope"}, headers=h).status_code == 422
@@ -922,6 +967,54 @@ def test_lab_queue_accepts_time_windows_and_reports_estimates(setup, tmp_path, m
         now = time.time()
         bad = client.post("/api/lab/queue/start", json={"windows": [[now + 600, now + 60]]}, headers=h)
         assert bad.status_code == 422
+        overlap = [[now + 60, now + 1200], [now + 600, now + 1800]]
+        assert client.post("/api/lab/queue/start", json={"windows": overlap}, headers=h).status_code == 422
+        assert client.post("/api/lab/queue/start", json={"windows": [[now + 60, now + 4 * 86400]]}, headers=h).status_code == 422
         good = [[now + 600, now + 7000], [now + 8000, now + 20000]]
         assert client.post("/api/lab/queue/start", json={"windows": good}, headers=h).status_code == 200
         assert lab_queue.read(runs)["runner"]["windows"] == good
+
+        monkeypatch.setattr(lab_queue, "runner_active", lambda state: True)
+        assert client.post("/api/lab/queue/start", json={"windows": []}, headers=h).status_code == 409
+        assert lab_queue.read(runs)["runner"]["windows"] == good
+
+
+def test_lab_plan_is_computed_without_starting_or_mutating_the_queue(local):
+    from services import lab_queue
+    import time
+    client, path, tmp = local
+    # Цей екземпляр панелі використовує стандартну теку прогонів; підмінимо її через новий app.
+    runs = tmp / 'isolated-runs'
+    app = create_dashboard(path,KEY,recordings_dir=tmp/'recordings',experiments_dir=runs,diagnostics_path=tmp/'d.json')
+    with TestClient(app,base_url=ORIGIN,client=('127.0.0.1',1)) as page:
+        page.post('/session',json={'token':KEY},headers={'Origin':ORIGIN})
+        page.post('/api/lab/queue',json={'preset':'base'},headers={'Origin':ORIGIN})
+        original = lab_queue.read(runs)
+        windows = [[time.time()+60,time.time()+7200]]
+        assert page.post('/api/lab/plan',json={'windows':windows}).status_code == 403
+        response = page.post('/api/lab/plan',json={'windows':windows},headers={'Origin':ORIGIN})
+        assert response.status_code == 200 and response.json()['plan'][0]['jobs'][0]['job']['preset'] == 'base'
+        assert lab_queue.read(runs) == original
+        assert 'app;dur=' in response.headers['server-timing']
+
+
+def test_sample_file_work_does_not_block_other_http_requests(local, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from api.panel import signals
+    client, _, _ = local
+    entered, release = threading.Event(), threading.Event()
+    def slow_sample(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return {'saved':True}
+    monkeypatch.setattr(signals,'add_sample',slow_sample)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        upload = pool.submit(client.put,'/api/samples',content=b'test',headers={'Origin':ORIGIN})
+        try:
+            assert entered.wait(2)
+            state = pool.submit(client.get,'/api/receiver-pause')
+            assert state.result(timeout=2).status_code == 200
+        finally:
+            release.set()
+        assert upload.result(timeout=2).status_code == 200

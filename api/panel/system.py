@@ -1,8 +1,9 @@
 """Система: пауза приймача, сховище, копії бази, діагностика."""
+from api.panel.jobs import start_task
 from fastapi import Depends, HTTPException
+from typing import Literal
 
 import config
-from services.db_backup import create_backup
 from api.panel.models import PauseUpdate
 from api.panel.common import backups_overview, read_diagnostics, diagnostics_view
 
@@ -13,6 +14,14 @@ def register(app, ctx):
     diagnostics_path = ctx.diagnostics_path
     diagnostic_history = ctx.diagnostic_history
     backup_dir = ctx.backup_dir
+
+    @app.post('/api/telegram-sync/{action}')
+    def telegram_sync_action(action: Literal['retry','skip'], admin=Depends(actor)):
+        from services.telegram_sync import resolve_failed_corrections
+        try:
+            return resolve_failed_corrections(db_path, admin, action)
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from None
 
     @app.get("/api/receiver-pause")
     def receiver_pause(admin=Depends(actor)):
@@ -39,10 +48,18 @@ def register(app, ctx):
     def backups(admin=Depends(actor)):
         return {"items": backups_overview(backup_dir)}
 
-    @app.post("/api/backups")
+    @app.post('/api/archive-backups', status_code=202)
+    def archive_backup(admin=Depends(actor)):
+        return start_task(ctx, 'archive_backup', actor_id=admin)
+
+    @app.post('/api/archive-inventory', status_code=202)
+    def archive_inventory(admin=Depends(actor)):
+        return start_task(ctx, 'archive_inventory', actor_id=admin)
+
+    @app.post("/api/backups", status_code=202)
     def backup_now(admin=Depends(actor)):
-        path = create_backup(db_path, backup_dir)
-        return {"name": path.name, "items": backups_overview(backup_dir)}
+        return start_task(ctx, "backup", actor_id=admin,
+                                 options={"backup_dir": str(backup_dir)})
 
     @app.get("/api/diagnostics")
     def diagnostics(admin=Depends(actor)): return read_diagnostics(diagnostics_path)

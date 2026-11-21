@@ -18,7 +18,7 @@ def temporary_config(tmp_path):
     """Копія налаштувань із тимчасовою базою: фабрика читає й створює таблиці."""
     global config
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
-    config = SimpleNamespace(**{**values, "DB_PATH": str(tmp_path / "events.db")})
+    config = SimpleNamespace(**{**values, "DB_PATH": str(tmp_path / "events.db"),"RECORDINGS_DIR":tmp_path/'recordings'})
     yield
     config = None
 
@@ -134,3 +134,30 @@ def test_recognition_formatter_uses_confirmed_codes_for_the_recording_day():
     old_record = datetime.datetime(2020, 1, 1, 12).timestamp()
     assert worker.daily_code_formatter(text, old_record) == "Клен 15, 60 70 67, прийом"
     assert worker.daily_code_formatter(text, time.time()) == text
+
+
+def test_receiver_loads_number_evidence_and_refreshes_it_without_model_calls(monkeypatch):
+    import sqlite3
+    from tests.test_dictionary_blocks import feedback,make_archive
+    from core.dictionary_blocks import constrain_dictionary_text
+    from services import dictionary_number_evidence as evidence
+    make_archive(config.RECORDINGS_DIR,[feedback(i) for i in range(3)])
+    deps=make_dependencies()
+    deps.update(callsigns=Callsigns.from_lines(['клен: 600 609']),
+                commands=command_dictionary([]),watch=Callsigns.from_lines([]))
+    with (patch('services.transcriber_factory.Transcriber') as transcriber,
+          patch('services.transcriber_factory.WhisperRecognizer') as whisper,
+          patch('services.transcriber_factory.EventProcessor') as processor,
+          patch('services.transcriber_factory.build_text_pipeline'),
+          patch('services.transcriber_factory.build_llm_corrector')):
+        worker=build_transcriber(**deps)
+    cs=processor.call_args.kwargs['callsigns']
+    commands=processor.call_args.kwargs['commands']
+    assert constrain_dictionary_text('клен 800',cs,commands)[0]=='клен 600'
+    with sqlite3.connect(config.RECORDINGS_DIR/'index.sqlite3') as db:
+        db.execute("UPDATE recordings SET reference='Клен 609' WHERE id='2'")
+    monkeypatch.setattr(evidence,'REFRESH_S',0)
+    for refresh in worker.refreshers:refresh()
+    assert constrain_dictionary_text('клен 800',cs,commands)[0]=='клен 800'
+    transcriber.return_value.run.assert_not_called()
+    whisper.return_value.transcribe.assert_not_called()

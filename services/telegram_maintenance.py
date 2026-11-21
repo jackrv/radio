@@ -107,6 +107,8 @@ class MaintenanceMixin:
             db.execute("UPDATE telegram_service_messages SET expires_at=0 WHERE slot=?", (f"access:{user_id}",))
 
     def maintenance_once(self):
+        from services.telegram_recall import expire_deliveries
+        expire_deliveries(self.db_path)
         process_deletions(self)
         sync_corrections(self)
         with get_db(self.db_path) as db:

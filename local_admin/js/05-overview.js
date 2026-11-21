@@ -73,6 +73,7 @@
   });
   // Перехід в архів з чітко заданими фільтрами: попередній пошук чи вид не ховають потрібне.
   function openRecordings({view: kind = "all", period = "", search = ""} = {}) {
+    if (typeof archiveSelection !== 'undefined') archiveSelection = '';
     $("recording-view").value = kind; $("recording-period").value = period;
     $("recording-search").value = search;
     if (loaded.has("recordings")) { show("recordings"); action(() => recordings(true)); } else show("recordings");
@@ -140,14 +141,25 @@
     }
   }
   let attentionAt = 0;
-  $("suggestions-refresh").addEventListener("click", () => action(async () => {
-    $("suggestions-refresh").disabled = true;
-    try {
-      const r = await request("/api/suggestions/refresh", "POST");
-      note(r.new ? `Знайдено нових пропозицій: ${r.new} (усього ${r.total}).` : `Нових пропозицій немає (усього ${r.total}).`);
-      await attention(true);
-    } finally { $("suggestions-refresh").disabled = false; }
-  }));
+  let suggestionTask = null;
+  function suggestionPanel() {
+    if (!suggestionTask) suggestionTask = serverJobPanel({button: $("suggestions-refresh"), box: $("suggestions-check-result"), kind: "suggestions",
+      start: () => request("/api/suggestions/refresh", "POST"), render: r => {
+        $("suggestions-check-result").replaceChildren(el("p", "small", `Перевірено: пропозицій ${r.total}, нових ${r.new}.`));
+        attention(true);
+      }});
+    return suggestionTask;
+  }
+  $("suggestions-refresh").addEventListener("click", () => suggestionPanel().run());
+  let syncTask = null;
+  function syncEventsJob() {
+    if (!syncTask) syncTask = serverJobPanel({button: el("button"), box: $("sync-events-result"), kind:"sync_events",
+      start: () => request("/api/suggestions/sync-events", "POST"), render: r => {
+        $("sync-events-result").replaceChildren(el("p", "small", `Події: оновлено ${r.updated}, без змін ${r.same}, видалено ${r.hidden}, помилок ${r.failed}.`));
+        attention(true);
+      }});
+    return syncTask;
+  }
   let attentionRetry = null;
   async function attention(force = false) {
     const interval = view === "overview" ? 15000 : 60000;
@@ -195,16 +207,10 @@
     // Пропозиції з розмітки, що накопичилися в усіх списках (фонова перевірка панелі).
     for (const g of a.suggestions || []) {
       const fresh = g.new ? ` · нових ${g.new}` : "";
-      const extra = g.kind === "ref_event" ? [["Оновити всі", () => action(async () => {
-        if (!confirm(`Замінити текст ${g.count} подій вашими еталонами? Зміняться журнал подій і підписи цих повідомлень у Telegram в усіх отримувачів.`)) return;
-        const r = await request("/api/suggestions/sync-events", "POST");
-        note(`Оновлено подій: ${r.updated}${r.failed ? `, не вдалося: ${r.failed}` : ""}${r.hidden ? `, приховані: ${r.hidden}` : ""}.`);
-        await attention(true);
-      })]] : [];
-      // «Готово» — бачив, лишаю як є: зникає без підтвердження, нові пропозиції цього виду покажуться.
+      const extra = g.kind === "ref_event" ? [["Оновити всі", () => syncEventsJob().run()]] : [];
       extra.push(["✓ Готово", () => action(async () => {
         const r = await request("/api/suggestions/dismiss", "POST", {kind: g.kind});
-        note(`Приховано: ${r.dismissed}. Повернути — «Показати приховані» внизу списку.`);
+        note(`Позначено як переглянуті: ${r.dismissed}. Повернути можна в історії рішень.`);
         await attention(true);
       })]);
       item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
@@ -214,12 +220,26 @@
     if (a.suggestions_hidden) {
       const row = el("div", "attention-footer");
       const b = el("button", "link-button", `Показати приховані (${a.suggestions_hidden})`); b.type = "button";
-      b.addEventListener("click", () => action(async () => { await request("/api/suggestions/restore", "POST"); await attention(true); }));
+      b.textContent = 'Історія рішень оператора';
+      b.addEventListener("click", () => action(async () => {
+        const history = await request('/api/suggestions/resolved');
+        const list = el('div', 'decision-history');
+        for (const entry of history.items) {
+          const card = el('div','attention-item');
+          const restore = el('button','ghost small-button','Повернути на перевірку'); restore.type='button';
+          restore.addEventListener('click', () => action(async () => {
+            await request('/api/suggestions/restore','POST',{keys:[entry.key]}); await attention(true);
+          }));
+          card.append(el('p','small',`${stamp(entry.at)} · ${entry.title || entry.kind}`),restore); list.append(card);
+        }
+        row.replaceChildren(el('p','muted small',`Рішень збережено: ${history.total}. Показано останні ${history.items.length}. «Готово» означає рішення оператора, а не автоматичне виправлення.`),list);
+      }));
       row.append(b);
       items.push(row);
     }
     $("attention").replaceChildren(...items);
-    $("attention-panel").hidden = !items.length;
+    $("attention-panel").hidden = false;
+    if (!items.length) $('attention').append(el('p','muted small','Поточних зауважень немає.'));
   }
 
   // ---------- Огляд ----------
@@ -238,7 +258,7 @@
   }
   function receiverTone(state) { return state === "listening" ? "ok" : state === "paused" ? "warn" : "bad"; }
 
-  // Стан служб — один рядок «● Назва значення»; служби з проблемою (жовті й червоні) — ще й плитками під ним.
+  // Стан служб — один рядок; проблеми не дублюємо окремими плитками.
   function renderServices(services) {
     const problems = services.filter(s => s[3] === "warn" || s[3] === "bad");
     const line = [el("span", problems.length ? "health-sum warn" : "health-sum ok",
@@ -246,12 +266,13 @@
     for (const [label, value, detail, tone, go, title] of services) {
       const item = el("button", `health-item ${tone || ""}`); item.type = "button";
       item.append(el("span", "health-label", label), el("b", "", value));
+      if ((tone === 'warn' || tone === 'bad') && detail) item.append(el('small','health-detail',detail));
       item.title = `${detail ? `${detail}. ` : ""}${title}`;
       item.addEventListener("click", go);
       line.push(item);
     }
     $("health-line").replaceChildren(...line);
-    $("cards").replaceChildren(...problems.map(([label, value, detail, tone, go, title]) => linked(card(label, value, detail, tone), go, title)));
+    $("cards").replaceChildren();
   }
 
   // ---------- Робочий стіл: якість сьогодні, черги розмітки, коди доби ----------
@@ -323,6 +344,8 @@
     $("updated").title = "";
     attention();
     if (view !== "overview") return;
+    if (typeof suggestionPanel === "function" && !suggestionTask) suggestionPanel().resume();
+    if (typeof syncEventsJob === "function" && !syncTask) syncEventsJob().resume();
 
     // Стан потоків беремо зі знімка лише тоді, коли він свіжий і приймач працює.
     const fresh = age !== null && age <= 120 && (state === "listening" || state === "paused");
@@ -365,10 +388,10 @@
     const split = document.querySelector(".overview-split");
     if (!split) return;
     if (!window.matchMedia?.("(min-width: 1100px)").matches || split.offsetParent === null) { split.style.removeProperty("--overview-h"); return; }
-    const top = split.getBoundingClientRect().top + window.scrollY;
+    const top = split.getBoundingClientRect().top + pageScrollY();
     let height = Math.max(420, Math.floor(window.innerHeight - top - 10));
     split.style.setProperty("--overview-h", `${height}px`);
-    const extra = document.documentElement.scrollHeight - window.innerHeight;
+    const extra = document.querySelector('main').scrollHeight - document.querySelector('main').clientHeight;
     if (extra > 0) { height = Math.max(420, height - extra); split.style.setProperty("--overview-h", `${height}px`); }
   }
   window.addEventListener?.("resize", () => { if (view === "overview") fitOverview(); else if (view === "quality") fitAnalysis(); else if (view === "experiments") fitLab(); });
@@ -378,10 +401,10 @@
     const panel = document.querySelector(".lab-results");
     if (!panel) return;
     if (!window.matchMedia?.("(min-width: 1100px)").matches || panel.offsetParent === null) { panel.style.removeProperty("--lab-h"); return; }
-    const top = panel.getBoundingClientRect().top + window.scrollY;
+    const top = panel.getBoundingClientRect().top + pageScrollY();
     let height = Math.max(320, Math.floor(window.innerHeight - top - 10));
     panel.style.setProperty("--lab-h", `${height}px`);
-    const extra = document.documentElement.scrollHeight - window.innerHeight;
+    const extra = document.querySelector('main').scrollHeight - document.querySelector('main').clientHeight;
     if (extra > 0) { height = Math.max(320, height - extra); panel.style.setProperty("--lab-h", `${height}px`); }
   }
   // Те саме для «Аналіз → Якість»: колонки прокручуються всередині, сторінка — ні.

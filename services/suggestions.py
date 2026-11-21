@@ -12,6 +12,7 @@
 не повертається, доки не з’явиться нова пропозиція.
 """
 import re
+import json
 import sqlite3
 import threading
 import time
@@ -87,6 +88,9 @@ def ensure_table(db):
 def ensure_dismissed(db):
     db.execute("""CREATE TABLE IF NOT EXISTS suggestion_dismissed (
         key TEXT PRIMARY KEY, kind TEXT NOT NULL, dismissed_at REAL NOT NULL)""")
+    columns = {row[1] for row in db.execute('PRAGMA table_info(suggestion_dismissed)')}
+    for name, definition in [('title', "TEXT NOT NULL DEFAULT ''"), ('record', 'TEXT')]:
+        if name not in columns: db.execute(f'ALTER TABLE suggestion_dismissed ADD COLUMN {name} {definition}')
 
 
 def dismiss(db_path, kind, keys=None, *, now=None):
@@ -95,19 +99,32 @@ def dismiss(db_path, kind, keys=None, *, now=None):
     with get_db(db_path) as db:
         ensure_table(db)
         ensure_dismissed(db)
-        rows = db.execute("SELECT key FROM suggestion_state WHERE kind=?", (kind,)).fetchall()
-        chosen = [k for (k,) in rows if keys is None or k in set(keys)]
-        db.executemany("INSERT OR REPLACE INTO suggestion_dismissed (key, kind, dismissed_at) VALUES (?,?,?)",
-                       [(k, kind, now) for k in chosen])
+        rows = db.execute("SELECT key,title,record FROM suggestion_state WHERE kind=?", (kind,)).fetchall()
+        chosen = [(k,title,record) for k,title,record in rows if keys is None or k in set(keys)]
+        db.executemany("INSERT OR REPLACE INTO suggestion_dismissed (key, kind, dismissed_at,title,record) VALUES (?,?,?,?,?)",
+                       [(k, kind, now, title, record) for k,title,record in chosen])
     return len(chosen)
 
 
-def restore(db_path, kind=None):
+def restore(db_path, kind=None, *, keys=None):
     """Повернути приховані пропозиції (усі або одного виду)."""
     with get_db(db_path) as db:
         ensure_dismissed(db)
-        cursor = db.execute("DELETE FROM suggestion_dismissed WHERE ?1 IS NULL OR kind=?1", (kind,))
+        if keys is not None:
+            cursor = db.execute("DELETE FROM suggestion_dismissed WHERE key IN (SELECT value FROM json_each(?))", (json.dumps(keys),))
+        else:
+            cursor = db.execute("DELETE FROM suggestion_dismissed WHERE ?1 IS NULL OR kind=?1", (kind,))
         return cursor.rowcount
+
+
+def decisions(db_path, offset=0, limit=100):
+    """Рішення «Готово» зберігаються, навіть коли пропозиція тимчасово зникла."""
+    with get_db(db_path) as db:
+        ensure_dismissed(db)
+        rows = db.execute('SELECT key,kind,dismissed_at,title,record FROM suggestion_dismissed ORDER BY dismissed_at DESC LIMIT ? OFFSET ?',
+                          (limit,offset)).fetchall()
+        total = db.execute('SELECT COUNT(*) FROM suggestion_dismissed').fetchone()[0]
+    return {'items': [dict(zip(('key','kind','at','title','record'), r)) for r in rows], 'total': total}
 
 
 def _suggestion(kind, key, title, count=1, record=None):
@@ -122,7 +139,7 @@ def _words(text):
 ALIAS_CHECK_MAX = 10   # кожен кандидат — повтор обробки (~1 с), тому не більше стількох за перевірку
 
 
-def _alias_effects(db_path, store, candidates):
+def _alias_effects(db_path, store, candidates, *, progress=None):
     """Кандидати в аліаси, які на ваших еталонах справді щось дають, і що саме.
 
     Повтор текстової обробки зі списком «+ цей аліас» проти чинного: лишаються ті, з якими знайдено
@@ -144,7 +161,7 @@ def _alias_effects(db_path, store, candidates):
         aliases[c["heard"]] = c["callsign"]
         try:
             r = compare(rows, dictionaries, short_garbage, before=current,
-                        after={**current, "aliases": (current["aliases"][0], aliases)}, show=0)
+                        after={**current, "aliases": (current["aliases"][0], aliases)}, show=0, progress=progress)
         except Exception:
             continue
         found = r["after"]["callsigns_hit"] - r["before"]["callsigns_hit"]
@@ -255,7 +272,7 @@ def dictionary_conflicts(db_path):
     return out
 
 
-def collect(db_path, store, *, patterns=None):
+def collect(db_path, store, *, patterns=None, progress=None):
     """Поточні пропозиції. ``patterns`` — готовий результат глибокої перевірки шаблонів (або None)."""
     from core.callsigns import normalize
     from services.alias_candidates import collect as alias_collect
@@ -278,7 +295,7 @@ def collect(db_path, store, *, patterns=None):
                                            callsigns, names, active.get("callsign_aliases", {}))
                   # Лише чисті кандидати: без позначок (інший словник, позивний без номера…) і помітно схожі.
                   if c["addable"] and not c["flags"] and c["similarity"] >= MIN_ALIAS_SIMILARITY and c["count"] >= MIN_REPEATS]
-    for c, effect in _alias_effects(db_path, store, candidates[:ALIAS_CHECK_MAX]):
+    for c, effect in _alias_effects(db_path, store, candidates[:ALIAS_CHECK_MAX], **({"progress": progress} if progress else {})):
         out.append(_suggestion("alias", f"{c['callsign']}:{c['heard']}",
                                f"«{c['heard']}» → {c['callsign']} (×{c['count']}; {effect})", c["count"]))
 
@@ -317,7 +334,7 @@ def collect(db_path, store, *, patterns=None):
     return out
 
 
-def deep_patterns(db_path, store):
+def deep_patterns(db_path, store, *, progress=None):
     """Вимкнені шаблони фраз, кожен з яких окремо лише покращує текст на еталонах."""
     from services.text_lists import read_lists
     from services.text_replay import compare, load_records, load_setup
@@ -332,7 +349,7 @@ def deep_patterns(db_path, store):
     for line in disabled:
         try:
             result = compare(rows, dictionaries, short_garbage, before=current,
-                             after={**current, "patterns": (*current["patterns"], line)}, show=0)
+                             after={**current, "patterns": (*current["patterns"], line)}, show=0, progress=progress)
         except Exception:
             continue
         if result["better"] and not result["worse"] and result["after"]["callsigns_false"] <= result["before"]["callsigns_false"]:
@@ -340,7 +357,7 @@ def deep_patterns(db_path, store):
     return good
 
 
-def refresh(db_path, store, *, deep=False, now=None):
+def refresh(db_path, store, *, deep=False, now=None, progress=None):
     """Оновити стан пропозицій. Повертає (пропозиції, ключі нових)."""
     import json
     now = time.time() if now is None else now
@@ -350,14 +367,16 @@ def refresh(db_path, store, *, deep=False, now=None):
     last_deep, deep_json = meta if meta else (None, None)
     patterns = json.loads(deep_json) if deep_json else []
     if deep or last_deep is None or now - last_deep >= DEEP_CHECK_HOURS * 3600:
-        patterns = deep_patterns(db_path, store)
+        patterns = deep_patterns(db_path, store, progress=progress)
         last_deep = now
     else:
         # Шаблон, який уже ввімкнули чи видалили, зникає одразу, без глибокої перевірки.
         from services.text_lists import read_lists
         disabled = {e["raw_line"] for e in read_lists(db_path)["lists"]["phrase_patterns"]["entries"] if not e["enabled"]}
         patterns = [p for p in patterns if p["pattern"] in disabled]
-    current = collect(db_path, store, patterns=patterns)
+    current = collect(db_path, store, patterns=patterns, progress=progress)
+    if progress:
+        progress(0, 0)
     keys = {s["key"]: s for s in current}
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")
@@ -365,10 +384,8 @@ def refresh(db_path, store, *, deep=False, now=None):
         known = {row[0] for row in db.execute("SELECT key FROM suggestion_state")}
         # Застосовані чи зниклі пропозиції прибираються; нові — запам’ятовуються з часом появи.
         db.executemany("DELETE FROM suggestion_state WHERE key=?", [(k,) for k in known if k not in keys])
-        # «Готово» пам’ятається, поки пропозиція існує; зникла й з’явилася знову — покажеться.
+        # Рішення людини стійке: зникнення пропозиції не скасовує «Готово».
         ensure_dismissed(db)
-        dismissed = {row[0] for row in db.execute("SELECT key FROM suggestion_dismissed")}
-        db.executemany("DELETE FROM suggestion_dismissed WHERE key=?", [(k,) for k in dismissed if k not in keys])
         fresh = [s for k, s in keys.items() if k not in known]
         db.executemany("INSERT INTO suggestion_state (key, kind, title, first_seen, record) VALUES (?,?,?,?,?)",
                        [(s["key"], s["kind"], s["title"], now, s.get("record")) for s in fresh])
@@ -388,8 +405,7 @@ def overview(db_path, now=None):
         ensure_dismissed(db)
         rows = db.execute("""SELECT kind, title, first_seen, record, key FROM suggestion_state
             WHERE key NOT IN (SELECT key FROM suggestion_dismissed) ORDER BY first_seen DESC""").fetchall()
-        hidden = db.execute("""SELECT COUNT(*) FROM suggestion_state
-            WHERE key IN (SELECT key FROM suggestion_dismissed)""").fetchone()[0]
+        hidden = db.execute("SELECT COUNT(*) FROM suggestion_dismissed").fetchone()[0]
         meta = db.execute("SELECT last_deep FROM suggestion_meta WHERE id=1").fetchone()
     groups = {}
     for kind, title, first_seen, record, key in rows:
@@ -433,6 +449,7 @@ class SuggestionWorker:
         self.poke_delay = poke_delay
         self._stop, self._poked = threading.Event(), threading.Event()
         self.busy = False
+        self._job_id = None
         self.thread = threading.Thread(target=self._loop, name="suggestions", daemon=True)
 
     def poke(self):
@@ -442,7 +459,15 @@ class SuggestionWorker:
     @property
     def pending(self):
         """Перевірка ще йде або запланована: панель покаже актуальне трохи згодом."""
-        return self.busy or self._poked.is_set()
+        if self.busy or self._poked.is_set():
+            return True
+        if self._job_id:
+            from services import panel_jobs
+            try:
+                return panel_jobs.read(self.db_path, self._job_id, include_result=False)["status"] in panel_jobs.ACTIVE
+            except (LookupError, OSError, ValueError):
+                pass
+        return False
 
     def start(self):
         self.thread.start()
@@ -450,6 +475,11 @@ class SuggestionWorker:
 
     def stop(self):
         self._stop.set()
+
+    def _refresh(self):
+        # Усі текстові прогони — в одній збереженій черзі, поза процесом панелі.
+        from services import panel_jobs
+        self._job_id = panel_jobs.submit(self.db_path, self.store.root, "suggestions")["id"]
 
     def _loop(self):
         # Невелика затримка: панель і приймач спершу запускаються.
@@ -459,7 +489,7 @@ class SuggestionWorker:
             self._poked.clear()
             self.busy = True
             try:
-                refresh(self.db_path, self.store)
+                self._refresh()
             except (sqlite3.Error, OSError, ValueError) as exc:
                 self.log.warning("Пропозиції з розмітки не оновлено: %s", type(exc).__name__)
             except Exception:

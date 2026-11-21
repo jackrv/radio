@@ -70,7 +70,9 @@ class ConsoleDashboard(logging.Handler):
 
     def emit(self, record):
         if record.levelno < logging.WARNING and not getattr(record, "console", False):
-            return
+            from core.log_security import TechnicalFileFormatter
+            if not TechnicalFileFormatter.CONTENT.search(record.getMessage()):
+                return
         # Formatter still redacts secrets, but traceback stays in the file.
         import copy
         short = copy.copy(record)

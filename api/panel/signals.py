@@ -1,8 +1,10 @@
 """Сигнали сповіщень: фільтр, зразки, відкинуті записи."""
 import logging
 
+from api.panel.jobs import start_task
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
 from services.notification_samples import add_sample, delete_sample, list_samples, MAX_UPLOAD_BYTES, validate_wav
 from services import notification_eval
@@ -30,11 +32,11 @@ def register(app, ctx):
                              if k.startswith("asr.spectral.") or k in ("asr.notification_filtered", "asr.measured_segments", "asr.low_rms")},
                 "observed": diagnostics.get("notification_spectral") or {"buckets": [], "recent": []}}
 
-    @app.get("/api/notification-filter/evaluation")
+    @app.post("/api/notification-filter/evaluation", status_code=202)
     def notification_evaluation(admin=Depends(actor)):
         limits = spectral_settings(db_path)
-        return notification_eval.evaluate(recordings, samples_dir, threshold=limits["threshold"],
-                                          max_outside_s=limits["max_outside_s"], max_extra=limits["max_extra"])
+        return start_task(ctx, "notification_evaluation", actor_id=admin,
+                                 options={"samples_dir":str(samples_dir), "limits":{k:limits[k] for k in ("threshold", "max_outside_s", "max_extra")}})
 
     @app.get("/api/samples")
     def samples(admin=Depends(actor)): return list_samples(samples_dir)
@@ -51,17 +53,20 @@ def register(app, ctx):
     async def sample_upload(request: Request, admin=Depends(actor)):
         content = await upload(request)
         try:
-            return add_sample(samples_dir,content,confirmed_isolated=request.headers.get("x-confirm-isolated")=="yes")
+            return await run_in_threadpool(add_sample, samples_dir, content, confirmed_isolated=request.headers.get("x-confirm-isolated")=="yes")
         except ValueError as exc:
             raise HTTPException(422,str(exc)) from None
 
     @app.post("/api/samples/test")
     async def sample_test(request: Request, admin=Depends(actor)):
+        content = await upload(request)
+        return await run_in_threadpool(score_sample, content)
+
+    def score_sample(content):
         import io
         import logging
         import wave
         from core.notification_spectral import SpectralNotificationMatcher
-        content = await upload(request)
         try:
             content,_ = validate_wav(content)
         except ValueError as exc:

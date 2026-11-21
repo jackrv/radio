@@ -55,6 +55,7 @@ VIEWS = {
     "radio": ("pending", RADIO_GROUP),
     "speech": ("pending", f"({SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "deferred": ("pending", "status='deferred'"),
+    "captured": ("all", "status='deferred' OR json_extract(data,'$.capture_only')=1 OR json_extract(data,'$.deferred')=1"),
     "filtered": ("pending", f"(status<>'deferred' AND NOT {SPEECH_GROUP} AND NOT {RADIO_GROUP})"),
     "reviewed": ("reviewed", "1"),                                   # за часом розмітки, останні першими
     "miniapp": ("reviewed", "reference_source='miniapp'"),           # еталон — правка з Mini App
@@ -153,19 +154,19 @@ class RecordingStore:
         if path.is_symlink():
             raise ValueError("Recording database must not be a symlink")
         db = sqlite3.connect(path, timeout=5)
-        path.chmod(0o600)
-        db.row_factory = sqlite3.Row
-        # lower()/LIKE у SQLite не знають кирилиці; пошук за текстом — через casefold.
-        db.create_function("casefold", 1, lambda value: (value or "").casefold(), deterministic=True)
-        db.execute("""CREATE TABLE IF NOT EXISTS recordings (
-            id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL,
-            bytes INTEGER NOT NULL, data TEXT NOT NULL, reference TEXT,
-            label TEXT, revision INTEGER NOT NULL DEFAULT 0, reviewed_at REAL,
-            reference_recipient TEXT, reference_sender TEXT, multiple_messages INTEGER,
-            reference_source TEXT)""")
         try:
-            # Адитивні міграції: старі записи й розмітка не змінюються.
-            # reference_source: NULL — розмітка оператора в панелі, 'miniapp' — правка з Mini App.
+            path.chmod(0o600)
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA busy_timeout=5000")
+            # Лабораторія й панель читають індекс, поки приймач записує нові фрагменти.
+            db.execute("PRAGMA journal_mode=WAL")
+            db.create_function("casefold", 1, lambda value: (value or "").casefold(), deterministic=True)
+            db.execute("""CREATE TABLE IF NOT EXISTS recordings (
+                id TEXT PRIMARY KEY, created REAL NOT NULL, status TEXT NOT NULL,
+                bytes INTEGER NOT NULL, data TEXT NOT NULL, reference TEXT,
+                label TEXT, revision INTEGER NOT NULL DEFAULT 0, reviewed_at REAL,
+                reference_recipient TEXT, reference_sender TEXT, multiple_messages INTEGER,
+                reference_source TEXT)""")
             added = {"reference_recipient": "TEXT", "reference_sender": "TEXT", "multiple_messages": "INTEGER",
                      "reference_source": "TEXT"}
             columns = {row[1] for row in db.execute("PRAGMA table_info(recordings)")}
@@ -176,6 +177,7 @@ class RecordingStore:
                     if name not in columns:
                         db.execute(f"ALTER TABLE recordings ADD COLUMN {name} {kind}")
                 db.commit()
+            db.execute('CREATE INDEX IF NOT EXISTS recordings_created ON recordings(created,id)')
             yield db
             db.commit()
         except BaseException:
@@ -188,20 +190,34 @@ class RecordingStore:
         record_id = uuid.uuid4().hex
         target = self.root / (record_id + ".wav")
         data = json_values(dict(data, signal=signal_metrics(pcm, sr), sample_rate=sr))
-        with self.connect() as db:
-            try:
+        created = data.get("captured_at")
+        if type(created) not in (int, float) or not math.isfinite(created) or created <= 0:
+            created = time.time()
+        made_file = False
+        try:
+            with self.connect() as db:
                 fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                made_file = True
                 with os.fdopen(fd, "wb") as output:
                     with wave.open(output, "wb") as wav:
                         wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(sr)
                         wav.writeframes(pcm)
                 db.execute("INSERT INTO recordings(id,created,status,bytes,data) VALUES(?,?,?,?,?)",
-                           (record_id, time.time(), data.get("status", "error"), target.stat().st_size,
+                           (record_id, created, data.get("status", "error"), target.stat().st_size,
                             json.dumps(data, ensure_ascii=False, allow_nan=False)))
-            except BaseException:
+        except BaseException:
+            # Помилка commit теж тут: файл без рядка SQLite не стає невидимою сиротою.
+            if made_file:
                 target.unlink(missing_ok=True)
-                raise
-        self.prune()
+            raise
+        try:
+            self.prune()
+        except (OSError, sqlite3.Error):
+            # Запис уже збережено. Повтор save створив би дублікат через збій прибирання.
+            import logging
+            from core.diagnostics import runtime
+            runtime.count("recordings.prune_error")
+            logging.getLogger("radio").exception("Аудіо збережено, але очищення архіву не завершено")
         return record_id
 
     # ---------- Режим «лише запис»: накопичене чекає розпізнавання ----------
@@ -210,6 +226,16 @@ class RecordingStore:
         with self.connect() as db:
             row = db.execute("SELECT created FROM recordings WHERE id=?", (record_id,)).fetchone()
         return float(row[0]) if row else None
+
+    def capture_summary(self):
+        """Лише збережене в архіві, а не кількість спроб передати звук у чергу."""
+        with self.connect() as db:
+            row = db.execute("""SELECT COUNT(*), COALESCE(SUM(status='deferred'),0), MAX(created),
+                COALESCE(SUM(json_extract(data,'$.signal.duration_s')),0)
+                FROM recordings WHERE status='deferred' OR json_extract(data,'$.capture_only')=1
+                    OR json_extract(data,'$.deferred')=1""").fetchone()
+        return {"saved": row[0], "pending": row[1], "processed": row[0]-row[1],
+                "last_recorded_at": row[2], "audio_seconds": row[3]}
 
     def next_deferred(self):
         """Найстаріший запис «очікує розпізнавання»: (id, pcm int16) або None."""
@@ -257,11 +283,12 @@ class RecordingStore:
                 db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL AND status<>'deferred'", (record_id,))
 
     @staticmethod
-    def decode(row):
+    def decode(row, *, include_number_match=True):
         result = dict(row)
         result["data"] = json.loads(result["data"])
         if result["reference"] is not None:
-            result["quality"] = {stage: scores(result["reference"], result["data"].get(stage, ""))
+            metric = scores if include_number_match else error_rates
+            result["quality"] = {stage: metric(result["reference"], result["data"].get(stage, ""))
                                  for stage in ("raw_text", "final_text")}
         result["role_quality"] = {}
         for role in ("recipient", "sender"):
@@ -293,7 +320,7 @@ class RecordingStore:
                                           + "".join(f" AND {b}" for b in bounds), params).fetchone()[0]
         return {name: counts[name] for name in VIEWS}
 
-    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None, until=None, order="new"):
+    def listing(self, offset=0, limit=25, *, view="all", search="", edits=None, since=None, until=None, order="new", selected_ids=None, selection_terms=None):
         """order="doubtful" — спершу записи, у яких Whisper найменш упевнений (найімовірніше треба правити)."""
         review, condition = VIEWS[view]
         reviewed = _REVIEW_SQL[review]
@@ -301,6 +328,10 @@ class RecordingStore:
         if search.strip():
             reviewed, (condition, params) = "1", search_condition(search)
         where = f"({reviewed}) AND ({condition})"
+        if selected_ids is not None:
+            where += ' AND id IN (SELECT value FROM json_each(?))'
+            where += " AND (label IS NULL OR label NOT IN ('noise','notification','room'))"
+            params = (*params, json.dumps(selected_ids))
         if edits == "miniapp":
             where += " AND reference_source='miniapp'"
         elif edits is not None:
@@ -317,8 +348,14 @@ class RecordingStore:
             params = (*params, float(until))
         with self.connect() as db:
             db.execute("BEGIN")
+            if selection_terms is not None:
+                from services.mention_selection import register_matcher
+                register_matcher(db, selection_terms)
+                where += ' AND mention_matches(reference,data)'
             total = db.execute(f"SELECT COUNT(*) FROM recordings WHERE {where}", params).fetchone()[0]
-            sort = f"COALESCE({CONFIDENCE_SQL}, -99) ASC, {moment} DESC, id DESC" if order == "doubtful" else f"{moment} DESC, id DESC"
+            sort = f"COALESCE({CONFIDENCE_SQL}, -99) ASC, {moment} DESC, id DESC" if order == "doubtful" else f"{moment} {'ASC' if order == 'old' else 'DESC'}, id {'ASC' if order == 'old' else 'DESC'}"
+            if order == 'unreviewed':
+                sort = f'reference IS NOT NULL ASC, {moment} ASC, id ASC'
             rows = db.execute(f"SELECT * FROM recordings WHERE {where} ORDER BY {sort} LIMIT ? OFFSET ?",
                               (*params, limit, offset)).fetchall()
         return {"items": [self.decode(row) for row in rows], "total": total}
@@ -520,7 +557,9 @@ class RecordingStore:
             rows = db.execute("SELECT * FROM recordings WHERE reference IS NOT NULL").fetchall()
             size = db.execute("SELECT COALESCE(SUM(bytes),0) FROM recordings").fetchone()[0]
         quality = {}
-        decoded = [self.decode(row) for row in rows]
+        # Зведення не використовує number_match; його нормалізація дорожча за WER/CER.
+        decoded = [self.decode(row, include_number_match=False) for row in rows]
+        day_start = _day_start()
         for stage in ("raw_text", "final_text"):
             speech = [r for r in decoded if r["label"] == "speech"]
             errors = sum(r["quality"][stage]["word_errors"] for r in speech)
@@ -548,10 +587,10 @@ class RecordingStore:
                 "speech_reviewed": sum(r["label"] in ("speech", "unclear") for r in decoded),
                 # Головна мета — текст без правок: підсумок збігся з еталоном слово в слово.
                 "no_edits": sum(r["label"] == "speech" and r["quality"]["final_text"]["word_errors"] == 0 for r in decoded),
-                "reviewed_today": sum((r.get("reviewed_at") or 0) >= _day_start() for r in decoded),
+                "reviewed_today": sum((r.get("reviewed_at") or 0) >= day_start for r in decoded),
                 # Те саме лише для сьогоднішнього ефіру: видно дію свіжих налаштувань, а не всю історію.
-                "speech_today": sum(r["label"] == "speech" and r["created"] >= _day_start() for r in decoded),
-                "no_edits_today": sum(r["label"] == "speech" and r["created"] >= _day_start()
+                "speech_today": sum(r["label"] == "speech" and r["created"] >= day_start for r in decoded),
+                "no_edits_today": sum(r["label"] == "speech" and r["created"] >= day_start
                                       and r["quality"]["final_text"]["word_errors"] == 0 for r in decoded)}
 
 
@@ -590,9 +629,11 @@ class RecordingArchive:
         try:
             if self.closed:
                 raise queue.Full
-            self.pending.put_nowait((bytes(pcm), sr, dict(data, settings=self.settings)))
+            self.pending.put_nowait((bytes(pcm), sr, dict(data, captured_at=data.get("captured_at", time.time()), settings=self.settings)))
         except queue.Full:
             runtime.count("recordings.dropped")
+            if data.get("status") == "deferred":
+                runtime.count("recordings.capture.dropped")
 
     def vad_short(self, pcm, sr, speech_ms):
         self.submit(pcm, sr, {"status": "vad_short", "speech_ms": speech_ms})
@@ -604,10 +645,26 @@ class RecordingArchive:
             try:
                 if item is None:
                     return
-                self.store.save(*item)
+                for attempt in range(3):
+                    try:
+                        self.store.save(*item)
+                        break
+                    except sqlite3.OperationalError as exc:
+                        code = getattr(exc, "sqlite_errorcode", 0) or 0
+                        busy = code & 255 in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or str(exc) in (
+                            "database is locked", "database table is locked")
+                        if not busy or attempt == 2:
+                            raise
+                        runtime.count("recordings.write_retries")
+                        self.log.warning("Індекс аудіо зайнятий; повтор запису %s/3", attempt + 2)
+                        time.sleep(.25 * (attempt + 1))
                 runtime.count("recordings.saved")
+                if item[2].get("status") == "deferred":
+                    runtime.count("recordings.capture.saved")
             except Exception:
                 runtime.count("recordings.write_error")
+                if item is not None and item[2].get("status") == "deferred":
+                    runtime.count("recordings.capture.write_error")
                 self.log.exception("Не вдалося зберегти аудіозапис для перевірки")
             finally:
                 self.pending.task_done()

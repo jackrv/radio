@@ -81,6 +81,7 @@
   let current;
   // ---------- Фільтр сповіщень ----------
   async function filterView() {
+    if (!filterTask) filterJob().resume();
     const f = await request("/api/notification-filter");
     const c = f.counters || {}, sp = f.spectral, obs = f.observed || {};
     const recognised = (c["asr.spectral.candidate.ready"] || 0) + (c["asr.spectral.candidate.ready_fallback"] || 0);
@@ -143,9 +144,17 @@
     if (rows.length) $("filter-recent").append(el("p", "muted small", "Підсвічено кандидатів, які Whisper розпізнав як фразу: саме їх змінить активний режим. Прослухайте ці фрази й позначте."));
   }
 
-  async function evaluation() {
-    note("Оцінюємо розмічені записи…");
-    const r = await request("/api/notification-filter/evaluation");
+  let filterTask = null;
+  function filterJob() {
+    if (!filterTask) filterTask = serverJobPanel({button: $("filter-eval"), box: $("filter-job-result"), kind:"notification_evaluation",
+      start: () => request("/api/notification-filter/evaluation", "POST"), render: r => {
+        $("filter-job-result").replaceChildren(el("p", "small", `Оцінено записів: ${r.items.length}.`));
+        renderEvaluation(r);
+      }});
+    return filterTask;
+  }
+  async function evaluation() { return filterJob().run(); }
+  function renderEvaluation(r) {
     const s = r.summary, box = el("div", "summary");
     if (!r.templates) { box.classList.add("bad"); box.textContent = "Немає зразків — нема з чим порівнювати."; }
     else if (s.status === "ok") {
@@ -211,5 +220,5 @@
     $("filter-items").replaceChildren(r.items.length ? items : el("p", "muted", "Розмічених записів ще немає. Позначайте їх у розділі «Аудіоархів»."));
     note(`Оцінено записів: ${r.items.length}.`);
   }
-  $("filter-eval").addEventListener("click", () => action(evaluation));
+  $("filter-eval").addEventListener("click", () => evaluation());
 

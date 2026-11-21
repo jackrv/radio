@@ -14,6 +14,11 @@ python3.12 -m venv .venv
 cp .env.example .env
 ```
 
+Для явного відтворення macOS arm64 / Python 3.12 середовища є
+`constraints-macos-py312.txt`: `pip install -c constraints-macos-py312.txt -r requirements-dev.txt`.
+Це знімок версій, не lock із хешами; чисте встановлення цього знімка ще не перевірене.
+Не застосовуйте його автоматично до інших платформ/версій Python.
+
 У `.env`:
 
 | Змінна | Навіщо |

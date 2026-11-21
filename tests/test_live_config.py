@@ -174,6 +174,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
     from services.transcriber_factory import build_transcriber
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
+                                "RECORDINGS_DIR": tmp_path / "recordings",
                                 "SPECTRAL_NOTIFICATION_MODE": "off",
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
@@ -240,6 +241,7 @@ def test_receiver_applies_whisper_prompt_list_without_restart(db_path, tmp_path)
     from services.text_lists import read_lists, write_list
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
+                                "RECORDINGS_DIR": tmp_path / "recordings",
                                 "SPECTRAL_NOTIFICATION_MODE": "off",
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])

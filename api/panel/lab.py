@@ -1,5 +1,6 @@
 """Аналіз → Експерименти: черга офлайн-тестів лабораторії (рецепти, порядок, запуск і зупинка)."""
 import time
+import math
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -26,6 +27,19 @@ class QueueStop(BaseModel):
     now: bool = False
 
 
+class QueuePlan(BaseModel):
+    windows: list[tuple[float, float]] = Field(max_length=8)
+
+
+def validated_windows(windows, now):
+    windows = sorted(windows)
+    if any(not math.isfinite(a) or not math.isfinite(b) or b <= a or b <= now or b > now + 3 * 86400 for a, b in windows):
+        raise HTTPException(422, "Вікно має бути непорожнім, не завершеним і в межах 3 діб")
+    if any(a < previous[1] for previous, (a, _) in zip(windows, windows[1:])):
+        raise HTTPException(422, "Вікна часу не мають перетинатися")
+    return windows
+
+
 def register(app, ctx):
     from services import lab_queue
     actor, root, launcher_root = ctx.actor, ctx.experiments_dir, ctx.launcher_root
@@ -43,6 +57,15 @@ def register(app, ctx):
         from services.receiver_control import capture_state
         capture = capture_state(ctx.db_path)
         capture["pending_records"] = ctx.recordings.count_status("deferred")
+        capture["archive"] = ctx.recordings.capture_summary()
+        from api.panel.common import read_diagnostics
+        try:
+            diagnostics = read_diagnostics(ctx.diagnostics_path)
+        except (OSError, ValueError):
+            diagnostics = {}
+        counters = diagnostics.get("counters", {})
+        capture["write_errors"] = counters.get("recordings.write_error", 0)
+        capture["capture_write_errors"] = counters.get("recordings.capture.write_error", 0)
         for job in data["jobs"]:
             job["progress"] = lab_queue.progress(root, job) if job["status"] in ("running", "done", "failed", "cancelled") else None
         presets = [{"key": key, **{k: v for k, v in p.items() if k != "args"}} for key, p in lab_queue.PRESETS.items()]
@@ -56,6 +79,14 @@ def register(app, ctx):
     def queue(admin=Depends(actor)):
         return state()
 
+    @app.post("/api/lab/plan")
+    def queue_plan(payload: QueuePlan, admin=Depends(actor)):
+        now = time.time()
+        windows = validated_windows(payload.windows, now)
+        records = labelled_records()
+        estimates = {key: lab_queue.estimate_seconds(root, key, records) for key in lab_queue.PRESETS}
+        return lab_queue.plan_windows(windows, lab_queue.read(root)["jobs"], estimates, now=now)
+
     @app.post("/api/lab/queue")
     def queue_add(payload: QueueAdd, admin=Depends(actor)):
         try:
@@ -67,14 +98,14 @@ def register(app, ctx):
     @app.post("/api/lab/queue/start")
     def queue_start(payload: QueueStart, admin=Depends(actor)):
         import config
+        if lab_queue.runner_active(lab_queue.read(root)):
+            raise HTTPException(409, "Черга вже працює. Спершу зупиніть її, щоб змінити розклад.")
         if not config.RECORD_AUDIO:
             raise HTTPException(409, "Для режиму «лише запис» потрібно ввімкнути архів аудіо")
         if not any(j["status"] == "queued" for j in lab_queue.read(root)["jobs"]):
             raise HTTPException(422, "Черга порожня — додайте тест")
         now = time.time()
-        windows = [(a, b) for a, b in (payload.windows or [])]
-        if any(b <= a or b < now or a > now + 3 * 86400 for a, b in windows):
-            raise HTTPException(422, "Вікно має закінчуватися пізніше, ніж починається, і не раніше, ніж зараз (до 3 діб наперед)")
+        windows = validated_windows(payload.windows or [], now)
         lab_queue.set_windows(root, windows)
         lab_queue.set_start_at(root, None if windows else payload.start_at)
         lab_queue.start(root, launcher_root=launcher_root or ROOT)

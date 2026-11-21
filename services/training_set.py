@@ -48,7 +48,7 @@ def _split(rows):
     return test
 
 
-def export(store, destination):
+def export(store, destination, *, progress=None):
     """Копіює придатні WAV і пише metadata.jsonl. Повертає шлях і підсумок."""
     rows = [r for r in _rows(store) if 0 < r[3] <= MAX_SECONDS]
     if not rows:
@@ -58,7 +58,9 @@ def export(store, destination):
     target.chmod(0o700)
     test = _split(rows)
     with open(target / "metadata.jsonl", "w", encoding="utf-8") as out:
-        for record_id, _, reference, duration in rows:
+        for number, (record_id, _, reference, duration) in enumerate(rows):
+            if progress:
+                progress(number, len(rows))
             source = store.root / f"{record_id}.wav"
             if not source.is_file():
                 continue
@@ -66,6 +68,8 @@ def export(store, destination):
             text = " ".join(reference.replace(" / ", " ").replace("|", " ").split())
             out.write(json.dumps({"audio": f"audio/{source.name}", "text": text, "duration": round(duration, 2),
                                   "split": "test" if record_id in test else "train"}, ensure_ascii=False) + "\n")
+    if progress:
+        progress(len(rows), len(rows))
     written = [json.loads(line) for line in (target / "metadata.jsonl").read_text(encoding="utf-8").splitlines()]
     return {"path": str(target), "records": len(written),
             "train": sum(r["split"] == "train" for r in written), "test": sum(r["split"] == "test" for r in written),

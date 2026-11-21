@@ -16,6 +16,7 @@ function harness(page, extraSummary = {}, options = {}) {
     replaceChildren(...items) { this.children = items; }
     click() { return this.listeners.click?.(); }
     focus() { this.focused = true; }
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     setAttribute() {}
     addEventListener(name, callback) { this.listeners[name] = callback; }
   }
@@ -48,6 +49,23 @@ function harness(page, extraSummary = {}, options = {}) {
 }
 
 const item = {id:'a'.repeat(32),created:1,status:'ready',data:{raw_text:'текст',final_text:'текст'},reference:null,revision:0};
+
+test('transcript preview renders server marks as text and selects their editor range', async () => {
+  const text = 'Клен / <img>';
+  const ui = harness({items:[{...item,data:{raw_text:text}}],total:1}, {}, {
+    timers:true, textCheck: () => ({issues:[],formatted:null,highlights:[
+      {start:0,end:4,kind:'callsign'},{start:5,end:6,kind:'boundary'},
+      {start:7,end:12,kind:'problem'}]})});
+  await ui.load();
+  await new Promise(resolve => setImmediate(resolve));
+  const {input,nodes} = editor(ui);
+  const marked = nodes.find(n => n.className === 'transcript-callsign');
+  assert.equal(marked.textContent, 'Клен');
+  marked.click();
+  assert.equal(input.focused,true);
+  assert.equal(input.selectionStart,0); assert.equal(input.selectionEnd,4);
+  assert.equal(nodes.filter(n => n.className === 'transcript-problem').map(n => n.textContent).join(''),'<img>');
+});
 
 test('archive renders current views and retains pagination', async () => {
   const ui = harness({items:[item], total:30, views:{radio:30, speech:2}});
@@ -214,6 +232,57 @@ test('daily-code spelling hints are not applied automatically on blur',async()=>
   input.listeners.blur({relatedTarget:{}});
   await ui.save();
   assert.equal(sent.reference,'Береза 68, 48, 42');
+});
+
+test('duplicate save while blur correction is pending sends only one review', async () => {
+  let finish, reviews = 0;
+  const correction = new Promise(resolve => { finish = resolve; });
+  const ui = harness({items:[{...item}],total:1},{},{
+    textCheck: () => correction,
+    review: body => { reviews++; return {...body, revision:1}; },
+  });
+  await ui.load();
+  const {input} = editor(ui);
+  input.listeners.focus(); input.value = 'вішня';
+  input.listeners.blur({relatedTarget:{}});
+  const first = ui.save(), second = ui.save();
+  const save = editor(ui).nodes.find(node => node.dataset.status === 'Зберігаю…');
+  assert.equal(save.disabled, true, 'feedback appears before the text check completes');
+  finish({issues:[], formatted:null});
+  await Promise.all([first, second]);
+  assert.equal(reviews, 1);
+  assert.equal(save.disabled, false);
+});
+
+test('concurrent editor checks share a request but later checks get fresh dictionaries', async () => {
+  let finish, calls = 0;
+  const correction = new Promise(resolve => { finish = resolve; });
+  const ui = harness({items:[{...item}],total:1},{},{
+    textCheck: () => { calls++; return correction; },
+  });
+  await ui.load();
+  const {input} = editor(ui); input.value = 'Клен 15';
+  const card = ui.cards()[0];
+  const first = card.applySpellingOnLeave(), second = card.applyFormatting();
+  assert.equal(calls, 1);
+  finish({issues:[], formatted:null});
+  await Promise.all([first, second]);
+  await card.applyFormatting();
+  assert.equal(calls, 2);
+});
+
+test('an old spelling response never replaces text typed during the check', async () => {
+  let finish;
+  const ui = harness({items:[{...item}],total:1},{},{
+    textCheck: () => new Promise(resolve => { finish = resolve; }),
+  });
+  await ui.load();
+  const {input} = editor(ui); input.value = 'вішня';
+  const pending = ui.cards()[0].applySpellingOnLeave();
+  input.value = 'Клен 15, прийом';
+  finish({issues:[{kind:'spelling', fixed_text:'Вишня'}], formatted:null});
+  assert.equal(await pending, false);
+  assert.equal(input.value, 'Клен 15, прийом');
 });
 
 test('leaving the field for Save does not start spelling auto-correction',async()=>{
@@ -457,20 +526,20 @@ test('leaving the field without typing (tab switch, re-render) changes nothing',
   assert.equal(ui.cards()[0].dirty, false);
 });
 
-test('time windows: next occurrence, crossing midnight, and the same plan as the queue runner', () => {
+test('time windows: explicit dates, next occurrence and crossing midnight', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'local_admin', 'js', '04-analysis.js'), 'utf8');
   const code = source.slice(source.indexOf('  function windowTimes('), source.indexOf('  function windowsEditor('));
   const ctx = vm.createContext({ Date });
-  vm.runInContext(code + '\nglobalThis.windowTimes = windowTimes; globalThis.planWindows = planWindows;', ctx);
+  vm.runInContext(code + '\nglobalThis.windowTimes = windowTimes;', ctx);
   const [late, early] = ctx.windowTimes([["23:30", "00:30"], ["01:00", "02:00"]]);
   assert.equal(late[1] - late[0], 3600, 'через північ — година');
   assert.ok(early[0] >= late[1], 'наступне вікно — після попереднього');
-  const windows = [[0, 115 * 60], [135 * 60, 355 * 60]];
-  const queued = ['base', 'no-prompt', 'resegment'].map(preset => ({ preset }));
-  const q = { estimates: { base: 85 * 60, 'no-prompt': 85 * 60, resegment: 100 * 60 }, margin: 1.15, cooldown_s: 300 };
-  const { plan, left } = ctx.planWindows(windows, queued, q);
-  assert.deepEqual(plan.map(s => s.jobs.map(j => j.job.preset).join(',')), ['base', 'no-prompt,resegment']);
-  assert.equal(left.length, 0);
-  const tight = ctx.planWindows([[0, 60 * 60]], queued, q);
-  assert.equal(tight.plan[0].jobs.length, 0); assert.equal(tight.left.length, 3);
+  assert.equal(ctx.windowTimes([["01:00", "01:00"]]).length, 0);
+});
+
+
+test('refreshing archive disposes old audio before replacing cards',async()=>{
+ const ui=harness({items:[item],total:1});await ui.load();
+ const old=ui.cards()[0].audio;let stopped=0;old.pause=()=>stopped++;
+ await ui.load();assert.equal(stopped,1);assert.notEqual(ui.cards()[0].audio,old);
 });

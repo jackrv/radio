@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from core.analyzer import canonical_text, is_bare_callsign, is_short_garbage, split_roles
 from core.template_text import template_text
+from core.transcript_format import tidy_text
+from core.dictionary_blocks import constrain_dictionary_text
 
 
 @dataclass
@@ -22,6 +24,10 @@ def analyze_text(text, callsigns, commands, watch, short_garbage, log):
     """Ті самі правила й порядок, що в EventProcessor; побічних дій немає."""
     original = text
     try:
+        text, dictionary_changes = constrain_dictionary_text(text,callsigns,commands)
+        if dictionary_changes:
+            from core.recording_trace import note
+            note(dictionary_corrections=dictionary_changes)
         text = canonical_text(text, (commands, callsigns, watch))
         text = template_text(text, callsigns, (*commands.names, *watch.names))
     except Exception:
@@ -41,4 +47,9 @@ def analyze_text(text, callsigns, commands, watch, short_garbage, log):
         partial = frozenset((m.name, m.number) for m in commands.matches(text) if getattr(m, "partial", False))
     except Exception:
         partial = frozenset()
+    # Оформлення не повинно змінювати вже визначені метадані/одержувачів.
+    try:
+        text = tidy_text(text, callsigns, commands)
+    except Exception:
+        log.exception("Не вдалося оформити текст; залишаю попередній результат")
     return TextAnalysis(text, cs_found, cmd_found, watch_found, to_found, from_found, rejected, partial)

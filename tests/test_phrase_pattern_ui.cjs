@@ -32,6 +32,22 @@ function patternEditor({request, note=()=>{}}={}) {
   return context.tools;
 }
 
+for(const generic of [true,false])test(`add uses search text without saving and preserves safe enabled state (generic=${generic})`,()=>{
+ const tools=patternEditor(),save=new Element('button','','Зберегти');let saves=0;
+ save.addEventListener('click',()=>saves++);
+ const editor=tools.editor([],[],generic,save);
+ const search=editor.element.querySelectorAll('input').find(input=>input.className==='pattern-search');
+ search.value=generic?'  злива 42 42  ':'  {П}, прийом  ';search.dispatch('input');
+ editor.element.querySelectorAll('button').find(button=>button.textContent.startsWith('＋ Додати')).click();
+ const expected=generic?'злива 42 42':'{П}, прийом';
+ assert.deepEqual(JSON.parse(JSON.stringify(editor.entries())),[{raw_line:expected,enabled:generic}]);
+ assert.equal(search.value,'');assert.equal(editor.hasBlankRows(),false);assert.equal(editor.hasChanges(),true);
+ const field=editor.element.querySelectorAll('input').find(input=>input.className==='pattern-line');
+ assert.equal(field.focused,true);assert.equal(saves,0);
+ assert.ok(editor.element.children[0].children.includes(save));
+ save.click();assert.equal(saves,1);
+});
+
 test('reviewing a pattern suggestion prepares it as an unsaved enable draft',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'../local_admin/js/05-overview.js'),'utf8');
   const start=source.indexOf('  function openTarget(');
@@ -164,7 +180,7 @@ test('a recommended disabled pattern is enabled locally as an unsaved draft',()=
   assert.equal(line.querySelectorAll('input').find(input=>input.type==='checkbox').checked,true);
   assert.equal(line.querySelectorAll('span').find(item=>item.className.includes('pattern-draft')).textContent,'Тимчасово увімкнено');
   assert.deepEqual(JSON.parse(JSON.stringify(editor.entries())).map(entry=>entry.enabled),[true,false,true]);
-  assert.equal(editor.summary(),'Увімкнено 2 · вимкнено 1');
+  assert.equal(editor.rows.querySelectorAll('summary')[0].textContent,'Вимкнені (1)');
   assert.equal(editor.hasChanges(),true);
 });
 

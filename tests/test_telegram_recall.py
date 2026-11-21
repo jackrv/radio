@@ -15,7 +15,7 @@ def test_every_copy_is_deleted_by_the_bot_and_the_phrase_is_hidden(setup):
     fix = f'db:{save_event("", "", "", "", "Вишня 12, прийом", path)}'
     for chat in (1001, 2002, 3003):
         remember_delivery(path, fix, message(chat, chat + 1), "voice")
-    assert state(path, [fix])[fix] == {"copies": 3, "pending": 0, "requested": False, "hidden": False}
+    assert state(path, [fix])[fix] == {"copies": 3, "pending": 0, "requested": False, "hidden": False, "exhausted": 0}
     assert request_delete(path, fix) == 3
     assert is_hidden(path, fix), "фраза зникає з журналу й Mini App одразу"
     assert state(path, [fix])[fix]["pending"] == 3
@@ -29,7 +29,7 @@ def test_every_copy_is_deleted_by_the_bot_and_the_phrase_is_hidden(setup):
     bot._request.side_effect = None
     bot._request.return_value = response()
     assert process_deletions(bot, now=time.time() + 60) == 1
-    assert state(path, [fix])[fix] == {"copies": 0, "pending": 0, "requested": True, "hidden": True}
+    assert state(path, [fix])[fix] == {"copies": 0, "pending": 0, "requested": True, "hidden": True, "exhausted": 0}
     assert request_delete(path, fix) == 0, "повторний запит нічого не надсилає"
 
 

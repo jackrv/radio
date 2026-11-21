@@ -7,6 +7,10 @@
   const LEARNING_QUEUE = ["needs_confirmation", "needs_approval", "conflict"];
   const LEARNING_KIND = { callsign: "позивний", word: "слово", blocked: "—" };
   let learningData = null;
+  const learningSearch=el('input'); learningSearch.type='search'; learningSearch.placeholder='Знайти почуте або правильне слово';
+  learningSearch.setAttribute('aria-label','Пошук навчених замін');
+  $('learning-filter').before?.(learningSearch);
+  learningSearch.addEventListener('input',()=>{if(learningData)renderLearning();});
   function learningState(item, need) {
     switch (item.state) {
       case "applies": return ["ok", "Діє в розпізнаванні"];
@@ -28,9 +32,12 @@
       if (box.childNodes.length) box.append(", ");
       if (event) {
         const link = el("a", "", `№${event[1]}`);
-        link.href = `?view=recordings&q=${encodeURIComponent("№" + event[1])}`;
+        link.href = `?view=recordings&q=${encodeURIComponent("№" + event[1])}&filters=off`;
         link.title = "Знайти запис в «Аудіоархіві»";
         box.append(link);
+      } else if (/^archive:[0-9a-f]{32}$/.test(source)) {
+        const link=el('a','',`Архів ${source.slice(8,16)}`);
+        link.href=`?view=recordings&q=${encodeURIComponent(source.slice(8))}&filters=off`;box.append(link);
       } else box.append(document.createTextNode("фраза Telegram"));
     }
     if (!sources.length) box.append(document.createTextNode("—"));
@@ -58,6 +65,12 @@
   }
   function renderLearning() {
     const data = learningData, c = data.counts || {}, need = data.min_confirmations;
+    let explanation=$('learning-explanation');
+    if (!explanation) {
+      explanation=el('p','muted small'); explanation.id='learning-explanation';
+      $('learning-cards').before(explanation);
+    }
+    explanation.textContent=`Це словесні правила, а не дообучення аудіомоделі. Потрібно ${need} незалежних правок різних джерел; повторне збереження тієї самої фрази не додає голосу. Звичайні слова потребують окремого дозволу. Порожній список поточного фільтра не означає, що навчання вимкнене.`;
     const cards = $("learning-cards");
     const pick = value => () => {
       $("learning-filter").value = value;
@@ -74,14 +87,16 @@
     );
     const filter = $("learning-filter").value;
     for (const c of cards.children) c.classList.toggle("picked", c.dataset.filter === filter);
-    const shown = data.items.filter(item => filter === "all" || (filter === "queue" ? LEARNING_QUEUE.includes(item.state)
-      : filter === "other" ? ["disabled", "blocked"].includes(item.state) : item.state === filter));
+    const query=learningSearch.value.trim().toLocaleLowerCase('uk');
+    const shown = data.items.filter(item => (filter === "all" || (filter === "queue" ? LEARNING_QUEUE.includes(item.state)
+      : filter === "other" ? ["disabled", "blocked"].includes(item.state) : item.state === filter)) &&
+      (!query || `${item.original} ${item.corrected}`.toLocaleLowerCase('uk').includes(query)));
     const table = $("learning-items"), head = el("tr");
     table.replaceChildren();
     for (const h of ["Почуте → правильне", "Тип", "Правок", "Стан", "Звідки", ""]) head.append(el("th", "", h));
     table.append(head);
     if (!shown.length) {
-      const row = el("tr"), cell = el("td", "muted", "Тут порожньо.");
+      const row = el("tr"), cell = el("td", "muted", query ? "За цим пошуком замін немає. Спробуйте інше слово або інший стан." : data.total ? "У цьому стані замін немає. Оберіть інший стан або «Усі»." : "Ще немає навчених замін. Виправте мовленнєвий запис в архіві або запустіть навчання за збереженою розміткою.");
       cell.colSpan = 6; row.append(cell); table.append(row);
     }
     for (const item of shown) {
@@ -95,10 +110,29 @@
       table.append(row);
     }
   }
-  async function learning() {
+  async function learning(resume = true) {
     learningData = await request("/api/learning");
     renderLearning();
+    if (resume) archiveLearningPanel().resume();
   }
   $("learning-filter").addEventListener("change", () => { if (learningData) renderLearning(); });
   $("learning-refresh").addEventListener("click", () => action(learning));
+
+  const learnArchiveButton=el('button','ghost','Навчити за збереженою розміткою');learnArchiveButton.type='button';
+  const learnArchiveResult=el('div');learnArchiveResult.setAttribute('role','status');
+  $('learning-refresh').after?.(learnArchiveButton);
+  document.querySelector('[data-panel="learning"]')?.append(learnArchiveResult);
+  let archiveLearningTask=null;
+  function archiveLearningPanel() {
+    if (!archiveLearningTask) archiveLearningTask=serverJobPanel({button:learnArchiveButton,box:learnArchiveResult,kind:'archive_learning',
+      start:()=>request('/api/learning/archive','POST'),render:r=>{
+        learnArchiveResult.replaceChildren(el('p','small',`Синхронізовано ${r.synced}; помилок ${r.failed}. Резервна копія: ${r.backup}. Кількість пар не означає кількість увімкнених правил.`));
+        void learning(false).catch(error=>note(error.message));
+      }});
+    return archiveLearningTask;
+  }
+  learnArchiveButton.addEventListener('click',()=>{
+    if (!confirm('Навчити словесні правила за всіма збереженими еталонами «Мовлення»? Перед цим буде перевірена резервна копія events.db. Повтор не додасть зайвих голосів; пороги й окремий дозвіл слів збережуться.'))return;
+    archiveLearningPanel().run();
+  });
 

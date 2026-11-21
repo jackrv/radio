@@ -36,7 +36,7 @@ def make_worker(db_path):
                                 "MODEL_REPO": "unused", "LANGUAGE": "uk", "SR": 16000, "SHORT_GARBAGE": set(),
                                 "LOG_CALLSIGNS_ONLY": True, "MIN_RMS": 0.02, "NORMALIZE": True, "DEBUG_RMS": False,
                                 "BLACKLIST": (), "WHISPER_PROMPT_DAILY_CODE": False,
-                                "NOTIFICATION_SOUNDS_DIR": db_path.parent / "no-samples"})
+                                "NOTIFICATION_SOUNDS_DIR": db_path.parent / "no-samples","RECORDINGS_DIR":db_path.parent/'recordings'})
 
     callsigns = Callsigns.from_lines(DICTIONARY)
 

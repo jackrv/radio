@@ -1,6 +1,6 @@
   // ---------- Активність користувача ----------
   const ACTIONS = {
-    open: "Відкрито Mini App", correction: "Правка тексту", learning: "Рішення щодо навчання",
+    archive_review: "Розмітка аудіоархіву", open: "Відкрито Mini App", correction: "Правка тексту", learning: "Рішення щодо навчання",
     mode: "Режим сповіщень", receiver: "Керування приймачем", dictionary: "Словник",
     rule: "Правило слів", rule_approval: "Дозвіл правила", user: "Зміна користувача",
     settings: "Налаштування розпізнавання", sample: "Зразок сигналу",
@@ -10,6 +10,10 @@
   const DECISIONS_UA = { confirmed: "навчати", rejected: "не навчати", pending: "без рішення" };
   const when = ts => ts ? new Date(ts * 1000).toLocaleString("uk-UA") : "—";
   function activityTarget(item) {
+    if (item.action==='archive_review') {
+      const link=el('a','',`Запис ${item.target.slice(0,8)}`);
+      link.href=`?view=recordings&q=${encodeURIComponent(item.target)}`;return link;
+    }
     const event = /^db:(\d+)$/.exec(item.target || "");
     if (event) {
       const link = el("a", "", `№${event[1]}`);
@@ -23,6 +27,8 @@
   function activityDetails(item) {
     const d = item.details || {};
     switch (item.action) {
+      case 'archive_review': return `Розмітка: ${d.label}; символів: ${d.characters}${d.event_sync ? `; подія: ${d.event_sync}` : ''}`;
+      case 'panel': return Object.entries(d).map(([key,value])=>`${key}: ${typeof value==='object' ? JSON.stringify(value) : value}`).join(' · ');
       case "correction": return d.changed ? `«${d.from}» → «${d.to}»` : "текст не змінено";
       case "learning": return `«${d.original}» → «${d.corrected}»: ${DECISIONS_UA[d.decision] || d.decision}`;
       case "mode": return d.via === "bot" ? "командою в боті" : "у Mini App";

@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
@@ -22,7 +23,7 @@ from api.app import create_app
 from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
 from core.diagnostic_history import DiagnosticsHistory, history_directory
-from api.panel import lab, overview, people, recognition, signals, system
+from api.panel import jobs, lab, overview, people, recognition, signals, system, mentions
 from api.panel import recordings as recordings_api
 from api.panel.common import session_value
 from api.panel.models import SessionInput
@@ -47,7 +48,16 @@ def panel_script():
 def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None, experiments_dir=None, suggestions=False):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
-    app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
+    suggestion_worker = None
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            if suggestion_worker:
+                suggestion_worker.stop()
+                suggestion_worker.thread.join(timeout=5)
+    app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None, lifespan=lifespan)
     samples_dir = Path(samples_dir or config.NOTIFICATION_SOUNDS_DIR)
     diagnostics_path = Path(diagnostics_path or config.BASE_DIR/"diagnostics.json")
     diagnostic_history = DiagnosticsHistory(
@@ -68,7 +78,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     # Збережені правки, після яких пропозиції перевіряються знову (перевірки тексту й пауза — ні).
     # Збережені правки панелі — у «Активність» (розмітка записів — ні: її сотні на день).
     panel_actions = (
-        (re.compile(r"/api/suggestions/sync-events"), "Оновлено події за еталонами"),
+        (re.compile(r"/api/suggestions/sync-events"), "Запит на оновлення подій за еталонами"),
         (re.compile(r"/api/suggestions/(dismiss|restore)"), "Пропозиції: приховано / повернуто"),
         (re.compile(r"/api/text-lists/([a-z_]+)"), "Фільтри тексту: {0}"),
         (re.compile(r"/api/dictionaries/([a-z_]+)"), "Словник: {0}"),
@@ -77,13 +87,13 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/(runtime-settings|settings)"), "Налаштування розпізнавання"),
         (re.compile(r"/api/daily-codes/(.+)"), "Коди доби: {0}"),
         (re.compile(r"/api/samples(/(?!test$)[^/]+)?|/api/recordings/[^/]+/notification-sample"), "Зразки сигналів"),
-        (re.compile(r"/api/backups"), "Копія бази"),
-        (re.compile(r"/api/training/export"), "Вивантажено набір для дообучення"),
+        (re.compile(r"/api/backups"), "Запит на створення копії бази"),
+        (re.compile(r"/api/training/export"), "Запит на вивантаження набору для дообучення"),
         (re.compile(r"/api/receiver-pause"), "Пауза приймача"),
         (re.compile(r"/api/launcher/([a-z-]+)"), "Лаунчер: {0}"),
     )
 
-    def log_panel_action(path):
+    def log_panel_action(path, payload=None):
         for pattern, label in panel_actions:
             match = pattern.fullmatch(path)
             if match:
@@ -92,7 +102,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                     admin = actor()
                 except HTTPException:
                     return
-                user_activity.record(db_path, admin, "panel", label.format(*[g or "" for g in match.groups()]))
+                user_activity.record(db_path, admin, "panel", label.format(*[g or "" for g in match.groups()]),
+                                     user_activity.panel_details(payload))
                 return
 
     recheck_after = re.compile(r"/api/(recordings/[^/]+/review|text-lists/[a-z_]+|dictionaries/[a-z_]+|learning/.+|daily-codes/.+)")
@@ -108,6 +119,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     @app.middleware("http")
     async def local_only(request, call_next):
+        started = time.perf_counter()
         if request.headers.get("host") != host or request.client is None or request.client.host not in ("127.0.0.1","::1"):
             return Response(status_code=403)
         if request.method not in ("GET","HEAD") and request.headers.get("origin") != origin:
@@ -115,6 +127,12 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         public = request.url.path in ("/","/admin.js","/styles.css","/session")
         if not public and not matches(request.cookies.get(cookie,""),session):
             return Response(status_code=401)
+        activity_payload=None
+        if request.method not in ('GET','HEAD') and any(p.fullmatch(request.url.path) for p,_ in panel_actions):
+            length=request.headers.get('content-length','0')
+            if length.isdigit() and 0<int(length)<=100_000:
+                try: activity_payload=await request.json()
+                except ValueError: pass
         try:
             response = await call_next(request)
         except (sqlite3.Error,OSError,ValueError):
@@ -123,10 +141,11 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             if suggestion_worker and recheck_after.fullmatch(request.url.path):
                 suggestion_worker.poke()
             if not request.url.path.endswith("/check") and not request.url.path.endswith("/evaluate"):
-                log_panel_action(request.url.path)
+                log_panel_action(request.url.path, activity_payload)
         response.headers.update({"Cache-Control":"no-store", "Referrer-Policy":"no-referrer",
             "X-Content-Type-Options":"nosniff",
             "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'"})
+        response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - started) * 1000:.1f}"
         return response
 
     def actor():
@@ -154,9 +173,9 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     @app.get("/styles.css")
     def styles(): return Response((ROOT/"local_admin/styles.css").read_text(),media_type="text/css")
 
-    # Ендпоінти розділів — у api/panel/*: спершу архів (він дає sync_event_from_reference).
+    # HTTP-адаптери розділів незалежні; спільна доменна логіка — у services/.
     ctx = SimpleNamespace(db_path=db_path, recordings=recordings, actor=actor, samples_dir=samples_dir, diagnostics_path=diagnostics_path, diagnostic_history=diagnostic_history, experiments_dir=experiments_dir, suggestion_worker=suggestion_worker, backup_dir=backup_dir, bot_token=bot_token, launcher_root=launcher_root, port=port)
-    for section in (recordings_api, overview, recognition, signals, people, system, lab):
+    for section in (recordings_api, overview, recognition, signals, people, system, lab, jobs, mentions):
         section.register(app, ctx)
 
     @app.get("/preview-bridge.js")

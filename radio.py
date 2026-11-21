@@ -11,6 +11,7 @@ if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.ab
 import logging
 import sqlite3
 import time
+import threading
 from datetime import datetime, timedelta
 from core.log_security import configure_logging
 from core.diagnostics import runtime as diagnostics
@@ -42,7 +43,7 @@ from services.dictionary_loader import load_dictionaries as load_sqlite_dictiona
 from services.dictionary_setup import ensure_dictionaries, interactive_console
 from services.user_notify_store import list_recipients
 from services.db_backup import start_backup_scheduler
-from core.instance_lock import acquire_instance_lock
+from services.model_exclusion import acquire_receiver_slot
 from core.recognition_health import RecognitionHealth
 
 import config
@@ -108,6 +109,10 @@ def on_audio(indata, frame_count, time_info, status):
 
 
 # ---------- Поток распознавания и LLM ----------
+asr_stop = threading.Event()
+asr_abandon = threading.Event()
+
+
 def transcriber():
     worker = build_transcriber(
         config=config,
@@ -122,6 +127,8 @@ def transcriber():
         pause_gate=pause_gate,
         health=recognition_health,
         recorder=recording_archive,
+        stop_event=asr_stop,
+        abandon_event=asr_abandon,
     )
 
     worker.recognizer.warmup()
@@ -142,6 +149,9 @@ def load_dictionaries():
 
 
 def main():
+    from services.model_exclusion import receiver_model_available
+    if not receiver_model_available(config.BASE_DIR):
+        raise SystemExit('Лабораторія використовує модель. Дочекайтеся завершення тесту перед запуском приймача.')
     # До створення таблиць: порожні словники пропонуємо імпортувати з dictionaries.txt.
     if not ensure_dictionaries(
         DB_PATH, config.DICTIONARIES_PATH, sys.executable,
@@ -151,7 +161,10 @@ def main():
     # Два приймачі на одному мікрофоні подвоюють події та повідомлення.
     # Блокування тримається до кінця процесу й знімається ОС навіть після аварії.
     global _instance_lock
-    _instance_lock = acquire_instance_lock(config.BASE_DIR / ".radio345.lock")
+    try:
+        _instance_lock = acquire_receiver_slot(config.BASE_DIR, DB_PATH)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from None
     if _instance_lock is None:
         log.error("Інший приймач Radio 345 уже працює. Зупиніть його й запустіть знову.")
         raise SystemExit(2)
@@ -247,6 +260,8 @@ def main():
     telegram_service.start_maintenance()
 
     supervisor = ApplicationSupervisor(
+        transcriber_stop=asr_stop.set,
+        transcriber_abandon=asr_abandon.set,
         frames=frames,
         segments=segments,
         on_audio=on_audio,

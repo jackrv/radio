@@ -47,20 +47,24 @@
   };
   // ---------- Коди доби ----------
   let codesByDay = {}, changeHour = 20;
+  const codeDrafts = new Map(); let permanentDraft = null;
   function showDayCodes() {
-    $("codes-input").value = (codesByDay[$("codes-day").value] || []).join(", ");
+    $("codes-input").value = codeDrafts.get($("codes-day").value) ?? (codesByDay[$("codes-day").value] || []).join(", ");
     const day = $("codes-day").value;
     if (!day) { $("codes-period").textContent = ""; return; }
     const end = new Date(`${day}T00:00:00`); end.setHours(changeHour);
     const start = new Date(end.getTime() - 24 * 3600 * 1000);
     const fmt = d => `${d.toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" })} ${String(changeHour).padStart(2, "0")}:00`;
     $("codes-period").textContent = `діють з ${fmt(start)} до ${fmt(end)}`;
+    $('codes-period').title=`Межа доби: ${String(changeHour).padStart(2,'0')}:00 за місцевим часом Mac. Параметр DAILY_CODES_CHANGE_HOUR у config.py.`;
+    renderCodeChips('codes-input');
   }
   async function dailyCodes() {
     const data = await request("/api/daily-codes");
     codesByDay = Object.fromEntries(data.items.map(i => [i.day, i.codes]));
     changeHour = data.change_hour ?? 20;
-    $("codes-permanent").value = (data.permanent || []).join(", ");
+    $("codes-permanent").value = permanentDraft ?? (data.permanent || []).join(", ");
+    renderCodeChips('codes-permanent');
     if (!$("codes-day").value) $("codes-day").value = data.today;
     showDayCodes();
     const box = $("codes-recent");
@@ -74,24 +78,39 @@
       box.append(link);
     }
   }
+  function renderCodeChips(id) {
+    const input=$(id); let chips=$(`${id}-chips`);
+    if (!chips) { chips=el('div','code-chips'); chips.id=`${id}-chips`; input.after?.(chips); }
+    const values=[...new Set(input.value.split(/[,;\n]/).map(v=>v.trim()).filter(Boolean))];
+    chips.replaceChildren();
+    for (const code of values) {
+      const chip=el('button','ghost code-chip',`${code} ×`);chip.type='button';
+      chip.title='Прибрати з чернетки; застосовується лише після збереження';
+      chip.addEventListener('click',()=>{ input.value=values.filter(v=>v!==code).join(', '); input.dispatchEvent(new Event('input')); });
+      chips.append(chip);
+    }
+  }
+  for (const id of ['codes-input','codes-permanent']) $(id).addEventListener('input',()=>{ if(id==='codes-permanent')permanentDraft=$(id).value; else codeDrafts.set($('codes-day').value,$(id).value); renderCodeChips(id); });
   $("codes-day").addEventListener("change", showDayCodes);
   $("codes-permanent-save").addEventListener("click", () => action(async () => {
     const status = $("codes-status");
     try {
-      const result = await request("/api/daily-codes/permanent", "PUT", { codes: $("codes-permanent").value });
-      status.className = "ok small";
-      status.textContent = result.codes.length ? `✓ Постійні коди: ${result.codes.join(", ")}` : "✓ Постійні коди прибрано";
+      const sent = $("codes-permanent").value;
+      await request("/api/daily-codes/permanent", "PUT", { codes: sent });
+      if ($("codes-permanent").value === sent) permanentDraft = null;
+      status.hidden = true; status.textContent = "";
       await dailyCodes();
-    } catch (error) { status.className = "alert small"; status.textContent = error.message; throw error; }
+    } catch (error) { status.hidden = false; status.className = "alert small"; status.textContent = error.message; throw error; }
   }));
   $("codes-save").addEventListener("click", () => action(async () => {
     const status = $("codes-status");
     try {
-      const result = await request(`/api/daily-codes/${$("codes-day").value}`, "PUT", { codes: $("codes-input").value });
-      status.className = "ok small";
-      status.textContent = result.codes.length ? `✓ ${result.day}: ${result.codes.join(", ")}` : `✓ ${result.day}: коди прибрано`;
+      const day = $("codes-day").value, sent = $("codes-input").value;
+      await request(`/api/daily-codes/${day}`, "PUT", { codes: sent });
+      if (codeDrafts.get(day) === sent) codeDrafts.delete(day);
+      status.hidden = true; status.textContent = "";
       await dailyCodes();
-    } catch (error) { status.className = "alert small"; status.textContent = error.message; throw error; }
+    } catch (error) { status.hidden = false; status.className = "alert small"; status.textContent = error.message; throw error; }
   }));
 
   // Перевірка рядків під час набору: ті самі правила, що й «Зберегти», без запису.
@@ -128,9 +147,11 @@
     $("dictionaries-status").textContent = "";
     if (!DICTIONARIES[dictionaryKind]) dictionaryKind = "callsigns";
     const picker = el("div", "segmented list-picker");
+    let selectedTab;
     for (const [kind, [title]] of Object.entries(DICTIONARIES)) {
       const active = data[kind].entries.filter(e => e.enabled).length;
       const b = el("button", kind === dictionaryKind ? "ghost on" : "ghost", `${title} · ${active}`); b.type = "button";
+      if(kind===dictionaryKind)selectedTab=b;
       b.addEventListener("click", () => {
         dictionaryKind = kind;
         try { localStorage.setItem("radio345:dictionary", kind); } catch (_) { /* сесія */ }
@@ -140,8 +161,9 @@
     }
     box.append(picker);
     const kind = dictionaryKind, [title, help] = DICTIONARIES[kind], dictionary = data[kind];
-    const panel = el("article", "panel list-layout dictionary-layout");
-    const left = el("div", "list-left"), right = el("div", "list-right");
+    const panel = el("article", "panel list-layout dictionary-layout has-evaluation");
+    const left = el("div", "list-left"), right = el("details", "list-right");
+    right.append(el("summary", "", "Пояснення та інструменти"));
     const area = el("textarea", "list-editor");
     area.value = toLines(dictionary.entries);
     let inserted = 0, beforeInsert = null, insertedHighlights = [];
@@ -158,11 +180,12 @@
     area.setAttribute("aria-label", title);
     const fit = () => { area.rows = Math.min(32, Math.max(8, area.value.split("\n").length + 2)); };
     fit(); area.addEventListener("input", fit);
-    const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${dictionary.entries.filter(e => e.enabled).length} діючих рядків`);
+    const save = el("button", "", "Зберегти"), status = el("span", "muted small");
     const draftEditor = insertedHighlights.length ? highlightDraftEditor(area, insertedHighlights) : null;
     let undoInsert = null;
     if (inserted) {
       status.className = "warn small";
+      status.textContent = 'Є незбережені зміни.';
       save.classList.add("needs-save");
       undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
       undoInsert.addEventListener("click", () => {
@@ -180,18 +203,22 @@
         await dictionaries();
       } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
     }));
-    const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
+    const actions = el("div", "list-actions"); actions.append(...(undoInsert ? [undoInsert] : []), status);
     const hints = el("ul", "warn-list");
     liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
     if (inserted) area.dispatchEvent(new Event("input"));
-    left.append(draftEditor?.element || area, actions);
-    right.append(el("h2", "", title), el("p", "muted small", help), hints);
-    panel.append(left, right);
+    left.append(draftEditor?.element || area, actions, hints);
+    if (draftEditor) draftEditor.element.hidden = true;
+    left.prepend(rowListView(area, title, save,count=>{selectedTab.textContent=`${title} · ${count}`;}));
+    right.append(el("h2", "", title), el("p", "muted small", help));
+    panel.append(left, listValidation(`/api/dictionaries/${kind}/check`,()=>fromLines(area.value)), right);
     box.append(panel);
+    fitRecognition();
   }
 
   // Рядки, які «Потребує уваги» просить вставити в список (не зберігаються самі).
   let pendingListInsert = null;
+  let pendingRuleDisable = null;
   let pendingDictionaryInsert = null;
   let pendingPatternEnable = [];
   function highlightDraftEditor(area, initialRanges) {
@@ -339,7 +366,7 @@
     });
     return { text: rows.join("\n"), added, highlights };
   }
-  function phrasePatternEditor(entries, enableLines = []) {
+  function phrasePatternEditor(entries, enableLines = [], generic = false, save = null, onCount = null) {
     const requested = new Set(enableLines.map(line => line.trim()));
     const patterns = entries.map(entry => {
       const savedEnabled = Boolean(entry.enabled);
@@ -353,21 +380,24 @@
     const root = el("div", "phrase-pattern-editor");
     const toolbar = el("div", "pattern-toolbar");
     const search = el("input", "pattern-search");
-    search.type = "search"; search.placeholder = "Знайти шаблон"; search.setAttribute("aria-label", "Знайти шаблон");
-    const add = el("button", "ghost", "＋ Додати шаблон"); add.type = "button";
-    const summary = el("span", "muted small");
-    toolbar.append(search, add, summary);
+    search.type = "search"; search.placeholder = generic ? "Знайти рядок" : "Знайти шаблон"; search.setAttribute("aria-label", search.placeholder);
+    const add = el("button", "ghost", generic ? "＋ Додати рядок" : "＋ Додати шаблон"); add.type = "button";
+    toolbar.append(search, add);
+    if(save) { save.type='button';save.setAttribute('data-action','save');toolbar.append(save); }
     const activeRows = el("div", "phrase-pattern-rows");
     const disabledGroup = el("details", "phrase-pattern-disabled");
     const disabledSummary = el("summary", "", "Вимкнені");
     const disabledRows = el("div", "phrase-pattern-rows");
     disabledGroup.append(disabledSummary, disabledRows);
-    root.append(toolbar, el("p", "pattern-section-label", "Увімкнені"), activeRows, disabledGroup);
+    activeRows.setAttribute('aria-label','Увімкнені рядки');
+    activeRows.setAttribute('role','group');
+    root.append(toolbar, activeRows, disabledGroup);
     let onChange = () => {};
-    const updateSummary = () => {
+    const updateCounts = () => {
       const active = patterns.filter(pattern => pattern.enabled).length;
-      summary.textContent = `Увімкнено ${active} · вимкнено ${patterns.length - active}`;
       disabledSummary.textContent = `Вимкнені (${patterns.length - active})`;
+      disabledGroup.hidden = patterns.length===active;
+      onCount?.(active);
     };
     const getEntries = () => patterns.map(pattern => ({
       raw_line: pattern.raw_line.trim(), enabled: pattern.enabled,
@@ -385,7 +415,8 @@
         const visible = patterns.map((pattern, index) => ({ pattern, index })).filter(({ pattern }) =>
         pattern.enabled === enabledState && (!query || pattern.raw_line.toLocaleLowerCase("uk").includes(query)));
         if (!visible.length) {
-        const label = query ? "За запитом шаблонів не знайдено."
+        const label = !patterns.length && !query ? 'Список порожній. Додайте рядок.' : generic ? (query ? 'За запитом рядків не знайдено.' : enabledState ? 'Увімкнених рядків немає.' : 'Вимкнених рядків немає.')
+          : query ? "За запитом шаблонів не знайдено."
           : enabledState ? "Увімкнених шаблонів немає." : "Вимкнених шаблонів немає.";
         container.append(el("p", "muted small", label));
         }
@@ -393,6 +424,7 @@
         const row = el("div", "phrase-pattern-row");
         const toggle = el("label", "switch");
         const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = pattern.enabled;
+        enabled.setAttribute('aria-label',`Стан рядка: ${pattern.raw_line || 'новий рядок'}`);
         toggle.append(enabled, pattern.enabled ? "Увімк." : "Вимк.");
         const badge = el("span", "pattern-draft");
         const updateBadge = () => {
@@ -404,7 +436,7 @@
         updateBadge();
         const line = el("input", "pattern-line");
         line.type = "text"; line.value = pattern.raw_line; line.spellcheck = false; line.title = pattern.raw_line;
-        line.setAttribute("aria-label", `Текст шаблону ${index + 1}`);
+        line.setAttribute("aria-label", `${generic ? 'Текст рядка' : 'Текст шаблону'} ${index + 1}`);
         line.addEventListener("input", () => {
           pattern.raw_line = line.value;
           line.title = line.value;
@@ -418,7 +450,7 @@
           onChange();
         });
         const remove = el("button", "ghost", "×"); remove.type = "button";
-        remove.setAttribute("aria-label", `Видалити шаблон ${index + 1}`);
+        remove.setAttribute("aria-label", `Видалити ${generic ? 'рядок' : 'шаблон'} ${index + 1}`);
         remove.addEventListener("click", () => {
           patterns.splice(index, 1);
           render();
@@ -430,16 +462,18 @@
       };
       drawRows(activeRows, true);
       drawRows(disabledRows, false);
-      updateSummary();
+      updateCounts();
     };
     search.addEventListener("input", render);
     add.addEventListener("click", () => {
-      patterns.push({ raw_line: "", enabled: false, savedRawLine: "", savedEnabled: false });
+      patterns.push({ raw_line: search.value.trim(), enabled: Boolean(generic), savedRawLine: "", savedEnabled: Boolean(generic) });
       search.value = ""; disabledGroup.open = true;
       render();
       onChange();
-      const fields = disabledRows.querySelectorAll("input");
-      fields[fields.length - 1]?.focus();
+      const fields = (generic ? activeRows : disabledRows).querySelectorAll("input");
+      const field = fields[fields.length - 1];
+      field?.focus();
+      field?.scrollIntoView?.({block:"nearest",behavior:"smooth"});
     });
     render();
     return {
@@ -449,13 +483,52 @@
       hasBlankRows: () => patterns.some(pattern => !pattern.raw_line.trim()),
       hasChanges: () => patterns.some(pattern =>
         pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled),
-      summary: () => {
-        const active = patterns.filter(pattern => pattern.enabled).length;
-        return `Увімкнено ${active} · вимкнено ${patterns.length - active}`;
-      },
       onChange(callback) { onChange = callback; },
     };
   }
+
+  // Рядковий вигляд для всіх списків. Приховане поле зберігає один чинний
+  // контракт перевірки/вставки/скасування; стан між двома редакторами не розходиться.
+  function rowListView(area, title, save, onCount = null) {
+    const host = el('div', 'row-list-view'); host.setAttribute('aria-label', title);
+    let syncing = false;
+    function render() {
+      const editor = phrasePatternEditor(fromLines(area.value), [], true, save, onCount);
+      host.replaceChildren(editor.element);
+      editor.onChange(() => {
+        syncing = true;
+        area.value = toLines(editor.entries());
+        if (save) { save.disabled = editor.hasBlankRows();save.classList.add('needs-save'); }
+        area.dispatchEvent(new Event('input'));
+        syncing = false;
+      });
+    }
+    area.addEventListener('input', () => { if (!syncing) render(); });
+    area.hidden = true; render();
+    return host;
+  }
+  function withoutImpactRule(entries,type,label) {
+    const fold=value=>String(value||'').trim().toLocaleLowerCase('uk').replace(/[’'`]/g,'ʼ').replace(/\s+/g,' ');
+    const [heard,target]=label.split(' → '), next=[]; let matched=false;
+    for (const entry of entries) {
+      if (!entry.enabled) {next.push(entry);continue;}
+      if (['aliases','callsign_aliases'].includes(type)) {
+        const colon=entry.raw_line.indexOf(':'),name=entry.raw_line.slice(0,colon).trim();
+        const variants=entry.raw_line.slice(colon+1).split(',').map(v=>v.trim());
+        if (colon>=0 && fold(name)===fold(target) && variants.some(v=>fold(v)===fold(heard))) {
+          matched=true;const remaining=variants.filter(v=>fold(v)!==fold(heard));
+          if (remaining.length)next.push({...entry,raw_line:`${name}: ${remaining.join(', ')}`});
+          next.push({raw_line:`${name}: ${heard}`,enabled:false});continue;
+        }
+      } else if (fold(entry.raw_line).replace(/[.,;!?]+$/,'')===fold(label).replace(/[.,;!?]+$/,'')) {
+        matched=true;next.push({...entry,enabled:false});continue;
+      }
+      next.push(entry);
+    }
+    if (!matched)throw new Error('Правило вже змінено або відсутнє в списку. Оновіть звіт впливу перед вимкненням.');
+    return next;
+  }
+
   async function texts() {
     const data = await request("/api/text-lists");
     textRevision = data.revision;
@@ -470,9 +543,11 @@
     box.replaceChildren();
     if (!TEXT_LISTS[textListType]) textListType = "short_garbage";
     const picker = el("div", "segmented list-picker");
+    let selectedTab;
     for (const [type, [title]] of Object.entries(TEXT_LISTS)) {
       const active = data.lists[type].entries.filter(e => e.enabled).length;
       const b = el("button", type === textListType ? "ghost on" : "ghost", `${title} · ${active}`); b.type = "button";
+      if(type===textListType)selectedTab=b;
       b.addEventListener("click", () => {
         textListType = type;
         try { localStorage.setItem("radio345:text-list", type); } catch (_) { /* сесія */ }
@@ -482,11 +557,25 @@
     }
     box.append(picker);
     const type = textListType, [title, help] = TEXT_LISTS[type], list = data.lists[type];
+    const previewDisabled = pendingRuleDisable?.type === type;
+    const disabledQuery = previewDisabled ? pendingRuleDisable.label.split(' → ')[0] : '';
+    if (previewDisabled) {
+      const label=pendingRuleDisable.label;pendingRuleDisable=null;
+      list.entries=withoutImpactRule(list.entries,type,label);
+    }
     const panel = el("article", "panel list-layout");
-    const left = el("div", "list-left"), right = el("div", "list-right");
-    const save = el("button", "", "Зберегти"), status = el("span", "muted small", `${list.entries.filter(e => e.enabled).length} діючих рядків`);
+    const left = el("div", "list-left"), right = el("details", "list-right");
+    right.append(el("summary", "", "Пояснення та інструменти"));
+    if (previewDisabled) right.open=true;
+    const save = el("button", "", "Зберегти"), status = el("span", "muted small");
+    if (previewDisabled) {
+      save.textContent='Зберегти вимкнення'; save.classList.add('needs-save');
+      status.textContent='Чернетка без вибраного правила. Приймач ще не змінено: спочатку перевірка, потім ваше збереження.';
+      status.className='warn small';
+    }
+    const updateCount=count=>{selectedTab.textContent=`${title} · ${count}`;};
     const patterns = type === "phrase_patterns"
-      ? phrasePatternEditor(list.entries, pendingPatternEnable)
+      ? phrasePatternEditor(list.entries, pendingPatternEnable, false, save, updateCount)
       : null;
     if (type === "phrase_patterns") pendingPatternEnable = [];
     const area = patterns ? null : el("textarea", "list-editor");
@@ -517,19 +606,21 @@
       save.classList.add("needs-save");
       save.disabled = patterns.hasBlankRows();
       status.textContent = patterns.hasBlankRows()
-        ? `${patterns.summary()} · заповніть або видаліть порожній шаблон`
-        : `${patterns.summary()} · є незбережені зміни`;
+        ? 'Заповніть або видаліть порожній шаблон.'
+        : 'Є незбережені зміни.';
       status.className = "warn small";
       check();
     });
     if (patterns?.hasChanges()) {
       save.classList.add("needs-save");
       save.disabled = patterns.hasBlankRows();
+      if(!previewDisabled) { status.textContent='Є незбережені зміни.';status.className='warn small'; }
       check();
     }
     let undoInsert = null;
     if (inserted) {
       status.className = "warn small";
+      status.textContent = 'Є незбережені зміни.';
       save.classList.add("needs-save");
       area.dispatchEvent?.(new Event("input"));   // одразу та сама перевірка, що й під час набору
       // Не сподобалось — повернути список, як був до вставки (поки не збережено, ніде не діє).
@@ -548,40 +639,83 @@
         await texts();
       } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
     }));
-    const actions = el("div", "list-actions"); actions.append(save, ...(undoInsert ? [undoInsert] : []), status);
-    if (area) left.append(draftEditor?.element || area);
-    left.append(actions);
-    right.append(el("h2", "", title), el("p", "muted small", help), warnings);
+    const actions = el("div", "list-actions"); actions.append(...(undoInsert ? [undoInsert] : []), status);
+    if (area) {
+      left.append(rowListView(area, title, save, updateCount), draftEditor?.element || area);
+      if (draftEditor) draftEditor.element.hidden = true;
+    }
+    left.append(actions, warnings);
+    right.append(el("h2", "", title), el("p", "muted small", help));
+    panel.classList.add("has-evaluation");
+    let evaluation;
     if (EVALUATED_LISTS.includes(type)) {
-      const evaluation = listEvaluation(type, getEntries);
-      right.append(evaluation);
+      panel.classList.add("has-evaluation");
+      evaluation = listEvaluation(type, getEntries);
       // Після вставки — одразу видно, чи текст стане кращим на ваших еталонах. Запуск — коли завершиться
       // відкриття списку: action() не пускає другу дію, поки триває перша.
-      if (inserted) { const start = () => (busy ? setTimeout(start, 100) : evaluation.run()); setTimeout(start, 0); }
-    }
+      if (inserted || previewDisabled) { const start = () => (busy ? setTimeout(start, 100) : evaluation.run()); setTimeout(start, 0); }
+    } else evaluation=listValidation(`/api/text-lists/${type}/check`,getEntries,true);
     if (type === "callsign_aliases") right.append(aliasCandidates(list.entries));
+    if (type === 'aliases' && !list.entries.length) right.append(el('p','muted small',
+      'Це ручні глобальні заміни, а не навчені правила. Порожній список є нормальним: звичайні слова керуються у «Навчанні», а позивні — в окремих аліасах. Неперевірені кандидати автоматично не додаються.'));
     if (type === "blacklist" || type === "short_garbage") right.append(noiseCandidates(type, list.entries));
-    panel.append(left, right);
+    panel.append(left, ...(evaluation ? [evaluation] : []), right);
     box.append(panel);
+    fitRecognition();
+    if (previewDisabled) {
+      const search=panel.querySelector('.pattern-search');
+      if (search) { search.value=disabledQuery; search.dispatchEvent(new Event('input')); }
+    }
     if (draftEditor && (type === "blacklist" || type === "short_garbage")) draftEditor.reveal();
   }
 
   // Перевірка списку на розмічених записах: повтор текстової обробки, без збереження й без зупинки приймача.
-  const EVALUATED_LISTS = ["phrase_templates", "phrase_patterns", "callsign_aliases", "aliases"];
+  const EVALUATED_LISTS = ["phrase_templates", "phrase_patterns", "callsign_aliases", "aliases", "blacklist", "short_garbage"];
+  function listValidation(path,getEntries,whisper=false) {
+    const wrap=el('aside','list-evaluation'), run=el('button','ghost','Перевірити рядки'), out=el('div');run.type='button';
+    wrap.setAttribute('aria-label','Перевірка рядків');
+    run.addEventListener('click',()=>action(async()=>{
+      run.disabled=true;out.textContent='Перевіряю…';
+      try {
+        const r=await request(path,'PUT',{entries:getEntries()});
+        out.replaceChildren(el('p',`summary ${r.errors?.length?'bad':'ok'}`,r.errors?.length?'Є помилки у рядках':'Формат рядків правильний'));
+        for(const error of r.errors || [])out.append(el('p','alert small',error));
+        for(const warning of r.warnings || [])out.append(el('p','warn small',warning));
+      } catch(error) { out.replaceChildren(el('p','alert small',error.message)); }
+      finally { run.disabled=false; }
+    }));
+    wrap.append(run,out,el('p','muted small',whisper
+      ? 'Тут перевіряється формат підказки. Її вплив на розпізнавання потребує нового аудіопрогону в лабораторії.'
+      : 'Перевірка формату без збереження. Зміна словника також впливає на підказку Whisper; для оцінки розпізнавання потрібен аудіопрогін.'));
+    const lab=el('button','ghost small-button','До експериментів');lab.type='button';
+    lab.addEventListener('click',()=>show('experiments'));wrap.append(lab);
+    return wrap;
+  }
+
+  function fitRecognition() {
+    const panel=document.querySelector('[data-panel]:not([hidden]) .list-layout');
+    if(!panel)return;
+    if(!window.matchMedia('(min-width:1100px)').matches) { panel.style.removeProperty('--editor-height');return; }
+    const main=document.querySelector('main'), style=getComputedStyle(main);
+    const top=panel.getBoundingClientRect().top-main.getBoundingClientRect().top+main.scrollTop;
+    const height=main.clientHeight-top-parseFloat(style.paddingBottom)-parseFloat(getComputedStyle(panel).marginBottom)-2;
+    panel.style.setProperty('--editor-height',`${Math.max(240,Math.floor(height))}px`);
+  }
+  window.addEventListener('resize',()=>{if(['texts','dictionaries'].includes(view))fitRecognition();});
   function listEvaluation(type, getEntries) {
-    const wrap = el("div", "list-evaluation");
+    const wrap = el("aside", "list-evaluation");
+    wrap.setAttribute("aria-label", "Перевірка на еталонах");
     const run = el("button", "ghost", "Перевірити на моїх еталонах"); run.type = "button";
     run.title = "Як змінився б текст розмічених записів із цим списком (зміни не зберігаються)";
     const out = el("div");
-    run.addEventListener("click", () => action(async () => {
-      run.disabled = true; out.replaceChildren(el("p", "muted small", "Рахую…"));
-      try {
-        const r = await request(`/api/text-lists/${type}/evaluate`, "PUT", { entries: getEntries() });
+    const task = serverJobPanel({button: run, box: out, kind: "evaluate", listType: type,
+      start: () => request(`/api/text-lists/${type}/evaluate`, "PUT", {entries: getEntries()}),
+      render: r => {
         const b = r.before, a = r.after;
         const tone = r.worse ? "bad" : r.better ? "ok" : "";
         const summary = el("div", `summary ${tone}`);
         summary.append(el("b", "", r.changed ? `Змінилося фраз: ${r.changed} — краще ${r.better}, гірше ${r.worse}` : "Жодна фраза не змінилася"),
-          el("div", "small muted", `Записів: ${r.records} · помилка в словах ${pct(b.wer)} → ${pct(a.wer)} · позивні ${b.callsigns_hit} → ${a.callsigns_hit} з ${a.callsigns_ref} (хибних ${b.callsigns_false} → ${a.callsigns_false}) · команди ${b.commands_hit} → ${a.commands_hit} з ${a.commands_ref}`));
+          el("div", "small muted", `Мовлення: ${r.records} · шум/сигнали/кімната: ${b.non_speech_records || 0} · без правок ${b.no_edits} → ${a.no_edits} · пропущено ${b.missed} → ${a.missed} · хибний текст ${b.false_text} → ${a.false_text} · помилка в словах ${pct(b.wer)} → ${pct(a.wer)} · позивні ${b.callsigns_hit} → ${a.callsigns_hit} з ${a.callsigns_ref} (хибних ${b.callsigns_false} → ${a.callsigns_false}) · команди ${b.commands_hit} → ${a.commands_hit} з ${a.commands_ref}`));
         out.replaceChildren(summary);
         for (const c of r.examples) {
           const item = el("div", `eval-item ${c.delta > 0 ? "bad" : c.delta < 0 ? "ok" : ""}`);
@@ -593,9 +727,11 @@
           }
           out.append(item);
         }
-      } catch (error) { out.replaceChildren(el("p", "alert small", error.message)); throw error; }
-      finally { run.disabled = false; }
-    }));
+      },
+    });
+    run.addEventListener("click", () => task.run());
+    // Дочекаємося монтування картки, тоді відновимо останній збережений прогін.
+    setTimeout(() => task.resume(), 0);
     wrap.append(run, out);
     wrap.run = () => run.click();   // запуск без кліку (після «＋ Вставити в список»)
     return wrap;
@@ -740,6 +876,7 @@
     SPECTRAL_NOTIFICATION_THRESHOLD: "Поріг схожості на зразок",
     SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S: "Звуку поза збігом не більше, с",
     SPECTRAL_NOTIFICATION_MAX_EXTRA: "Сторонньої енергії не більше (0–1)",
+    TELEGRAM_AUTO_DELETE_HOURS: "Автовидалення копій Telegram, год (0 — вимкнено)",
   };
   const RUNTIME_GROUPS = [
     ["Сповіщення", ["COOLDOWN_S", "LOG_CALLSIGNS_ONLY"]],
@@ -766,7 +903,12 @@
       if (!present.length) continue;
       const box = el("fieldset", "runtime-group"); box.append(el("legend", "", title));
       for (const key of present) { shown.add(key); box.append(runtimeField(key)); }
-      $("runtime-fields").append(box);
+      const group = el('details','runtime-fold');
+      group.append(el('summary','',title), box);
+      group.addEventListener('toggle', () => {
+        if (group.open) for (const sibling of $('runtime-fields').children) if (sibling!==group) sibling.open=false;
+      });
+      $("runtime-fields").append(group);
     }
   }
   const showValue = (value, limits) => limits.type === "str" ? RUNTIME_CHOICES[value] || value

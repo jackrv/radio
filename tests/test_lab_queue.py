@@ -204,6 +204,34 @@ def test_estimates_scale_with_records_and_preset(tmp_path):
     assert base == 1000 * lab_queue.SECONDS_PER_RECORD and turbo < base < reseg
 
 
+def test_estimate_does_not_apply_turbo_factor_twice(tmp_path):
+    import json
+    import os
+    from datetime import datetime, timezone
+    folder = tmp_path / '20261120T010000Z_q-turbo'
+    folder.mkdir()
+    started = datetime(2026, 11, 20, 1, tzinfo=timezone.utc).timestamp()
+    (folder / 'params.json').write_text(json.dumps({'records':100, 'started_utc':'20261120T010000Z'}))
+    (folder / 'metrics.json').write_text('{}')
+    output = folder / 'results.jsonl'; output.write_text('')
+    os.utime(output, (started + 200, started + 200))
+    assert lab_queue.estimate_seconds(tmp_path, 'turbo', 100) == 200
+    assert lab_queue.estimate_seconds(tmp_path, 'base', 100) == 500
+
+
+def test_server_plan_matches_executor_and_keeps_cooldown_between_windows():
+    jobs = [{'id':str(i),'preset':p,'status':'queued'} for i,p in enumerate(('base','no-prompt','resegment'))]
+    estimates = {'base':85*60,'no-prompt':85*60,'resegment':100*60}
+    plan = lab_queue.plan_windows([[0,115*60],[135*60,355*60]],jobs,estimates,now=0)
+    assert [[p['job']['preset'] for p in slot['jobs']] for slot in plan['plan']] == [['base'],['no-prompt','resegment']]
+    assert plan['left'] == []
+    short = [{'id':str(i),'preset':'base','status':'queued'} for i in range(2)]
+    result = lab_queue.plan_windows([[0,115],[115,230]],short,{'base':100},now=0,cooldown=60)
+    assert len(result['plan'][0]['jobs']) == 1 and result['plan'][1]['jobs'] == []
+    assert len(result['left']) == 1
+    assert lab_queue.first_fitting(short,160,230,lambda _:100) is None
+
+
 def test_clear_removes_only_done_and_interrupted_jobs_can_be_retried(tmp_path):
     a = lab_queue.add(tmp_path, "base", "еталон")
     b = lab_queue.add(tmp_path, "no-prompt")

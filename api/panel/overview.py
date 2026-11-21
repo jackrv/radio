@@ -2,6 +2,7 @@
 import time
 from typing import Literal
 
+from api.panel.jobs import start_task
 from fastapi import Depends, HTTPException
 
 import config
@@ -13,7 +14,7 @@ from services.receiver_status import read_receiver_status
 from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
 from services.telegram_sync import sync_status
-from api.panel.models import SuggestionDismiss
+from api.panel.models import SuggestionDismiss, SuggestionRestore
 from api.panel.common import ROOT, spectral_settings, events_by_hour, users_overview, backups_overview, read_diagnostics
 
 def register(app, ctx):
@@ -26,7 +27,6 @@ def register(app, ctx):
     suggestion_worker = ctx.suggestion_worker
     backup_dir = ctx.backup_dir
     launcher_root = ctx.launcher_root
-    sync_event_from_reference = ctx.sync_event_from_reference
 
     @app.get("/api/summary")
     def summary(admin=Depends(actor)):
@@ -59,11 +59,13 @@ def register(app, ctx):
             names = callsign_names(db)
         return analyse(records, names)
 
-    @app.get("/api/quality/text-impact")
+    @app.post("/api/quality/text-impact", status_code=202)
     def quality_text_impact(admin=Depends(actor)):
-        """Контр-перевірка активних текстових правил на тих самих розмічених текстах."""
-        from services.text_replay import countercheck
-        return countercheck(recordings.root, db_path)
+        """Фонова контр-перевірка; результат доступний після закриття сторінки."""
+        try:
+            return start_task(ctx, "impact")
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.get("/api/quality")
     def quality(days: int = 30, admin=Depends(actor)):
@@ -76,15 +78,9 @@ def register(app, ctx):
         from services.training_set import readiness
         return readiness(recordings)
 
-    @app.post("/api/training/export")
+    @app.post("/api/training/export", status_code=202)
     def training_export(admin=Depends(actor)):
-        """Локальне вивантаження набору (.local-training/), нікуди не надсилається."""
-        from pathlib import Path
-        from services.training_set import export
-        try:
-            return export(recordings, Path(db_path).resolve().parent / ".local-training")
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
+        return start_task(ctx, "training_export", actor_id=admin)
 
     @app.get("/api/experiments")
     def experiments(admin=Depends(actor)):
@@ -100,6 +96,16 @@ def register(app, ctx):
             raise HTTPException(422, str(exc)) from None
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+
+    @app.get("/api/experiments/{name}")
+    def experiment_report(name: str, admin=Depends(actor)):
+        from services.experiments import report
+        try:
+            return report(experiments_dir, name)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        except (LookupError, OSError):
+            raise HTTPException(404, "Звіт недоступний") from None
 
     @app.get("/api/attention")
     def attention(admin=Depends(actor)):
@@ -145,21 +151,9 @@ def register(app, ctx):
                 "quality": recordings.quality_by_day(7),
                 "codes": {"day": day, "period": daily_codes.period(day), "codes": codes}}
 
-    @app.post("/api/suggestions/sync-events")
+    @app.post("/api/suggestions/sync-events", status_code=202)
     def suggestions_sync_events(admin=Depends(actor)):
-        """Перенести еталони в події, які лишилися з текстом Whisper (журнал, підпис у Telegram, навчання)."""
-        from services import suggestions as suggestion_service
-        result = {"updated": 0, "same": 0, "hidden": 0, "failed": 0, "none": 0}
-        for item in suggestion_service.reference_checks(db_path, recordings):
-            if item["kind"] != "ref_event":
-                continue
-            try:
-                outcome = sync_event_from_reference(recordings.get(item["record"]), admin)
-            except LookupError:
-                outcome = None
-            result[outcome or "none"] += 1
-        suggestion_service.refresh(db_path, recordings)
-        return result
+        return start_task(ctx, "sync_events", actor_id=admin)
 
     @app.post("/api/suggestions/dismiss")
     def suggestions_dismiss(payload: SuggestionDismiss, admin=Depends(actor)):
@@ -170,16 +164,23 @@ def register(app, ctx):
         return {"dismissed": suggestion_service.dismiss(db_path, payload.kind)}
 
     @app.post("/api/suggestions/restore")
-    def suggestions_restore(admin=Depends(actor)):
+    def suggestions_restore(payload: SuggestionRestore | None = None, admin=Depends(actor)):
         from services import suggestions as suggestion_service
-        return {"restored": suggestion_service.restore(db_path)}
+        return {"restored": suggestion_service.restore(db_path, keys=payload.keys if payload else None)}
 
-    @app.post("/api/suggestions/refresh")
+    @app.get('/api/suggestions/resolved')
+    def suggestion_decisions(offset: int=0, admin=Depends(actor)):
+        from services.suggestions import decisions
+        if not 0 <= offset <= 1_000_000: raise HTTPException(422, 'Некоректна сторінка')
+        return decisions(db_path, offset)
+
+    @app.post("/api/suggestions/refresh", status_code=202)
     def suggestions_refresh(admin=Depends(actor)):
         """Перевірити всі списки зараз (зокрема шаблони фраз на еталонах), не чекаючи фонової перевірки."""
-        from services import suggestions as suggestion_service
-        current, fresh = suggestion_service.refresh(db_path, recordings, deep=True)
-        return {"total": len(current), "new": len(fresh), **suggestion_service.overview(db_path)}
+        try:
+            return start_task(ctx, "suggestions", deep=True)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.get("/api/launcher")
     def launcher_state(admin=Depends(actor)):

@@ -18,6 +18,25 @@ MAX_TEXT = 300
 log = logging.getLogger("radio")
 
 
+def panel_details(payload):
+    """Лише дозволені поля; токени, авторизація й довільні тіла запитів не журналюються."""
+    if not isinstance(payload,dict): return {}
+    result={}
+    for key in ('role','enabled','notify_mode','disabled','approved','minutes','display_name','codes'):
+        value=payload.get(key)
+        if type(value) in (str,int,bool,float): result[key]=_short(value)
+    values=payload.get('values')
+    if isinstance(values,dict):
+        from services.runtime_settings import FIELDS
+        from services.management.settings import SETTING_KEYS
+        result['values']={key:value for key,value in values.items() if key in FIELDS or key in SETTING_KEYS}
+    entries=payload.get('entries')
+    if isinstance(entries,list):
+        result['rows']=len(entries)
+        result['enabled_rows']=sum(isinstance(e,dict) and e.get('enabled',True) for e in entries)
+    return result
+
+
 def ensure_table(db):
     db.execute("""CREATE TABLE IF NOT EXISTS user_activity (
         id INTEGER PRIMARY KEY,

@@ -10,9 +10,18 @@ from services.sqlite_connection import get_db
 REFRESH_INTERVAL_S = 2.0
 
 
-def build_prompt(callsigns, commands, watch):
+def build_prompt(callsigns, commands, watch, *, include_command_codes=False):
     """Підказка Whisper: усі відомі назви словників."""
-    return ", ".join(sorted(set(callsigns.names) | set(commands.names) | set(watch.names)))
+    names=", ".join(sorted(set(callsigns.names) | set(commands.names) | set(watch.names)))
+    if not include_command_codes:return names
+    from core.dictionary_blocks import command_groups
+    phrases=[];size=0
+    for name in sorted(commands.names):
+        if name in commands.any_number:continue
+        for code in sorted(commands.numbers.get(name,())):
+            phrase=f"{name} {' '.join(command_groups(commands,name,code))}"
+            if size+len(phrase)+2<=400:phrases.append(phrase);size+=len(phrase)+2
+    return f"{', '.join(phrases)}. {names}" if phrases else names
 
 
 def dictionaries_from_lines(lines):

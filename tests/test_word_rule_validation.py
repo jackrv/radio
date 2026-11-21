@@ -65,3 +65,10 @@ def test_service_words_never_become_learned_replacements():
     assert classify_pair("прийом", "прийняв", frozenset()) == ("excluded", "service_word")
     assert classify_pair("Прийнято", "прийом", frozenset()) == ("excluded", "service_word")
     assert classify_pair("приняте", "прийнято", frozenset())[0] == "word", "звичайна описка навчається як і раніше"
+
+
+def test_service_words_inside_compound_rules_are_protected():
+    from core.word_rule_validation import classify_pair
+    assert classify_pair("прийом позицю", "прийнятий позицію", frozenset()) == ("excluded", "service_word")
+    assert classify_pair("зв’язку", "зв’язок", frozenset()) == ("excluded", "service_word")
+    assert classify_pair("на бат", "набат", frozenset({("набат",)})) == ("callsign", None)

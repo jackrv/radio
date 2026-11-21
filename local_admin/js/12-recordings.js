@@ -183,6 +183,63 @@
   // клавіші, автопрогравання й пауза мікрофона), керування — своє: кнопка, хвиля запису, час, швидкість.
   // Хвиля малюється з самого WAV (PCM16) — лише коли запис відкрили чи ввімкнули, не для всіх карток.
   const clock = s => !Number.isFinite(s) ? "0:00" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  // Лише орієнтир для розмітки: RMS-паузи + вага довжини слова, без ASR/моделі.
+  function wavSpeechGuide(buffer) {
+    const view = new DataView(buffer);
+    let channels = 0, rate = 0, format = 0, bits = 0;
+    for (let offset = 12; offset + 8 <= view.byteLength;) {
+      const id = String.fromCharCode(...new Uint8Array(buffer, offset, 4)), size = view.getUint32(offset + 4, true);
+      const start = offset + 8, end = Math.min(view.byteLength, start + size);
+      if (id === "fmt " && end - start >= 16) {
+        format = view.getUint16(start, true); channels = view.getUint16(start + 2, true);
+        rate = view.getUint32(start + 4, true); bits = view.getUint16(start + 14, true);
+      }
+      if (id === "data") {
+        if (format !== 1 || bits !== 16 || !rate || !channels) return null;
+        const frames = Math.floor((end - start) / (2 * channels)), step = Math.max(1, Math.round(rate * .02));
+        const stride = Math.max(1, Math.floor(rate / 4000)); // огинаюча, не спектральний аналіз
+        const duration = frames / rate, levels = [];
+        for (let frame = 0; frame < frames; frame += step) {
+          let sum = 0, count = 0;
+          for (let f = frame; f < Math.min(frames, frame + step); f += stride) {
+            for (let c = 0; c < channels; c++) { const v = view.getInt16(start + (f * channels + c) * 2, true); sum += v * v; count++; }
+          }
+          levels.push(Math.sqrt(sum / Math.max(1, count)));
+        }
+        const sorted = [...levels].sort((a,b) => a-b), top = sorted.at(-1) || 0;
+        if (!top) return {duration, spans: []};
+        const floor = sorted[Math.floor(sorted.length * .15)] || 0;
+        const threshold = Math.min(top * .35, Math.max(top * .06, floor * 2));
+        const spans = [];
+        for (let i = 0; i < levels.length; i++) {
+          if (levels[i] < threshold) continue;
+          const a = Math.max(0, (i * step) / rate - .04), b = Math.min(duration, ((i+1) * step) / rate + .04);
+          const last = spans.at(-1);
+          if (last && a - last[1] < .12) last[1] = b;
+          else spans.push([a,b]);
+        }
+        return {duration, spans};
+      }
+      offset = start + size + (size % 2);
+    }
+    return null;
+  }
+  function approximateWordCues(text, guide) {
+    if (!guide?.spans?.length) return [];
+    const words = [...text.matchAll(/[\p{L}\p{N}]+(?:[’'ʼ`-][\p{L}\p{N}]+)*/gu)];
+    const weights = words.map(m => /^\d+$/.test(m[0]) ? Math.max(1, m[0].length) :
+      Math.max(.8, (m[0].match(/[аеєиіїоуюяaeiouy]/gi) || []).length + m[0].length * .12));
+    const total = weights.reduce((a,b) => a+b, 0), voiced = guide.spans.reduce((sum,[a,b]) => sum+b-a, 0);
+    let used = 0;
+    const at = value => {
+      for (const [a,b] of guide.spans) { if (value < b-a) return a+value; value -= b-a; }
+      return guide.spans.at(-1)[1];
+    };
+    return words.map((m,i) => {
+      const start = at(used / total * voiced); used += weights[i];
+      return {start, end:at(used / total * voiced), from:m.index, to:m.index+m[0].length};
+    });
+  }
   function wavPeaks(buffer, bars) {
     const view = new DataView(buffer);
     let offset = 12, bits = 16, channels = 1;
@@ -218,9 +275,11 @@
       if (first && typeof activateReview === "function") activateReview(first);
     });
     node.append(play, wave, time, speedSelect(), drafts);
-    let peaks = null, loading = false, knownDuration = NaN, frame = 0;
+    let peaks = null, loading = false, knownDuration = NaN, frame = 0, guide = null, textGuide = null, disposed = false, blobUrl = null;
     const duration = () => Number.isFinite(audio.duration) ? audio.duration : knownDuration;
     function draw() {
+      if (disposed) return;
+      textGuide?.(audio.currentTime || 0, guide);
       if (!wave.getContext || !wave.clientWidth) return;
       const ratio = window.devicePixelRatio || 1, w = wave.clientWidth, h = wave.clientHeight;
       if (wave.width !== Math.round(w * ratio)) { wave.width = Math.round(w * ratio); wave.height = Math.round(h * ratio); }
@@ -239,24 +298,26 @@
       time.textContent = `${clock(audio.currentTime)} / ${clock(duration())}`;
     }
     async function loadWave() {
-      if (peaks || loading || typeof fetch === "undefined") return;
+      if (disposed || peaks || loading || typeof fetch === "undefined") return;
       loading = true;
       try {
         const response = await fetch(url, { credentials: "same-origin" });
         const buffer = await response.arrayBuffer();
+        if (disposed) return;
         peaks = wavPeaks(buffer, 240);
+        guide = wavSpeechGuide(buffer);
         // Звук — із уже завантаженого файлу, без другого запиту (якщо ще не почали грати).
         if (audio.paused && !audio.currentTime && !audio.readyState && typeof URL !== "undefined" && URL.createObjectURL)
-          audio.src = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+          audio.src = blobUrl = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
         const view = new DataView(buffer);   // тривалість із заголовка: видно ще до відтворення
         if (buffer.byteLength > 44) knownDuration = (buffer.byteLength - 44) / Math.max(1, view.getUint32(28, true));
       } catch (_) { /* без хвилі — просто смуга */ }
       loading = false; draw();
     }
-    const tick = () => { draw(); if (!audio.paused) frame = window.requestAnimationFrame?.(tick); };
+    const tick = () => { if(disposed)return; draw(); if (!audio.paused) frame = window.requestAnimationFrame?.(tick); };
     audio.addEventListener?.("play", () => { play.textContent = "❚❚"; play.classList?.add("on"); play.setAttribute?.("aria-label", "Пауза"); loadWave(); tick(); });
     audio.addEventListener?.("pause", () => { play.textContent = "▶"; play.classList?.remove("on"); play.setAttribute?.("aria-label", "Грати"); window.cancelAnimationFrame?.(frame); draw(); });
-    for (const name of ["loadedmetadata", "seeked", "ended"]) audio.addEventListener?.(name, draw);
+    for (const name of ["loadedmetadata", "seeked", "ended", "timeupdate"]) audio.addEventListener?.(name, draw);
     play.addEventListener?.("click", () => { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); });
     // Клік чи протягування по хвилі — перейти; до першого відтворення тривалість беремо з WAV.
     const seek = event => {
@@ -267,7 +328,10 @@
       const move = e => seek(e), up = () => { wave.removeEventListener("pointermove", move); wave.removeEventListener("pointerup", up); };
       wave.addEventListener("pointermove", move); wave.addEventListener("pointerup", up); });
     window.addEventListener?.("resize", draw);
-    return { node, drafts, loadWave: () => loadWave().then(draw), draw };
+    return { node, drafts, loadWave: () => loadWave().then(draw), draw,
+      dispose: () => { disposed=true; audio.pause?.(); window.cancelAnimationFrame?.(frame);
+        window.removeEventListener?.('resize',draw); if(blobUrl)URL.revokeObjectURL?.(blobUrl); textGuide=null; },
+      setTextGuide: callback => { textGuide = callback; draw(); } };
   }
   // Правки людини — пункт виду «person:<ID>»: на сервер іде вид «усі» з фільтром edits=<ID>.
   const editsValue = () => { const v = $("recording-view").value || ""; return v.startsWith("person:") ? v.slice(7) : ""; };
@@ -299,7 +363,8 @@
   let loadedRecordingFilters = null;
   const recordingFilterIds = ["recording-view", "recording-period", "recording-order", "recording-search"];
   // «Сумнівні першими»: спершу записи, де Whisper найменш упевнений — їх найімовірніше треба правити.
-  const orderValue = () => $("recording-order")?.value === "doubtful" ? "doubtful" : "new";
+  let archiveSelection = '';
+  const orderValue = () => ["doubtful", "old"].includes($("recording-order")?.value) ? $("recording-order").value : "new";
   let confidenceLow = null;   // межа найменш упевнених 25 % розміченого мовлення (з сервера)
   const recordConfidence = d => {
     const values = (d.whisper_segments || []).map(s => s.avg_logprob).filter(v => typeof v === "number");
@@ -341,7 +406,7 @@
   function telegramRecall(item) {
     const t = item.telegram;
     if (t.pending) return el("span", "badge", `видаляється в Telegram… (${t.pending})`);
-    if (t.requested || (t.hidden && !t.copies)) return el("span", "badge", "видалено в Telegram");
+    if (!t.exhausted && !t.copies && (t.requested || t.hidden)) return el("span", "badge", "видалено в Telegram");
     if (!t.copies) return el("span", "badge", "у чатах копій немає");
     if (!t.deletable) {
       const old = el("span", "badge", `у чатах: ${t.copies}`);
@@ -349,7 +414,7 @@
       return old;
     }
     const hours = Math.max(1, Math.floor((t.deletable_until * 1000 - Date.now()) / 3600000));
-    const b = el("button", "ghost small-button danger-text", `🗑 у всіх (${t.copies})`); b.type = "button";
+    const b = el("button", "ghost small-button danger-text", t.exhausted ? `Повторити видалення (${t.exhausted})` : `🗑 у всіх (${t.copies})`); b.type = "button";
     b.title = `Видалити в Telegram у всіх: повідомлення зникне в ${t.copies} отримувачів і в журналі. Можна ще ≈${hours} год.`;
     b.addEventListener("click", () => action(async () => {
       if (!confirm(`Видалити це повідомлення в Telegram в усіх отримувачів (${t.copies})? Фраза також зникне з журналу й Mini App. Скасувати не можна.`)) return;
@@ -382,14 +447,17 @@
     return box;
   }
   async function recordings(reset = true) {
+    const selectionExit = $("clear-recording-selection");
+    if (selectionExit) selectionExit.hidden = !archiveSelection;
     if (reset && reviewCards.some(card => card.dirty) && !confirm("Є незбережені зміни. Оновити список і відкинути їх?")) {
       if (loadedRecordingFilters) for (const id of recordingFilterIds) $(id).value = loadedRecordingFilters[id];
       return;
     }
-    if (reset) { recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); $("recording-rows").replaceChildren(); }
+    if (reset) { for (const c of reviewCards) c.dispose?.(); recordingOffset = 0; reviewCards.length = 0; updateDraftCount(); $("recordings").replaceChildren(); $("recording-rows").replaceChildren(); }
     const since = periodSince(), until = periodUntil();
     const [page, summary, codes] = await Promise.all([
       request(`/api/recordings?offset=${recordingOffset}&view=${apiView()}&order=${orderValue()}` +
+        (archiveSelection ? `&selection=${archiveSelection}` : "") +
         (since ? `&since=${since}` : "") + (until ? `&until=${until}` : "") +
         (searchQuery() ? `&q=${encodeURIComponent(searchQuery())}` : "") +
         (editsValue() ? `&edits=${encodeURIComponent(editsValue())}` : "")),
@@ -679,6 +747,38 @@
       // Перевірка оформлення: пробіли, цифри групами, «з», апостроф, назви словника.
       // Лише підказки: зберегти можна будь-який текст.
       const lint = el("div", "text-check");
+      const markedText = el("div", "transcript-preview");
+      markedText.setAttribute("aria-label", "Позивні, команди й місця для перевірки");
+      const highlightLegend = el("small", "muted", "≈ Маркер слова орієнтовний: паузи й довжина слів. Позивні · КОМАНДИ · / межа · підкреслення — перевірити. Натисніть слово для переходу в поле.");
+      let wordNodes = [], activeNodes = [], cueText = null, cueGuide = null, cues = [];
+      function markPlayingWord(time, guide) {
+        if (cueText !== input.value || cueGuide !== guide) {
+          cueText = input.value; cueGuide = guide; cues = approximateWordCues(cueText, guide);
+        }
+        const voiced = !audio.ended && guide?.spans.some(([a,b]) => a <= time && time < b);
+        const cue = voiced ? cues.find(c => c.start <= time && time < c.end) : null;
+        const next = cue ? wordNodes.filter(n => n.from < cue.to && n.to > cue.from).map(n => n.node) : [];
+        for (const node of activeNodes) if (!next.includes(node)) node.classList.remove?.("transcript-playing");
+        for (const node of next) if (!activeNodes.includes(node)) node.classList.add("transcript-playing");
+        activeNodes = next;
+      }
+      function renderHighlights(spans = []) {
+        markedText.replaceChildren();
+        wordNodes = []; activeNodes = [];
+        const text = input.value;
+        const words = [...text.matchAll(/[\p{L}\p{N}]+(?:[’'ʼ`-][\p{L}\p{N}]+)*/gu)];
+        const cuts = [...new Set([0, text.length, ...words.flatMap(m => [m.index, m.index+m[0].length]), ...spans.flatMap(s => [s.start, s.end])])].sort((a,b) => a-b);
+        for (let i = 1; i < cuts.length; i++) {
+          const a = cuts[i-1], b = cuts[i];
+          if (a < 0 || b > text.length || a === b) continue;
+          const kinds = spans.filter(s => s.start <= a && s.end >= b).map(s => s.kind);
+          const token = el("span", kinds.map(k => `transcript-${k}`).join(" "), text.slice(a,b));
+          wordNodes.push({from:a, to:b, node:token});
+          token.addEventListener("click", () => { input.focus(); input.setSelectionRange(a,b); });
+          markedText.append(token);
+        }
+        custom.draw();
+      }
       let lintTimer = null;
       // «Виправити оформлення» — усі рекомендовані правки оформлення одним натисканням; кнопка всередині поля праворуч.
       let formatted = null;
@@ -692,6 +792,7 @@
       };
       fixAll.addEventListener("click", () => { if (!formatted) return; input.value = formatted; grow(); updateDirty(); checkText(0); });
       function renderLint(result) {
+        renderHighlights(result?.highlights || []);
         lint.replaceChildren();
         const issues = result?.issues || [];
         card.classList.toggle("has-remarks", issues.length > 0);
@@ -726,6 +827,17 @@
         }
       }
       let lintRevision = 0;
+      // Ввід, blur та Esc можуть одночасно перевіряти той самий текст.
+      // Ділимо лише незавершений запит: після зміни словників нова перевірка буде свіжою.
+      const pendingChecks = new Map();
+      function textCheck(text) {
+        if (pendingChecks.has(text)) return pendingChecks.get(text);
+        const pending = request("/api/text-check", "POST", { text, at: item.created, highlights: true });
+        pendingChecks.set(text, pending);
+        const clear = () => { if (pendingChecks.get(text) === pending) pendingChecks.delete(text); };
+        pending.then(clear, clear);
+        return pending;
+      }
       function checkText(delay = 500) {
         clearTimeout(lintTimer);
         const revision = ++lintRevision;
@@ -733,12 +845,12 @@
           if (!["speech", "unclear"].includes(category.value) || !input.value.trim()) { renderLint(null); return; }
           const text = input.value;
           try {
-            const result = await request("/api/text-check", "POST", { text, at: item.created });
+            const result = await textCheck(text);
             if (revision === lintRevision && input.value === text) renderLint(result);
           } catch (_) { if (revision === lintRevision) renderLint(null); }
         }, delay);
       }
-      input.addEventListener("input", () => checkText());
+      input.addEventListener("input", () => { renderHighlights(); checkText(); });
       if (item.text_check) renderLint(item.text_check);
       // Esc у полі тексту — застосувати правки оформлення (як «Виправити оформлення»), якщо вони є.
       // Перевірку робимо одразу, а не чекаємо паузи після набору; підказки «Можливо, …?» не застосовуються.
@@ -748,7 +860,7 @@
         clearTimeout(lintTimer);
         const text = input.value, revision = ++lintRevision;
         let result;
-        try { result = await request("/api/text-check", "POST", { text, at: item.created }); } catch (_) { return false; }
+        try { result = await textCheck(text); } catch (_) { return false; }
         if (revision !== lintRevision || input.value !== text) return false;   // тим часом текст змінили
         renderLint(result);
         if (!formatted || formatted === text) return false;
@@ -760,7 +872,7 @@
         clearTimeout(lintTimer);
         const text = input.value, revision = ++lintRevision;
         let result;
-        try { result = await request("/api/text-check", "POST", { text, at: item.created }); } catch (_) { return false; }
+        try { result = await textCheck(text); } catch (_) { return false; }
         if (revision !== lintRevision || input.value !== text) return false;
         renderLint(result);
         const spelling = (result?.issues || []).find(issue =>
@@ -813,7 +925,10 @@
       const inputBox = el("div", "text-input-box"); inputBox.append(input, fixAll);
       // «Почутий текст» і фартушок кодів доби — один рядок над полем.
       const textHead = el("div", "text-head"); textHead.append(el("span", "muted small", "Почутий текст"), codesApron(item.created));
-      textField.append(textHead, inputBox);
+      textField.append(textHead, inputBox, markedText, highlightLegend);
+      custom.setTextGuide(markPlayingWord);
+      renderHighlights();
+      checkText(0);
       const roles = el("div", "recording-roles"); roles.append(recipient.node, sender.node);
       const actions = el("div", "recording-actions");
       const saveStatus = el("span", "muted small save-status"); saveStatus.setAttribute("role", "status");
@@ -860,7 +975,6 @@
       }
       async function submit(quickUndo = null) {
         if (saving) return;
-        if (spellingPending) await spellingPending;   // спершу виправлення написання з виходу з поля
         saving = true; save.disabled = true; showSave("Зберігаю…");
         // Стан у базі до збереження — для «Скасувати» швидкої розмітки.
         const previous = { reference: item.reference ?? null, label: item.reference == null ? null : item.label ?? null,
@@ -869,6 +983,7 @@
                            reviewed_at: item.reviewed_at ?? null, reference_source: item.reference_source ?? null };
         const wasDone = controller.done;
         try {
+          if (spellingPending) await spellingPending;   // спершу виправлення написання з виходу з поля
           const speechLike = ["speech", "unclear"].includes(category.value);
           const sentSnapshot = snapshot();
           const payload = {reference: input.value, label: category.value, expected_revision: item.revision, reference_recipient: recipient.read(), reference_sender: sender.read(), multiple_messages: speechLike ? multiBox.checked : null};
@@ -887,12 +1002,17 @@
           save.textContent = "Оновити еталон";
           const synced = { updated: " · подію й повідомлення в Telegram оновлено", hidden: " · повідомлення видалене — Telegram не змінено",
                            failed: " · подію оновити не вдалося" }[result.event_sync] || "";
-          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}${synced}`,
-                   result.event_sync === "failed" ? "alert" : "ok");
-          note(result.event_sync === "updated" ? "Еталон збережено; подію й повідомлення в Telegram оновлено." : "Еталон збережено.");
-          if (!controller.dirty && typeof advanceReview === "function") advanceReview(controller);
+          const learned=result.learning_sync?.status==='failed' ? ' · навчання не синхронізовано, повторіть збереження'
+            : result.learning_sync?.candidates ? ` · словесних пар: ${result.learning_sync.candidates}` : '';
+          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}${synced}${learned}`,
+                   result.event_sync === "failed" || result.learning_sync?.status==='failed' ? "alert" : "ok");
+          if (result.learning_sync?.status==='failed') {
+            save.textContent='Повторити синхронізацію';
+            note('Еталон збережено, але навчання не синхронізовано. Повторіть збереження цієї картки.');
+          } else note(result.event_sync === "updated" ? "Еталон збережено; подію й повідомлення в Telegram оновлено." : "Еталон збережено.");
+          if (!controller.dirty && result.learning_sync?.status!=='failed' && result.event_sync!=='failed' && typeof advanceReview === "function") advanceReview(controller);
         } catch (error) {
-          showSave(`Не збережено: ${error.message}`, "alert"); note(error.message);
+          showSave(`${error.uncertain ? "Збереження не підтверджено" : "Не збережено"}: ${error.message}`, "alert"); note(error.message);
         } finally {
           saving = false; save.disabled = false;
         }
@@ -917,11 +1037,11 @@
       const meta = el("div", "recording-meta"); meta.append(roles);   // «кілька передач» — позначка в рядку чипів
       // Зверху тип запису й поле тексту (з «Виправити оформлення»); під полем два блоки:
       // ліворуч підказки, позивні й ролі, праворуч «Зберегти» на висоту лівого блоку.
-      const fields = el("div", "recording-fields"); fields.append(lint, meta);
+      const fields = el("div", "recording-fields"); fields.append(textField, lint, meta);
       const body = el("div", "recording-body"); body.append(fields, actions);
-      form.append(typeRow, textField, body);
+      form.append(typeRow, body);
       form.addEventListener("submit", event => { event.preventDefault(); submit(); });
-      const controller = { card, audio, item, applyFormatting, applySpellingOnLeave, loadWave: custom.loadWave, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
+      const controller = { card, audio, item, applyFormatting, applySpellingOnLeave, loadWave: custom.loadWave, dispose: custom.dispose, draftsPill: custom.drafts, dirty:false, done: item.reference !== null, setCategory, submit, grow,
                            focusText: () => { if (!textField.hidden) input.focus(); }, suggest,
                            refreshHints: () => { if (!textField.hidden) { suggest(); checkText(0); } } };
       reviewCards.push(controller);
@@ -974,7 +1094,7 @@
     if (/^person:\d{1,18}$/.test(saved.view || "")) personOption(saved.view.slice(7), saved.view.slice(7), 0);
     if ([...$("recording-view").options].some(o => o.value === saved.view)) $("recording-view").value = saved.view;
     if ([...$("recording-period").options].some(o => o.value === saved.period)) $("recording-period").value = saved.period;
-    if (saved.order === "doubtful" && $("recording-order")) $("recording-order").value = "doubtful";
+    if (["doubtful","old"].includes(saved.order) && $("recording-order")) $("recording-order").value = saved.order;
   } catch (_) { /* типовий вибір */ }
   for (const id of ["recording-view", "recording-period", "recording-order"]) {
     $(id).addEventListener("change", () => { saveArchiveView(); action(() => recordings(true)); });
@@ -1037,12 +1157,12 @@
     if (splitView() && split.offsetParent !== null) {
       // Висота — до низу вікна з урахуванням усього, що під архівом (нижній відступ main тощо):
       // спершу орієнтовно, далі мінус фактичне переповнення сторінки, щоб вона не прокручувалась.
-      const top = split.getBoundingClientRect().top + window.scrollY;
+      const top = split.getBoundingClientRect().top + pageScrollY();
       let height = Math.max(360, Math.floor(window.innerHeight - top - 10));
       split.style.setProperty("--archive-h", `${height}px`);
-      const extra = document.documentElement.scrollHeight - window.innerHeight;
+      const extra = document.querySelector('main').scrollHeight - document.querySelector('main').clientHeight;
       if (extra > 0) { height = Math.max(360, height - extra); split.style.setProperty("--archive-h", `${height}px`); }
-      if (window.scrollY && extra > 0) window.scrollTo(0, 0);
+      if (pageScrollY() && extra > 0) pageScrollTo({top:0});
       if (more.parentElement !== list) list.append(more);
       // «Оновити» — над переліком, який він і оновлює.
       if (refresh && refresh.parentElement !== list) list.prepend(refresh);

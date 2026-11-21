@@ -126,7 +126,7 @@ def _pick(table):
     return table[(safe[0] + high + 1) // 2]
 
 
-def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=None):
+def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=None, progress=None):
     """Оцінка спектрального фільтра на розмічених записах архіву й рекомендований поріг."""
     log = log or logging.getLogger(__name__)
     templates = load_templates(samples_dir, SAMPLE_RATE, log)
@@ -134,7 +134,10 @@ def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=Non
     matcher = SpectralNotificationMatcher(templates, SAMPLE_RATE, prepared=True, threshold=threshold,
                                           max_outside_s=max_outside_s, max_extra=max_extra)
     items = []
-    for row in _labelled(store):
+    rows = _labelled(store)
+    for index, row in enumerate(rows):
+        if progress:
+            progress(index, len(rows))
         item = {"record_id": row["id"], "created": row["created"], "label": row["label"]}
         try:
             raw = _pcm(store.audio(row["id"]))
@@ -161,5 +164,7 @@ def evaluate(store, samples_dir, *, threshold, max_outside_s, max_extra, log=Non
         else:
             item.update({key: result[key] for key in ("score", "outside_s", "extra_ratio", "candidate")})
         items.append(item)
+    if progress:
+        progress(len(rows), len(rows))
     return {"templates": len(templates), "items": items, "summary": _summary(items, matcher),
             "limits": {"max_outside_s": max_outside_s, "max_extra": max_extra}}

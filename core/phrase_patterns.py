@@ -19,7 +19,7 @@ import re
 from rapidfuzz import fuzz
 
 import core.callsigns as callsigns_module
-from core.callsigns import FOLD, basic_normalize
+from core.callsigns import FOLD, basic_normalize, dictionary_address_forms
 
 SLOTS = {"п": "P", "ч": "N", "к": "C"}
 FIXED_WORD_MIN = 62          # кожне слово шаблону — щонайменше настільки схоже на почуте
@@ -195,6 +195,7 @@ def apply_patterns(text, callsigns, patterns=None, known_names=()):
     if not patterns or not text:
         return text
     names = {name.translate(FOLD) for name in (*callsigns.names, *known_names)}
+    address_forms = dictionary_address_forms((*callsigns.names, *known_names))
     commands = frozenset(_fold(name) for name in known_names)
     out, last = [], 0
     for segment in _SEGMENT.finditer(text):
@@ -213,6 +214,10 @@ def apply_patterns(text, callsigns, patterns=None, known_names=()):
         _, expanded, pairs = best
         for ei, tj in pairs:
             start, end, token = found[tj]
+            # Попередня словесна корекція захищає «Клену»/«Кленові»;
+            # цілий шаблон не повинен потім прибирати законне закінчення.
+            if basic_normalize(token) in address_forms:
+                continue
             kind = expanded[ei][0]
             new = token
             if kind == "W" and _fold(token) != _fold(expanded[ei][1]):

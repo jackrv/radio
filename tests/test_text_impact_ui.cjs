@@ -6,7 +6,7 @@ const path=require('node:path');
 
 test('text-impact report displays non-speech analysis when there are no speech records',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'../local_admin/js/04-analysis.js'),'utf8');
-  const start=source.indexOf('  async function textImpact()');
+  const start=source.indexOf('  function renderTextImpact(');
   const end=source.indexOf('\n  $("text-impact-run")',start);
   const button={disabled:false};
   const box={children:[],replaceChildren(...children){this.children=children;}};
@@ -23,8 +23,8 @@ test('text-impact report displays non-speech analysis when there are no speech r
     num:String,
     request:async()=>report,
   });
-  vm.runInContext(source.slice(start,end)+'\nglobalThis.textImpact=textImpact;',context);
-  await context.textImpact();
+  vm.runInContext(source.slice(start,end)+'\nglobalThis.renderTextImpact=renderTextImpact;',context);
+  context.renderTextImpact(report);
   const rendered=box.children.map(child=>child.textContent).join(' ');
   assert.match(rendered,/0 фраз мовлення і 1 прикладів шуму/);
   assert.match(rendered,/Активних текстових правил для перевірки немає/);

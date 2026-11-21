@@ -86,6 +86,7 @@ def summarize(results):
     speech_ref = [r for r in results if r.get("label") in SPEECH and r.get("reference") is not None]
     if speech_ref:
         summary["exact_phrases"] = sum(plain_tokens(r["reference"]) == plain_tokens(r.get("hypothesis")) for r in speech_ref)
+        summary['literal_phrases'] = sum(r['reference'] == (r.get('hypothesis') or '') for r in speech_ref)
     segs = lambda r: r.get("whisper_segments") or []
     summary["fallback_records"] = sum(any((s.get("temperature") or 0) > 0 for s in segs(r)) for r in results)
     summary["loop_records"] = sum(any((s.get("compression_ratio") or 0) > 2.4 for s in segs(r)) for r in results)

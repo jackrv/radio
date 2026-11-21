@@ -26,7 +26,7 @@ def kinds(result):
 
 
 def test_clean_text_has_no_remarks():
-    assert check("Береза 31, Береза 31, я Клен 15, злива 42 42, грім 0 22, на звʼязок, прийом") == {
+    assert check("Береза 31, Береза 31, я Клен 15, ЗЛИВА 42 42, ГРІМ 0 22, на звʼязок, прийом") == {
         "issues": [], "formatted": None}
 
 
@@ -35,13 +35,13 @@ def test_format_rules_and_fix_all():
     result = check(text)
     assert set(kinds(result)) == {"format"}
     assert format_text(text) == "Береза, 31 я клен 15, злива 42 42, грім 0 22, 63 27, з півночі, на звʼязок"
-    assert result["formatted"] == "Береза 31, я Клен 15, злива 42 42, грім 0 22, 63 27, з півночі, на звʼязок"
+    assert result["formatted"] == "Береза 31, я Клен 15, ЗЛИВА 42 42, ГРІМ 0 22, 63 27, з півночі, на звʼязок"
 
 
 def test_each_fix_changes_only_its_place():
     result = check("Злива 4242, С півночі")
     fixed = {issue["fixed_text"] for issue in result["issues"]}
-    assert fixed == {"Злива 42 42, С півночі", "Злива 4242, З півночі"}
+    assert fixed == {"Злива 42 42, С півночі", "Злива 4242, З півночі", "ЗЛИВА 4242, С півночі"}
 
 
 def test_callsign_numbers_are_not_touched():
@@ -117,7 +117,7 @@ def test_miniapp_check_endpoint_uses_database_dictionaries_and_permissions(api):
     response = client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "Бериза 56, Береза 99, злива 4242"})
     assert response.status_code == 200
     body = response.json()
-    assert body["formatted"] == "Бериза 56, Береза 99, злива 42 42"
+    assert body["formatted"] == "Бериза 56, Береза 99, ЗЛИВА 42 42"
     assert {i["kind"] for i in body["issues"]} == {"format", "spelling", "info"}
     assert client.put("/api/corrections/check", headers=auth_header(2002), json={"text": "x"}).status_code == 403
     assert client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "x" * 5001}).status_code == 422
@@ -127,7 +127,7 @@ def test_miniapp_check_endpoint_uses_database_dictionaries_and_permissions(api):
     ("береза 700 береза 700 я береза 56 на звʼязок прийом", "Береза 700, Береза 700, я Береза 56, на звʼязок, прийом"),
     ("клен 15 посилку отримав прийом / клен 15 прийнято прийом", "Клен 15, посилку отримав, прийом / Клен 15, прийнято, прийом"),
     ("клен 15 прийнято прийом | вишня прийнято", "Клен 15, прийнято, прийом / Вишня, прийнято"),   # старий «|» -> « / »
-    ("Злива 42 42, злива 42 42, я береза 700, грім, 0 22, прийом", "Злива 42 42, злива 42 42, я Береза 700, грім 0 22, прийом"),
+    ("Злива 42 42, злива 42 42, я береза 700, грім, 0 22, прийом", "ЗЛИВА 42 42, ЗЛИВА 42 42, я Береза 700, ГРІМ 0 22, прийом"),
     ("Клен, 15, 53 16, Прийом.", "Клен 15, 53 16, прийом."),
     ("вишня 96, 80, прийом", "Вишня, 96, 80, прийом"),
     ("822 прийнято прийом", "822, прийнято, прийом"),

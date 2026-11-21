@@ -249,19 +249,6 @@ class Callsigns:
                 return joined, 2
         return None, 0
 
-    def _near_number_at(self, items, i, allowed):
-        """Номер команди, почутий з однією хибною цифрою («грім 0,23» -> 022)."""
-        if i >= len(items) or items[i][0] != "num":
-            return None, 0
-        candidates = [(items[i][1], 1)]
-        if i + 1 < len(items) and items[i + 1][0] == "num":
-            candidates.append((items[i][1] + items[i + 1][1], 2))
-        for heard, used in candidates:
-            num = near_number(heard, allowed)
-            if num:
-                return num, used
-        return None, 0
-
     def _half_code_at(self, items, i, allowed):
         """Код команди з двох однакових пар, почутий наполовину: «42» -> «4242».
 
@@ -344,8 +331,8 @@ class Callsigns:
                 else:
                     num, used = self._number_at(items, i, self.numbers[name].__contains__)
                     exact = bool(num)
-                    if not num and self.anchored_threshold is not None:
-                        num, used = self._near_number_at(items, i, self.numbers[name])
+                    # Неточні цифри не стають підтвердженим словниковим номером
+                    # ані в тексті, ані в метаданих події/сповіщення.
                     partial = False
                     if not num and self.anchored_threshold is not None:
                         # Ключову команду краще дописати, ніж пропустити: позначка «почуто частково».
@@ -371,22 +358,19 @@ class Callsigns:
         return found
 
 
-def near_number(heard, allowed):
-    """Дозволений номер, від якого почутий відрізняється однією цифрою, або None.
-
-    Лише для номерів від трьох цифр однакової довжини зі спільною першою цифрою:
-    «023» -> «022», але не «922» чи «133» -> «333». Кілька кандидатів — None.
-    """
-    if len(heard) < 3:
-        return None
-    hits = [a for a in allowed if len(a) == len(heard) and a[0] == heard[0]
-            and sum(x != y for x, y in zip(a, heard)) == 1]
-    return hits[0] if len(hits) == 1 else None
-
-
 def command_dictionary(lines):
     """Словник команд: точний номер після слова допускає менш схоже слово."""
-    return Callsigns.from_lines(lines, anchored_threshold=COMMAND_ANCHORED_THRESHOLD)
+    lines = tuple(lines)
+    result = Callsigns.from_lines(lines, anchored_threshold=COMMAND_ANCHORED_THRESHOLD)
+    result.code_groups = {}
+    for line in lines:
+        line = line.split('#')[0].strip()
+        if ':' in line:
+            continue  # Після двокрапки — окремі дозволені коди, не частини одного.
+        parts = normalize(line).split()
+        if len(parts)>2 and all(part.isdigit() for part in parts[1:]):
+            result.code_groups[(parts[0],''.join(parts[1:]))] = tuple(parts[1:])
+    return result
 
 
 if __name__ == "__main__":

@@ -77,6 +77,7 @@ def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path):
     assert pattern["effect"] == "helpful"
     assert pattern["no_edits_delta"] == 1
     assert pattern["worse"] == 0
+    assert pattern["label"] == "{П}, прийнято, прийом"
 
 
 def test_text_countercheck_measures_active_blacklist_entries(tmp_path):
@@ -93,6 +94,7 @@ def test_text_countercheck_measures_active_blacklist_entries(tmp_path):
     assert blacklist["effect"] == "mixed"
     assert blacklist["missed_delta"] == 1
     assert blacklist["false_text_delta"] == -1
+    assert blacklist["label"] == "дякую за перегляд"
 
 
 def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):
@@ -186,9 +188,7 @@ def test_worker_rechecks_soon_after_a_poke(tmp_path):
     from services.suggestions import SuggestionWorker
     calls = []
     worker = SuggestionWorker(tmp_path / "x.db", None, logging.getLogger("t"), interval=3600, poke_delay=0.05)
-    import services.suggestions as module
-    original = module.refresh
-    module.refresh = lambda *a, **k: calls.append(1)
+    worker._refresh = lambda: calls.append(1)
     try:
         worker._stop.wait = lambda timeout=None, _w=worker._stop.wait: _w(min(timeout or 0, 0.05))
         worker.start()
@@ -202,7 +202,7 @@ def test_worker_rechecks_soon_after_a_poke(tmp_path):
         assert len(calls) == 2
     finally:
         worker.stop()
-        module.refresh = original
+        worker.thread.join(timeout=1)
 
 
 def test_alias_is_suggested_only_when_it_changes_something_on_the_references(tmp_path, monkeypatch):

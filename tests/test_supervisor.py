@@ -1,4 +1,5 @@
 import queue
+import pytest
 from unittest.mock import Mock
 
 from core.supervisor import ApplicationSupervisor
@@ -40,6 +41,24 @@ class FakeSegmenter:
         if frame == b"speech":
             return b"completed segment"
         return None
+
+
+def test_shutdown_waits_for_transcriber_before_invalidating_pause_generation():
+    import threading
+    supervisor,_,_=make_supervisor(queue.Queue())
+    entered=threading.Event();stop=threading.Event();completed=threading.Event()
+    def transcribe():
+        entered.set();assert stop.wait(2);completed.set()
+    def get_frame(*args,**kwargs):
+        assert entered.wait(2);raise KeyboardInterrupt
+    supervisor.transcriber=transcribe;supervisor.telegram_listener=None
+    supervisor.thread_factory=threading.Thread
+    supervisor.transcriber_stop=stop.set
+    supervisor.frames.get=get_frame
+    supervisor.pause_gate=Mock()
+    supervisor.pause_gate.set_paused.side_effect=lambda paused: not paused or completed.is_set() or pytest.fail('пауза випередила завершення ASR')
+    supervisor.run()
+    assert completed.is_set()
 
 
 def make_supervisor(frames):

@@ -82,7 +82,13 @@ class ApplicationSupervisor:
         recognition_health=None,
         on_recognition_problem=None,
         on_vad_discard=None,
+        transcriber_stop=None,
+        transcriber_abandon=None,
+        shutdown_timeout_s=12.0,
     ):
+        self.transcriber_stop = transcriber_stop
+        self.transcriber_abandon = transcriber_abandon
+        self.shutdown_timeout_s = shutdown_timeout_s
         self.on_vad_discard = on_vad_discard
         self.frames = frames
         self.segments = segments
@@ -498,6 +504,20 @@ class ApplicationSupervisor:
             except KeyboardInterrupt:
                 self.log.info("Зупинено користувачем.")
             finally:
+                # Спочатку закрити захоплення, потім доробити вже прийняті
+                # сегменти. Пауза раніше цього місця зробила б їх застарілими.
+                audio_stack.close()
+                if self.transcriber_stop is not None:
+                    self.transcriber_stop()
+                    transcriber_thread.join(timeout=self.shutdown_timeout_s)
+                    if transcriber_thread.is_alive():
+                        if self.transcriber_abandon is not None:
+                            self.transcriber_abandon()
+                        unfinished = self.segments.qsize() + 1
+                        runtime.count("asr.shutdown_unfinished", unfinished)
+                        self.log.warning("Час завершення ASR вичерпано; незавершених сегментів: %d", unfinished)
+                    else:
+                        runtime.count("asr.shutdown_drained")
                 if self.pause_gate is not None:
                     self.pause_gate.set_paused(True)
 

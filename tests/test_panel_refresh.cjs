@@ -97,7 +97,7 @@ function requestHarness(fetch) {
  let abort,cleared=0;
  const context=vm.createContext({fetch,AbortController,Blob,Error,
   setTimeout:callback=>{abort=callback;return 1;},clearTimeout:()=>{cleared++;}});
- const block=source.slice(source.indexOf('  async function request('),source.indexOf('  async function action('));
+ const block=fs.readFileSync(path.join(__dirname,'../local_admin/js/00-api.js'),'utf8');
  vm.runInContext(block+'\nglobalThis.send=request;',context);
  return {context,timeout:()=>abort(),cleared:()=>cleared};
 }
@@ -112,6 +112,27 @@ test('deadline also covers reading a stalled response body',async()=>{
   const error=new Error();error.name='AbortError';reject(error);
  }))}));
  const pending=h.context.send('/api/overview');await tick();h.timeout();await assert.rejects(pending,/30 с/);assert.equal(h.cleared(),1);
+});
+
+test('concurrent reads share transport while each section gets its own data object', async () => {
+ let calls=0, finish;
+ const h=requestHarness(()=>{calls++;return new Promise(resolve=>{finish=resolve;});});
+ const first=h.context.send('/api/overview'), second=h.context.send('/api/overview');
+ assert.equal(calls,1);
+ finish({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>({nested:{value:1}})});
+ const [a,b]=await Promise.all([first,second]);
+ a.nested.value=2;assert.equal(b.nested.value,1);
+ const third=h.context.send('/api/overview');assert.equal(calls,2);
+ finish({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>({nested:{value:3}})});
+ assert.equal((await third).nested.value,3);
+});
+
+test('mutations are sent independently and a lost reply is reported as uncertain', async () => {
+ let calls=0;
+ const h=requestHarness(async()=>{calls++;throw new TypeError('network unavailable');});
+ const results=await Promise.allSettled([h.context.send('/api/settings','PUT',{value:1}),h.context.send('/api/settings','PUT',{value:2})]);
+ assert.equal(calls,2);
+ for(const result of results){assert.equal(result.status,'rejected');assert.equal(result.reason.uncertain,true);}
 });
 
 function activityHarness() {

@@ -42,7 +42,7 @@ class NotificationModeUpdate(BaseModel):
 
 
 class ReceiverControlUpdate(BaseModel):
-    minutes: int = Field(ge=0, le=240, strict=True)
+    minutes: int = Field(ge=0, le=60, strict=True)
     expected_revision: int | None = Field(
         default=None, ge=0, strict=True
     )

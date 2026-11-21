@@ -26,6 +26,34 @@ def test_hold_expires_by_itself_and_operator_pause_has_priority(tmp_path):
             set_listening_hold(db, bad)
 
 
+def test_concurrent_playback_updates_cannot_cancel_global_pause(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    db = tmp_path / 'events.db'
+    set_pause_minutes(db, 10, now=1000)
+    def playback():
+        for i in range(30):
+            set_listening_hold(db, 10 if i % 2 else 0, now=1000+i)
+    def inspect():
+        for _ in range(30):
+            assert reception_request(db, now=1100) == 'pause'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(playback), pool.submit(inspect)]
+        for future in futures:
+            future.result()
+    set_listening_hold(db, 0, now=1100)
+    assert reception_request(db, now=1101) == 'pause'
+
+
+def test_active_playback_remains_after_global_pause_expires(tmp_path):
+    db = tmp_path / 'events.db'
+    set_pause_minutes(db, 1, now=1000)
+    set_listening_hold(db, 100, now=1050)
+    assert reception_request(db, now=1059) == 'pause'
+    assert reception_request(db, now=1061) == 'listening'
+    set_listening_hold(db, 0, now=1062)
+    assert reception_request(db, now=1063) is None
+
+
 def run_supervisor(checks, segments):
     streams, states, log = [], [], Mock()
 

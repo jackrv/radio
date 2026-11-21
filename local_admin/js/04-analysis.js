@@ -7,7 +7,8 @@
       for (const b of document.querySelectorAll("[data-analysis-tab]")) {
         const active = b.dataset.analysisTab === name;
         b.classList.toggle("active", active);
-        b.setAttribute("aria-selected", String(active));
+        b.setAttribute("aria-current", active ? "page" : "false");
+        b.removeAttribute?.('aria-selected');
       }
       for (const panel of document.querySelectorAll("[data-analysis-panel]")) {
         panel.hidden = panel.dataset.analysisPanel !== name;
@@ -36,6 +37,7 @@
     return box;
   }
   async function quality() {
+    impactPanel().resume();
     const r = await request("/api/quality?days=60");
     const table = $("quality-days"), head = el("tr");
     table.replaceChildren();
@@ -241,22 +243,33 @@
     blacklist: "Чорний список",
   };
   const IMPACT_LABELS = { noise: "шум", notification: "сигнал", room: "кімната" };
-  async function textImpact() {
-    const button = $("text-impact-run"), box = $("text-impact-results");
-    button.disabled = true;
-    box.replaceChildren(el("p", "muted small", "Перевіряю правила на розмічених записах…"));
-    try {
-      const report = await request("/api/quality/text-impact");
+  let impactTask = null;
+  function impactPanel() {
+    if (!impactTask) impactTask = serverJobPanel({button: $("text-impact-run"), box: $("text-impact-results"), kind: "impact",
+      start: () => request("/api/quality/text-impact", "POST"), render: renderTextImpact});
+    return impactTask;
+  }
+  async function textImpact() { return impactPanel().run(); }
+  function renderTextImpact(report) {
+    const box = $("text-impact-results");
       if (!report.records && !report.non_speech_records) {
         box.replaceChildren(el("p", "muted", "Розмічених текстів для перевірки немає."));
         return;
       }
       const signed = value => `${value > 0 ? "+" : ""}${num(value)}`;
       const signedPp = value => `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)} п.п.`;
-      const rows = report.checks.map(item => {
+      const renderRows = items => items.map(item => {
         const tone = item.effect === "harmful" ? "bad" : item.effect === "helpful" ? "ok" : "";
         const row = el("div", `eval-item ${tone}`);
-        const title = el("b", "", `${IMPACT_NAMES[item.kind] || item.kind}: ${item.label}`);
+        const title = el("button", "link-button", `${IMPACT_NAMES[item.kind] || item.kind}: ${item.label}`);
+        title.type='button'; title.title='Відкрити чернетку без цього правила й перевірити вплив; збереження окреме';
+        title.addEventListener('click', () => {
+          const types = {phrase_template:'phrase_templates',phrase_pattern:'phrase_patterns',text_alias:'aliases',callsign_alias:'callsign_aliases',short_garbage:'short_garbage',blacklist:'blacklist'};
+          textListType = types[item.kind];
+          if (!textListType) return;
+          pendingRuleDisable = {type:textListType,label:item.label};
+          loaded.delete('texts'); show('texts');
+        });
         const effect = item.effect === "harmful" ? "може шкодити"
           : item.effect === "helpful" ? "допомагає"
           : item.effect === "mixed" ? "змішаний вплив" : "не змінило розмічені фрази";
@@ -275,23 +288,43 @@
         }
         return row;
       });
+      const relevant = report.checks.filter(item => item.effect !== 'neutral');
+      const neutral = report.checks.filter(item => item.effect === 'neutral');
+      let shown = Math.min(40, relevant.length);
+      const rows = renderRows(relevant.slice(0, shown));
       const currentNoiseText = report.current.false_text_by_label;
       box.replaceChildren(
         el("p", "muted small", `${num(report.records)} фраз мовлення і ${num(report.non_speech_records)} прикладів шуму, сигналів та кімнати. Поточний хибний текст: ${num(report.current.false_text)} (шум ${num(currentNoiseText.noise)}, сигнали ${num(currentNoiseText.notification)}, кімната ${num(currentNoiseText.room)}). Різниця — поточний результат мінус результат без конкретного правила.`),
-        ...(rows.length ? rows : [el("p", "muted", "Активних текстових правил для перевірки немає.")]),
+        ...(rows.length ? rows : [el("p", "muted", report.checks.length ? 'Помітного впливу активних правил на цей набір немає.' : "Активних текстових правил для перевірки немає.")]),
         el("p", "muted small", report.scope),
       );
-    } catch (error) {
-      box.replaceChildren(el("p", "alert small", error.message));
-      throw error;
-    } finally {
-      button.disabled = false;
-    }
+      if (neutral.length) {
+        const details = el('details','impact-neutral'), heading = el('summary','',`Без змін на цьому наборі (${neutral.length})`);
+        details.append(heading);
+        let revealed = false;
+        details.addEventListener('toggle', () => { if (details.open && !revealed) {
+          revealed=true; details.append(...renderRows(neutral.slice(0,40)));
+          if (neutral.length>40) details.append(el('p','muted small','Показано перші 40; відсутність впливу на цьому наборі не доводить непотрібність правила.'));
+        }});
+        box.append(details);
+      }
+      if (shown < relevant.length) {
+        const more = el("button", "ghost small-button", `Ще перевірки (${relevant.length - shown})`); more.type = "button";
+        more.addEventListener("click", () => {
+          box.append(...renderRows(relevant.slice(shown, shown + 40)));
+          shown = Math.min(shown + 40, relevant.length);
+          more.hidden = shown === relevant.length;
+          more.textContent = `Ще перевірки (${relevant.length - shown})`;
+        });
+        box.append(more);
+      }
   }
-  $("text-impact-run").addEventListener("click", () => action(textImpact));
+
+  $("text-impact-run").addEventListener("click", () => textImpact());
 
   // ---------- Аналіз: набір для дообучення ----------
   async function training() {
+    if (!trainingTask) trainingJob().resume();
     const t = await request("/api/training");
     const box = $("training"); box.replaceChildren();
     const minutes = s => `${Math.floor(s / 3600)} год ${Math.round((s % 3600) / 60)} хв`;
@@ -303,13 +336,14 @@
     }
     box.append(el("p", "muted small", `Придатних записів: ${t.records}${t.too_long ? ` · довших за 30 с (не входять): ${t.too_long}` : ""}`));
   }
-  $("training-export").addEventListener("click", () => action(async () => {
-    $("training-export").disabled = true;
-    try {
-      const r = await request("/api/training/export", "POST");
-      note(`Вивантажено ${r.records} записів (${Math.round(r.seconds / 60)} хв; навчання ${r.train}, перевірка ${r.test}) у ${r.path}`);
-    } finally { $("training-export").disabled = false; }
-  }));
+  let trainingTask = null;
+  function trainingJob() {
+    if (!trainingTask) trainingTask = serverJobPanel({button: $("training-export"), box: $("training-export-result"), kind:"training_export",
+      start: () => request("/api/training/export", "POST"),
+      render: r => $("training-export-result").replaceChildren(el("p", "small", `Вивантажено ${r.records} записів (${Math.round(r.seconds/60)} хв; навчання ${r.train}, перевірка ${r.test}) у ${r.path}`))});
+    return trainingTask;
+  }
+  $("training-export").addEventListener("click", () => trainingJob().run());
 
   // ---------- Аналіз: офлайн-прогони ----------
   // Колонки: [ключ, назва, більше — краще, кількість (не частка)]. «Без правок» — частка фраз слово в слово.
@@ -318,7 +352,7 @@
     ["false_text_on_non_speech", "Текст на шумі", false, true], ["false_text_on_room_noise", "Текст на кімнаті", false, true],
     ["latency_p90_s", "Затримка p90, с", false, true]];
   const expValue = (key, value, count) => value == null ? "—" : count ? (key.includes("latency") ? fix(value, 1) : num(value)) : pct(value);
-  const withNoEdits = s => s ? { ...s, no_edits: s.speech_records ? (s.exact_phrases ?? null) / s.speech_records : null } : s;
+  const withNoEdits = s => s ? { ...s, no_edits: s.speech_records && s.exact_phrases != null ? s.exact_phrases / s.speech_records : null } : s;
   // Опис прогону простими словами — з параметрів (тест із черги — назва рецепта).
   let labPresets = {};
   function describeRun(run) {
@@ -340,25 +374,24 @@
     return { title: preset?.title || run.label, details: parts.filter(Boolean).join(" · "), about: preset?.about || "" };
   }
   const picked = new Set();
-  async function experiments() {
-    await labQueue();
+  async function experiments(refresh = false) {
+    if (!refresh) await labQueue(false);
     const r = await request("/api/experiments");
     const table = $("experiments-list"), head = el("tr");
-    table.replaceChildren(); picked.clear(); $("experiments-compare").disabled = true; $("experiments-result").replaceChildren();
+    table.replaceChildren();
+    if (!refresh) { picked.clear(); $("experiments-result").replaceChildren(); }
+    $("experiments-compare").disabled = picked.size !== 2;
     for (const h of ["", "Коли", "Тест", "Записів", ...EXP_KEYS.map(k => k[1])]) head.append(el("th", "", h));
     table.append(head);
     const showAll = $("experiments-incomplete").checked;
     const runs = r.items.map(run => ({ ...run, summary: withNoEdits(run.summary) })).filter(run => showAll || run.complete);
     if (!runs.length) { const row = el("tr"), cell = el("td", "muted", "Завершених прогонів ще немає — додайте тест у чергу."); cell.colSpan = 12; row.append(cell); table.append(row); return; }
-    // Найкраще значення кожної колонки серед завершених — зеленим.
-    const best = {};
-    for (const [key, , higher] of EXP_KEYS) {
-      const values = runs.filter(x => x.complete).map(x => x.summary?.[key]).filter(v => v != null);
-      if (values.length > 1) best[key] = higher ? Math.max(...values) : Math.min(...values);
-    }
+    // Різні прогони можуть мати різні записи: «кращий» лише в порівнянні на спільному наборі.
     for (const run of runs) {
       const row = el("tr", run.complete ? "" : "incomplete"), pick = el("input"), p = run.params || {};
       pick.type = "checkbox"; pick.title = "Позначити для порівняння";
+      pick.disabled = !run.complete;
+      pick.checked = picked.has(run.name);
       pick.addEventListener("change", () => {
         if (pick.checked) picked.add(run.name); else picked.delete(run.name);
         $("experiments-compare").disabled = picked.size !== 2;
@@ -366,34 +399,58 @@
       const started = p.started_utc ? new Date(p.started_utc.replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/, "$1-$2-$3T$4:$5:$6Z")) : null;
       const info = describeRun(run), what = el("td", "lab-what");
       what.append(el("b", "", info.title), el("span", "muted small", info.details));
+      const report = el("button", "link-button small", "Звіт і порівняння з базою"); report.type = "button";
+      report.addEventListener("click", () => action(() => experimentReport(run.name)));
+      what.append(report);
       if (info.about) what.title = info.about;
       const cells = [el("td"), el("td", "nowrap", started ? started.toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"),
         what, el("td", "num", run.complete ? num(run.done) : `${num(run.done)} / ${num(p.records || 0)}`)];
       cells[0].append(pick);
       for (const [key, , , count] of EXP_KEYS) {
         const value = run.summary?.[key];
-        cells.push(el("td", `num${run.complete && value != null && value === best[key] ? " best" : ""}`, expValue(key, value, count)));
+        cells.push(el("td", "num", expValue(key, value, count)));
       }
       row.append(...cells); table.append(row);
     }
     if (typeof fitLab === "function") fitLab();
   }
   $("experiments-incomplete").addEventListener("change", () => action(experiments));
+  function comparisonDetails(r) {
+    const box = el("div", "lab-comparison");
+    box.append(el("p", "small", `Спільних записів з однаковими еталонами: ${num(r.common)}. Виключено через зміну розмітки: ${num(r.excluded_reference || 0)}; лише в базі ${num(r.only_a || 0)}, лише в тесті ${num(r.only_b || 0)}.`));
+    if (!r.common) { box.append(el("p", "alert small", "Порівняння неможливе: немає спільного набору. Запустіть базовий і дослідний рецепти на тій самій розмітці.")); return box; }
+    const a = withNoEdits(r.a), b = withNoEdits(r.b), table = el("table", "compact");
+    const head = el("tr"); for (const title of ["Показник", "База", "Тест", "Різниця тест − база"]) head.append(el("th", "", title)); table.append(head);
+    for (const [key, title, higher, count] of EXP_KEYS) {
+      const va = a[key], vb = b[key], delta = va == null || vb == null ? null : vb-va, row = el("tr");
+      const change = delta == null ? "—" : count ? `${delta > 0 ? "+" : ""}${fix(delta, key.includes("latency") ? 1 : 0)}` : `${delta > 0 ? "+" : ""}${fix(delta*100,1)} п.п.`;
+      row.append(el("td", "", title), el("td", "num", expValue(key,va,count)), el("td", "num", expValue(key,vb,count)),
+        el("td", `num ${delta && (higher ? delta>0 : delta<0) ? "good" : delta ? "alert" : ""}`, change)); table.append(row);
+    }
+    box.append(table, el("p", "small", `За помилками слів: краще ${num(r.better || 0)}, гірше ${num(r.worse || 0)} фраз. Спершу оцінюйте «без правок», потім пропущене мовлення й хибний текст, далі WER.`));
+    if ((a.errors || 0) || (b.errors || 0)) box.append(el("p", "alert small", `Помилки виконання: база ${a.errors || 0}, тест ${b.errors || 0}. Прогін з помилками потребує перевірки.`));
+    for (const example of r.examples || []) {
+      const open = el("button", "link-button small", `${example.delta > 0 ? "Гірше" : "Краще"}: ${example.id.slice(0,8)} (${example.delta > 0 ? "+" : ""}${example.delta} помилок)`);
+      open.type = "button"; open.addEventListener("click", () => showIds([example.id])); box.append(open);
+    }
+    return box;
+  }
+  async function experimentReport(name) {
+    const data = await request(`/api/experiments/${encodeURIComponent(name)}`), run = data.run, s = run.summary || {}, info = describeRun(run);
+    const box = $("experiments-result");
+    box.replaceChildren(el("h3", "", info.title), el("p", "muted small", `${run.name} · ${info.details}`),
+      el("p", "small", `${run.complete ? "Завершено" : "Незавершено — це частковий результат"}: ${run.done} / ${run.params.records || "?"} записів · помилок виконання ${s.errors ?? "невідомо"}. Модель: ${run.params.model || "не вказана"}.`),
+      el("p", "small", `Без правок: ${s.exact_phrases ?? "—"} / ${s.speech_records ?? "—"}; шум/сигнали: ${s.false_text_on_non_speech ?? "—"} / ${s.non_speech_records ?? "—"}; кімната: ${s.false_text_on_room_noise ?? "—"} / ${s.room_records ?? "—"}. «—» означає відсутність даних, а не нуль помилок.`));
+    if (data.comparison) { box.append(el("p", "muted small", `База: ${data.baseline}`), comparisonDetails(data.comparison)); }
+    else box.append(el("p", "muted small", "Для порівняння потрібні завершені базовий рецепт «Як зараз у приймачі» та цей тест. Результати автоматично не вмикають зміни розпізнавання."));
+    if (s.literal_phrases !== undefined) box.append(el('p','muted small',
+      `Буквально однакові рядки: ${s.literal_phrases} / ${s.speech_records}. «Без правок» вище порівнює слова без регістру й пунктуації.`));
+    box.scrollIntoView?.({block:"nearest", behavior:"smooth"});
+  }
   $("experiments-compare").addEventListener("click", () => action(async () => {
     const [a, b] = [...picked];
     const r = await request(`/api/experiments/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
-    r.a = withNoEdits({ ...r.a, speech_records: r.a.speech_records }); r.b = withNoEdits({ ...r.b, speech_records: r.b.speech_records });
-    const table = el("table", "compact"), head = el("tr");
-    for (const h of ["Показник", a.split("_").slice(1).join("_"), b.split("_").slice(1).join("_")]) head.append(el("th", "", h));
-    table.append(head);
-    for (const [key, title, higherBetter, count] of EXP_KEYS) {
-      const va = r.a[key], vb = r.b[key], row = el("tr");
-      const better = va == null || vb == null || va === vb ? null : (higherBetter ? vb > va : vb < va) ? "b" : "a";
-      row.append(el("td", "", title), el("td", `num ${better === "a" ? "good" : ""}`, expValue(key, va, count)), el("td", `num ${better === "b" ? "good" : ""}`, expValue(key, vb, count)));
-      table.append(row);
-    }
-    const box = $("experiments-result");
-    box.replaceChildren(el("p", "small", `Порівняння на ${num(r.common)} спільних записах. Зеленим — кращий результат.`), table);
+    $("experiments-result").replaceChildren(el("p", "muted small", `База: ${a} · тест: ${b}`), comparisonDetails(r));
   }));
 
   // ---------- Черга тестів ----------
@@ -412,10 +469,12 @@
   function windowTimes(list) {
     const out = [];
     let floor = Date.now() - 60000;
-    for (const [from, to] of list) {
+    for (const [from, to, day] of list) {
+      if (!/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to) || from === to) return [];
       const at = hm => { const [h, m] = hm.split(":").map(Number); const d = new Date(floor); d.setHours(h, m, 0, 0); return d; };
-      const start = at(from);
-      while (start.getTime() < floor) start.setDate(start.getDate() + 1);
+      const start = day ? new Date(`${day}T${from}:00`) : at(from);
+      if (!Number.isFinite(start.getTime())) return [];
+      if (!day) while (start.getTime() < floor) start.setDate(start.getDate() + 1);
       const end = new Date(start); const [eh, em] = to.split(":").map(Number); end.setHours(eh, em, 0, 0);
       if (end <= start) end.setDate(end.getDate() + 1);
       out.push([start.getTime() / 1000, end.getTime() / 1000]);
@@ -423,74 +482,101 @@
     }
     return out;
   }
-  // План, як його виконає черга: у вікні — перший тест черги, що встигає; між тестами — пауза.
-  function planWindows(windows, queued, q) {
-    const left = [...queued], plan = windows.map(w => ({ window: w, jobs: [] }));
-    for (const slot of plan) {
-      let t = slot.window[0];
-      for (;;) {
-        const index = left.findIndex(job => t + (q.estimates?.[job.preset] || 1800) * (q.margin || 1.15) <= slot.window[1]);
-        if (index < 0) break;
-        const [job] = left.splice(index, 1), seconds = q.estimates?.[job.preset] || 1800;
-        slot.jobs.push({ job, start: t, end: t + seconds });
-        t += seconds + (q.cooldown_s || 300);
-      }
-    }
-    return { plan, left };
-  }
+  let labWindowEditor = null;
   function windowsEditor(q, queued) {
+    if (labWindowEditor) { labWindowEditor.update(q, queued); return labWindowEditor; }
     const box = el("div", "lab-windows");
     let list = loadWindows();
+    const dateValue = t => { const d = new Date(t * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+    const initial = windowTimes(list);
+    list = list.map((w, i) => [w[0], w[1], w[2] || (initial[i] ? dateValue(initial[i][0]) : dayKey())]);
     const rows = el("div", "lab-window-rows"), preview = el("div", "lab-plan");
     const hm = t => new Date(t * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
     const render = () => {
       rows.replaceChildren(...list.map((w, i) => {
         const row = el("div", "lab-window-row");
+        const day = el("input", "lab-date"); day.type = "date"; day.value = w[2];
+        day.setAttribute?.("aria-label", "Дата початку вікна");
         const from = el("input", "lab-time"), to = el("input", "lab-time");
         from.type = to.type = "time"; from.value = w[0]; to.value = w[1];
+        from.step = to.step = "300";
         from.setAttribute?.("aria-label", "Початок вікна"); to.setAttribute?.("aria-label", "Кінець вікна");
-        const change = () => { list[i] = [from.value || w[0], to.value || w[1]]; saveWindows(list); drawPlan(); };
-        from.addEventListener("change", change); to.addEventListener("change", change);
+        const change = () => { list[i] = [from.value, to.value, day.value]; saveWindows(list); drawPlan(); };
+        for (const field of [from, to, day]) field.addEventListener("input", change);
         const remove = el("button", "lab-tool", "✕"); remove.type = "button"; remove.title = "Прибрати вікно";
         remove.addEventListener("click", () => { list.splice(i, 1); saveWindows(list); render(); });
-        row.append(el("span", "muted small", "з"), from, el("span", "muted small", "до"), to, remove);
+        row.append(day, el("span", "muted small", "з"), from, el("span", "muted small", "до"), to, remove);
         return row;
       }));
       drawPlan();
     };
+    let planRevision = 0, planTimer = null;
     const drawPlan = () => {
-      const { plan, left } = planWindows(windowTimes(list), queued, q);
-      const lines = plan.map(slot => {
-        const line = el("div", "lab-plan-window");
-        line.append(el("b", "", `${hm(slot.window[0])}–${hm(slot.window[1])}`));
-        line.append(el("span", slot.jobs.length ? "" : "muted", slot.jobs.length
-          ? slot.jobs.map(p => `${labPresets[p.job.preset]?.title || p.job.preset} (≈${Math.round((p.end - p.start) / 60)} хв, до ${hm(p.end)})`).join(" → ")
-          : "нічого не вміщається — приймач працює"));
-        return line;
-      });
-      if (left.length) lines.push(el("div", "lab-plan-left", `Не вміститься: ${left.map(j => labPresets[j.preset]?.title || j.preset).join(", ")} — збільште вікна або приберіть тести.`));
-      preview.replaceChildren(...lines);
-      plan.windows = windowTimes(list); preview.dataset.ok = String(plan.some(s => s.jobs.length));
+      clearTimeout(planTimer);
+      const revision = ++planRevision;
+      go.disabled = true;
+      preview.replaceChildren(el("p", "muted small", "Сервер розраховує план…"));
+      planTimer = setTimeout(async () => {
+        const windows = windowTimes(list);
+        if (!windows.length) { preview.replaceChildren(el("p", "alert small", "Вкажіть дату й різний час початку та завершення.")); return; }
+        try {
+          const {plan, left} = await request("/api/lab/plan", "POST", {windows});
+          if (revision !== planRevision) return;
+          go.disabled = !plan.some(slot => slot.jobs.length);
+          const lines = plan.map(slot => {
+            const line = el("div", "lab-plan-window");
+            line.append(el("b", "", `${dateValue(slot.window[0])} ${hm(slot.window[0])}–${hm(slot.window[1])}${dateValue(slot.window[1]) !== dateValue(slot.window[0]) ? " (+1 доба)" : ""} · ${Math.round((slot.window[1]-slot.window[0])/60)} хв`));
+            line.append(el("span", slot.jobs.length ? "" : "muted", slot.jobs.length
+              ? slot.jobs.map(p => `${labPresets[p.job.preset]?.title || p.job.preset} (≈${Math.round((p.end - p.start) / 60)} хв, до ${hm(p.end)})`).join(" → ")
+              : "нічого не вміщається — приймач працює"));
+            return line;
+          });
+          if (left.length) lines.push(el("div", "lab-plan-left", `Не вміститься: ${left.map(j => labPresets[j.preset]?.title || j.preset).join(", ")} — збільште вікна або приберіть тести.`));
+          preview.replaceChildren(...lines);
+        } catch (error) {
+          if (revision === planRevision) preview.replaceChildren(el("p", "alert small", error.message));
+        }
+      }, 200);
     };
     const add = el("button", "ghost small-button", "＋ вікно"); add.type = "button";
-    add.addEventListener("click", () => { const last = list[list.length - 1]; list.push(last ? [last[1], last[1]] : ["01:00", "03:00"]); saveWindows(list); render(); });
+    add.addEventListener("click", () => {
+      if (list.length >= 8) { note("Можна додати до 8 вікон."); return; }
+      const windows = windowTimes(list), start = windows.length ? windows[windows.length-1][1] : Date.now()/1000 + 300;
+      list.push([hm(start), hm(start+7200), dateValue(start)]); saveWindows(list); render();
+    });
     const go = el("button", "", "Запланувати на ці вікна"); go.type = "button";
-    go.title = "Приймач зупинятиметься лише у вікнах і лише на тести, що встигають";
+    go.title = "Лише у вікнах приймач записуватиме фрагменти без розпізнавання; потім доробить накопичене";
     go.addEventListener("click", () => action(async () => {
       const windows = windowTimes(list);
-      if (!planWindows(windows, queued, q).plan.some(s => s.jobs.length)) { note("У ці вікна жоден тест не вміщається."); return; }
+      const checked = await request("/api/lab/plan", "POST", {windows});
+      if (!checked.plan.some(s => s.jobs.length)) { note("У ці вікна жоден тест не вміщається."); return; }
       await request("/api/lab/queue/start", "POST", { windows });
       note(`Заплановано: ${windows.map(w => `${hm(w[0])}–${hm(w[1])}`).join(", ")}. Поза вікнами приймач працює.`);
       await labQueue();
     }));
-    box.append(el("div", "lab-windows-head", "Вікна, коли можна зупиняти приймач"), rows, add, preview, go);
+    const shortcuts = el("div", "lab-window-shortcuts");
+    for (const hours of [1, 2, 4]) {
+      const quick = el("button", "ghost small-button", `Найближчі ${hours} год`); quick.type = "button";
+      quick.addEventListener("click", () => { const start = Math.ceil((Date.now()/1000+60)/300)*300; list = [[hm(start), hm(start+hours*3600), dateValue(start)]]; saveWindows(list); render(); });
+      shortcuts.append(quick);
+    }
+    box.append(el("div", "lab-windows-head", "Коли дозволено тести без розпізнавання ефіру"), shortcuts, rows, add, preview,
+      el("p", "muted small", "Місцевий час Mac. Між тестами — пауза від перегріву; у плані є запас часу. «Лише запис» зберігає звук, але не продовжує вікно: тест має встигнути до його кінця, щоб повернути розпізнавання вчасно. Поза вікнами — звичайне розпізнавання. Сторінку можна закрити."), go);
+    box.update = (next, jobs) => { q = next; queued = jobs; drawPlan(); };
+    labWindowEditor = box;
     render();
     return box;
   }
-  async function labQueue() {
+  let labJobFingerprint = null;
+  async function labQueue(refreshResults = true) {
     let q;
     try { q = await request("/api/lab/queue"); } catch (_) { return; }
     labPresets = Object.fromEntries(q.presets.map(p => [p.key, p]));
+    const fingerprint = JSON.stringify(q.jobs.map(j => [j.id, j.status, j.run_dir]));
+    const changed = labJobFingerprint !== null && labJobFingerprint !== fingerprint;
+    labJobFingerprint = fingerprint;
+    if (refreshResults && changed && typeof view !== "undefined" && view === "experiments") await experiments(true);
+
     const runner = q.runner || {}, active = runner.active, jobs = q.jobs;
     const queued = jobs.filter(j => j.status === "queued"), running = jobs.find(j => j.status === "running");
     // Тривалість — оцінка з реальних прогонів (сервер), а не стале число рецепта.
@@ -498,6 +584,7 @@
     const duration = m => m >= 60 ? `${Math.floor(m / 60)} год ${m % 60} хв` : `${m} хв`;
     const minutes = queued.reduce((a, j) => a + estimate(j.preset), 0) + Math.max(0, queued.length - 1) * Math.round(q.cooldown_s / 60);
     $("lab-state").textContent = active ? LAB_STATE[runner.state] || runner.state : queued.length ? `у черзі ${queued.length} · ≈${duration(minutes)}` : "черга порожня";
+    renderCaptureState(q.capture);
     // Банер показує режим приймача та помилки відновлення Whisper.
     const banner = $("lab-banner");
     banner.hidden = !active && !runner.capture_error;
@@ -567,14 +654,28 @@
       button("Прибрати виконані", "link-button", "Прибрати з переліку успішно виконані (перервані лишаються — їх можна повторити)", async () => { await request("/api/lab/queue/clear", "POST"); await labQueue(); });
     $("lab-controls").replaceChildren(...controls);
     // Рецепти тестів.
-    $("lab-presets").replaceChildren(...q.presets.map(p => {
+    const priority = {base:0,resegment:1};
+    $("lab-presets").replaceChildren(...[...q.presets].sort((a,b)=>(priority[a.key]??10)-(priority[b.key]??10)).map(p => {
       const card = el("div", "lab-preset"), text = el("div", "lab-preset-text");
       card.title = p.about;   // повний опис — у підказці; у рядку — назва й початок опису
       text.append(el("b", "", p.title), el("span", "muted small lab-preset-about", p.about));
+      if (p.key==='base') text.append(el('span','badge','Базовий для порівняння'));
+      if (p.key==='resegment') text.append(el('span','badge','Перевірити довгі записи'));
       const add = el("button", "ghost small-button", "＋ У чергу"); add.type = "button";
       add.title = `≈${duration(estimate(p.key))} на ${num(q.records)} розмічених записах; під час тесту приймач записуватиме фрагменти без розпізнавання`;
       add.addEventListener("click", () => action(async () => { await request("/api/lab/queue", "POST", { preset: p.key }); await labQueue(); note(`«${p.title}» — у черзі.`); }));
       card.append(text, el("span", "lab-preset-time muted small", `≈${duration(estimate(p.key))}`), add);
       return card;
     }));
+  }
+
+  function renderCaptureState(capture = {}) {
+    const box = $("lab-capture-state"), a = capture.archive;
+    if (!a) { box.replaceChildren(); return; }
+    const latest = a.last_recorded_at ? new Date(a.last_recorded_at*1000).toLocaleString("uk-UA") : "ще немає";
+    box.replaceChildren(el("p", "small", `Режим «лише запис» — зараз в архіві: ${num(a.saved)} фрагментів, ${fix(a.audio_seconds/60,1)} хв аудіо; чекають ${num(a.pending)}, оброблено ${num(a.processed)}. Останній запис: ${latest}.`),
+      el("p", "small muted", "Лічильники — для збережених фрагментів усіх тестів, включно з тихими. Після обробки вони лишаються в окремому виді архіву. За тиші або без сегментів VAD кількість не зростає."));
+    if (capture.write_errors) box.append(el("p", "alert small", `Помилки запису аудіо за сесію приймача: ${num(capture.write_errors)}. Самого статусу «Whisper вивантажено» недостатньо для підтвердження збереження звуку.`));
+    const open = el("button", "link-button small", "Відкрити записи під час тестів"); open.type = "button";
+    open.addEventListener("click", () => openRecordings({view:"captured",period:""})); box.append(open);
   }

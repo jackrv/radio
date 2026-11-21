@@ -368,6 +368,27 @@ def test_summary_counts_phrases_without_edits_and_todays_reviews(tmp_path):
     assert summary['speech_today']==2 and summary['no_edits_today']==1
 
 
+def test_summary_skips_unused_number_checks_and_reads_day_boundary_once(tmp_path, monkeypatch):
+    from services import recordings
+    store = RecordingStore(tmp_path / 'archive')
+    record_id = store.save(pcm(), 16000, {'status': 'ready', 'raw_text': 'Клен 15', 'final_text': 'Клен 15'})
+    store.review(record_id, 'Клен 15', 'speech', 0)
+    # Детальна картка зберігає перевірку чисел; зведення її не використовує.
+    assert store.get(record_id)['quality']['final_text']['number_match'] is True
+    expected = store.summary()
+    original = recordings._day_start
+    calls = []
+    def day_start():
+        calls.append(True)
+        return original()
+    def unused(*args):
+        raise AssertionError('summary must not normalize number groups')
+    monkeypatch.setattr(recordings, '_day_start', day_start)
+    monkeypatch.setattr(recordings, 'scores', unused)
+    assert store.summary() == expected
+    assert len(calls) == 1
+
+
 def test_audio_supports_byte_ranges_for_seeking():
     from api.panel.recordings import ranged_audio
     data = bytes(range(100))

@@ -47,9 +47,16 @@ def validate_dictionary(entries, kind):
                 raise ValueError("Назва має бути одним словом; номери вказуються після неї")
             if colon and not tail.strip():
                 raise ValueError("Після двокрапки вкажи номери або *")
-            if not colon and tail and not re.fullmatch(r"[0-9]{1,9}", tail):
+            # У командах цифри без двокрапки — один код, а не список:
+            # «злива 42 42» та «грім 0 22» відповідають 4242 та 022.
+            grouped_code = (kind == 'commands' and not colon and bool(tail)
+                            and bool(re.fullmatch(r'[0-9]+(?: +[0-9]+)*', tail)))
+            code = ''.join(tail.split()) if grouped_code else None
+            if grouped_code and len(code) > 9:
+                raise ValueError('Код команди має містити від 1 до 9 цифр сумарно, без урахування пробілів')
+            if not colon and tail and not grouped_code and not re.fullmatch(r"[0-9]{1,9}", tail):
                 raise ValueError("Для діапазонів і * використовуй двокрапку після назви")
-            for number in re.split(r"[\s,;]+", tail.strip()):
+            for number in ([code] if grouped_code else re.split(r"[\s,;]+", tail.strip())):
                 if not number or number == "*":
                     continue
                 if not re.fullmatch(r"[0-9]{1,9}(?:-[0-9]{1,9})?", number):
@@ -63,7 +70,7 @@ def validate_dictionary(entries, kind):
                     expanded_numbers += 1
                 if expanded_numbers > 50000:
                     raise ValueError("Словник має містити не більше 50000 номерів з урахуванням діапазонів")
-            if not colon and len(content.split()) > 2:
+            if not colon and len(content.split()) > 2 and not grouped_code:
                 raise ValueError("Для кількох номерів використовуй формат «позивний: 68 69»")
         if entry["enabled"]:
             enabled.append(line)

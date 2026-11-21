@@ -28,6 +28,10 @@ class SuggestionDismiss(BaseModel):
     kind: str = Field(max_length=40)
 
 
+class SuggestionRestore(BaseModel):
+    keys: list[str] = Field(max_length=100)
+
+
 class SessionInput(BaseModel):
     token: str = Field(max_length=128)
 
@@ -38,6 +42,7 @@ class RoleSuggestion(BaseModel):
 
 class TextCheck(BaseModel):
     text: str = Field(max_length=5000)
+    highlights: bool = False
     at: float | None = Field(default=None, ge=0, le=4e9)   # час запису: коди доби цього дня
 
 
@@ -111,7 +116,7 @@ class SettingsUpdate(BaseModel):
 
 
 class PauseUpdate(BaseModel):
-    minutes: int = Field(ge=0, le=240, strict=True)
+    minutes: int = Field(ge=0, le=60, strict=True)
     expected_revision: int = Field(ge=0, strict=True)
 
 

@@ -43,8 +43,8 @@ OUTPUT = ROOT / ".local-experiments"
 PHRASES_PROMPT = ("Радіообмін. Перевірка зв’язку. На зв’язку. Чую та розбираю добре. "
                   "Прийнято, прийом. Прийняв, прийом. Посилку отримав. "
                   "До роботи приступив. Роботу закінчив. Повторіть, голос не пройшов.")
-PROMPTS = ("dictionary", "receiver", "receiver-no-phrases", "receiver-no-dictionary", "none", "phrases", "combined")
-RECEIVER_PROMPTS = ("receiver", "receiver-no-phrases", "receiver-no-dictionary")
+PROMPTS = ("dictionary", "receiver", "receiver-no-phrases", "receiver-no-dictionary", "receiver-command-codes", "none", "phrases", "combined")
+RECEIVER_PROMPTS = ("receiver", "receiver-no-phrases", "receiver-no-dictionary", "receiver-command-codes")
 
 SPLIT_BLOCK_S = 20 * 60
 VARIANTS = ("whisper", "rules", "qwen", "pipeline")
@@ -200,7 +200,7 @@ def receiver_prompt_variant(db_path, dictionary_prompt, phrases, mode, extra=())
         phrases = ()
     elif mode == "receiver-no-dictionary":
         dictionary_prompt = ""
-    elif mode != "receiver":
+    elif mode not in ("receiver","receiver-command-codes"):
         raise ValueError(f"Невідомий режим підказки приймача: {mode}")
     return receiver_prompt(db_path, dictionary_prompt, phrases, extra)
 
@@ -219,7 +219,7 @@ def record_codes(db_path, created, mode="append"):
             return []
 
 
-def dictionaries_from(db_path):
+def dictionaries_from(db_path, archive=None):
     from services.dictionary_loader import build_prompt, dictionaries_from_lines, read_dictionary_lines
     with read_only(db_path) as db:
         lines = read_dictionary_lines(db)
@@ -233,6 +233,15 @@ def dictionaries_from(db_path):
             from core.default_text_lists import enabled
             blacklist, short_garbage = list(enabled("blacklist")), list(enabled("short_garbage"))
     callsigns, commands, watch = dictionaries_from_lines(lines)
+    from services.dictionary_number_evidence import load_rules
+    archive=Path(archive) if archive is not None else Path(db_path).resolve().parent/'.local-recordings'
+    # Еталони контрольної частини не можуть навчати правило, що їх оцінює.
+    allowed_ids=set()
+    if (archive/'index.sqlite3').is_file():
+        from contextlib import closing
+        with closing(read_only(archive/'index.sqlite3')) as index:
+            allowed_ids={row[0] for row in index.execute('SELECT id,created FROM recordings') if split_of(row[1])=='tune'}
+    callsigns.number_rules=load_rules(archive,callsigns,commands,allowed_ids=allowed_ids)
     return (callsigns, commands, watch), build_prompt(callsigns, commands, watch), blacklist, short_garbage
 
 
@@ -282,6 +291,14 @@ def parse_whisper_options(items):
         key, sep, raw = item.partition("=")
         if not sep or not key.strip():
             raise SystemExit(f"--whisper-option: очікується «ключ=значення», отримано «{item}»")
+        allowed = {"hallucination_silence_threshold", "word_timestamps", "best_of",
+                   "condition_on_previous_text", "no_speech_threshold", "logprob_threshold",
+                   "compression_ratio_threshold", "suppress_blank", "suppress_tokens",
+                   "length_penalty", "fp16"}
+        if key.strip() not in allowed:
+            raise SystemExit(f"--whisper-option: параметр «{key.strip()}» не дозволено")
+        if key.strip() in options:
+            raise SystemExit(f"--whisper-option: параметр «{key.strip()}» повторено")
         lowered = raw.strip().lower()
         if lowered in ("true", "false"):
             value = lowered == "true"
@@ -290,7 +307,20 @@ def parse_whisper_options(items):
                 value = float(raw) if any(c in raw for c in ".eE") else int(raw)
             except ValueError:
                 value = raw
-        options[key.strip()] = value
+        key=key.strip()
+        if key in {'word_timestamps','condition_on_previous_text','suppress_blank','fp16'}:
+            if type(value) is not bool: raise SystemExit(f'{key}: потрібне true/false')
+        elif key=='suppress_tokens':
+            if not re.fullmatch(r'-?\d+(?:,-?\d+)*',raw.strip()): raise SystemExit('suppress_tokens: потрібні номери токенів через кому')
+            value=raw.strip()
+        else:
+            import math
+            if type(value) not in (int,float) or not math.isfinite(value): raise SystemExit(f'{key}: потрібне скінченне число')
+            if key=='best_of' and (type(value) is not int or not 1<=value<=10): raise SystemExit('best_of: ціле число 1–10')
+            if key=='no_speech_threshold' and not 0<=value<=1: raise SystemExit('no_speech_threshold: число 0–1')
+            if key in {'hallucination_silence_threshold','length_penalty'} and value<0: raise SystemExit(f'{key}: число не може бути від’ємним')
+            if key=='compression_ratio_threshold' and value<=0: raise SystemExit('compression_ratio_threshold: число має бути додатним')
+        options[key] = value
     return options
 
 
@@ -300,7 +330,10 @@ class Lab:
         self.args = args
         self.log = logging.getLogger("asr_lab")
         self.db_path = snapshot_database(run_dir / "events-snapshot.db")
-        self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path)
+        self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path,getattr(args,'archive',None))
+        if args.prompt=='receiver-command-codes':
+            from services.dictionary_loader import build_prompt
+            dictionary_prompt=build_prompt(*self.dictionaries,include_command_codes=True)
         if getattr(args, "names", None):
             # Інший перелік назв у підказці (напр. лише ті, що звучать в ефірі): рядок — назва.
             names = [l.strip() for l in Path(args.names).read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
@@ -344,6 +377,7 @@ class Lab:
     def params(self):
         import config
         return {"variant": self.args.variant, "pipeline_scope": "text-after-whisper-v2",
+                "dictionary_number_rules": {"evidence_split": "tune", "count": len(self.dictionaries[0].number_rules)},
                 "runtime_settings": self.runtime_values, "runtime_settings_revision": self.runtime_revision,
                 "not_replayed": ["notification_spectral", "cooldown", "recipient_modes", "telegram_delivery"],
                 "llm": getattr(self.args, "llm", "on") if self.args.variant in ("qwen", "pipeline") else None,
@@ -401,6 +435,20 @@ class Lab:
                 pieces.append(piece)
         return pieces
 
+    def _transcribe_with_retry(self, audio):
+        """Однаковий recovery для цілого запису й кожної повторно нарізаної частини."""
+        from core.recognition import is_looped
+        whisper = self.recognizer.transcribe(audio)
+        text = self.recognizer.extract_text(whisper)
+        retried, accepted = False, False
+        if getattr(self.args, "retry", "off") == "on" and not text and self.recognizer.prompt and is_looped(whisper):
+            retried = True
+            again = self.recognizer.transcribe(audio, prompt="")
+            recovered = self.recognizer.extract_text(again)
+            if recovered:
+                whisper, text, accepted = again, recovered, True
+        return whisper, text, {"attempted": retried, "accepted": accepted}
+
     def process(self, pcm):
         import config
         from core.audio import prepare_audio
@@ -431,28 +479,25 @@ class Lab:
             pass
         if self.args.resegment == "energy":
             pieces = self.resegment(pcm)
-            texts, segments_meta = [], []
+            texts, segments_meta, retries = [], [], []
             for piece in pieces:
                 piece_audio, _ = prepare_audio(piece, 0.0, self.args.normalize == "on")
-                out = self.recognizer.transcribe(piece_audio)
-                texts.append(self.recognizer.extract_text(out))
+                out, text, retry = self._transcribe_with_retry(piece_audio)
+                texts.append(text)
+                retries.append(retry)
                 segments_meta += [{k: s.get(k) for k in ("avg_logprob", "no_speech_prob", "compression_ratio",
                                                          "temperature", "start", "end", "text")} for s in out.get("segments", [])]
             raw = " ".join(t for t in texts if t).strip()
             result["segments"] = len(pieces)
             result["segment_durations_s"] = [round(len(piece) / (2 * self.sample_rate), 2) for piece in pieces]
             result["segment_texts"] = texts
+            result["segment_retries"] = retries
             result["whisper_segments"] = segments_meta
         else:
-            whisper = self.recognizer.transcribe(audio)
-            raw = self.recognizer.extract_text(whisper)
-            # Як у приймачі: зациклився з підказкою й тексту немає — ще раз без підказки.
-            from core.recognition import is_looped
-            if getattr(self.args, "retry", "off") == "on" and not raw and self.recognizer.prompt and is_looped(whisper):
-                again = self.recognizer.transcribe(audio, prompt="")
-                result["whisper_retry"] = bool(self.recognizer.extract_text(again))
-                if result["whisper_retry"]:
-                    whisper, raw = again, self.recognizer.extract_text(again)
+            whisper, raw, retry = self._transcribe_with_retry(audio)
+            if retry["attempted"]:
+                result["whisper_retry"] = retry["accepted"]
+            result["retry"] = retry
             result["whisper_segments"] = [{k: s.get(k) for k in ("avg_logprob", "no_speech_prob", "compression_ratio",
                                                                  "temperature", "start", "end", "text")}
                                           for s in whisper.get("segments", [])]
@@ -533,6 +578,19 @@ def keep_awake():
 
 
 def run(args):
+    import config
+    from services.model_exclusion import lab_model_slot
+    parse_whisper_options(getattr(args, "whisper_option", None) or [])
+    import math
+    try: temperatures=[float(t) for t in getattr(args,'temperature','0,0.2,0.4').split(',')]
+    except ValueError: raise SystemExit('Температури Whisper: числа через кому') from None
+    if not temperatures or any(not math.isfinite(t) or t<0 for t in temperatures):
+        raise SystemExit('Температури Whisper мають бути скінченними невід’ємними числами')
+    with lab_model_slot(config.DB_PATH):
+        return _run_checked(args)
+
+
+def _run_checked(args):
     keep_awake()
     if getattr(args, "daily_codes", None) is None:
         # Як у приймачі: код доби в підказці, якщо його ввімкнено в config.py.

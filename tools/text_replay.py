@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--show", type=int, default=8, help="скільки змінених фраз показати")
     args = parser.parse_args()
     rows = load_records(args.archive)
-    dictionaries, short_garbage, values = load_setup(args.db)
+    dictionaries, short_garbage, values = load_setup(args.db,args.archive)
     current = {"phrases": values.get("phrase_templates", ()), "patterns": values.get("phrase_patterns", ()),
                "aliases": (values.get("aliases", {}), values.get("callsign_aliases", {}))}
     if not args.patterns:

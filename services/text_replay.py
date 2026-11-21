@@ -37,15 +37,16 @@ def load_records(archive, *, include_non_speech=False):
             d = json.loads(data)
             text = d.get("llm_text") if d.get("llm_accepted") else d.get("before_llm")
             text = text or d.get("filtered_text") or d.get("raw_text") or ""
-            if text.strip():
-                rows.append((record_id, reference, text, label) if include_non_speech
-                            else (record_id, reference, text))
+            # Порожній вихід — теж результат: інакше зникають пропуски мовлення
+            # та змінюється знаменник «без правок» і перевірки шуму.
+            rows.append((record_id, reference, text, label) if include_non_speech
+                        else (record_id, reference, text))
         return rows
     finally:
         db.close()
 
 
-def load_setup(db_path):
+def load_setup(db_path, archive=None):
     """(словники, короткий шум, чинні значення списків) з events.db лише для читання."""
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     from services.text_lists import load_active
@@ -55,6 +56,11 @@ def load_setup(db_path):
         values = {}
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='text_list_entries'").fetchone():
             _, values = load_active(db)
+        from services.dictionary_number_evidence import load_rules
+        parent=Path(db_path).resolve().parent
+        if archive is None:archive=parent if (parent/'index.sqlite3').is_file() else parent/'.local-recordings'
+        with templates(aliases=(values.get('aliases',{}),values.get('callsign_aliases',{}))):
+            dictionaries[0].number_rules=load_rules(archive,dictionaries[0],dictionaries[1])
         return dictionaries, set(values.get("short_garbage", ())), values
     finally:
         db.close()
@@ -81,7 +87,7 @@ def templates(phrases=None, patterns=None, aliases=None):
         callsigns_module.ALIASES.clear(); callsigns_module.ALIASES.update(saved[3])
 
 
-def run(rows, dictionaries, short_garbage, blacklist=()):
+def run(rows, dictionaries, short_garbage, blacklist=(), *, progress=None):
     """Метрики й вихід кожного запису за поточних текстових правил."""
     from core.text_analysis import analyze_text
     from services.text_lists import blacklist_key
@@ -92,7 +98,9 @@ def run(rows, dictionaries, short_garbage, blacklist=()):
               "commands_ref": 0, "commands_hit": 0, "commands_false": 0, "no_edits": 0, "missed": 0,
               "false_text": 0, "false_text_by_label": {"noise": 0, "notification": 0, "room": 0}}
     outputs = {}
-    for row in rows:
+    for index, row in enumerate(rows):
+        if progress and index % 25 == 0:
+            progress(index, len(rows))
         record_id, reference, text = row[:3]
         label = row[3] if len(row) > 3 else "speech"
         key = blacklist_key(text)
@@ -123,39 +131,50 @@ def run(rows, dictionaries, short_garbage, blacklist=()):
             totals[f"{kind}_ref"] += len(truth)
             totals[f"{kind}_hit"] += len(truth & got)
             totals[f"{kind}_false"] += len(got - truth)
+    if progress:
+        progress(len(rows), len(rows))
     totals["wer"] = totals["errors"] / max(1, totals["words"])
     return totals, outputs
 
 
-def countercheck(archive, db_path, *, show=3):
+def countercheck(archive, db_path, *, show=3, progress=None):
     """По одному вимикає активні текстові правила на тих самих розмічених фразах."""
     rows = load_records(archive, include_non_speech=True)
-    dictionaries, short_garbage, values = load_setup(db_path)
+    dictionaries, short_garbage, values = load_setup(db_path,archive)
     current = {
         "phrases": tuple(values.get("phrase_templates", ())),
         "patterns": tuple(values.get("phrase_patterns", ())),
         "aliases": (dict(values.get("aliases", {})), dict(values.get("callsign_aliases", {}))),
     }
     active_blacklist = tuple(values.get("blacklist", ()))
+    total = len(rows) * (1 + len(current["phrases"]) + len(current["patterns"])
+                         + sum(len(a) for a in current["aliases"]) + len(short_garbage) + len(active_blacklist))
+    completed = 0
+    def replay(garbage, blacklist):
+        nonlocal completed
+        result = run(rows, dictionaries, garbage, blacklist,
+                     progress=(lambda done, _: progress(completed + done, total)) if progress else None)
+        completed += len(rows)
+        return result
     with templates(**current):
-        active, current_outputs = run(rows, dictionaries, short_garbage, active_blacklist)
+        active, current_outputs = replay(short_garbage, active_blacklist)
     references = {row[0]: row[1] for row in rows}
     checks = []
 
     def add_check(kind, label, before, *, garbage=short_garbage, blacklist=active_blacklist):
         with templates(**before):
-            without, outputs = run(rows, dictionaries, garbage, blacklist)
+            without, outputs = replay(garbage, blacklist)
         changed, false_text_examples = [], []
-        for record_id, (errors, text, label) in outputs.items():
+        for record_id, (errors, text, record_label) in outputs.items():
             old_errors, old_text, _ = current_outputs[record_id]
             if text == old_text:
                 continue
             item = {"id": record_id, "delta": old_errors - errors, "current": old_text,
                     "without": text, "reference": references[record_id]}
-            if label == "speech":
+            if record_label == "speech":
                 changed.append(item)
             else:
-                false_text_examples.append({**item, "label": label})
+                false_text_examples.append({**item, "label": record_label})
         worse = [item for item in changed if item["delta"] > 0]
         better = [item for item in changed if item["delta"] < 0]
         no_edits_delta = active["no_edits"] - without["no_edits"]
@@ -217,15 +236,20 @@ def countercheck(archive, db_path, *, show=3):
     }
 
 
-def compare(rows, dictionaries, short_garbage, *, before, after, show=12):
+def compare(rows, dictionaries, short_garbage, *, before, after, show=12, progress=None, blacklist=(),
+            after_short_garbage=None, after_blacklist=None):
     """Порівняти два набори шаблонів на тих самих записах.
 
     ``before``/``after`` — словники аргументів для ``templates()``.
     """
+    new_garbage = short_garbage if after_short_garbage is None else after_short_garbage
+    new_blacklist = blacklist if after_blacklist is None else after_blacklist
     with templates(**before):
-        base, base_out = run(rows, dictionaries, short_garbage)
+        base, base_out = run(rows, dictionaries, short_garbage, blacklist,
+                             progress=(lambda n, _: progress(n, 2 * len(rows))) if progress else None)
     with templates(**after):
-        new, new_out = run(rows, dictionaries, short_garbage)
+        new, new_out = run(rows, dictionaries, new_garbage, new_blacklist,
+                          progress=(lambda n, _: progress(len(rows) + n, 2 * len(rows))) if progress else None)
     references = {r[0]: r[1] for r in rows}
     changed = []
     for record_id, (errors, out, _) in new_out.items():
@@ -249,7 +273,8 @@ def compare(rows, dictionaries, short_garbage, *, before, after, show=12):
                 if pattern not in previous_patterns:
                     reduced = {**after, "patterns": patterns[:index] + patterns[index + 1:]}
                     with templates(**reduced):
-                        _, without = run([row], dictionaries, short_garbage)
+                        _, without = run([row], dictionaries, new_garbage, new_blacklist,
+                                         progress=(lambda *_: progress(2 * len(rows), 2 * len(rows))) if progress else None)
                     if without[item["id"]][1] != item["after"]:
                         matched.append(pattern)
             if matched:

@@ -65,19 +65,10 @@ def test_matching_word_with_other_number_falls_back_to_owner_of_number():
     assert pairs(commands.find("грім 222")) == [("грім", "222")]
 
 
-def test_near_number_rules():
-    from core.callsigns import near_number
-    assert near_number("023", {"022", "777"}) == "022"
-    assert near_number("922", {"022"}) is None, "перша цифра має збігатися"
-    assert near_number("033", {"022"}) is None, "відрізняється більше ніж однією цифрою"
-    assert near_number("02", {"03"}) is None, "лише від трьох цифр"
-    assert near_number("4243", {"4242", "4244"}) is None, "кілька кандидатів"
-
-
 def test_command_number_with_one_wrong_digit():
     commands = command_dictionary(["грім 022", "грім 777"])
-    assert pairs(commands.find("Грім, 0,23, грім 0,23")) == [("грім", "022")]
-    assert pairs(commands.find("грім 028")) == [("грім", "022")]
+    assert pairs(commands.find("Грім, 0,23, грім 0,23")) == []
+    assert pairs(commands.find("грім 028")) == []
     assert pairs(commands.find("грім 922")) == []
     assert pairs(commands.find("грім 022")) == [("грім", "022")]
 

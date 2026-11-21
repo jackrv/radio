@@ -14,7 +14,7 @@ from services.user_store import _require_permission, _valid_id, init_users_db
 # Повторне сповіщення про той самий запит або новий запит після відмови.
 REQUEST_RETRY_SECONDS = 24 * 3600
 # Скільки нерозглянутих запитів одночасно може надійти адміністратору.
-MAX_PENDING_REQUESTS = 20
+MAX_PENDING_REQUESTS = 5
 GRANTABLE_ROLES = ("viewer", "editor")
 
 

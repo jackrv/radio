@@ -1,7 +1,7 @@
 """Аудіоархів: список, розмітка, перевірка тексту, видалення в Telegram, утримання мікрофона."""
 import json
-import logging
 import re
+from services.archive_event_sync import sync_event_from_reference
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import Response
@@ -85,13 +85,17 @@ def register(app, ctx):
         from services.text_check import check_with_db
         with get_db(db_path) as db:
             codes = daily_codes.read(db, daily_codes.local_day(payload.at))
-            return check_with_db(db, payload.text, codes)
+            result = check_with_db(db, payload.text, codes, archive=recordings.root)
+            if payload.highlights:
+                from services.text_check import highlight_spans, dictionaries_from_db
+                result['highlights'] = highlight_spans(payload.text, *dictionaries_from_db(db)[:2], result['issues'])
+            return result
 
     @app.get("/api/recordings")
     def recording_list(request: Request, offset: int = 0, limit: int = 25,
                        q: str = "", edits: str = "", view: str = "all", since: float | None = None,
-                       until: float | None = None, order: str = "new", admin=Depends(actor)):
-        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since", "until", "order"} or order not in ("new", "doubtful")
+                       until: float | None = None, order: str = "new", selection: str = "", admin=Depends(actor)):
+        if (set(request.query_params) - {"offset", "limit", "q", "edits", "view", "since", "until", "order", "selection"} or order not in ("new", "old", "doubtful", "unreviewed")
                 or not 0 <= offset <= 1_000_000 or not 1 <= limit <= 100 or len(q) > 200):
             raise HTTPException(422, "Некоректні параметри")
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
@@ -106,7 +110,17 @@ def register(app, ctx):
             selected = "miniapp"
         elif edits:
             selected = list(user_activity.corrections(db_path, user_id=int(edits)))
-        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since, until=until, order=order)
+        selected_ids = None
+        selection_terms = None
+        if selection:
+            from services.mention_selection import load_selection
+            try:
+                saved_selection = load_selection(db_path, selection)
+                selected_ids = saved_selection['ids']
+                selection_terms = saved_selection['terms']
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
+        page = recordings.listing(offset, limit, search=q, edits=selected, view=view, since=since, until=until, order=order, selected_ids=selected_ids, selection_terms=selection_terms)
         page["views"] = recordings.view_counts(since, until)
         page["confidence_low"] = recordings.confidence_threshold()   # нижче — «сумнівно» (найменш упевнені 25 %)
         # Хто й коли правив запис у Mini App (журнал дій з 16.11.2026).
@@ -127,7 +141,7 @@ def register(app, ctx):
                     day = daily_codes.local_day(item["created"])
                     if day not in codes_by_day:
                         codes_by_day[day] = daily_codes.read(db, day)
-                    item["text_check"] = check_with_db(db, item["reference"], codes_by_day[day])
+                    item["text_check"] = check_with_db(db, item["reference"], codes_by_day[day], archive=recordings.root)
         # Скільки копій фрази лишилося в чатах і чи ще можна видалити їх у всіх.
         from services import telegram_recall
         sent = telegram_recall.state(db_path, linked)
@@ -192,7 +206,12 @@ def register(app, ctx):
             raise HTTPException(404, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
-        result["event_sync"] = sync_event_from_reference(result, admin)
+        result["event_sync"] = sync_event_from_reference(db_path, result, admin)
+        from services.archive_learning import sync_archive_learning
+        result['learning_sync']=sync_archive_learning(db_path,recordings,record_id,admin)
+        from services.user_activity import record as record_activity
+        record_activity(db_path,admin,'archive_review',record_id,
+                        {'label':payload.label,'characters':len(payload.reference.strip()),'event_sync':result['event_sync']})
         return result
 
     @app.post("/api/recordings/{record_id}/restore")
@@ -206,41 +225,11 @@ def register(app, ctx):
             raise HTTPException(404, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
-        result["event_sync"] = sync_event_from_reference(result, admin)   # повернутий еталон мовлення — знову текст події
+        result["event_sync"] = sync_event_from_reference(db_path, result, admin)   # повернутий еталон мовлення — знову текст події
+        from services.archive_learning import sync_archive_learning
+        result['learning_sync']=sync_archive_learning(db_path,recordings,record_id,admin)
         return result
 
-    def sync_event_from_reference(record, admin):
-        """Еталон мовлення стає текстом пов'язаної події: оновлюються журнал, підпис у
-        Telegram і навчання правил — так само, як після правки в Mini App.
-
-        Повертає None (немає події), "same", "updated", "hidden" або "failed".
-        Збій не скасовує збережений еталон.
-        """
-        fix_id = (record.get("data") or {}).get("fix_id") or ""
-        reference = (record.get("reference") or "").strip()
-        if record.get("label") not in ("speech", "unclear") or not reference or not re.fullmatch(r"db:[1-9][0-9]{0,17}", fix_id):
-            return None
-        from services.miniapp_correction_editor import CorrectionConflict, save_edit_draft
-        from services.telegram_media_store import is_hidden
-        try:
-            if is_hidden(db_path, fix_id):
-                return "hidden"
-            for _ in range(2):   # подію могли змінити між читанням і записом — одна повторна спроба
-                with get_db(db_path) as db:
-                    row = db.execute("SELECT text FROM radio_events WHERE id=?", (int(fix_id[3:]),)).fetchone()
-                if row is None:
-                    return None
-                if row[0] == reference:
-                    return "same"
-                try:
-                    save_edit_draft(db_path, fix_id, row[0], reference, actor_id=admin)
-                    return "updated"
-                except CorrectionConflict:
-                    continue
-            return "failed"
-        except Exception:
-            logging.getLogger("radio").exception("Не вдалося перенести еталон у подію %s", fix_id)
-            return "failed"
 
     @app.post("/api/recordings/{record_id}/notification-sample")
     def recording_sample(record_id: str, payload: SampleConfirmation, admin=Depends(actor)):
@@ -264,5 +253,3 @@ def register(app, ctx):
             return set_listening_hold(db_path, payload.seconds)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
-
-    ctx.sync_event_from_reference = sync_event_from_reference

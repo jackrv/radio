@@ -120,7 +120,7 @@ test("concurrent screens share the verified user request", async () => {
   assert.equal(calls, 1);
 });
 
-async function phrasesFixture(role = "admin", override) {
+async function phrasesFixture(role = "admin", override, options = {}) {
   const { doc, get } = documentFixture();
   const calls = [];
   const request = async (url, method = "GET", body) => {
@@ -130,7 +130,8 @@ async function phrasesFixture(role = "admin", override) {
     throw new Error("Unexpected request " + url);
   };
   const win = new Element();
-  Object.assign(win, { Radio345: { request, user: async () => ({ role, user_id: 1001 }) },
+  Object.assign(win, { Radio345: { request, user: async () => ({ role, user_id: options.userId || 1001 }) },
+    sessionStorage: options.storage, scrollY: 123, scrollTo(x,y) { win.restoredScroll=y; },
     location: { href: "https://panel.example/", assign(url) { win.assigned = url; } } });
   vm.runInNewContext(source("phrases.js"), { document: doc, window: win, URL, Date, console, showView() {} });
   await tick();
@@ -178,6 +179,34 @@ test("editor can load an authenticated audio player beside a phrase", async () =
   assert.equal(card.children.at(-1).tagName, "audio");
   assert.equal(card.children.at(-1).controls, true);
   assert(calls.some(call => call.url === "/api/phrases/audio?fix_id=db%3A1"));
+});
+
+test('journal recovers explicitly after a failed page load', async () => {
+  let fail=true;
+  const h=await phrasesFixture('editor',url=>{
+    if (url.startsWith('/api/phrases?') && fail) {fail=false;throw Error('offline');}
+  });
+  await h.view('corrections');
+  assert.match(h.get('phrases-feedback').textContent,/offline/);
+  assert.equal(h.get('phrases-next').disabled,false);
+  const retry=h.get('phrases-list').children.find(n=>n.textContent==='Повторити завантаження');
+  assert(retry);await retry.fire('click');
+  assert.match(h.get('phrases-feedback').textContent,/Сторінка 1/);
+});
+
+test('return context keeps search and page in session storage for the same user', async () => {
+  const values=new Map();const storage={setItem:(k,v)=>values.set(k,v),getItem:k=>values.get(k),removeItem:k=>values.delete(k)};
+  const first=await phrasesFixture('editor',url=>url.startsWith('/api/phrases?')
+    ? {items:[{fix_id:'db:1',current_text:'Клен',original_text:'Клен'}],has_more:true}:undefined,{storage});
+  await first.view('corrections');first.get('phrases-query').value='Клен 12';
+  await first.get('phrases-search').fire('submit');await first.get('phrases-next').fire('click');
+  const card=first.get('phrases-list').children[0];
+  await card.children[0].children[1].children.find(n=>n.textContent==='Виправити').fire('click');
+  const other=await phrasesFixture('editor',undefined,{storage,userId:2002});await other.view('corrections');
+  assert(!other.calls.some(c=>c.url.includes('offset=10')));
+  const back=await phrasesFixture('editor',undefined,{storage});await back.view('corrections');
+  assert(back.calls.some(c=>c.url.includes('q=%D0%9A%D0%BB%D0%B5%D0%BD%2012') && c.url.includes('offset=10')));
+  assert.equal(back.win.restoredScroll,123);
 });
 
 async function correctionFixture(autoClose, hasAudio = false, check = () => ({ issues: [], formatted: null })) {

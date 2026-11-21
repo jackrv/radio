@@ -6,7 +6,7 @@ import time
 from services.sqlite_connection import get_db
 
 
-MAX_PAUSE_MINUTES = 240
+MAX_PAUSE_MINUTES = 60
 
 
 class PauseVersionConflict(Exception):
@@ -73,7 +73,7 @@ def set_pause_minutes(
     if type(minutes) is not int or not (
         0 <= minutes <= MAX_PAUSE_MINUTES
     ):
-        raise ValueError("Пауза має бути від 0 до 240 хвилин")
+        raise ValueError(f"Пауза має бути від 0 до {MAX_PAUSE_MINUTES} хвилин")
 
     if expected_revision is not None and (
         type(expected_revision) is not int

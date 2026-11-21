@@ -43,6 +43,8 @@ class UpdatesMixin:
         # /start приймається від будь-кого: так нові користувачі просять доступ.
         if self._handle_start(msg):
             return
+        if self._handle_wishlist_message(msg):
+            return
         if self._handle_user_mode_command(msg, upd.get("update_id")):
             self.clean_command(msg)
 
@@ -76,8 +78,11 @@ class UpdatesMixin:
         try:
             r = self._request("post", "deleteMessage",
                               data={"chat_id": chat_id, "message_id": message.get("message_id")}, timeout=15)
-            success = r.status_code == 200
-        except requests.RequestException:
+            result = r.json()
+            success = isinstance(result, dict) and (
+                (r.status_code == 200 and result.get("ok") is True)
+                or result.get("description") == "Bad Request: message to delete not found")
+        except (requests.RequestException, ValueError, AttributeError):
             pass
         if success:
             forget_delivery(self.db_path, chat_id, message.get("message_id"))

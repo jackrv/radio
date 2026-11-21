@@ -10,6 +10,24 @@
   let offset = 0;
   let query = "";
   let busy = false;
+  let returnScroll = null;
+  const CONTEXT_KEY = "radio345.phrases.return";
+  function rememberContext() {
+    try { window.sessionStorage?.setItem(CONTEXT_KEY, JSON.stringify({user: me.user_id, query,
+      offset, scroll: window.scrollY || 0, at: Date.now()})); } catch (_) { /* приватний WebView */ }
+  }
+  function restoreContext() {
+    if (new URL(window.location.href).searchParams.has("fix_id")) return;
+    try {
+      const saved = JSON.parse(window.sessionStorage?.getItem(CONTEXT_KEY) || "null");
+      if (!saved || saved.user !== me.user_id || Date.now()-saved.at > 3600000) return;
+      query = typeof saved.query === "string" ? saved.query.slice(0, 500) : "";
+      offset = Number.isInteger(saved.offset) && saved.offset >= 0 ? saved.offset : 0;
+      returnScroll = Math.max(0, Number(saved.scroll) || 0);
+      $("phrases-query").value = query;
+      window.sessionStorage?.removeItem(CONTEXT_KEY);
+    } catch (_) { /* контекст повернення необов'язковий */ }
+  }
   const canEdit = () => ["admin", "editor"].includes(me?.role);
   const audioUrls = new Set();
 
@@ -90,6 +108,7 @@
     }
     if (canEdit()) {
       actions.append(button("Виправити", () => {
+        rememberContext();
         const url = new URL(window.location.href);
         url.searchParams.set("fix_id", item.fix_id);
         window.location.assign(url.toString());
@@ -112,9 +131,14 @@
       $("phrases-prev").disabled = offset === 0;
       $("phrases-next").disabled = !data.has_more;
       message(`Сторінка ${offset / PAGE_SIZE + 1}`);
+      if (returnScroll !== null) { window.scrollTo?.(0, returnScroll); returnScroll = null; }
     } catch (error) {
+      releaseAudio();
       $("phrases-list").replaceChildren();
       message(error.message, true);
+      $("phrases-prev").disabled = offset === 0;
+      $("phrases-next").disabled = false;
+      $("phrases-list").append(button("Повторити завантаження", () => load()));
     } finally { busy = false; }
   }
 
@@ -133,6 +157,7 @@
   async function start() {
     try {
       me = await user();
+      restoreContext();
       if (me.role === "viewer") { showView("home"); return; }
       if (document.querySelector(".view.active")?.id === "view-corrections") await load();
     } catch (error) {

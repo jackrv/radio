@@ -13,7 +13,7 @@ import requests
 
 from core.diagnostics import runtime
 from services.sqlite_connection import get_db
-from services.telegram_media_store import deletion_intent, deletion_result, is_hidden
+from services.telegram_media_store import deletion_result, is_hidden, ensure_table as ensure_media
 from services.telegram_sync import ensure_tables
 
 DELETE_WINDOW_S = 48 * 3600
@@ -37,13 +37,16 @@ def state(db_path, fix_ids):
     with get_db(db_path) as db:
         ensure_tables(db)
         marks = ",".join("?" * len(fix_ids))
-        rows = db.execute(f"""SELECT fix_id, SUM(unavailable=0), SUM(unavailable=0 AND delete_requested IS NOT NULL),
-            SUM(delete_requested IS NOT NULL) FROM telegram_deliveries WHERE fix_id IN ({marks}) GROUP BY fix_id""",
+        rows = db.execute(f"""SELECT fix_id, SUM(unavailable=0),
+            SUM(unavailable=0 AND delete_requested IS NOT NULL AND attempts<{MAX_ATTEMPTS}),
+            SUM(delete_requested IS NOT NULL),
+            SUM(unavailable=0 AND delete_requested IS NOT NULL AND attempts>={MAX_ATTEMPTS})
+            FROM telegram_deliveries WHERE fix_id IN ({marks}) GROUP BY fix_id""",
                           fix_ids).fetchall()
-        found = {f: {"copies": live or 0, "pending": pending or 0, "requested": bool(asked)}
-                 for f, live, pending, asked in rows}
+        found = {f: {"copies": live or 0, "pending": pending or 0, "requested": bool(asked), "exhausted": exhausted or 0}
+                 for f, live, pending, asked, exhausted in rows}
         for fix_id in fix_ids:
-            found.setdefault(fix_id, {"copies": 0, "pending": 0, "requested": False})
+            found.setdefault(fix_id, {"copies": 0, "pending": 0, "requested": False, "exhausted": 0})
             found[fix_id]["hidden"] = is_hidden(db_path, fix_id, db=db)
     return found
 
@@ -52,11 +55,15 @@ def request_delete(db_path, fix_id, *, now=None):
     """Поставити всі живі копії фрази в чергу на видалення. Повертає кількість копій."""
     now = time.time() if now is None else now
     with get_db(db_path) as db:
+        db.execute("BEGIN IMMEDIATE")
         ensure_tables(db)
+        ensure_media(db)
+        db.execute("""INSERT INTO telegram_phrase_messages(fix_id,state) VALUES (?, 'deleting')
+            ON CONFLICT(fix_id) DO UPDATE SET state='deleting'""", (fix_id,))
         count = db.execute("""UPDATE telegram_deliveries SET delete_requested=?, attempts=0, next_try=0
-            WHERE fix_id=? AND unavailable=0 AND delete_requested IS NULL""", (now, fix_id)).rowcount
+            WHERE fix_id=? AND unavailable=0 AND (delete_requested IS NULL OR attempts>=?)""",
+                           (now, fix_id, MAX_ATTEMPTS)).rowcount
     # Фраза зникає з журналу й Mini App одразу; копії в чатах — щойно бот їх видалить.
-    deletion_intent(db_path, fix_id)
     if not count and not _left(db_path, fix_id):
         deletion_result(db_path, fix_id, True)
     return count
@@ -65,8 +72,8 @@ def request_delete(db_path, fix_id, *, now=None):
 def _left(db_path, fix_id):
     with get_db(db_path) as db:
         return db.execute("""SELECT COUNT(*) FROM telegram_deliveries
-            WHERE fix_id=? AND unavailable=0 AND delete_requested IS NOT NULL AND attempts<?""",
-                          (fix_id, MAX_ATTEMPTS)).fetchone()[0]
+            WHERE fix_id=? AND unavailable=0 AND delete_requested IS NOT NULL""",
+                          (fix_id,)).fetchone()[0]
 
 
 def process_deletions(service, *, limit=5, now=None):
@@ -95,9 +102,12 @@ def process_deletions(service, *, limit=5, now=None):
             runtime.count("telegram.recall_deferred")
             continue
         description = result.get("description")
-        finished = result.get("ok") is True or description in GONE or description in TOO_OLD or response.status_code == 403
-        if description in TOO_OLD:
+        finished = result.get("ok") is True or description in GONE
+        if description in TOO_OLD or response.status_code == 403:
             runtime.count("telegram.recall_too_old")
+            with get_db(service.db_path) as db:
+                db.execute("UPDATE telegram_deliveries SET attempts=? WHERE fix_id=? AND chat_id=? AND message_id=?",
+                           (MAX_ATTEMPTS, fix_id, chat, message))
         elif finished:
             runtime.count("telegram.recall_confirmed")
         else:
@@ -111,3 +121,18 @@ def process_deletions(service, *, limit=5, now=None):
         if not _left(service.db_path, fix_id):
             deletion_result(service.db_path, fix_id, True)
     return len(jobs)
+
+
+def expire_deliveries(db_path, *, now=None):
+    """Автовидалення копій; не приховує записи архіву й не видаляє навчальні дані."""
+    from services.runtime_settings import _read
+    now = time.time() if now is None else now
+    with get_db(db_path) as db:
+        hours = _read(db)[0]['TELEGRAM_AUTO_DELETE_HOURS']
+        if not hours: return 0
+        ensure_tables(db)
+        return db.execute("""UPDATE telegram_deliveries SET delete_requested=?, next_try=0, attempts=0
+            WHERE rowid IN (SELECT rowid FROM telegram_deliveries
+                WHERE unavailable=0 AND delete_requested IS NULL AND sent_at IS NOT NULL
+                AND sent_at<=? AND sent_at>? ORDER BY sent_at LIMIT 100)""",
+            (now, now-hours*3600, now-DELETE_WINDOW_S+SAFETY_S)).rowcount

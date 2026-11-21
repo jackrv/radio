@@ -50,6 +50,8 @@ SPECTRAL_NOTIFICATION_MODE = "active"
 SPECTRAL_NOTIFICATION_THRESHOLD = 0.74
 SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S = 0.6
 SPECTRAL_NOTIFICATION_MAX_EXTRA = 0.15
+# Видалення лише нових копій фраз у Telegram; 0 — вимкнено. WAV і розмітка лишаються.
+TELEGRAM_AUTO_DELETE_HOURS = 0
 # COOLDOWN_S, LOG_CALLSIGNS_ONLY і GARBAGE_* — початкові значення; змінюються в
 # локальній панелі («Налаштування → Обробка без перезапуску»).
 COOLDOWN_S = 3.0

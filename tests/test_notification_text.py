@@ -40,7 +40,7 @@ def test_alias_rewrites_unknown_word_but_keeps_dictionary_word(monkeypatch):
 def test_nothing_is_rewritten_without_exact_number():
     for text in ("злата, прийом",            # слово без номера
                  "дубб 99",                  # номер не зі словника
-                 "Грім, 0,23, грім 023",     # номер з однією хибною цифрою — лише шапка
+                 "Грім, 0,23, грім 023",     # неточний номер не підміняється й у шапці
                  "клін, сніх",               # позивні без номерів
                  "кем 25 15"):               # незрозумілий шматок
         assert canonical_text(text, DICTIONARIES) == text
@@ -70,9 +70,9 @@ def test_event_and_notification_get_dictionary_words_heard_text_is_kept_as_raw()
     telegram, save = Mock(), Mock(return_value=7)
     heard = "Злата 42 42, злата, кем 25 15, прийом."
     processor(telegram, save=save).process(heard, b"\0\0")
-    assert save.call_args.args[4] == "Злива 42 42, злата, кем 25 15, прийом"
+    assert save.call_args.args[4] == "ЗЛИВА 42 42, злата, кем 25 15, прийом"
     assert save.call_args.kwargs["raw_text"] == heard
-    assert telegram.notify.call_args.args[3] == "Злива 42 42, злата, кем 25 15, прийом"
+    assert telegram.notify.call_args.args[3] == "ЗЛИВА 42 42, злата, кем 25 15, прийом"
     assert telegram.notify.call_args.kwargs["commands_str"] == "злива 42 42"
 
 

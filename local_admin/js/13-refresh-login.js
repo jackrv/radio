@@ -8,6 +8,7 @@
     const until = periodUntil(); if (until) params.set("until", until);
     if (searchQuery()) params.set("q", searchQuery());
     if (editsValue()) params.set("edits", editsValue());
+    if (typeof archiveSelection !== 'undefined' && archiveSelection) params.set('selection', archiveSelection);
     const page = await request(`/api/recordings?${params}`);
     if (view !== "recordings" || query !== JSON.stringify(recordingFilterIds.map(id => $(id).value))) return;
     const changed = archiveBaseline.query !== query || page.total !== archiveBaseline.total || page.items[0]?.id !== archiveBaseline.first;
@@ -18,6 +19,8 @@
     refreshPending = true;
     try {
       await overview();
+      $("updated").classList?.remove("refresh-failed");
+      $("updated").setAttribute?.("role", "status");
       if (view === "system") await system();
       else if (view === "filter") await filterView();
       else if (view === "activity") await activity();
@@ -26,6 +29,9 @@
     } catch (_) {
       // Коротко в шапці; пояснення — у підказці при наведенні.
       $("updated").textContent = "⚠ не оновлено · повтор…";
+      $("updated").classList?.add("refresh-failed");
+      $("updated").setAttribute?.("role", "status");
+      $("updated").setAttribute?.("aria-live", "polite");
       $("updated").title = "Не вдалося оновити дані (немає зв’язку з панеллю або служби перезапускаються). Повторюємо автоматично кожні 10 с.";
     } finally { refreshPending = false; }
   }

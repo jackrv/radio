@@ -68,7 +68,16 @@ def main():
                 except subprocess.TimeoutExpired:
                     # Контролер та його нащадки належать одній власній групі.
                     os.killpg(os.getpgrp(), signal.SIGKILL)
-        return child.wait()
+        code = child.wait()
+        if code < 0:
+            # SystemExit(-signal) перетворює -10 на 246. Зберігаємо справжню
+            # причину в потоці журналу, а не вгадуємо її з коду оболонки.
+            try:
+                cause = signal.Signals(-code).name
+            except ValueError:
+                cause = str(-code)
+            print(f"Служба завершилася через сигнал {cause} ({-code})", flush=True)
+        return code
     finally:
         if child is not None and child.poll() is None:
             # Не залишати ціль при непередбаченій помилці самого контролера.

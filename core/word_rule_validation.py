@@ -1,5 +1,6 @@
 """Проверка словесных правил по рабочим словарям Radio 345."""
 
+import re
 from core.callsigns import FOLD
 from core.word_learning import (
     tokenize,
@@ -17,6 +18,7 @@ SPLIT_MERGE_SIMILARITY = 85.0
 # більшість фраз (18.11.2026: «прийом» → «прийняв» — 7 фраз краще, 204 гірше; «без правок» 45 → 16).
 SERVICE_WORDS = frozenset({"прийом", "прийнято", "прийняв", "прийняла", "так", "ні", "добре", "я", "на", "до",
                            "розбираю", "чую", "звʼязку", "звʼязок", "посилку", "отримав", "роботу", "роботи"})
+SERVICE_PATTERN = re.compile(r'(?<!\w)(?:'+'|'.join(re.escape(w) for w in SERVICE_WORDS)+r')(?!\w)')
 
 
 def known_name_tuples(dictionaries) -> frozenset:
@@ -44,7 +46,11 @@ def classify_pair(original, corrected, names) -> tuple[str, str | None]:
         return "excluded", "number"
     if len(old) == 1 and len(old[0]) < MIN_WORD_LENGTH:
         return "excluded", "short_word"
-    if len(old) == 1 and old[0].replace("'", "ʼ").replace("’", "ʼ") in SERVICE_WORDS:
+    # Зберегти дозволене склеювання «на бат» → «набат», але не дозволити
+    # зміну службового слова всередині складеної заміни. Токени апострофів
+    # у tokenize() розділяються, тому перевіряємо також ціле написання.
+    source = original.casefold().replace("'", "ʼ").replace("’", "ʼ").replace("`", "ʼ")
+    if "".join(old) != "".join(new) and SERVICE_PATTERN.search(source):
         return "excluded", "service_word"
     if old in names and new in names:
         return "excluded", "callsign_swap"

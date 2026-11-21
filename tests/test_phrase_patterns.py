@@ -38,6 +38,17 @@ def test_whole_phrase_is_respelled_and_slot_word_becomes_callsign_with_its_numbe
         "Набат 109, набат 109, я Калина 700, перевірка звʼязку, прийом. ліна 63, прийнято, прийом"
 
 
+@pytest.mark.parametrize('text', ('Клену, прийом', 'Кленові, прийом', 'КЛЕНУ 15, прийом'))
+def test_whole_phrase_preserves_dictionary_address_forms(text):
+    callsigns = Callsigns.from_lines(['Клен', 'Клен: 15'])
+    assert apply_patterns(text, callsigns, patterns('{П}, прийом')) == text
+
+
+def test_preserving_address_form_still_allows_fixing_another_word():
+    callsigns = Callsigns.from_lines(['Клен: 15'])
+    assert apply_patterns('Клену 15, прейом', callsigns, patterns('{П}, прийом')) == 'Клену 15, прийом'
+
+
 def test_numbers_never_change_and_unknown_numbers_keep_the_heard_word():
     p = patterns("{П}, прийнято, прийом")
     assert apply_patterns("Колина 701, приняте, прийом", CALLSIGNS, p) == "Колина 701, прийнято, прийом", \

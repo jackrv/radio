@@ -41,6 +41,8 @@ def build_transcriber(
     pause_gate=None,
     health=None,
     recorder=None,
+    stop_event=None,
+    abandon_event=None,
 ):
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
@@ -145,6 +147,8 @@ def build_transcriber(
         max_outside_s=config.SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S, max_extra=config.SPECTRAL_NOTIFICATION_MAX_EXTRA)
 
     worker = Transcriber(
+        stop_event=stop_event,
+        abandon_event=abandon_event,
         segments=segments,
         recognizer=recognizer,
         process_text=process_text,
@@ -213,14 +217,25 @@ def build_transcriber(
 
     live_settings = LiveRuntimeSettings(config.DB_PATH, apply_settings, log)
     live_settings.refresh(force=True)
+    from pathlib import Path
+    from services.dictionary_number_evidence import load_rules
+    def refresh_number_rules():
+        archive=getattr(config,'RECORDINGS_DIR',Path(config.DB_PATH).resolve().parent/'.local-recordings')
+        callsigns.number_rules=load_rules(archive,callsigns,commands)
+        from core.diagnostics import runtime
+        runtime.gauge('dictionary.number_rules',len(callsigns.number_rules))
+    refresh_number_rules()
     # update_prompt — і для коду доби: новий код чи зміна доби о 20:00 потрапляють у підказку самі.
-    worker.refreshers = (live_dictionaries.refresh, live_settings.refresh, update_prompt)
+    worker.refreshers = (live_dictionaries.refresh, live_settings.refresh, update_prompt, refresh_number_rules)
     worker.live_dictionaries = live_dictionaries
     worker.live_settings = live_settings
     # Режим «лише запис» (на час тестів лабораторії): прапорець у SQLite, накопичене — в архіві.
     if recorder is not None:
         from services.receiver_control import capture_state, mark_capture_unloaded
-        worker.capture_only = lambda: capture_state(config.DB_PATH)["active"]
+        from pathlib import Path
+        from services.model_exclusion import receiver_model_available
+        worker.capture_only = lambda: (capture_state(config.DB_PATH)["active"]
+                                      or not receiver_model_available(Path(config.DB_PATH).resolve().parent))
         worker.on_unloaded = lambda unloaded: mark_capture_unloaded(config.DB_PATH, unloaded)
         worker.deferred = recorder.store
     return worker

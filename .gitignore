@@ -12,6 +12,8 @@ __pycache__/
 .env.*
 !.env.example
 .wishlist
+.local-telegram-wishlist/
+.local-wishlist-*
 # SQLite
 *.db
 *.db-*
@@ -53,6 +55,10 @@ diagnostics-report.json
 
 .local-recordings/
 .local-training/
+.local-text-checks/
+.local-selections/
+.local-archive-backups/
 
 # Особистий робочий простір VS Code
 radio345.code-workspace
+.asr-lab.lock

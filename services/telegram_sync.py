@@ -30,6 +30,11 @@ def ensure_tables(db):
     # Видалення в усіх отримувачів, запитане з панелі (services/telegram_recall.py).
     if "delete_requested" not in {row[1] for row in db.execute("PRAGMA table_info(telegram_deliveries)")}:
         db.execute("ALTER TABLE telegram_deliveries ADD COLUMN delete_requested REAL")
+    if "sent_at" not in {row[1] for row in db.execute("PRAGMA table_info(telegram_deliveries)")}:
+        # Не вгадуємо вік старих копій: лише майбутні доставки мають відомий час.
+        db.execute("ALTER TABLE telegram_deliveries ADD COLUMN sent_at REAL")
+    if 'skipped_revision' not in {row[1] for row in db.execute('PRAGMA table_info(telegram_deliveries)')}:
+        db.execute('ALTER TABLE telegram_deliveries ADD COLUMN skipped_revision INTEGER NOT NULL DEFAULT 0')
 
 
 def migrate_legacy(db_path):
@@ -60,10 +65,14 @@ def remember_delivery(db_path, fix_id, message, kind):
     if type(chat_id) is not int or type(message_id) is not int or chat_id <= 0:
         return
     with get_db(db_path) as db:
+        db.execute("BEGIN IMMEDIATE")
         ensure_tables(db)
         # Always begin at zero: an edit could commit during sendVoice's HTTP request.
-        db.execute("INSERT OR IGNORE INTO telegram_deliveries(fix_id,chat_id,message_id,kind) VALUES (?,?,?,?)",
-                   (fix_id, chat_id, message_id, kind))
+        # Tombstone лишається навіть за відсутності відомих копій: перша
+        # доставка може повернутися з мережі вже після запиту видалення.
+        deleted = time.time() if is_hidden(db_path, fix_id, db=db) else None
+        db.execute("INSERT OR IGNORE INTO telegram_deliveries(fix_id,chat_id,message_id,kind,delete_requested,sent_at) VALUES (?,?,?,?,?,?)",
+                   (fix_id, chat_id, message_id, kind, deleted, time.time()))
 
 
 def forget_delivery(db_path, chat_id, message_id):
@@ -144,7 +153,7 @@ def sync_corrections(service, *, limit=5, now=None):
         jobs = db.execute("""SELECT d.fix_id,d.chat_id,d.message_id,d.kind,c.revision
             FROM telegram_deliveries d JOIN correction_sources c ON c.fix_id=d.fix_id
             WHERE d.unavailable=0 AND d.delete_requested IS NULL
-              AND d.applied_revision<c.revision AND d.next_try<=? AND d.attempts<8
+              AND d.applied_revision<c.revision AND d.skipped_revision<c.revision AND d.next_try<=? AND d.attempts<8
             ORDER BY d.next_try,d.rowid LIMIT ?""", (now, limit)).fetchall()
     for fix_id, chat, message, kind, revision in jobs:
         if getattr(service,"_maintenance_stop",None) is not None and service._maintenance_stop.is_set():
@@ -203,7 +212,26 @@ def sync_status(db_path):
         ensure_tables(db)
         row = db.execute("""SELECT
             COUNT(*),
-            COALESCE(SUM(d.unavailable=0 AND d.applied_revision<c.revision AND d.attempts<8),0),
-            COALESCE(SUM(d.unavailable=0 AND d.applied_revision<c.revision AND d.attempts>=8),0)
+            COALESCE(SUM(d.unavailable=0 AND d.delete_requested IS NULL AND d.applied_revision<c.revision AND d.skipped_revision<c.revision AND d.attempts<8),0),
+            COALESCE(SUM(d.unavailable=0 AND d.delete_requested IS NULL AND d.applied_revision<c.revision AND d.skipped_revision<c.revision AND d.attempts>=8),0),
+            COALESCE(SUM(d.unavailable=0 AND d.delete_requested IS NULL AND d.applied_revision<c.revision AND d.skipped_revision>=c.revision),0)
             FROM telegram_deliveries d LEFT JOIN correction_sources c ON c.fix_id=d.fix_id""").fetchone()
-    return {"copies":row[0],"pending":row[1],"exhausted":row[2]}
+    return {"copies":row[0],"pending":row[1],"exhausted":row[2],"skipped":row[3]}
+
+
+def resolve_failed_corrections(db_path, actor_id, action):
+    """Явне рішення лише щодо вичерпаних правок; пропуск не є підтвердженням Telegram."""
+    from services.user_store import _require_permission
+    if action not in ('retry', 'skip'):
+        raise ValueError('Невідома дія')
+    with get_db(db_path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        _require_permission(db, actor_id, 'settings.write')
+        ensure_tables(db)
+        where='''unavailable=0 AND delete_requested IS NULL AND attempts>=8
+            AND applied_revision<(SELECT revision FROM correction_sources WHERE fix_id=telegram_deliveries.fix_id)
+            AND skipped_revision<(SELECT revision FROM correction_sources WHERE fix_id=telegram_deliveries.fix_id)'''
+        update = ('attempts=0,next_try=0' if action=='retry' else
+                  'skipped_revision=(SELECT revision FROM correction_sources WHERE fix_id=telegram_deliveries.fix_id)')
+        count=db.execute('UPDATE telegram_deliveries SET '+update+' WHERE '+where).rowcount
+    return {'action':action,'count':count}

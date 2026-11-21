@@ -89,6 +89,36 @@ def test_dictionary_edit_preserves_order_disabled_rows_and_conflicts(panel):
     assert client.put("/api/dictionaries/callsigns", headers=WRITE, json=payload).status_code == 409
 
 
+@pytest.mark.parametrize('line,name,code', [('злива 42 42','злива','4242'),
+                                          ('грім 0 22','грім','022'),
+                                          ('злива 4242','злива','4242')])
+def test_command_groups_pass_editor_check_and_save_without_losing_spaces(panel, line, name, code):
+    from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
+    client, path = panel
+    entries = [{'raw_line':line,'enabled':True}]
+    checked = client.put('/api/dictionaries/commands/check', headers=WRITE, json={'entries':entries})
+    assert checked.status_code == 200
+    assert checked.json()['errors'] == []
+    initial = client.get('/api/dictionaries').json()['commands']
+    saved = client.put('/api/dictionaries/commands', headers=WRITE,
+                       json={'entries':entries,'expected_version':initial['version']})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['entries'] == entries
+    assert client.get('/api/dictionaries').json()['commands']['entries'] == entries
+    with sqlite3.connect(path) as db:
+        lines = read_dictionary_lines(db)
+    assert lines['commands'] == [line]
+    commands = dictionaries_from_lines(lines)[1]
+    assert commands.numbers[name] == {code}
+
+
+@pytest.mark.parametrize('line', ['злива 12345 12345', 'злива 42-43', 'злива *', 'злива 42 *'])
+def test_spaced_command_validation_does_not_accept_ranges_wildcards_or_overlong_codes(line):
+    from services.management.dictionaries import validate_dictionary
+    with pytest.raises(ValueError):
+        validate_dictionary([{'raw_line':line,'enabled':True}], 'commands')
+
+
 @pytest.mark.parametrize("entries", [[], [{"raw_line": "# comment", "enabled": True}],
     [{"raw_line": "Віра: 900-1", "enabled": True}],
     [{"raw_line": "Віра: 1-999999999", "enabled": True}],

@@ -45,28 +45,5 @@
   const stamp = unix => new Date(unix * 1000).toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   function utcTs(text) { return text ? Date.parse(text.replace(" ", "T") + "Z") / 1000 : null; }
 
-  async function request(path, method = "GET", body, headers = {}) {
-    const options = { method, headers, credentials: "same-origin", cache: "no-store" };
-    if (body !== undefined) {
-      if (body instanceof Blob) options.body = body;
-      else { options.body = JSON.stringify(body); options.headers = { ...headers, "Content-Type": "application/json" }; }
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(path, {...options, signal: controller.signal});
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        const failure = new Error(typeof error.detail === "string" ? error.detail : `HTTP ${response.status}. Онови сторінку або відкрий панель командою --open.`);
-        failure.status = response.status;
-        throw failure;
-      }
-      if (response.status === 204) return null;
-      return await ((response.headers.get("content-type") || "").includes("json") ? response.json() : response.blob());
-    } catch (error) {
-      if (error.name === "AbortError") throw new Error("Сервер не відповів за 30 с. Спробуйте ще раз.");
-      throw error;
-    } finally { clearTimeout(timeout); }
-  }
   async function action(callback) { if (busy) return; busy = true; try { await callback(); } catch (error) { note(error.message); } finally { busy = false; } }
 

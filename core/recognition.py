@@ -26,6 +26,8 @@ class WhisperRecognizer:
         self.temperature = tuple(temperature)
         # Додаткові параметри декодування — лише для офлайн-досліджень (tools/asr_lab).
         self.options = dict(options or {})
+        if set(self.options) & {'beam_size','path_or_hf_repo','language','initial_prompt','temperature'}:
+            raise ValueError('Параметр Whisper заборонений або повторює основний аргумент')
         self.transcribe_fn = mlx_whisper.transcribe
 
     def warmup(self):

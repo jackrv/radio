@@ -18,8 +18,9 @@ import sqlite3
 
 import core.callsigns as callsigns_module
 from core.callsigns import FOLD, NUMBER_WORDS, basic_normalize
-from core.template_text import _TOKEN, template_text
+from core.template_text import _TOKEN, _CODE_PAIR, template_text
 from services.daily_codes import remove_confirmed_code_commas
+from core.transcript_format import tidy_text, has_several_transmissions, TRANSMISSION_SEPARATOR, TRANSMISSION_SPLIT
 
 # Слова з апострофом, які часто пишуть без нього (ключ — без апострофа).
 APOSTROPHE_WORDS = {w.replace("ʼ", ""): w for w in (
@@ -51,10 +52,10 @@ def _format_rules():
         (re.compile(r"[ \t]+(?=[,.;:!?])"), "", "Пробіл перед розділовим знаком"),
         # Кома між двома цифрами — окреме правило нижче.
         (re.compile(r"(?<=\D),(?=[^\s,])|(?<=\d),(?=[^\s,\d])"), ", ", "Після коми потрібен пробіл"),
-        (re.compile(r"(?<=\d)[,\-–—](?=\d)"), " ", "Цифри — групами через пробіл: «31 05», а не «31,05»"),
-        (re.compile(r"(?<!\d)(\d\d)(\d\d)(?!\d)"), r"\1 \2",
+        (re.compile(r"(?<![\w:./-])(\d{1,2})[,\-–—](\d{2})(?![\w:./-])"), r"\1 \2", "Цифри — групами через пробіл: «31 05», а не «31,05»"),
+        (_CODE_PAIR, r"\1 \2",
          "Чотири цифри — парами, як вимовляють: «42 42», а не «4242»"),
-        (re.compile(r"(?<!\d)0(\d\d)(?!\d)"), r"0 \1", "Номер з нулем — як вимовляють: «0 22», а не «022»"),
+        (re.compile(r"(?<![\w:.,/-])0(\d\d)(?![\w:/-]|[.,]\d)"), r"0 \1", "Номер з нулем — як вимовляють: «0 22», а не «022»"),
         (re.compile(r"(?<![\w’'ʼ`])([сС])(?![\w’'ʼ`])"), lambda m: "з" if m[1] == "с" else "З",
          "Українською — «з», а не «с»"),
     ]
@@ -144,10 +145,16 @@ def _spelling_issues(text, callsigns, known):
 
 def _number_issues(text, dictionaries, callsign_dictionary=None):
     """Позивний чи команда зі словника з номером, якого в словнику немає."""
-    tokens = [m.group() for m in _TOKEN.finditer(text)]
+    from core.command_completion import repeated_code_completions
+    completed_starts = {start for dictionary in dictionaries if dictionary.anchored_threshold is not None
+                        for start, _, _ in repeated_code_completions(text, callsign_dictionary, dictionary)}
+    matches = list(_TOKEN.finditer(text))
+    tokens = [m.group() for m in matches]
     issues, seen = [], set()
     for i, word in enumerate(tokens[:-1]):
         if word.isdigit() or not tokens[i + 1].isdigit():
+            continue
+        if matches[i+1].start() in completed_starts:
             continue
         heard = basic_normalize(word)
         if heard in callsigns_module.ORDINALS:
@@ -175,136 +182,6 @@ def _number_issues(text, dictionaries, callsign_dictionary=None):
         issues.append(issue)
     return issues
 
-
-# ---------- Коми між групами й великі літери позивних ----------
-
-_TIDY_TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`-][^\W\d_]+)*|\d+|[^\w\s]")
-# Слова зворотів пишуться з малої (крім початку передачі): «…, Прийом» -> «…, прийом».
-_LOWER_WORDS = {"прийом", "прийнято", "прийняв", "посилку", "отримав", "я", "на", "до", "як",
-                "та", "і", "чую", "розбираю", "вас", "добре", "роботу", "роботи", "закінчив",
-                "розпочав", "приступив", "повторіть", "голос", "не", "пройшов", "звʼязок", "звʼязку"}
-
-
-def _tidy_part(part, callsigns, commands):
-    """Одна передача: групи «позивний номер» / «команда номер» / цифри / текст — через кому."""
-    tokens, comma, end = [], False, ""
-    for raw in _TIDY_TOKEN.findall(part):
-        if re.match(r"\w", raw):
-            tokens.append([raw, comma]); comma = False
-        elif raw in ".!?" :
-            comma, end = True, raw
-        else:
-            comma = True
-    if not tokens:
-        return part.strip()
-    if end and tokens and comma is False:
-        end = ""                                   # крапка не в кінці — це просто розділювач
-    fold = lambda word: basic_normalize(word).translate(FOLD)
-    # Сталий зворот зі списку «Обороти» («перевірка звʼязку», «чую та розбираю») пишеться без ком усередині.
-    from core import template_text
-    folded = [fold(word) for word, _ in tokens]
-    for phrase in sorted((tuple(fold(w) for w in p.split()) for p in template_text.PHRASES if len(p.split()) > 1), key=len, reverse=True):
-        for k in range(len(tokens) - len(phrase) + 1):
-            if tuple(folded[k:k + len(phrase)]) == phrase:
-                for j in range(k + 1, k + len(phrase)):
-                    tokens[j][1] = False
-    cs_names = {name.translate(FOLD): name for name in callsigns.names} if callsigns else {}
-    cmd_names = {name.translate(FOLD): name for name in commands.names} if commands else {}
-
-    def kind(i):
-        word = tokens[i][0]
-        if word.isdigit():
-            return "num"
-        f = fold(word)
-        if f == "я":
-            return "self"
-        if f in cs_names:
-            return "cs"
-        if f in cmd_names and i + 1 < len(tokens) and tokens[i + 1][0].isdigit():
-            return "cmd"                           # команда без номера — звичайне слово
-        return "word"
-
-    kinds = [kind(i) for i in range(len(tokens))]
-    units, i = [], 0
-    while i < len(tokens):
-        k = kinds[i]
-        start = i
-        if k == "self" and i + 1 < len(tokens) and kinds[i + 1] == "cs":
-            i, k = i + 1, "cs"
-        if k == "cs":
-            name = cs_names[fold(tokens[i][0])]
-            i += 1
-            has_numbers = bool(callsigns.numbers.get(name)) or name in callsigns.any_number
-            if has_numbers and i < len(tokens) and kinds[i] == "num":
-                i += 1
-            units.append(("group", tokens[start:i]))
-        elif k == "cmd":
-            i += 1
-            pair = (i + 1 < len(tokens) and kinds[i + 1] == "num" and len(tokens[i][0]) <= 2
-                    and len(tokens[i + 1][0]) == 2)
-            i += 2 if pair else 1                  # «0 22», «42 42» — код парами
-            units.append(("group", tokens[start:i]))
-        elif k == "num":
-            while i < len(tokens) and kinds[i] == "num":
-                i += 1
-            units.append(("digits", tokens[start:i]))
-        else:
-            i += 1
-            while i < len(tokens) and kinds[i] in ("word",) and not (
-                    kinds[i] == "self" and i + 1 < len(tokens) and kinds[i + 1] == "cs"):
-                i += 1
-            run = tokens[start:i]
-            if len(run) > 1 and fold(run[-1][0]) == "прийом":
-                units += [("text", run[:-1]), ("text", run[-1:])]
-            else:
-                units.append(("text", run))
-
-    out = []
-    for unit_kind, run in units:
-        words = []
-        for j, (word, had_comma) in enumerate(run):
-            f = fold(word)
-            if f in cs_names:
-                word = word[:1].upper() + word[1:].lower()
-            elif basic_normalize(word) in _LOWER_WORDS or f in cmd_names:
-                word = word.lower()
-            separator = ", " if (unit_kind != "group" and j and had_comma) else " "
-            words.append((separator if j else "") + word)
-        out.append((unit_kind, run, "".join(words)))
-    # Між звичайним словом і цифрами кому не додаємо: слово може бути позивним з
-    # опечаткою («Бериза 56») — лишаємо, як було написано.
-    text = ""
-    for n, (unit_kind, run, rendered) in enumerate(out):
-        if n:
-            keep = out[n - 1][0] == "text" and unit_kind == "digits" and not run[0][1]
-            text += " " if keep else ", "
-        text += rendered
-    return text[:1].upper() + text[1:] + end
-
-
-# Роздільник передач у еталоні: « / ». Старий «|» лишається зрозумілим.
-TRANSMISSION_SEPARATOR = "/"
-TRANSMISSION_SPLIT = re.compile(r"\s*[|/]\s*")
-
-
-def has_several_transmissions(text):
-    return bool(TRANSMISSION_SPLIT.search(text or ""))
-
-
-def tidy_text(text, callsigns, commands):
-    """Коми між групами й великі літери позивних; слова й цифри не змінюються.
-
-    Передачі, розділені « / » (старий роздільник «|» теж розуміється й замінюється
-    на « / »), оформлюються окремо. Якщо порядок слів раптом
-    змінився б, текст повертається без змін.
-    """
-    if not text or not text.strip() or callsigns is None:
-        return text
-    parts = TRANSMISSION_SPLIT.split(text)
-    tidy = f" {TRANSMISSION_SEPARATOR} ".join(_tidy_part(p, callsigns, commands) for p in parts if p.strip())
-    same = lambda a, b: re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", a.casefold())) == \
-        re.findall(r"[^\W_]+", re.sub(r"[’'ʼ`]", "", b.casefold()))
-    return tidy if same(text, tidy) else text
 
 
 _CODE_TOKEN = re.compile(r"[^\W\d_]+(?:[’'ʼ`][^\W\d_]+)*|\d+")
@@ -396,8 +273,23 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     dictionaries = tuple(d for d in (callsigns, commands, watch) if d is not None)
     known = tuple((commands.names if commands else ())) + tuple((watch.names if watch else ()))
     issues = _format_issues(text, codes, dictionaries)
+    from core.dictionary_blocks import constrain_dictionary_text
+    constrained,block_changes=constrain_dictionary_text(text,callsigns,commands)
+    for change in block_changes:
+        # Поділ того самого числа на групи вже має окрему підказку оформлення.
+        if change['kind']=='command_block' and ''.join(re.findall(r'\d',change['heard']))==''.join(re.findall(r'\d',change['expected'])):
+            continue
+        message=(f"Номер позивного за {change['sources']} незалежними еталонами" if change['kind']=='callsign_number'
+                 else 'Повний блок команди зі словника' if change['kind']=='command_block' else 'Число словами — цифрами')
+        issue=_issue('info',f"{message}: «{change['heard']}» → «{change['expected']}»",text,constrained)
+        issue['manual_only']=True
+        issues.append(issue)
+    from core.command_completion import repeated_code_completions
+    for start, end, full in repeated_code_completions(text, callsigns, commands):
+        issues.append(_issue('format', f'Відновлення повтору коду команди за словником: «{text[start:end]}» → «{full}»',
+                             text, text[:start] + full + text[end:]))
     issues += _spelling_issues(text, callsigns, known)
-    issues += _number_issues(text, [d for d in (callsigns, commands) if d is not None], callsigns)
+    issues += _number_issues(constrained, [d for d in (callsigns, commands) if d is not None], callsigns)
     covered = {basic_normalize(m) for i in issues if i["kind"] == "spelling"
                for m in re.findall(r"а не «([^»]+)»", i["message"])}
     issues += _unknown_callsign_issues(text, callsigns, known, covered)
@@ -405,7 +297,7 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     issues += _code_issues(text, codes, names)
     for letter in sorted(set(RUSSIAN_LETTERS.findall(text))):
         issues.append(_issue("info", f"Російська літера «{letter}» — перевірте, чи це українське слово"))
-    tidy = tidy_text(text, callsigns, commands)
+    tidy = tidy_text(text, callsigns, commands,constrain_blocks=False)
     formatted_text = format_text(text, codes, dictionaries)
     tidy_after_format = tidy_text(formatted_text, callsigns, commands)
     case_only_duplicate = (
@@ -414,21 +306,73 @@ def check_text(text, callsigns=None, commands=None, watch=None, codes=None):
     )
     if tidy != text and tidy_after_format != formatted_text and not case_only_duplicate:
         issues.append(_issue("format", "Коми між групами й великі літери позивних", text, tidy))
-    formatted = tidy_text(formatted_text, callsigns, commands)
+    formatted = tidy_after_format
     return {"issues": issues, "formatted": formatted if formatted != text else None}
 
 
 _cache = {}
 
 
-def dictionaries_from_db(db):
+def highlight_spans(text, callsigns, commands, issues=()):
+    """Підсвічування точних слів та місць підказок; межі UTF-16 для браузера.
+
+    Не використовується для розпізнавання/навчання. Немає часових припущень.
+    """
+    spans = []
+    def add(start, end, kind):
+        if end > start:
+            offset = lambda n: len(text[:n].encode('utf-16-le')) // 2
+            spans.append({'start': offset(start), 'end': offset(end), 'kind': kind})
+    names = {basic_normalize(n).translate(FOLD) for n in callsigns.names} if callsigns else set()
+    if callsigns:
+        names.update(basic_normalize(n).translate(FOLD) for n in callsigns_module.dictionary_address_forms(callsigns.names))
+    command_names = {basic_normalize(n).translate(FOLD) for n in commands.names} if commands else set()
+    tokens = list(_TOKEN.finditer(text))
+    for i, token in enumerate(tokens):
+        word = basic_normalize(token.group()).translate(FOLD)
+        if word in command_names and i + 1 < len(tokens) and tokens[i+1].group().isdigit():
+            add(token.start(), token.end(), 'command')
+        elif word in names:
+            add(token.start(), token.end(), 'callsign')
+    for match in re.finditer(r'(?<!\S)[/|](?!\S)', text):
+        add(match.start(), match.end(), 'boundary')
+    for issue in issues:
+        if issue['kind'] == 'format':
+            continue
+        fixed = issue.get('fixed_text')
+        if fixed is not None:
+            # Підказка зазвичай змінює одне слово. Лінійні межі відмінності
+            # замість квадратичного diff на довгих повторюваних розшифровках.
+            a = 0
+            while a < min(len(text), len(fixed)) and text[a] == fixed[a]:
+                a += 1
+            b, tail = len(text), len(fixed)
+            while b > a and tail > a and text[b-1] == fixed[tail-1]:
+                b -= 1
+                tail -= 1
+            for token in tokens:
+                if token.start() < b and token.end() > a:
+                    add(token.start(), token.end(), 'problem')
+        else:
+            quoted = re.search('«([^»]+)»', issue['message'])
+            if quoted:
+                for match in re.finditer(re.escape(quoted[1]), text, re.I):
+                    add(match.start(), match.end(), 'problem')
+    return sorted((dict(zip(('start','end','kind'), item)) for item in
+                   {(s['start'], s['end'], s['kind']) for s in spans}), key=lambda s: (s['start'],s['end'],s['kind']))
+
+
+def dictionaries_from_db(db, archive=None):
     """(позивні, команди, Telegram) з тієї самої SQLite; кешується за відбитком рядків."""
     from services.dictionary_loader import dictionary_fingerprint, dictionaries_from_lines, read_dictionary_lines
     import core.callsigns as callsign_module
     from services.text_lists import sync_aliases
     sync_aliases(db)
+    from pathlib import Path
+    location=db.execute('PRAGMA database_list').fetchone()[2]
+    if archive is None and location:archive=Path(location).parent/'.local-recordings'
     try:
-        key = (dictionary_fingerprint(db), id(callsign_module.ALIASES))
+        key = (location,str(archive),dictionary_fingerprint(db), id(callsign_module.ALIASES))
     except sqlite3.OperationalError:
         return None, None, None
     dictionaries = _cache.get(key)
@@ -436,9 +380,11 @@ def dictionaries_from_db(db):
         dictionaries = dictionaries_from_lines(read_dictionary_lines(db))
         _cache.clear()
         _cache[key] = dictionaries
+    from services.dictionary_number_evidence import load_rules
+    dictionaries[0].number_rules=load_rules(archive,dictionaries[0],dictionaries[1]) if archive else {}
     return dictionaries
 
 
 
-def check_with_db(db, text, codes=None):
-    return check_text(text, *dictionaries_from_db(db), codes=codes)
+def check_with_db(db, text, codes=None, archive=None):
+    return check_text(text, *dictionaries_from_db(db,archive), codes=codes)

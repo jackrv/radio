@@ -53,9 +53,11 @@
   </g>
       </svg>
       <div><div class="title">Radio <b>345</b></div><div class="overline">локальна панель</div></div></div>
+    <button id="sidebar-toggle" class="ghost" type="button" aria-label="Згорнути меню" aria-expanded="true">☰ <span>Згорнути меню</span></button>
     <nav id="nav">
       <button data-group="overview" class="active"><span>◎</span>Огляд</button>
       <button data-group="recordings"><span>▶</span>Аудіоархів <b id="archive-todo-nav" class="todo-count" hidden></b><b id="archive-drafts-nav" class="draft-count" hidden></b></button>
+      <button data-group="mentions" title="Вибірки за згадками"><span>⌕</span>Вибірки</button>
       <button data-group="recognition"><span>☰</span>Розпізнавання</button>
       <button data-group="signals"><span>🔔</span>Сигнали</button>
       <button data-group="people"><span>♙</span>Люди</button>
@@ -80,13 +82,15 @@
       <p id="feedback" class="toast" role="status">Перевіряємо доступ…</p>
       <div class="top-actions"><button id="receiver-pill" class="pill pill-button" type="button" title="Натисніть, щоб поставити приймач на паузу чи відновити">—</button><span id="updated" class="muted small"></span></div>
     </header>
-    <div id="tabs" class="tabs" role="tablist" hidden></div>
+    <div id="tabs" class="tabs" role="navigation" hidden></div>
 
     <div id="content" hidden>
       <!-- Огляд -->
       <section data-panel="overview">
         <article class="panel attention" id="attention-panel" hidden><div class="panel-head"><h2>Потребує уваги</h2><button id="suggestions-refresh" class="ghost small-button" title="Перевірити всі списки й шаблони на еталонах зараз (фоново — раз на 30 хв)">Перевірити зараз</button></div><div id="attention" class="attention-list"></div></article>
-        <!-- Стан служб — один рядок; плитками з'являються лише проблеми. -->
+        <div id="suggestions-check-result" class="attention-job-inline" role="status"></div>
+        <div id="sync-events-result" role="status"></div>
+        <!-- Стан служб і подробиці проблем — в одному рядку, без дубльованих плиток. -->
         <div id="health-line" class="health-line" role="status"></div>
         <div class="cards" id="cards"></div>
         <!-- Робочий стіл: якість сьогодні, черги розмітки (клік — потрібний вид архіву), коди доби. -->
@@ -129,6 +133,7 @@
               <optgroup label="Перегляд">
                 <option value="reviewed">Розмічені (останні першими)</option>
                 <option value="miniapp">Правки з Mini App</option>
+                <option value="captured">Записано під час тестів (разом з обробленими)</option>
                 <option value="telegram">Надіслано в Telegram</option>
                 <option value="all">Усі записи</option>
               </optgroup>
@@ -148,7 +153,9 @@
             </select>
             <select id="recording-order" aria-label="Порядок" title="Порядок записів у переліку">
               <option value="new">нові першими</option>
+              <option value="old">давні першими</option>
               <option value="doubtful">сумнівні першими</option>
+              <option value="unreviewed">нерозмічені першими</option>
             </select>
             <input id="recording-search" type="search" placeholder="Пошук: ID, №події або текст" aria-label="Пошук записів" maxlength="200">
             <button id="recording-refresh" class="ghost" type="button" role="status" aria-live="polite" title="Оновити список. Автоматично картки не перерисовуються, щоб не загубити чернетки й аудіо.">⟳ Оновити</button>
@@ -213,7 +220,7 @@
             <p class="muted small">Оцінка — спектральна схожість сегмента з найближчим зразком (1 — той самий звук). Пунктир — поточний поріг.</p></details>
           <details><summary>Високі збіги (оцінка ≥ 0,5, найновіші вгорі)</summary>
             <div class="table-wrap"><table id="filter-recent"></table></div></details></article>
-        <article class="panel"><div class="panel-head"><h2>Перевірка на розмічених записах</h2><button id="filter-eval">Оцінити розмітку</button></div>
+        <article class="panel"><div class="panel-head"><h2>Перевірка на розмічених записах</h2><button id="filter-eval">Оцінити розмітку</button></div><div id="filter-job-result" role="status"></div>
           <p id="filter-labels" class="muted"></p><div id="filter-summary"></div>
           <div class="grid eval"><div class="table-wrap"><table id="filter-table"></table></div><div class="table-wrap nowrap"><table id="filter-items"></table></div></div></article>
       </section>
@@ -228,16 +235,15 @@
       <section data-panel="codes" hidden>
         <article class="panel"><h2>Коди доби</h2>
           <p class="muted small">Цифрові комбінації, які група повторює протягом доби («48 62»). Доба кодів — з 20:00 попереднього дня до 20:00 обраного (година — <code>DAILY_CODES_CHANGE_HOUR</code> у <code>config.py</code>). Постійні коди діють щодня разом із кодами доби. Перевірка тексту в архіві й у Mini App підкаже «Можливо, 48 62?», якщо в записі цього дня пара цифр відрізняється від коду однією цифрою; номер одразу після позивного не чіпається.</p>
-          <div class="toolbar"><span class="muted small">Постійні:</span><input id="codes-permanent" placeholder="31 05, 72 59" aria-label="Постійні коди" maxlength="500"><button id="codes-permanent-save">Зберегти постійні</button></div>
-          <div class="toolbar"><span class="muted small">Доба:</span><input id="codes-day" type="date" aria-label="Доба кодів"><input id="codes-input" placeholder="48 62" aria-label="Коди доби" maxlength="500"><button id="codes-save">Зберегти коди доби</button><span id="codes-period" class="muted small"></span></div>
+          <div class="codes-row"><label for="codes-permanent">Постійні</label><div class="codes-entry"><input id="codes-permanent" placeholder="31 05, 72 59" aria-label="Постійні коди" maxlength="500"></div><button id="codes-permanent-save">Зберегти постійні</button></div>
+          <div class="codes-row"><label>Доба<input id="codes-day" type="date" aria-label="Доба кодів"></label><div class="codes-entry"><input id="codes-input" placeholder="48 62" aria-label="Коди доби" maxlength="500"></div><button id="codes-save">Зберегти коди доби</button></div><p id="codes-period" class="muted small"></p>
           <p id="codes-status" class="muted small"></p>
           <div id="codes-recent" class="muted small"></div></article>
       </section>
 
       <section data-panel="texts" hidden>
-        <article class="panel"><h2>Застосування без перезапуску</h2>
-          <p class="muted">Приймач перевіряє зміни кожні кілька секунд і застосовує їх до наступного сегмента. Рядок, що починається з <code>#</code>, зберігається, але не діє; для шаблонів фраз є окремі перемикачі. Позивні, команди й числа захищені: такі рядки не збережуться.</p>
-          <p id="texts-status" class="muted small"></p></article>
+        <p class="muted small page-note">Текстові фільтри й правила. Зміни застосовуються за кілька секунд, без перезапуску. Перевірка чернетки та збереження — окремі дії; рядки вмикаються перемикачами.</p>
+        <p id="texts-status" class="muted small"></p>
         <div id="text-lists"></div>
       </section>
 
@@ -298,14 +304,14 @@
       <section data-panel="quality" hidden>
         <!-- Плитки: головні показники якості за весь час і сьогодні. -->
         <div id="quality-tiles" class="archive-stats workdesk" aria-live="polite"></div>
-        <div class="analysis-subtabs" role="tablist" aria-label="Розділи аналізу">
-          <button type="button" class="analysis-subtab active" role="tab" aria-selected="true" data-analysis-tab="overview">Огляд</button>
-          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="errors">Помилки</button>
-          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="conditions">Умови</button>
-          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="callsigns">Позивні</button>
-          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="numbers">Числа</button>
-          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="impact">Вплив правил</button>
-          <button type="button" class="analysis-subtab" role="tab" aria-selected="false" data-analysis-tab="training">Дообучення</button>
+        <div class="analysis-subtabs" role="navigation" aria-label="Розділи аналізу">
+          <button type="button" class="analysis-subtab active" aria-current="page" data-analysis-tab="overview">Огляд</button>
+          <button type="button" class="analysis-subtab" aria-current="false" data-analysis-tab="errors">Помилки</button>
+          <button type="button" class="analysis-subtab" aria-current="false" data-analysis-tab="conditions">Умови</button>
+          <button type="button" class="analysis-subtab" aria-current="false" data-analysis-tab="callsigns">Позивні</button>
+          <button type="button" class="analysis-subtab" aria-current="false" data-analysis-tab="numbers">Числа</button>
+          <button type="button" class="analysis-subtab" aria-current="false" data-analysis-tab="impact">Вплив правил</button>
+          <button type="button" class="analysis-subtab" aria-current="false" data-analysis-tab="training">Дообучення</button>
         </div>
         <div class="analysis-split">
           <div class="analysis-subpanel" data-analysis-panel="overview">
@@ -341,7 +347,7 @@
           </div>
           <div class="analysis-subpanel" data-analysis-panel="training" hidden>
             <article class="panel"><div class="panel-head"><h2>Набір для дообучення Whisper</h2><span class="toolbar"><a class="button-link ghost" href="/api/recordings/export" download title="Усі тексти, еталони й метрики архіву одним файлом — для зовнішнього аналізу чи резервної копії">JSON архіву</a><button id="training-export" class="ghost">Вивантажити набір</button></span></div>
-              <div id="training"></div>
+              <div id="training-export-result" role="status"></div><div id="training"></div>
               <details class="small page-help"><summary>Навіщо й як</summary>
                 <p class="muted">Дообучення на вашому ефірі — найбільший запас точності: модель вивчить ваші позивні, коди й манеру мовлення. Потрібні розмічені записи «Мовлення» до 30 с; помітний ефект — від ~2 годин, добрий — ~5 годин. Вивантаження — локальна папка <code>.local-training/</code> (WAV + metadata.jsonl, останні дні — окремо для перевірки), нікуди не надсилається.</p></details></article>
           </div>
@@ -353,12 +359,14 @@
         <div class="lab-top">
           <article class="panel lab-queue"><div class="panel-head"><h2>Черга тестів</h2><span id="lab-state" class="muted small"></span></div>
             <div id="lab-banner" class="lab-banner" hidden></div>
+            <div id="lab-capture-state" class="muted small" role="status"></div>
             <div id="lab-jobs" class="lab-jobs"></div>
             <div id="lab-controls" class="lab-controls"></div>
             <details class="small page-help"><summary>Як це працює</summary>
               <p class="muted">Кожен тест проганяє всі розмічені записи архіву через розпізнавання з однією зміною й рахує, скільки фраз вийшло без правок, скільки слів і номерів почуто не так тощо. Ефір і Telegram тести не зачіпають. Whisper large-v3 і приймач разом не вміщаються в пам’ять, тому на час тестів черга сама зупиняє приймач і запускає його знову наприкінці — навіть якщо тест упав чи ви його зупинили. Між тестами — пауза 5 хв, щоб Mac не перегрівався. Зручно ставити на ніч: «Почати о 01:00».</p></details></article>
-          <article class="panel lab-presets"><div class="panel-head"><h2>Додати тест</h2><span class="muted small">одна зміна відносно «як зараз у приймачі»</span></div>
-            <div id="lab-presets" class="lab-preset-list"></div></article>
+          <details class="panel lab-presets"><summary>Додати тест · переглянути рецепти</summary>
+            <p class="muted small">Спочатку базовий прогін, потім одна зміна. Рецепти не вмикають налаштування в приймачі.</p>
+            <div id="lab-presets" class="lab-preset-list"></div></details>
         </div>
         <article class="panel lab-results"><div class="panel-head"><h2>Результати</h2>
             <span class="toolbar"><label class="live-filter" title="Показати й перервані прогони"><input id="experiments-incomplete" type="checkbox"> незавершені</label>
@@ -372,10 +380,15 @@
         <article class="panel"><h2>Керування службами</h2><p class="muted small">Повна зупинка також закриває доступ до цієї панелі. Пауза мікрофона й стан приймача доступні в боковому меню.</p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
         <div class="sys-grid">
           <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>
-          <article class="panel sys"><h3>Telegram</h3><div id="telegram"></div></article>
-          <article class="panel sys"><div class="panel-head"><h3>Резервні копії бази</h3><button id="backup-now" class="ghost">Створити</button></div>
+          <article class="panel sys"><h3>Telegram</h3><div id="telegram"></div><div id="telegram-retention" class="toolbar"></div></article>
+          <article class="panel sys"><div class="panel-head"><h3>Резервні копії бази</h3><button id="backup-now" class="ghost">Створити</button></div><div id="backup-job-result" role="status"></div>
             <div id="backups-summary"></div>
             <details><summary>Усі копії</summary><div id="backups" class="sys-list"></div></details></article>
+          <article class="panel sys"><h3>Резервна копія аудіокорпусу</h3>
+            <p class="muted small">Окремо від events.db: WAV, еталони й індекс. Повна перевірка контрольних сум; копії не видаляються автоматично.</p>
+            <button id="archive-backup-now" class="ghost">Створити копію корпусу</button><div id="archive-backup-result" role="status"></div>
+            <button id="archive-inventory-now" class="ghost">Звірити WAV з індексом</button><div id="archive-inventory-result" role="status"></div>
+          </article>
         </div>
         <article class="panel">
           <div class="panel-head"><h2>Історія сесій</h2>

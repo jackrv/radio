@@ -1,6 +1,7 @@
   // ---------- Навігація: розділи й вкладки ----------
   const titles = { recordings: "Аудіоархів", overview: "Огляд", filter: "Сигнали сповіщень", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", preview: "Mini App", quality: "Якість по днях", experiments: "Експерименти", system: "Система" };
   const GROUPS = {
+    mentions: ["Вибірки", ["mentions"]],
     overview: ["Огляд", ["overview"]],
     recordings: ["Аудіоархів", ["recordings"]],
     recognition: ["Розпізнавання", ["dictionaries", "codes", "texts", "learning", "settings"]],
@@ -9,9 +10,13 @@
     analysis: ["Аналіз", ["quality", "experiments"]],
     system: ["Система", ["system"]],
   };
+  titles.mentions = 'Вибірки';
   // Дані, які змінюються поза цією вкладкою, перечитуються при кожному відкритті.
-  const ALWAYS_RELOAD = new Set(["codes", "learning", "users", "activity"]);
+  const ALWAYS_RELOAD = new Set(["codes", "learning", "users", "activity", "mentions"]);
   const lastTab = {};
+  const pageScroller = () => document.querySelector?.('main') || window;
+  const pageScrollY = () => pageScroller()===window ? window.scrollY : pageScroller().scrollTop;
+  const pageScrollTo = options => pageScroller().scrollTo(options);
   const stateByView = {};
   let navigationRevision = 0;
   const loadingViews = new Map();
@@ -38,7 +43,7 @@
     if (changed) {
       rememberField(document.activeElement);
       const state = stateByView[view] ||= {};
-      state.y = window.scrollY;
+      state.y = pageScrollY();
       state.fieldTop = state.field?.isConnected ? state.field.getBoundingClientRect().top : null;
     }
     const revision = ++navigationRevision;
@@ -49,8 +54,8 @@
         const state = stateByView[name] || {}, field = state.field;
         const connected = field?.isConnected && !field.closest("[data-panel]")?.hidden;
         const top = connected && state.fieldTop != null
-          ? window.scrollY + field.getBoundingClientRect().top - state.fieldTop : state.y || 0;
-        window.scrollTo({ top, behavior: "instant" });
+          ? pageScrollY() + field.getBoundingClientRect().top - state.fieldTop : state.y || 0;
+        pageScrollTo({ top, behavior: "instant" });
         if (connected) {
           const selection = state.selection, fieldScroll = state.fieldScroll;
           field.focus({ preventScroll: true });
@@ -66,6 +71,7 @@
     }
     if (changed && view === "preview") $("preview").src = "about:blank";
     view = name; lastTab[group] = name;
+    if (['texts','dictionaries'].includes(name) && typeof fitRecognition==='function') requestAnimationFrame(()=>fitRecognition());
     if (name === "recordings" && typeof fitArchive === "function") requestAnimationFrame(() => fitArchive());
     if (name === "overview" && typeof fitOverview === "function") requestAnimationFrame(() => fitOverview());
     if (name === "quality" && typeof fitAnalysis === "function") requestAnimationFrame(() => fitAnalysis());
@@ -73,7 +79,11 @@
     const url = name === "overview" ? location.pathname : `${location.pathname}?view=${encodeURIComponent(name)}`;
     if (mode === "push" && changed) history.pushState({ view: name }, "", url);
     else if (mode === "replace") history.replaceState({ view: name }, "", location.pathname + location.search);
-    for (const b of document.querySelectorAll("#nav button")) b.classList.toggle("active", b.dataset.group === group);
+    for (const b of document.querySelectorAll("#nav button")) {
+      b.classList.toggle("active", b.dataset.group === group);
+      if (b.dataset.group === group) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute?.('aria-current');
+    }
     for (const s of document.querySelectorAll("[data-panel]")) s.hidden = s.dataset.panel !== name;
     $("view-title").textContent = GROUPS[group][0];
     const tabs = $("tabs"), list = GROUPS[group][1];
@@ -81,7 +91,7 @@
     tabs.hidden = list.length < 2;
     for (const tab of list) {
       const b = el("button", tab === name ? "tab active" : "tab", titles[tab]);
-      b.type = "button"; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", String(tab === name));
+      b.type = "button"; b.setAttribute("aria-current", tab === name ? "page" : "false");
       b.addEventListener("click", () => show(tab));
       tabs.append(b);
     }
@@ -103,6 +113,6 @@
   });
 
   // Логотип і назва — «додому»: Огляд і на початок сторінки.
-  function goHome() { show("overview"); window.scrollTo?.({ top: 0, behavior: "smooth" }); }
+  function goHome() { show("overview"); pageScrollTo({ top: 0, behavior: "smooth" }); }
   $("brand")?.addEventListener("click", goHome);
   $("brand")?.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); goHome(); } });

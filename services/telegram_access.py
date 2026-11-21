@@ -18,7 +18,8 @@ class AccessMixin:
     def _mode_hint(self, user_id, role):
         state = self._user_state(user_id)
         current = f"Ваш режим сповіщень: {MODE_NAMES[state[1]]}. " if state else ""
-        return f"{current}Змінити: {MODE_HELP.get(role, MODE_HELP['viewer'])}."
+        ideas = " Ідеї: /idea текст або «Ідея» й наступне повідомлення; скасувати — /cancel." if role == "admin" else ""
+        return f"{current}Змінити: {MODE_HELP.get(role, MODE_HELP['viewer'])}.{ideas}"
 
     # ---------- /start ----------
 

@@ -17,6 +17,7 @@ REFRESH_INTERVAL_S = 2.0
 
 # ключ (і атрибут config із початковим значенням): (тип, мінімум або варіанти, максимум)
 FIELDS = {
+    "TELEGRAM_AUTO_DELETE_HOURS": (int, 0, 47),
     "COOLDOWN_S": (float, 0.0, 120.0),
     "LOG_CALLSIGNS_ONLY": (bool, None, None),
     "GARBAGE_MIN_WORDS": (int, 4, 200),

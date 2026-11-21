@@ -3,6 +3,7 @@ import queue
 import re
 import sqlite3
 import time
+import threading
 from core.audio_debug import save_debug_audio
 from core.audio import prepare_audio
 from core.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
@@ -31,7 +32,11 @@ class Transcriber:
         spectral_mode="shadow",
         text_lists=None,
         recorder=None,
+        stop_event=None,
+        abandon_event=None,
     ):
+        self.stop_event = stop_event or threading.Event()
+        self.abandon_event = abandon_event or threading.Event()
         self.recorder = recorder
         self.segments = segments
         # Стан прогресу для супервізора; None — без контролю (тести, старий код).
@@ -81,6 +86,8 @@ class Transcriber:
         self._deferred_idle_until = 0.0   # накопиченого немає — не питати архів щосекунди
         self._unload_retry_at = 0.0
         self._restore_retry_at = 0.0
+        self._model_report_pending = None
+        self._model_report_retry_at = 0.0
         self.daily_code_formatter = None
 
     @staticmethod
@@ -112,7 +119,7 @@ class Transcriber:
                 self._process_segment(pcm, generation, deferred_id)
         finally:
             _trace.reset(token)
-            if trace is not None:
+            if trace is not None and not self.abandon_event.is_set():
                 from core.diagnostics import _ASR_RECORD_FIELDS
                 trace.update({key: value for key, value in span.items() if key in _ASR_RECORD_FIELDS})
                 with runtime.lock:
@@ -157,7 +164,7 @@ class Transcriber:
                 runtime.count("live_config.refresh_error")
                 self.log.exception("Не вдалося оновити словники чи налаштування; використовую попередні")
         def is_current():
-            return (
+            return not self.abandon_event.is_set() and (
                 self._dry   # накопичене з архіву — завжди «актуальне»: подій із нього не буде
                 or self.pause_gate is None
                 or self.pause_gate.is_current(generation)
@@ -378,7 +385,7 @@ class Transcriber:
 
     def _set_unloaded(self, unloaded):
         if unloaded == self._unloaded:
-            return True
+            return self._report_model_state()
         now = time.monotonic()
         if unloaded and now < self._unload_retry_at:
             return False
@@ -406,18 +413,35 @@ class Transcriber:
             self._deferred_idle_until = 0.0   # щойно з режиму — одразу доробляти накопичене
             self.log.info("Режим «лише запис» завершено: розпізнавання відновлено", extra={"console": True})
         self._unloaded = unloaded
+        self._model_report_pending = unloaded
+        self._model_report_retry_at = 0.0
+        return self._report_model_state()
+
+    def _report_model_state(self):
+        """Повторити підтвердження після збою SQLite, не перевантажуючи модель повторно."""
+        pending = self._model_report_pending
+        if pending is None:
+            return True
+        if time.monotonic() < self._model_report_retry_at:
+            return False
         if self.on_unloaded is not None:
             try:
-                self.on_unloaded(unloaded)
+                self.on_unloaded(pending)
             except Exception:
+                self._model_report_retry_at = time.monotonic() + 2
+                runtime.count("asr.capture_state_report_error")
                 self.log.exception("Не вдалося записати стан режиму «лише запис»")
+                return False
+        self._model_report_pending = None
         return True
 
     def _store_deferred(self, pcm):
         """Фраза — в архів зі звуком і статусом «очікує розпізнавання»."""
         runtime.count("asr.deferred")
         if self.recorder is not None:
-            self.recorder.submit(pcm, self.sample_rate, {"status": "deferred", "session": runtime.session,
+            captured_at = getattr(getattr(pcm, "timing", None), "audio_end_unix_s", None) or time.time()
+            self.recorder.submit(pcm, self.sample_rate, {"status": "deferred", "capture_only": True,
+                                                         "captured_at": captured_at, "session": runtime.session,
                                                          "vad": getattr(pcm, "vad", None)})
 
     def _process_one_deferred(self):
@@ -437,6 +461,11 @@ class Transcriber:
         try:
             self.process_segment(pcm, deferred_id=record_id)
             runtime.count("asr.deferred_done")
+        except sqlite3.Error:
+            # Запис звуку лишається deferred: збій індексу не є помилкою Whisper.
+            runtime.count("asr.deferred_store_error")
+            self._deferred_idle_until = time.monotonic() + 5
+            self.log.exception("Не вдалося зберегти результат накопиченого запису; спробу буде повторено")
         except Exception:
             runtime.count("asr.deferred_error")
             self.log.exception("Не вдалося розпізнати накопичений запис %s", record_id)
@@ -452,11 +481,12 @@ class Transcriber:
         if self.health is not None:
             self.health.reset()
         if self.on_unloaded is not None:
-            try:
-                self.on_unloaded(False)
-            except Exception:
-                self.log.exception("Не вдалося оновити стан моделі Whisper під час запуску")
+            self._model_report_pending = False
+            self._model_report_retry_at = 0.0
+            self._report_model_state()
         while True:
+            if self.abandon_event.is_set() or (self.stop_event.is_set() and self.segments.empty()):
+                return
             capture = self._capture_active()
             if capture:
                 self._set_unloaded(True)
@@ -464,7 +494,7 @@ class Transcriber:
                 # Чекаємо з таймаутом: і без ефіру помічаємо зміну режиму й доробляємо накопичене.
                 item = self.segments.get(timeout=1.0)
             except queue.Empty:
-                if not capture and self.deferred is not None:
+                if not self.stop_event.is_set() and not capture and self.deferred is not None:
                     if self._set_unloaded(False):
                         self._process_one_deferred()
                 continue
@@ -485,5 +515,5 @@ class Transcriber:
                 self._store_deferred(pcm)
                 continue
             self._tracked(pcm, generation=generation)
-            if self.deferred is not None and self.segments.empty():
+            if not self.stop_event.is_set() and self.deferred is not None and self.segments.empty():
                 self._process_one_deferred()

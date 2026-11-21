@@ -40,7 +40,24 @@
     box.append(el("p", "small", `Резервні копії: ${b.automatic_count}/${b.keep} автоматичних (${storageSize(b.automatic_bytes)}). Найстаріші понад ліміт видаляються при створенні наступної копії. Інші копії: ${b.manual_count} (${storageSize(b.manual_bytes)}) — автоматично не видаляються.`));
     box.append(el("p", "small muted", `Вільно на диску: ${storageSize(s.disk.free_bytes)}. Це не вільне місце в ліміті архіву. Перегляд нічого не очищає.`));
   }
+
+  async function telegramRetention() {
+    const box = $("telegram-retention"); if (!box) return;
+    const state = await request('/api/runtime-settings');
+    box.replaceChildren();
+    const label = el('label', '', 'Видаляти копії фраз у Telegram через');
+    const hours = el('input'); hours.type = 'number'; hours.min = '0'; hours.max = '47';
+    hours.value = state.values.TELEGRAM_AUTO_DELETE_HOURS || 0;
+    label.append(hours);
+    const save = el('button', 'ghost', 'Зберегти');
+    save.addEventListener('click', () => action(async () => {
+      await request('/api/runtime-settings', 'PUT', {values:{TELEGRAM_AUTO_DELETE_HOURS:Number(hours.value)}, expected_revision:state.revision});
+      await telegramRetention(); note('Срок збереження копій у Telegram оновлено.');
+    }));
+    box.append(label, el('span', 'muted small', 'год. 0 — вимкнено; 1–47 — увімкнено. Лише копії з відомим часом доставки. Аудіоархів і навчання не видаляються.'), save);
+  }
   async function system() {
+    if (!backupTask) backupJob().resume();
     if (!data) await overview();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {};
     let launcher = {};
@@ -68,6 +85,25 @@
       ["Заблокували бота (403)", num(c["telegram.recipient_blocked"] || 0), c["telegram.recipient_blocked"] ? "alert" : ""],
       ["Службових повідомлень адміністраторам", num(c["telegram.alert_sent"] || 0)],
     ]));
+    if(t.skipped) $('telegram').append(el('p','muted small',`Пропущено за вашим рішенням: ${t.skipped} оновлень старих копій. Нова правка знову стане в чергу.`));
+    if(t.exhausted) {
+      $('telegram').append(el('p','muted small','Вичерпано 8 спроб оновити виправлений текст у старих повідомленнях. Правки в базі збережені. Оберіть повтор або пропуск цих оновлень.'));
+      const actions=el('div','toolbar'), buttons=[];
+      for(const [mode,title] of [['retry','Повторити невдалі оновлення'],['skip','Пропустити ці оновлення']]) {
+        const b=el('button','ghost',title);b.type='button';buttons.push(b);actions.append(b);
+        b.addEventListener('click',()=>action(async()=>{
+          if(mode==='skip'&&!confirm('Не повторювати ці невдалі оновлення старих повідомлень? Вони можуть залишитися зі старим текстом. Правки в базі не видаляються; нові правки знову синхронізуватимуться.'))return;
+          for(const button of buttons)button.disabled=true;
+          try {
+            const result=await request(`/api/telegram-sync/${mode}`,'POST');
+            note(mode==='retry'?`Повернуто в чергу: ${result.count}. Приймач оновить повідомлення у фоні.`:`Пропущено: ${result.count}. Текст у базі збережено.`);
+            data.telegram_sync=(await request('/api/summary')).telegram_sync;
+            await system();
+          } finally {for(const button of buttons)button.disabled=false;}
+        }));
+      }
+      $('telegram').append(actions);
+    }
     const backups = data.backups || [];
     const latest = backups.reduce((m, b) => (!m || b.created > m.created ? b : m), null);
     $("backups-summary").replaceChildren(kv(latest ? [
@@ -81,6 +117,7 @@
     $("diagnostics").textContent = JSON.stringify(d, null, 2);
     await diagnosticHistory();
     await storageView();
+    await telegramRetention();
   }
   // ---------- Історія сесій ----------
   let selectedHistory = null;
@@ -136,9 +173,28 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
-  $("backup-now").addEventListener("click", () => action(async () => {
-    const r = await request("/api/backups", "POST"); data.backups = r.items; await system(); note(`Копію створено: ${r.name}`);
-  }));
+  let backupTask = null;
+  function backupJob() {
+    if (!backupTask) backupTask = serverJobPanel({button: $("backup-now"), box: $("backup-job-result"), kind:"backup",
+      start: () => request("/api/backups", "POST"), render: r => {
+        $("backup-job-result").replaceChildren(el("p", "small", `Копію створено: ${r.name}`));
+        if (view === "system") system();
+      }});
+    return backupTask;
+  }
+  $("backup-now").addEventListener("click", () => backupJob().run());
+
+  for (const [kind, endpoint, id, render] of [
+    ['archive_backup', '/api/archive-backups', 'archive-backup', r => `Копію ${r.name} перевірено: ${num(r.records)} записів · ${storageSize(r.bytes)}. Зберігається локально у .local-archive-backups/.`],
+    ['archive_inventory', '/api/archive-inventory', 'archive-inventory', r => `Індекс: ${num(r.indexed)}; WAV: ${num(r.wav_files)}. Без WAV: ${r.missing.length}; без індексу старше години: ${r.orphans.length} · ${storageSize(r.orphan_bytes)}. Нічого не видалено.`],
+  ]) {
+    const button = $(`${id}-now`), box = $(`${id}-result`);
+    if (!button || !box) continue;
+    const task = serverJobPanel({button, box, kind, start:()=>request(endpoint,'POST'),
+      render: r => box.replaceChildren(el('p','small',render(r)))});
+    button.addEventListener('click', () => task.run());
+    task.resume();
+  }
 
   // ---------- Mini App очима ролі (на сторінці «Користувачі») ----------
   function roles() {

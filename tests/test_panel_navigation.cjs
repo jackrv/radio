@@ -5,19 +5,21 @@ const vm = require('node:vm');
 const path = require('node:path');
 const source = require('./panel_source.cjs');
 
-function harness() {
+function harness({inner=false}={}) {
   const listeners = {}, panels = {}, fields = {}, frames = [], scrolls = [], loads = [];
   let height = 4000;
   const window = {scrollY:0, scrollTo({top}) { this.scrollY = Math.min(top, height); scrolls.push(this.scrollY); }};
+  const main = {scrollTop:0,scrollTo({top}){this.scrollTop=Math.min(top,height);scrolls.push(this.scrollTop);}};
   const body = {};
   const document = {body, activeElement:body, addEventListener(name, callback) {listeners[name] = callback;},
+    querySelector(selector){return inner && selector==='main'?main:null;},
     querySelectorAll(selector) {return selector === '[data-panel]' ? Object.values(panels) : [];}};
   for (const name of ['overview','recordings','dictionaries','codes']) {
     panels[name] = {dataset:{panel:name}, hidden:name!=='recordings'};
     fields[name] = {value:'незбережений еталон', isConnected:true, selectionStart:4, selectionEnd:9,
       selectionDirection:'backward', scrollTop:70, top:1300,
       matches(){return true;}, closest(){return panels[name];},
-      getBoundingClientRect(){return {top:this.top-window.scrollY};},
+      getBoundingClientRect(){return {top:this.top-(inner?main.scrollTop:window.scrollY)};},
       focus(options){assert.equal(options.preventScroll,true);document.activeElement=this;listeners.focusin({target:this});},
       setSelectionRange(start,end,direction){Object.assign(this,{selectionStart:start,selectionEnd:end,selectionDirection:direction});}};
   }
@@ -32,7 +34,7 @@ function harness() {
   });
   const block = source.slice(source.indexOf('  const titles ='), source.indexOf('  for (const b of document.querySelectorAll("#nav button")) b.addEventListener'));
   vm.runInContext(block+'\nglobalThis.navigate=show;globalThis.states=stateByView;',context);
-  return {context, panels, fields, frames, scrolls, loads, document, window,
+  return {context, panels, fields, frames, scrolls, loads, document, window, main,
     flush(){while(frames.length)frames.shift()();},
     focus(name){document.activeElement=fields[name];listeners.focusin({target:fields[name]});},
     blur(name){listeners.focusout({target:fields[name]});document.activeElement=body;},
@@ -40,6 +42,14 @@ function harness() {
 }
 
 const tick = async () => {for(let i=0;i<12;i++)await Promise.resolve();};
+
+test('inner page scrolling restores editor position without scrolling the document',()=>{
+ const h=harness({inner:true});h.main.scrollTop=1000;h.focus('recordings');h.blur('recordings');
+ h.context.navigate('dictionaries');h.flush();h.fields.recordings.top=1400;
+ h.context.navigate('recordings');h.flush();
+ assert.equal(h.main.scrollTop,1100);assert.equal(h.window.scrollY,0);
+ assert.equal(h.document.activeElement,h.fields.recordings);assert.equal(h.fields.recordings.selectionStart,4);
+});
 
 test('switching tabs restores draft, caret, selection and textarea scroll after navigation steals focus', () => {
   const h=harness();h.window.scrollY=1000;h.focus('recordings');h.blur('recordings');

@@ -8,6 +8,7 @@ from core.analyzer import canonical_text
 from core.template_text import template_text
 from core.text_analysis import analyze_text
 from services.text_check import check_text
+from core.text_metrics import metric_words
 
 
 @pytest.mark.parametrize('form', ['Клену', 'клену', 'КЛЕНУ', 'Кленові'])
@@ -19,7 +20,9 @@ def test_address_form_is_preserved_in_live_and_editor_corrections(form, tail):
     text = f'{form} {tail}'
     assert canonical_text(text, (commands, callsigns, watch)) == text
     assert template_text(text, callsigns, commands.names) == text
-    assert analyze_text(text, callsigns, commands, watch, set(), Mock()).text == text
+    live = analyze_text(text, callsigns, commands, watch, set(), Mock()).text
+    assert metric_words(live) == metric_words(text)
+    assert live.startswith(form.capitalize())
     result = check_text(text, callsigns, commands, watch)
     assert form.casefold() in (result['formatted'] or text).casefold()
     issues = result['issues']

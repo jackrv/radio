@@ -20,7 +20,6 @@ import argparse
 import json
 import logging
 import atexit
-from logging.handlers import RotatingFileHandler
 import config
 from core.console import ConsoleDashboard, child_event
 from core.log_security import RedactingFormatter, archive_log_name
@@ -55,9 +54,13 @@ _launcher_log.propagate = False
 
 def start_console():
     global _console
-    handler = RotatingFileHandler(ROOT / "launcher.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    from core.log_security import PrivateRotatingFileHandler, TechnicalFileFormatter
+    from services.private_files import protect_existing
+    handler = PrivateRotatingFileHandler(ROOT / "launcher.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
     handler.namer = archive_log_name
-    formatter = RedactingFormatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S", launcher_setting("TELEGRAM_BOT_TOKEN"))
+    formatter = TechnicalFileFormatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S", launcher_setting("TELEGRAM_BOT_TOKEN"))
+    for number in range(1, 6):
+        protect_existing(archive_log_name(str(ROOT / "launcher.log") + f".{number}"))
     handler.setFormatter(formatter)
     _launcher_log.addHandler(handler)
     _launcher_log.setLevel(logging.INFO)

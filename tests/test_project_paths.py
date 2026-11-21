@@ -24,13 +24,14 @@ def test_project_paths_independent_of_cwd(tmp_path, monkeypatch):
 
 def test_logging_uses_project_path(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(log_security, 'protect_existing', Mock())
 
     handler = Mock()
     factory = Mock(return_value=handler)
 
     monkeypatch.setattr(
         log_security,
-        "RotatingFileHandler",
+        "PrivateRotatingFileHandler",
         factory,
     )
 
@@ -97,6 +98,7 @@ def test_factory_uses_configured_db_for_word_corrections(
     })
 
     settings.DB_PATH = db_path
+    settings.RECORDINGS_DIR = tmp_path/'recordings'
     settings.USE_LLM = False
 
     selected = {}

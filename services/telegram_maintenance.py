@@ -27,6 +27,7 @@ class MaintenanceMixin:
         self._service_lock = threading.RLock()
         self._maintenance_stop = threading.Event()
         self._maintenance_thread = None
+        self.archive_root = None  # radio.main задає явно; тести не читають робочий архів.
 
     def send_status(self, text, reply_markup=None, parse_mode="HTML", *, chat_id, slot="status", ttl=86400, fresh=False):
         # Keep send_text's bool contract and test/mocking boundary.
@@ -108,6 +109,15 @@ class MaintenanceMixin:
 
     def maintenance_once(self):
         from services.telegram_recall import expire_deliveries
+        if self.archive_root is not None:
+            from pathlib import Path
+            if (Path(self.archive_root) / 'index.sqlite3').is_file():
+                from services.archive_telegram_recall import dispatch
+                from services.recordings import RecordingStore
+                try:
+                    dispatch(self.db_path, RecordingStore(self.archive_root))
+                except (sqlite3.Error, OSError, ValueError):
+                    self.log.warning('Відкликання немовлення відкладено; повтор у наступному циклі')
         expire_deliveries(self.db_path)
         process_deletions(self)
         sync_corrections(self)

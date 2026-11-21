@@ -11,10 +11,14 @@ def list_phrases(db_path, query="", offset=0, limit=20):
     with get_db(db_path) as db:
         ensure_table(db)
         ensure_media_table(db)
+        from services.telegram_sync import ensure_tables as ensure_deliveries
+        ensure_deliveries(db)
         db.execute("DELETE FROM telegram_recent_phrases WHERE created_at <= ?",
                    (int(time.time()) - RETENTION_SECONDS,))
-        db.execute("""DELETE FROM telegram_phrase_messages WHERE fix_id LIKE 'mem:%'
-            AND NOT EXISTS (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:' || p.token=fix_id)""")
+        db.execute("""DELETE FROM telegram_phrase_messages WHERE fix_id LIKE 'mem:%' AND state='visible'
+            AND NOT EXISTS (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:' || p.token=fix_id)
+            AND NOT EXISTS (SELECT 1 FROM telegram_deliveries d
+                WHERE d.fix_id=telegram_phrase_messages.fix_id AND d.unavailable=0)""")
     with get_db(db_path) as db:
         db.create_function("casefold", 1, lambda text: (text or "").casefold())
         rows = db.execute("""

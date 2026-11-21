@@ -104,6 +104,21 @@
     }
     show(view);
   }
+  function suggestionReviewOptions(g) {
+    // Одна група «noise» містить два законні призначення. Не змішувати їх
+    // в одному редакторі й не вимагати refresh для незмінного формату сервера.
+    const names = {short_garbage: "Переглянути шум", blacklist: "Переглянути галюцинації"};
+    const lines = g.lines || [];
+    const lists = Object.keys(names).filter(type => lines.some(line => line.list === type));
+    if (g.kind !== "noise" || lists.length < 2 || lines.some(line => !names[line.list])) {
+      return [{title: "Переглянути", suggestion: g}];
+    }
+    return lists.map(type => {
+      const selected = lines.filter(line => line.list === type);
+      return {title: `${names[type]} (${selected.length})`,
+              suggestion: {...g, target: `texts:${type}`, lines: selected}};
+    });
+  }
   let suggestionReviewPending = false;
   async function reviewSuggestion(g) {
     if (suggestionReviewPending) return;
@@ -207,14 +222,16 @@
     // Пропозиції з розмітки, що накопичилися в усіх списках (фонова перевірка панелі).
     for (const g of a.suggestions || []) {
       const fresh = g.new ? ` · нових ${g.new}` : "";
-      const extra = g.kind === "ref_event" ? [["Оновити всі", () => syncEventsJob().run()]] : [];
+      const reviews = suggestionReviewOptions(g);
+      const extra = reviews.slice(1).map(option => [option.title, () => { void reviewSuggestion(option.suggestion); }]);
+      if (g.kind === "ref_event") extra.push(["Оновити всі", () => syncEventsJob().run()]);
       extra.push(["✓ Готово", () => action(async () => {
         const r = await request("/api/suggestions/dismiss", "POST", {kind: g.kind});
         note(`Позначено як переглянуті: ${r.dismissed}. Повернути можна в історії рішень.`);
         await attention(true);
       })]);
       item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
-        "Переглянути", () => { void reviewSuggestion(g); }, extra, g.hint);
+        reviews[0].title, () => { void reviewSuggestion(reviews[0].suggestion); }, extra, g.hint);
     }
     // Нерозмічений ефір за добу — плиткою «Ефір без розмітки» на робочому столі, тут не дублюємо.
     if (a.suggestions_hidden) {
@@ -474,7 +491,7 @@
       ["Втрачено аудіокадрів", num(g["audio.frames_dropped"] ?? 0), bad(g["audio.frames_dropped"])],
       ["Втрачено сегментів", num(g["audio.segments_dropped"] ?? 0), bad(g["audio.segments_dropped"])],
       ["Пік черги сегментів", num(g["asr.segment_queue_peak"] ?? 0)],
-      ["Розриви приймання (сон Mac)", num(c["receiver.suspensions"] || 0), c["receiver.suspensions"] ? "caution" : "good"],
+      ["Розриви циклу під час приймання", num(c["receiver.suspensions"] || 0), c["receiver.suspensions"] ? "caution" : "good"],
       ["Перевідкриття мікрофона", num(c["audio.stream_stalls"] || 0), c["audio.stream_stalls"] ? "caution" : "good"],
       ["Перезапуски Whisper", num(c["workers.transcriber_restarted"] || 0), bad(c["workers.transcriber_restarted"])],
       ["Черга Telegram", num(g["telegram.queue_depth"] ?? 0)],

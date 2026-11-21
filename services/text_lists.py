@@ -420,8 +420,10 @@ def check_list(db_path, list_type, entries):
     """Ті самі перевірки, що й під час збереження, але без запису: для підказок під час набору."""
     if list_type not in LIST_TYPES:
         raise ValueError("Невідомий список")
-    lines = [str(e.get("raw_line", "")).strip() for e in entries if e.get("enabled", True)]
-    parsed, errors = parse(list_type, [(n, line) for n, line in enumerate(lines, 1) if line])
+    # Номери ті самі, що в редакторі й write_list: вимкнені рядки теж рахуються.
+    clean = [(str(e.get("raw_line", "")).strip(), e.get("enabled", True)) for e in entries
+             if str(e.get("raw_line", "")).strip()]
+    parsed, errors = parse(list_type, [(n, line) for n, (line, enabled) in enumerate(clean, 1) if enabled])
     with get_db(db_path) as db:
         ensure_tables(db)
         dictionary_errors, warnings = check_against_dictionaries(db, list_type, parsed)

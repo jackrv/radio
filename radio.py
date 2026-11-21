@@ -186,6 +186,7 @@ def main():
              "GAIN", "MIN_RMS", "NORMALIZE", "VAD_LEVEL", "SILENCE_END_MS", "MIN_SPEECH_MS",
              "MAX_SEGMENT_S", "PREROLL_MS", "SPECTRAL_NOTIFICATION_MODE")}, log)
         log.info("Локальний архів аудіо увімкнено: %s", config.RECORDINGS_DIR)
+    telegram_service.archive_root = config.RECORDINGS_DIR
     load_dictionaries()
     recipients = list_recipients(DB_PATH)
     if recipients:
@@ -248,10 +249,11 @@ def main():
         hours, minutes = divmod(max(1, round(gap_s / 60)), 60)
         duration = f"{hours} год {minutes} хв" if hours else f"{minutes} хв"
         telegram_service.notify_admin_async(
-            "⚠️ <b>Приймання ефіру було перерване</b>\n"
+            "⚠️ <b>Розрив циклу під час приймання</b>\n"
             f"З {stopped:%d.%m %H:%M} до {resumed:%d.%m %H:%M} ({duration}).\n"
-            "Ймовірна причина: сон Mac (закрита кришка) або зупинка процесу.\n"
-            "Приймання відновлено автоматично."
+            "До розриву мікрофон був відкритий. Причину не встановлено: "
+            "можливі сон системи або затримка процесу.\n"
+            "Перевірте поточний стан приймача в панелі."
         )
 
     if not shutil.which("ffmpeg"):

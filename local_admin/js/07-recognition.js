@@ -33,12 +33,14 @@
         entries: [...dictionary.entries, {raw_line: line, enabled: true}], expected_version: dictionary.version,
       });
     }
+    recentlySavedDictionaryLines.add(line);
     // Збережену вкладку можна перечитати, але незбережену чернетку не перезаписуємо.
     const editor = document.querySelector('[data-panel="dictionaries"] textarea');
     if (!editor || editor.value === editor.dataset.savedValue) loaded.delete("dictionaries");
     note(`Позивний «${line}» додано. Приймач підхопить зміну за кілька секунд.`);
   }
 
+  const recentlySavedDictionaryLines = new Set();
   // ---------- Словники позивних, команд і Telegram ----------
   const DICTIONARIES = {
     callsigns: ["Позивні", "«назва: номери»: «береза: 31 56 700-710». Без номерів — позивний, що звучить сам: «вишня». «*» — будь-який номер. Порожнім словник позивних лишити не можна."],
@@ -113,12 +115,25 @@
     } catch (error) { status.hidden = false; status.className = "alert small"; status.textContent = error.message; throw error; }
   }));
 
+  function rowIssue(tag, className, message, revealRow, entries) {
+    const item = el(tag, className);
+    const match = /^Рядок (\d+):\s*(.*)$/s.exec(message);
+    if (!match || !revealRow || !entries[Number(match[1]) - 1]) { item.textContent = message; return item; }
+    const number = Number(match[1]), line = entries[number - 1].raw_line;
+    const jump = el('button', 'row-issue-link', `Рядок ${number} ↗`); jump.type = 'button';
+    jump.setAttribute('aria-label', `Перейти до рядка ${number}: ${line}`);
+    jump.addEventListener('click', () => revealRow(number, line));
+    item.append(jump, el('span', '', `: ${match[2]}`));
+    return item;
+  }
+
   // Перевірка рядків під час набору: ті самі правила, що й «Зберегти», без запису.
-  function liveCheck(area, box, path, initial = [], getEntries = () => fromLines(area.value), events = ["input"]) {
+  function liveCheck(area, box, path, initial = [], getEntries = () => fromLines(area.value), events = ["input"], revealRow = null) {
     const render = (errors, warnings, checked = false) => {
       box.replaceChildren();
-      for (const e of errors) box.append(el("li", "error", e));
-      for (const w of warnings) box.append(el("li", "", w));
+      const entries = getEntries();
+      for (const e of errors) box.append(rowIssue("li", "error", e, revealRow, entries));
+      for (const w of warnings) box.append(rowIssue("li", "", w, revealRow, entries));
       // Перевірка після правки пройшла без зауважень — кажемо це прямо, а не мовчимо.
       if (checked && !errors.length && !warnings.length) box.append(el("li", "ok", "✓ Помилок у рядках немає"));
     };
@@ -126,8 +141,9 @@
     let timer = null, seq = 0;
     const schedule = () => {
       clearTimeout(timer);
+      const mine = ++seq;
+      box.replaceChildren();  // Старі номери вже не відповідають відредагованій чернетці.
       timer = setTimeout(async () => {
-        const mine = ++seq;
         try {
           const r = await request(path, "PUT", { entries: getEntries() });
           if (mine === seq) render(r.errors || [], r.warnings || [], true);
@@ -166,8 +182,9 @@
     right.append(el("summary", "", "Пояснення та інструменти"));
     const area = el("textarea", "list-editor");
     area.value = toLines(dictionary.entries);
-    let inserted = 0, beforeInsert = null, insertedHighlights = [];
+    let inserted = 0, beforeInsert = null, insertedHighlights = [], requestedInsert = null;
     if (pendingDictionaryInsert?.list === kind) {
+      requestedInsert = pendingDictionaryInsert;
       beforeInsert = area.value;
       const result = insertDictionaryLines(area.value, pendingDictionaryInsert);
       area.value = result.text;
@@ -175,7 +192,7 @@
       insertedHighlights = result.highlights;
       pendingDictionaryInsert = null;
     }
-    area.dataset.savedValue = area.value;
+    area.dataset.savedValue = toLines(dictionary.entries);
     area.spellcheck = false;
     area.setAttribute("aria-label", title);
     const fit = () => { area.rows = Math.min(32, Math.max(8, area.value.split("\n").length + 2)); };
@@ -189,7 +206,7 @@
       save.classList.add("needs-save");
       undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
       undoInsert.addEventListener("click", () => {
-        area.value = beforeInsert; fit(); draftEditor.clear(); area.dispatchEvent(new Event("input"));
+        area.value = beforeInsert; fit(); draftEditor.clear(); rowView.clearHighlight(); area.dispatchEvent(new Event("input"));
         save.classList.remove("needs-save"); undoInsert.remove();
         status.textContent = "Вставку прибрано — список як був"; status.className = "muted small";
       });
@@ -197,23 +214,39 @@
       status.textContent = "Запропонований рядок уже є у словнику — нічого не додано";
     }
     save.addEventListener("click", () => action(async () => {
+      const sent = fromLines(area.value);
       try {
-        await request(`/api/dictionaries/${kind}`, "PUT", { entries: fromLines(area.value), expected_version: dictionary.version });
+        await request(`/api/dictionaries/${kind}`, "PUT", { entries: sent, expected_version: dictionary.version });
         note(`Словник «${title}» збережено. Приймач застосує зміни за кілька секунд.`);
         await dictionaries();
-      } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
+      } catch (error) {
+        status.replaceChildren(...error.message.split(/;\s*(?=Рядок \d+:)/).map(message =>
+          rowIssue('div', '', message, revealRow, sent)));
+        status.className = "alert small"; throw error;
+      }
     }));
     const actions = el("div", "list-actions"); actions.append(...(undoInsert ? [undoInsert] : []), status);
     const hints = el("ul", "warn-list");
-    liveCheck(area, hints, `/api/dictionaries/${kind}/check`);
+    const revealRow = (number, line) => rowView.revealRow(number, line);
+    liveCheck(area, hints, `/api/dictionaries/${kind}/check`, [], () => fromLines(area.value), ["input"], revealRow);
     if (inserted) area.dispatchEvent(new Event("input"));
     left.append(draftEditor?.element || area, actions, hints);
     if (draftEditor) draftEditor.element.hidden = true;
-    left.prepend(rowListView(area, title, save,count=>{selectedTab.textContent=`${title} · ${count}`;}));
+    const rowDraft = rowDraftOptions(toLines(dictionary.entries), area.value, insertedHighlights, false, requestedInsert);
+    const recent = kind === 'callsigns' ? [...recentlySavedDictionaryLines] : [];
+    rowDraft.spotlightLines.push(...recent);
+    if (recent.length && !requestedInsert) rowDraft.savedSpotlight = true;
+    const rowView = rowListView(area, title, save,count=>{selectedTab.textContent=`${title} · ${count}`;}, rowDraft);
+    left.prepend(rowView);
     right.append(el("h2", "", title), el("p", "muted small", help));
-    panel.append(left, listValidation(`/api/dictionaries/${kind}/check`,()=>fromLines(area.value)), right);
+    panel.append(left, listValidation(`/api/dictionaries/${kind}/check`,()=>fromLines(area.value), false, revealRow), right);
     box.append(panel);
     fitRecognition();
+    if (requestedInsert || recent.length) rowView.reveal();
+    if (kind === 'callsigns') for (const line of recent) {
+      if (dictionary.entries.some(entry => entry.raw_line.trim().toLocaleLowerCase('uk') === line.toLocaleLowerCase('uk')))
+        recentlySavedDictionaryLines.delete(line);
+    }
   }
 
   // Рядки, які «Потребує уваги» просить вставити в список (не зберігаються самі).
@@ -366,15 +399,40 @@
     });
     return { text: rows.join("\n"), added, highlights };
   }
-  function phrasePatternEditor(entries, enableLines = [], generic = false, save = null, onCount = null) {
+  function phrasePatternEditor(entries, enableLines = [], generic = false, save = null, onCount = null, draft = {}) {
     const requested = new Set(enableLines.map(line => line.trim()));
-    const patterns = entries.map(entry => {
-      const savedEnabled = Boolean(entry.enabled);
+    const spotlight = new Set(draft.spotlightLines || []);
+    const baseline = draft.baselineEntries || entries;
+    const unused = new Set(baseline.map((_, index) => index));
+    const exact = new Map(), names = new Map();
+    const rowName = line => line.includes(':') ? line.split(':')[0].trim().toLocaleLowerCase('uk') : null;
+    baseline.forEach((entry, index) => {
+      const line = entry.raw_line.trim(), name = rowName(line);
+      if (!exact.has(line)) exact.set(line, []); exact.get(line).push(index);
+      if (name !== null) { if (!names.has(name)) names.set(name, []); names.get(name).push(index); }
+    });
+    const take = (map, key) => {
+      const indices = map.get(key);
+      while (indices?.length && !unused.has(indices[0])) indices.shift();
+      if (!indices?.length) return null;
+      const index = indices.shift(); unused.delete(index); return baseline[index];
+    };
+    const savedRows = entries.map(entry => take(exact, entry.raw_line.trim()));
+    const patterns = entries.map((entry, index) => {
+      let saved = savedRows[index];
+      if (!saved) {
+        const name = rowName(entry.raw_line);
+        if (name !== null) saved = take(names, name);
+        else if (unused.has(index)) { saved = baseline[index]; unused.delete(index); }
+      }
+      const savedEnabled = Boolean(saved?.enabled);
       return {
         raw_line: entry.raw_line,
-        enabled: savedEnabled || requested.has(entry.raw_line.trim()),
-        savedRawLine: entry.raw_line.trim(),
+        enabled: Boolean(entry.enabled) || requested.has(entry.raw_line.trim()),
+        savedRawLine: saved?.raw_line.trim() || "",
         savedEnabled,
+        isNew: !saved,
+        spotlight: spotlight.has(entry.raw_line.trim()),
       };
     });
     const root = el("div", "phrase-pattern-editor");
@@ -402,12 +460,40 @@
     const getEntries = () => patterns.map(pattern => ({
       raw_line: pattern.raw_line.trim(), enabled: pattern.enabled,
     })).filter(pattern => pattern.raw_line);
+    const isDraft = pattern => pattern.isNew || pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled;
     const draftLabel = pattern => {
-      const changed = pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled;
-      if (!changed) return "";
+      const changed = isDraft(pattern);
+      if (!changed) return pattern.spotlight ? (draft.savedSpotlight ? "Щойно збережено" : "Вже збережено") : "";
+      if (pattern.isNew) return "Чернетка";
       return pattern.enabled && !pattern.savedEnabled ? "Тимчасово увімкнено" : "Чернетка";
     };
+    let revealTarget = null, targetPattern = null;
+    const rowFields = new Map();
+    const updateRowNumbers = () => {
+      let number = 0;
+      for (const pattern of patterns) {
+        const current = pattern.raw_line.trim() ? ++number : null;
+        const fields = rowFields.get(pattern);
+        if (!fields) continue;
+        fields.number.textContent = current === null ? '—' : String(current);
+        fields.number.title = current === null ? 'Новий порожній рядок' : `Рядок ${current}`;
+        fields.line.setAttribute('aria-label', current === null ? 'Новий порожній рядок' : `${generic ? 'Текст рядка' : 'Текст шаблону'} ${current}`);
+      }
+    };
+    const focusRow = (field, selection = null) => {
+      const reveal = () => {
+        if (root.isConnected === false || root.closest?.('[data-panel]')?.hidden || field.isConnected === false) return;
+        field.focus({preventScroll: true});
+        const selected = selection || {start: 0, end: field.value.length};
+        field.setSelectionRange?.(selected.start, selected.end);
+        field.scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
+      };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(reveal));
+      else reveal();
+    };
     const render = () => {
+      revealTarget = null;
+      rowFields.clear();
       const query = search.value.trim().toLocaleLowerCase("uk");
       if (query) disabledGroup.open = true;
       const drawRows = (container, enabledState) => {
@@ -422,6 +508,7 @@
         }
         for (const { pattern, index } of visible) {
         const row = el("div", "phrase-pattern-row");
+        const number = el('span', 'editor-row-number');
         const toggle = el("label", "switch");
         const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = pattern.enabled;
         enabled.setAttribute('aria-label',`Стан рядка: ${pattern.raw_line || 'новий рядок'}`);
@@ -431,16 +518,21 @@
           const label = draftLabel(pattern);
           badge.textContent = label;
           badge.hidden = !label;
-          badge.className = `pattern-draft${label === "Тимчасово увімкнено" ? " temporary" : ""}`;
+          const changed = isDraft(pattern);
+          badge.className = `pattern-draft${label === "Тимчасово увімкнено" ? " temporary" : ""}${!changed && label ? " saved" : ""}`;
+          row.className = `phrase-pattern-row${changed ? " is-draft" : label ? " is-recent" : ""}${pattern === targetPattern ? ' is-targeted' : ''}`;
         };
         updateBadge();
         const line = el("input", "pattern-line");
         line.type = "text"; line.value = pattern.raw_line; line.spellcheck = false; line.title = pattern.raw_line;
+        if (draftLabel(pattern) && (!revealTarget || (!revealTarget.draft && isDraft(pattern))))
+          revealTarget = {field: line, disabled: !enabledState, draft: isDraft(pattern), selection: draft.selections?.get(pattern.raw_line.trim())};
         line.setAttribute("aria-label", `${generic ? 'Текст рядка' : 'Текст шаблону'} ${index + 1}`);
         line.addEventListener("input", () => {
           pattern.raw_line = line.value;
           line.title = line.value;
           updateBadge();
+          updateRowNumbers();
           onChange();
         });
         enabled.addEventListener("change", () => {
@@ -456,17 +548,19 @@
           render();
           onChange();
         });
-        row.append(toggle, badge, line, remove);
+        rowFields.set(pattern, {line, number});
+        row.append(number, toggle, badge, line, remove);
         container.append(row);
         }
       };
       drawRows(activeRows, true);
       drawRows(disabledRows, false);
+      updateRowNumbers();
       updateCounts();
     };
     search.addEventListener("input", render);
     add.addEventListener("click", () => {
-      patterns.push({ raw_line: search.value.trim(), enabled: Boolean(generic), savedRawLine: "", savedEnabled: Boolean(generic) });
+      patterns.push({ raw_line: search.value.trim(), enabled: Boolean(generic), savedRawLine: "", savedEnabled: Boolean(generic), isNew: true });
       search.value = ""; disabledGroup.open = true;
       render();
       onChange();
@@ -481,31 +575,92 @@
       rows: root,
       entries: getEntries,
       hasBlankRows: () => patterns.some(pattern => !pattern.raw_line.trim()),
-      hasChanges: () => patterns.some(pattern =>
-        pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled),
+      hasChanges: () => patterns.length !== baseline.length || patterns.some(pattern =>
+        pattern.isNew || pattern.raw_line.trim() !== pattern.savedRawLine || pattern.enabled !== pattern.savedEnabled),
+      reveal() {
+        if (!revealTarget) return;
+        if (revealTarget.disabled) disabledGroup.open = true;
+        focusRow(revealTarget.field, revealTarget.selection);
+      },
+      revealRow(number, expectedLine) {
+        const pattern = patterns.filter(row => row.raw_line.trim())[number - 1];
+        if (!pattern || pattern.raw_line.trim() !== expectedLine.trim()) {
+          note('Рядок уже змінено. Перевірте поточну чернетку ще раз.'); return false;
+        }
+        targetPattern = pattern;
+        search.value = '';
+        if (!pattern.enabled) disabledGroup.open = true;
+        render();
+        focusRow(rowFields.get(pattern).line);
+        return true;
+      },
       onChange(callback) { onChange = callback; },
     };
   }
 
   // Рядковий вигляд для всіх списків. Приховане поле зберігає один чинний
   // контракт перевірки/вставки/скасування; стан між двома редакторами не розходиться.
-  function rowListView(area, title, save, onCount = null) {
+  function rowListView(area, title, save, onCount = null, draft = {}) {
     const host = el('div', 'row-list-view'); host.setAttribute('aria-label', title);
     let syncing = false;
+    const baseline = draft.baselineEntries || fromLines(area.value);
+    let spotlight = draft.spotlightLines || [], editor;
     function render() {
-      const editor = phrasePatternEditor(fromLines(area.value), [], true, save, onCount);
-      host.replaceChildren(editor.element);
-      editor.onChange(() => {
+      const model = phrasePatternEditor(fromLines(area.value), [], true, save, onCount,
+        {...draft, baselineEntries: baseline, spotlightLines: spotlight});
+      editor = model;
+      host.replaceChildren(model.element);
+      model.onChange(() => {
         syncing = true;
-        area.value = toLines(editor.entries());
-        if (save) { save.disabled = editor.hasBlankRows();save.classList.add('needs-save'); }
+        area.value = toLines(model.entries());
+        if (save) { save.disabled = model.hasBlankRows();save.classList.add('needs-save'); }
         area.dispatchEvent(new Event('input'));
         syncing = false;
       });
     }
     area.addEventListener('input', () => { if (!syncing) render(); });
     area.hidden = true; render();
+    host.reveal = () => editor.reveal();
+    host.revealRow = (number, line) => editor.revealRow(number, line);
+    host.clearHighlight = () => {spotlight = [];};
     return host;
+  }
+  function rowDraftOptions(before, text, highlights, savedSpotlight = false, insert = null) {
+    const selections = new Map();
+    const spotlightLines = highlights.map(range => {
+      const start = text.lastIndexOf('\n', range.start - 1) + 1;
+      const next = text.indexOf('\n', range.start);
+      const full = text.slice(start, next < 0 ? text.length : next);
+      const line = fromLines(full)[0]?.raw_line;
+      if (line && !selections.has(line)) {
+        const offset = start + full.indexOf(line);
+        selections.set(line, {start: Math.max(0, range.start - offset), end: Math.min(line.length, range.end - offset)});
+      }
+      return line;
+    }).filter(Boolean);
+    if (insert) {
+      const fold = value => value.trim().toLocaleLowerCase('uk');
+      const lines = new Set(insert.lines.map(item => fold(item.line || '')));
+      for (const entry of fromLines(text)) {
+        const [name, ...tail] = entry.raw_line.split(':');
+        const named = insert.lines.some(item => fold(name) === fold(item.callsign || '') && (
+          insert.list === 'callsign_aliases' ? tail.join(':').split(',').some(value => fold(value) === fold(item.line || ''))
+            : insert.list === 'callsigns' && tail.join(':').split(/[,\s]+/).some(value => {
+              if (value === item.number) return true;
+              const range = value.match(/^(\d+)-(\d+)$/);
+              return range && Number(item.number) >= Number(range[1]) && Number(item.number) <= Number(range[2]);
+            })));
+        if (named || (!['callsigns', 'callsign_aliases'].includes(insert.list) && lines.has(fold(entry.raw_line))))
+          spotlightLines.push(entry.raw_line);
+        if (named && !selections.has(entry.raw_line)) {
+          const item = insert.lines.find(item => fold(name) === fold(item.callsign || ''));
+          const needle = insert.list === 'callsign_aliases' ? item?.line : item?.number;
+          const at = needle ? fold(entry.raw_line).indexOf(fold(needle), name.length + 1) : -1;
+          if (at >= 0) selections.set(entry.raw_line, {start: at, end: at + needle.length});
+        }
+      }
+    }
+    return {baselineEntries: fromLines(before), spotlightLines, savedSpotlight, selections};
   }
   function withoutImpactRule(entries,type,label) {
     const fold=value=>String(value||'').trim().toLocaleLowerCase('uk').replace(/[’'`]/g,'ʼ').replace(/\s+/g,' ');
@@ -557,6 +712,7 @@
     }
     box.append(picker);
     const type = textListType, [title, help] = TEXT_LISTS[type], list = data.lists[type];
+    const savedEntries = list.entries.map(entry => ({...entry}));
     const previewDisabled = pendingRuleDisable?.type === type;
     const disabledQuery = previewDisabled ? pendingRuleDisable.label.split(' → ')[0] : '';
     if (previewDisabled) {
@@ -574,8 +730,9 @@
       status.className='warn small';
     }
     const updateCount=count=>{selectedTab.textContent=`${title} · ${count}`;};
+    const requestedPatterns = type === "phrase_patterns" ? pendingPatternEnable : [];
     const patterns = type === "phrase_patterns"
-      ? phrasePatternEditor(list.entries, pendingPatternEnable, false, save, updateCount)
+      ? phrasePatternEditor(list.entries, requestedPatterns, false, save, updateCount, {spotlightLines: requestedPatterns, baselineEntries: savedEntries})
       : null;
     if (type === "phrase_patterns") pendingPatternEnable = [];
     const area = patterns ? null : el("textarea", "list-editor");
@@ -586,9 +743,11 @@
     }
     const getEntries = patterns ? patterns.entries : () => fromLines(area.value);
     if (patterns) left.append(patterns.element);
-    let inserted = 0, beforeInsert = null, insertedHighlights = [];
+    let inserted = 0, beforeInsert = null, insertedHighlights = [], alreadySaved = false, requestedInsert = null;
     if (area && pendingListInsert?.list === type) {
+      requestedInsert = pendingListInsert;
       beforeInsert = area.value;
+      alreadySaved = Boolean(pendingListInsert.alreadySaved);
       const result = pendingListInsert.alreadySaved
         ? { text: area.value, added: 0, highlights: highlightExistingListLines(area.value, pendingListInsert) }
         : insertListLines(area.value, pendingListInsert);
@@ -599,8 +758,10 @@
     const fit = () => { if (area) area.rows = Math.min(30, Math.max(8, area.value.split("\n").length + 2)); };
     fit(); area?.addEventListener("input", fit);
     const warnings = el("ul", "warn-list");
+    let rowView = null;
+    const revealRow = (number, line) => (patterns || rowView).revealRow(number, line);
     const check = liveCheck(patterns?.rows || area, warnings, `/api/text-lists/${type}/check`, list.warnings || [],
-      getEntries, patterns ? [] : ["input"]);
+      getEntries, patterns ? [] : ["input"], revealRow);
     const draftEditor = insertedHighlights.length ? highlightDraftEditor(area, insertedHighlights) : null;
     if (patterns) patterns.onChange(() => {
       save.classList.add("needs-save");
@@ -626,22 +787,29 @@
       // Не сподобалось — повернути список, як був до вставки (поки не збережено, ніде не діє).
       undoInsert = el("button", "ghost", "↶ Прибрати вставлене"); undoInsert.type = "button";
       undoInsert.addEventListener("click", () => {
-        area.value = beforeInsert; fit(); draftEditor.clear(); area.dispatchEvent?.(new Event("input"));
+        area.value = beforeInsert; fit(); draftEditor.clear(); rowView.clearHighlight(); area.dispatchEvent?.(new Event("input"));
         save.classList.remove("needs-save"); undoInsert.remove();
         status.textContent = "Вставку прибрано — список як був"; status.className = "muted small";
       });
     }
     save.addEventListener("click", () => action(async () => {
+      const sent = getEntries();
       try {
-        const r = await request(`/api/text-lists/${type}`, "PUT", { entries: getEntries(), expected_revision: textRevision });
+        const r = await request(`/api/text-lists/${type}`, "PUT", { entries: sent, expected_revision: textRevision });
         textRevision = r.revision;
         note(`«${title}» збережено (ревізія ${r.revision}). Приймач застосує зміни за кілька секунд.`);
         await texts();
-      } catch (error) { status.textContent = error.message; status.className = "alert small"; throw error; }
+      } catch (error) {
+        status.replaceChildren(...error.message.split(/;\s*(?=Рядок \d+:)/).map(message =>
+          rowIssue('div', '', message, revealRow, sent)));
+        status.className = "alert small"; throw error;
+      }
     }));
     const actions = el("div", "list-actions"); actions.append(...(undoInsert ? [undoInsert] : []), status);
     if (area) {
-      left.append(rowListView(area, title, save, updateCount), draftEditor?.element || area);
+      rowView = rowListView(area, title, save, updateCount,
+        rowDraftOptions(toLines(savedEntries), area.value, insertedHighlights, alreadySaved, requestedInsert));
+      left.append(rowView, draftEditor?.element || area);
       if (draftEditor) draftEditor.element.hidden = true;
     }
     left.append(actions, warnings);
@@ -654,7 +822,7 @@
       // Після вставки — одразу видно, чи текст стане кращим на ваших еталонах. Запуск — коли завершиться
       // відкриття списку: action() не пускає другу дію, поки триває перша.
       if (inserted || previewDisabled) { const start = () => (busy ? setTimeout(start, 100) : evaluation.run()); setTimeout(start, 0); }
-    } else evaluation=listValidation(`/api/text-lists/${type}/check`,getEntries,true);
+    } else evaluation=listValidation(`/api/text-lists/${type}/check`,getEntries,true,revealRow);
     if (type === "callsign_aliases") right.append(aliasCandidates(list.entries));
     if (type === 'aliases' && !list.entries.length) right.append(el('p','muted small',
       'Це ручні глобальні заміни, а не навчені правила. Порожній список є нормальним: звичайні слова керуються у «Навчанні», а позивні — в окремих аліасах. Неперевірені кандидати автоматично не додаються.'));
@@ -666,21 +834,23 @@
       const search=panel.querySelector('.pattern-search');
       if (search) { search.value=disabledQuery; search.dispatchEvent(new Event('input')); }
     }
-    if (draftEditor && (type === "blacklist" || type === "short_garbage")) draftEditor.reveal();
+    if (requestedInsert || previewDisabled) rowView?.reveal();
+    if (requestedPatterns.length || previewDisabled) patterns?.reveal();
   }
 
   // Перевірка списку на розмічених записах: повтор текстової обробки, без збереження й без зупинки приймача.
   const EVALUATED_LISTS = ["phrase_templates", "phrase_patterns", "callsign_aliases", "aliases", "blacklist", "short_garbage"];
-  function listValidation(path,getEntries,whisper=false) {
+  function listValidation(path,getEntries,whisper=false,revealRow=null) {
     const wrap=el('aside','list-evaluation'), run=el('button','ghost','Перевірити рядки'), out=el('div');run.type='button';
     wrap.setAttribute('aria-label','Перевірка рядків');
     run.addEventListener('click',()=>action(async()=>{
       run.disabled=true;out.textContent='Перевіряю…';
       try {
-        const r=await request(path,'PUT',{entries:getEntries()});
+        const entries=getEntries();
+        const r=await request(path,'PUT',{entries});
         out.replaceChildren(el('p',`summary ${r.errors?.length?'bad':'ok'}`,r.errors?.length?'Є помилки у рядках':'Формат рядків правильний'));
-        for(const error of r.errors || [])out.append(el('p','alert small',error));
-        for(const warning of r.warnings || [])out.append(el('p','warn small',warning));
+        for(const error of r.errors || [])out.append(rowIssue('p','alert small',error,revealRow,entries));
+        for(const warning of r.warnings || [])out.append(rowIssue('p','warn small',warning,revealRow,entries));
       } catch(error) { out.replaceChildren(el('p','alert small',error.message)); }
       finally { run.disabled=false; }
     }));
@@ -775,6 +945,7 @@
             const r = await request("/api/text-lists/callsign_aliases", "PUT", { entries: next, expected_revision: textRevision });
             textRevision = r.revision;
             note(`Додано «${c.callsign}: ${c.heard}» (ревізія ${r.revision}).`);
+            pendingListInsert = {list: 'callsign_aliases', lines: [{callsign: c.callsign, line: c.heard}], alreadySaved: true};
             await texts();
           }));
           cell.append(add);

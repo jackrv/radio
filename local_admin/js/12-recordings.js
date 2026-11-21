@@ -1004,12 +1004,15 @@
                            failed: " · подію оновити не вдалося" }[result.event_sync] || "";
           const learned=result.learning_sync?.status==='failed' ? ' · навчання не синхронізовано, повторіть збереження'
             : result.learning_sync?.candidates ? ` · словесних пар: ${result.learning_sync.candidates}` : '';
-          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}${synced}${learned}`,
+          const recall = result.telegram_recall?.status === 'scheduled'
+            ? ` · відкликання копій Telegram, якщо вони є, — через ${Math.ceil(result.telegram_recall.after_seconds)} с; швидке скасування мітки зупинить очікування` : '';
+          showSave(`✓ Збережено о ${new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}${synced}${learned}${recall}`,
                    result.event_sync === "failed" || result.learning_sync?.status==='failed' ? "alert" : "ok");
           if (result.learning_sync?.status==='failed') {
             save.textContent='Повторити синхронізацію';
             note('Еталон збережено, але навчання не синхронізовано. Повторіть збереження цієї картки.');
-          } else note(result.event_sync === "updated" ? "Еталон збережено; подію й повідомлення в Telegram оновлено." : "Еталон збережено.");
+          } else note(recall ? `Еталон збережено${recall}. Видалені повідомлення не відновлюються.`
+            : result.event_sync === "updated" ? "Еталон збережено; подію й повідомлення в Telegram оновлено." : "Еталон збережено.");
           if (!controller.dirty && result.learning_sync?.status!=='failed' && result.event_sync!=='failed' && typeof advanceReview === "function") advanceReview(controller);
         } catch (error) {
           showSave(`${error.uncertain ? "Збереження не підтверджено" : "Не збережено"}: ${error.message}`, "alert"); note(error.message);

@@ -43,13 +43,39 @@
     if (!sources.length) box.append(document.createTextNode("—"));
     return box;
   }
+  function learningAlternatives(item, items) {
+    // Ті самі конкуренти, які блокують load_active_word_rules, навіть якщо
+    // власний фільтр сховав їх через недостатню кількість підтверджень.
+    return items.filter(other => other.original === item.original && other.corrected !== item.corrected
+      && other.confirmations > 0 && other.status !== "disabled" && other.state !== "disabled");
+  }
+  function learningConflictDetails(item, alternatives) {
+    const box = el("div", "learning-conflict");
+    box.append(el("p", "small", "Інший варіант у збереженій розмітці:"));
+    for (const other of alternatives) {
+      const row = el("div", "learning-conflict-variant");
+      row.append(el("b", "", `${other.original} → ${other.corrected}`),
+        el("span", "muted small", `Правок: ${other.confirmations} · джерела:`), learningSources(other.sources || []));
+      box.append(row);
+    }
+    box.append(el("p", "muted small", "Правки фраз збережені. Якщо обидва варіанти правильні — нічого не змінюйте: одна автоматична заміна для всіх фраз тут не підходить. Якщо в джерелі помилка — відкрийте його й виправте запис."));
+    const showAll = el("button", "ghost small-button", "Показати всі варіанти"); showAll.type = "button";
+    showAll.addEventListener("click", () => {
+      $("learning-filter").value = "all";
+      learningSearch.value = item.original;
+      try { localStorage.setItem("radio345:learning-filter", "all"); } catch (_) { /* сесія */ }
+      renderLearning();
+    });
+    box.append(showAll);
+    return box;
+  }
   async function changeRule(item, path, body) {
     await request(`/api/learning/${item.id}${path}`, "PUT", { ...body, expected_version: item.version });
     await learning();
   }
-  function learningActions(item) {
+  function learningActions(item, alternatives = []) {
     const box = el("span", "chip-row");
-    if (item.kind === "word" && item.state !== "disabled") {
+    if (item.kind === "word" && item.state !== "disabled" && (item.approved || (!alternatives.length && item.state !== "conflict"))) {
       const b = el("button", "outline-button", item.approved ? "Зняти дозвіл" : "Дозволити");
       b.title = item.approved ? "Заміна перестане діяти" : "Заміна діятиме, коли набере потрібні підтвердження";
       b.addEventListener("click", () => action(() => changeRule(item, "/approval", { approved: !item.approved })));
@@ -100,12 +126,14 @@
       cell.colSpan = 6; row.append(cell); table.append(row);
     }
     for (const item of shown) {
+      const alternatives = learningAlternatives(item, data.items);
       const [tone, text] = learningState(item, need);
       const row = el("tr"), pair = el("td"), state = el("td");
       pair.append(el("b", "", item.original), document.createTextNode(" → "), el("b", "", item.corrected));
       state.append(el("span", `pill ${tone}`, text));
+      if (alternatives.length && !["disabled", "blocked"].includes(item.state)) state.append(learningConflictDetails(item, alternatives));
       const sources = el("td"); sources.append(learningSources(item.sources));
-      const actions = el("td", "nowrap"); actions.append(learningActions(item));
+      const actions = el("td", "nowrap"); actions.append(learningActions(item, alternatives));
       row.append(pair, el("td", "", LEARNING_KIND[item.kind] || item.kind), el("td", "", `${item.confirmations} з ${need}`), state, sources, actions);
       table.append(row);
     }

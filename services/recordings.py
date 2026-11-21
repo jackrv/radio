@@ -509,6 +509,8 @@ class RecordingStore:
                                  (*values, record_id, revision)).rowcount
             if not changed:
                 raise ValueError("Запис змінено в іншому вікні. Оновіть сторінку.")
+            from services.archive_telegram_recall import stage
+            stage(db, record_id)
         return self.get(record_id)
 
     def review(self, record_id, reference, label, revision, *,
@@ -533,6 +535,8 @@ class RecordingStore:
                                  (*values, record_id, revision)).rowcount
             if not changed:
                 raise ValueError("Запис змінено в іншому вікні. Оновіть сторінку.")
+            from services.archive_telegram_recall import stage
+            stage(db, record_id)
         return self.get(record_id)
 
     def label_from_correction(self, fix_id, reference):

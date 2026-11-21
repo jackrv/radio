@@ -115,7 +115,7 @@ class ApplicationSupervisor:
         self.runtime_state = runtime_state
         # Відкритий потік без кадрів довше цього часу вважається зависшим.
         self.stall_timeout_s = stall_timeout_s
-        # Розрив між ітераціями циклу довше цього — сон Mac або зупинка процесу.
+        # Поріг розриву циклу; сам по собі не доводить сон або втрату приймання.
         self.suspend_threshold_s = suspend_threshold_s
         self.wall_clock = wall_clock or time.time
         # Сповіщення про розрив приймання (не повинне блокувати цикл аудіо).
@@ -357,26 +357,44 @@ class ApplicationSupervisor:
                 reported_problem = None
                 while not stop_requested.is_set():
                     reported_problem = self._check_recognition(reported_problem)
-                    # Сон Mac (наприклад, закрита кришка) зупиняє процес повністю.
                     # Беремо більший із розривів: monotonic на macOS може не йти уві сні.
+                    # Причина невідома; наслідок залежить від стану потоку ДО розриву.
                     now_wall, now_mono = self.wall_clock(), time.monotonic()
                     gap = max(now_wall - last_wall, now_mono - last_mono)
                     last_wall, last_mono = now_wall, now_mono
                     if gap >= self.suspend_threshold_s:
-                        runtime.count("receiver.suspensions")
-                        runtime.observe("receiver.suspended", gap)
-                        self.log.warning(
-                            "Приймання не працювало ~%d хв (сон Mac або зупинка процесу); "
-                            "незавершену фразу скинуто",
-                            max(1, round(gap / 60)),
-                        )
-                        segmenter = new_segmenter()
-                        last_frame_at = now_mono
-                        if self.on_suspension is not None:
-                            try:
-                                self.on_suspension(gap)
-                            except Exception:
-                                self.log.exception("Не вдалося повідомити про розрив приймання")
+                        # paused=True також означає помилку відкриття/перезапуск потоку,
+                        # тому намір паузи відрізняємо від недоступного мікрофона.
+                        state = ("active" if paused is False else
+                                 "listening" if requested_pause == "listening" else
+                                 "pause" if requested_pause else "unavailable")
+                        runtime.count("receiver.loop_gaps")
+                        runtime.count(f"receiver.loop_gaps.{state}")
+                        runtime.observe("receiver.loop_gap", gap)
+                        runtime.observe(f"receiver.loop_gap.{state}", gap)
+                        runtime.gauge("receiver.last_loop_gap_state", state)
+                        runtime.gauge("receiver.last_loop_gap_unix_s", now_wall)
+                        if state == "active":
+                            runtime.count("receiver.suspensions")
+                            runtime.observe("receiver.suspended", gap)
+                            self.log.warning(
+                                "Розрив циклу ~%d хв під час активного приймання; "
+                                "незавершену фразу скинуто. Причину не встановлено",
+                                max(1, round(gap / 60)),
+                            )
+                            segmenter = new_segmenter()
+                            last_frame_at = now_mono
+                            if self.on_suspension is not None:
+                                try:
+                                    self.on_suspension(gap)
+                                except Exception:
+                                    self.log.exception("Не вдалося повідомити про розрив приймання")
+                        else:
+                            self.log.info(
+                                "Розрив циклу %d с: мікрофон до розриву вже був закритий "
+                                "(стан: %s); сповіщення про втрату активного приймання не надсилається",
+                                round(gap), state,
+                            )
                     if transcriber_thread.is_alive():
                         runtime.gauge("workers.transcriber_alive", True)
                         if (

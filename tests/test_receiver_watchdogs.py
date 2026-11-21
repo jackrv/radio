@@ -5,8 +5,10 @@ import queue
 from unittest.mock import Mock
 
 import numpy as np
+import pytest
 
 from core.diagnostics import runtime
+from core.pause_gate import PauseGate
 from core.supervisor import ApplicationSupervisor
 from core.transcriber import Transcriber
 from core.vad import VADSegmenter
@@ -135,7 +137,8 @@ def test_mac_sleep_is_reported_and_unfinished_phrase_dropped():
 
     assert counter("receiver.suspensions") > before
     message = log.warning.call_args.args
-    assert "сон Mac" in message[0] and message[1] == 120
+    assert "активного приймання" in message[0] and message[1] == 120
+    assert "Причину не встановлено" in message[0]
     assert Segmenter.created >= 2, "VAD скинуто після сну"
 
 
@@ -196,6 +199,185 @@ def test_failing_notification_never_stops_reception():
     sleeping_supervisor(Mock(side_effect=RuntimeError("мережа")), log).run()
     log.exception.assert_called()
     assert Stream.opened[0].closed, "цикл завершився штатно"
+
+
+@pytest.mark.parametrize("reason", ["pause", "listening"])
+@pytest.mark.parametrize("resume", [False, True])
+@pytest.mark.parametrize("jump_clock", ["wall", "monotonic", "both"])
+def test_gap_while_microphone_is_intentionally_closed_never_alerts(
+    monkeypatch, reason, resume, jump_clock,
+):
+    wall, mono, requested = [1000.0], [100.0], [reason]
+    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: mono[0])
+    sleeps = []
+    segments = queue.Queue()
+    segments.put(b"completed phrase before pause")
+
+    def sleep(_):
+        if sleeps:
+            raise KeyboardInterrupt
+        sleeps.append(True)
+        if jump_clock in ("wall", "both"):
+            wall[0] += 180
+        if jump_clock in ("monotonic", "both"):
+            mono[0] += 180
+        if resume:
+            requested[0] = False  # строк паузи/hold сплив під час розриву
+
+    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    before = counter("receiver.suspensions")
+    state_before = counter(f"receiver.loop_gaps.{reason}")
+    alerts, log, gate = Mock(), Mock(), PauseGate()
+    Stream.opened = []
+    sup = supervisor(Frames([b"frame"]), log, pause_checker=lambda: requested[0],
+                     pause_gate=gate, wall_clock=lambda: wall[0], on_suspension=alerts)
+    sup.segments = segments
+    sup.run()
+
+    alerts.assert_not_called()
+    assert counter("receiver.suspensions") == before
+    assert counter(f"receiver.loop_gaps.{reason}") == state_before + 1
+    snapshot = runtime.snapshot()
+    assert snapshot["gauges"]["receiver.last_loop_gap_state"] == reason
+    assert snapshot["timings"][f"receiver.loop_gap.{reason}"]["max_s"] >= 180
+    assert len(Stream.opened) == int(resume)
+    assert all(stream.closed for stream in Stream.opened)
+    # Прослуховування не інвалідує завершені фрази; ручна пауза їх очищає.
+    assert segments.qsize() == int(reason == "listening")
+    log.warning.assert_not_called()
+
+
+def test_real_gap_after_resuming_is_not_suppressed_by_the_previous_pause(monkeypatch):
+    wall, requested, frames_seen = [1000.0], [False], []
+
+    def frame():
+        frames_seen.append(True)
+        if len(frames_seen) == 1:
+            requested[0] = "pause"
+        elif len(frames_seen) == 2:
+            wall[0] += 120  # справжній розрив після перевідкриття потоку
+
+    def sleep(_):
+        wall[0] += 180
+        requested[0] = False
+
+    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    alerts = Mock()
+    pause_before, active_before = counter("receiver.loop_gaps.pause"), counter("receiver.suspensions")
+    Stream.opened = []
+    supervisor(Frames([b"frame", b"frame"], frame), Mock(), pause_checker=lambda: requested[0],
+               wall_clock=lambda: wall[0], on_suspension=alerts).run()
+    alerts.assert_called_once_with(120)
+    assert counter("receiver.loop_gaps.pause") == pause_before + 1
+    assert counter("receiver.suspensions") == active_before + 1
+    assert len(Stream.opened) == 2 and all(stream.closed for stream in Stream.opened)
+
+
+def test_new_pause_request_does_not_hide_a_gap_that_started_while_stream_was_open(monkeypatch):
+    wall, requested = [1000.0], [False]
+
+    def frame():
+        wall[0] += 180
+        requested[0] = "pause"  # намір новий; під час розриву мікрофон ще був відкритий
+
+    monkeypatch.setattr("core.supervisor.time.sleep", Mock(side_effect=KeyboardInterrupt))
+    alerts = Mock()
+    supervisor(Frames([b"frame"], frame), Mock(), pause_checker=lambda: requested[0],
+               wall_clock=lambda: wall[0], on_suspension=alerts).run()
+    alerts.assert_called_once_with(180)
+
+
+def test_unavailable_microphone_is_not_mislabelled_as_an_intentional_pause(monkeypatch):
+    wall, mono, sleeps = [1000.0], [100.0], []
+    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: mono[0])
+
+    def sleep(_):
+        if sleeps:
+            raise KeyboardInterrupt
+        sleeps.append(True)
+        wall[0] += 180
+        mono[0] += 180
+
+    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    alerts, log = Mock(), Mock()
+    factory = Mock(side_effect=RuntimeError("synthetic device error"))
+    before = counter("receiver.loop_gaps.unavailable")
+    sup = supervisor(Frames([]), log, wall_clock=lambda: wall[0], on_suspension=alerts)
+    sup.stream_factory = factory
+    sup.run()
+    alerts.assert_not_called()
+    assert counter("receiver.loop_gaps.unavailable") == before + 1
+    assert factory.call_count == 2, "помилки мікрофона й штатні повтори не вимкнено"
+    assert log.exception.call_count == 2
+
+
+def test_long_intentional_pause_with_a_responsive_loop_is_not_a_loop_gap(monkeypatch):
+    clock, sleeps = [1000.0], []
+    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: clock[0])
+
+    def sleep(seconds):
+        clock[0] += seconds
+        sleeps.append(True)
+        if len(sleeps) >= 450:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    before = counter("receiver.loop_gaps")
+    alerts = Mock()
+    supervisor(Frames([]), Mock(), pause_checker=lambda: "pause",
+               wall_clock=lambda: clock[0], on_suspension=alerts).run()
+    assert counter("receiver.loop_gaps") == before
+    alerts.assert_not_called()
+
+
+def test_global_pause_with_playback_and_release_never_alerts_or_resumes_early(tmp_path, monkeypatch):
+    from services.receiver_control import reception_request, set_listening_hold, set_pause_minutes
+
+    db_path = tmp_path / "events.db"
+    wall, sleeps = [1000.0], []
+    set_pause_minutes(db_path, 5, now=wall[0])
+    set_listening_hold(db_path, 120, now=wall[0])
+    alerts = Mock()
+    Stream.opened = []
+
+    def sleep(_):
+        sleeps.append(True)
+        assert not Stream.opened
+        if len(sleeps) == 1:
+            wall[0] += 180
+            set_listening_hold(db_path, 0, now=wall[0])
+            assert reception_request(db_path, now=wall[0]) == "pause"
+        elif len(sleeps) == 2:
+            wall[0] += 180
+            set_pause_minutes(db_path, 0, now=wall[0])
+        else:
+            raise AssertionError("приймач не відновився")
+
+    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    supervisor(Frames([b"frame"]), Mock(), pause_checker=lambda: reception_request(db_path, now=wall[0]),
+               wall_clock=lambda: wall[0], on_suspension=alerts).run()
+    alerts.assert_not_called()
+    assert len(Stream.opened) == 1 and Stream.opened[0].closed
+
+
+def test_gap_notification_does_not_assert_sleep_or_successful_recovery():
+    # Виконуємо тільки чисту функцію форматування, не імпортуємо запуск radio.py.
+    import ast
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "radio.py").read_text())
+    function = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == "report_suspension")
+    telegram = Mock()
+    namespace = {"datetime": datetime, "timedelta": timedelta, "telegram_service": telegram}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "radio.py", "exec"), namespace)
+    namespace["report_suspension"](185)
+    message = telegram.notify_admin_async.call_args.args[0]
+    assert "Розрив циклу під час приймання" in message
+    assert "Причину не встановлено" in message
+    assert "закрита кришка" not in message
+    assert "відновлено автоматично" not in message
 
 
 def test_admin_alert_retries_until_delivered(monkeypatch):

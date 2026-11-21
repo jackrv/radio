@@ -100,8 +100,12 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  const marked=await evaluate(`({text:document.querySelector('.transcript-preview').textContent,stored:localStorage.getItem('radio345:mention-terms')})`);
  if(marked.stored!=='Клен 12')throw Error('mention terms not persisted');
  fs.writeFileSync(path.join(root,'archive-highlights.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ await evaluate(`{const original=window.fetch;window.__reviewedRecalls=[];window.fetch=async(url,options)=>{const response=await original(url,options);if(String(url).endsWith('/review')&&options?.method==='PUT'&&response.ok)window.__reviewedRecalls.push(await response.clone().json());return response;};}`);
  await evaluate(`[...document.querySelectorAll('#recordings .segmented button')].find(b=>b.textContent.includes('Шум ефіру')).click()`);
  await until(()=>evaluate(`!document.querySelector('#recordings .save-primary')?.disabled`));
+ await until(()=>evaluate(`window.__reviewedRecalls.some(r=>r.label==='noise'&&r.telegram_recall?.status==='scheduled'&&r.telegram_recall.after_seconds>15)`));
+ if(!await evaluate(`[...document.querySelectorAll('#recordings .save-status')].some(n=>n.textContent.includes('відкликання копій Telegram'))`))throw Error('scheduled recall is invisible after noise label');
+ console.log('flows: noise label durably schedules known Telegram copy with visible undo grace');
  await evaluate(`document.querySelector('[data-group="mentions"]').click()`);
  await until(()=>evaluate(`document.querySelector('.mention-results')?.children.length===1`));
  console.log('flows: newly labelled noise removed when returning to selection');
@@ -127,6 +131,17 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await until(()=>evaluate(`fetch('/api/learning').then(r=>r.json()).then(d=>d.counts.applies===1)`));
  console.log('flows: learned replacement found and approved through UI');
 
+ const learningBeforeConflict=await evaluate(`fetch('/api/learning').then(r=>r.json())`);
+ await evaluate(`{const search=document.querySelector('[aria-label="Пошук навчених замін"]');search.value='стежко';document.querySelector('#learning-filter').value='conflict';search.dispatchEvent(new Event('input'));}`);
+ await until(()=>evaluate(`document.querySelector('#learning-items .learning-conflict')?.textContent.includes('стежко → стежку')===true`));
+ const conflict=await evaluate(`{const details=document.querySelector('#learning-items .learning-conflict'),row=details.closest('tr');({rows:document.querySelectorAll('#learning-items tr').length,source:details.querySelector('a')?.getAttribute('href'),approval:[...row.querySelectorAll('button')].some(b=>b.textContent==='Дозволити'),explanation:details.textContent.includes('нічого не змінюйте')});}`);
+ if(conflict.rows!==2||!conflict.source?.includes(encodeURIComponent('№77'))||conflict.approval||!conflict.explanation)throw Error('hidden learning competitor not explained '+JSON.stringify(conflict));
+ await evaluate(`[...document.querySelectorAll('#learning-items button')].find(b=>b.textContent==='Показати всі варіанти').click()`);
+ await until(()=>evaluate(`document.querySelector('#learning-filter').value==='all'&&document.querySelectorAll('#learning-items tr').length===3`));
+ const learningAfterConflict=await evaluate(`fetch('/api/learning').then(r=>r.json())`);
+ if(JSON.stringify(learningAfterConflict)!==JSON.stringify(learningBeforeConflict))throw Error('viewing learning conflict changed rules or votes');
+ console.log('flows: hidden one-vote competitor, source and instructions visible; show all changes only view');
+
  await evaluate(`[...document.querySelectorAll('#tabs button')].find(b=>b.textContent==='Коди доби').click()`);
  await until(()=>evaluate(`document.querySelector('#codes-period')?.textContent.includes('діють')`));
  await evaluate(`document.querySelector('#codes-input').value='48 62';document.querySelector('#codes-save').click()`);
@@ -145,6 +160,7 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await until(()=>evaluate(`document.querySelector('[data-panel=dictionaries] aside .summary')?.textContent==='Формат рядків правильний'`));
  await evaluate(`[...document.querySelectorAll('[data-panel=dictionaries] button')].find(b=>b.textContent==='Зберегти').click()`);
  await until(()=>evaluate(`fetch('/api/dictionaries').then(r=>r.json()).then(d=>d.commands.entries.some(e=>e.raw_line==='злива 42 42'&&e.enabled))`));
+ await until(()=>evaluate(`document.querySelectorAll('[data-panel=dictionaries] .phrase-pattern-row.is-draft').length===0`));
  console.log('flows: code draft retained; spaced command added, enabled, saved through UI');
 
  await evaluate(`[...document.querySelectorAll('#tabs button')].find(b=>b.textContent==='Фільтри тексту').click()`);
@@ -209,6 +225,90 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await until(()=>evaluate(`fetch('/api/summary').then(r=>r.json()).then(d=>d.telegram_sync.exhausted===0&&d.telegram_sync.skipped===1)`));
  await until(()=>evaluate(`!document.querySelector('#telegram button') && document.querySelector('#telegram').textContent.includes('Пропущено за вашим рішенням')`));
  console.log('flows: exhausted Telegram edit explicitly skipped through UI');
+
+ // Усі типи програмної вставки перевіряються на видимих рядках, не hidden textarea.
+ await evaluate(`(async()=>{for(const [type,entries] of [
+  ['callsign_aliases',[{raw_line:'Клен: клін',enabled:true}]],
+  ['phrase_patterns',[{raw_line:'{П}, я {П}, прийом',enabled:false}]],
+ ]){const state=await fetch('/api/text-lists').then(r=>r.json());const response=await fetch('/api/text-lists/'+type,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({entries,expected_revision:state.revision})});if(!response.ok)throw Error('cannot seed insertion test '+type+': '+await response.text());}})()`);
+ await evaluate(`{const original=window.fetch;window.fetch=async(url,options)=>{const response=await original(url,options);if(String(url).endsWith('/api/attention')&&response.ok){const data=await response.json();data.suggestions_pending=false;data.suggestions=[
+  {kind:'noise',title:'Синтетична перевірка шуму',target:'texts:short_garbage',count:2,new:2,examples:['два різні списки'],lines:[{list:'short_garbage',line:'синтетичний шерех'},{list:'blacklist',line:'синтетична довга фраза без мовлення'}]},
+  {kind:'alias',title:'Синтетична перевірка аліаса',target:'texts:callsign_aliases',count:1,new:1,examples:['новий варіант'],lines:[{list:'callsign_aliases',callsign:'Клен',line:'клинок'}]},
+  {kind:'dictionary',title:'Синтетична перевірка словника',target:'dictionaries',count:2,new:2,examples:['новий номер'],lines:[{list:'callsigns',callsign:'Клен',number:'13'},{list:'callsigns',callsign:'Явір',number:'19'}]},
+  {kind:'pattern',title:'Синтетична перевірка шаблону',target:'texts:phrase_patterns',count:1,new:1,examples:['тимчасовий шаблон'],lines:[{list:'phrase_patterns',line:'{П}, я {П}, прийом'}]},
+ ];return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});}return response;};}`);
+ await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+ await evaluate(`document.querySelector('[data-group="overview"]').click();document.querySelector('#suggestions-refresh').click()`);
+ await until(()=>evaluate(`[...document.querySelectorAll('.attention-item button')].some(b=>b.textContent==='Переглянути шум (1)')`));
+ const beforeSuggestions=await evaluate(`fetch('/api/text-lists').then(r=>r.json())`);
+ for(const width of [1440,390]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
+  const layout=await evaluate(`{const row=[...document.querySelectorAll('.attention-item')].find(n=>n.textContent.includes('Синтетична перевірка шуму')),actions=row.querySelector('.attention-actions'),r=actions.getBoundingClientRect();({overflow:document.documentElement.scrollWidth>innerWidth,inside:r.right<=row.getBoundingClientRect().right+1&&r.left>=row.getBoundingClientRect().left});}`);
+  if(layout.overflow||!layout.inside)throw Error('mixed suggestion actions overflow '+JSON.stringify({width,...layout}));
+ }
+ for(const [button,title,line,other] of [
+  ['Переглянути шум (1)','Короткий шум','синтетичний шерех','синтетична довга фраза без мовлення'],
+  ['Переглянути галюцинації (1)','Фрази-галюцинації Whisper','синтетична довга фраза без мовлення','синтетичний шерех'],
+ ]){
+  await evaluate(`document.querySelector('[data-group="overview"]').click();[...document.querySelectorAll('.attention-item button')].find(b=>b.textContent===${JSON.stringify(button)}).click()`);
+  await until(()=>evaluate(`document.querySelector('[data-panel=texts]')?.hidden===false&&document.querySelector('#text-lists .list-picker button.on')?.textContent.startsWith(${JSON.stringify(title)}+' ·')===true&&[...document.querySelectorAll('#text-lists input.pattern-line')].some(i=>i.value===${JSON.stringify(line)})`));
+  await until(()=>evaluate(`document.activeElement?.value===${JSON.stringify(line)}&&document.activeElement.closest('.phrase-pattern-row')?.classList.contains('is-draft')===true`));
+  const visible=await evaluate(`{const field=document.activeElement,row=field.closest('.phrase-pattern-row'),r=row.getBoundingClientRect(),list=row.parentElement.getBoundingClientRect();({badge:row.querySelector('.pattern-draft')?.checkVisibility(),color:getComputedStyle(row).backgroundColor,inside:r.top>=list.top-1&&r.bottom<=list.bottom+1&&r.bottom<=innerHeight,changed:document.querySelector('#text-lists [data-action=save]').classList.contains('needs-save')});}`);
+  if(!visible.badge||!visible.inside||!visible.changed||visible.color==='rgba(0, 0, 0, 0)')throw Error('inserted noise row is invisible '+JSON.stringify(visible));
+  if(await evaluate(`[...document.querySelectorAll('#text-lists input.pattern-line')].some(i=>i.value===${JSON.stringify(other)})`))throw Error('proposal inserted into wrong list');
+  const after=await evaluate(`fetch('/api/text-lists').then(r=>r.json())`);
+  if(JSON.stringify(after.lists)!==JSON.stringify(beforeSuggestions.lists)||after.revision!==beforeSuggestions.revision)throw Error('review silently saved a noise proposal');
+ }
+ await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+ console.log('flows: mixed noise proposals open both editors independently, no automatic save, 1440/390 px');
+
+ for(const [title,panel,line,selected,count] of [
+  ['Синтетична перевірка аліаса','texts','Клен: клін, клинок','клинок',1],
+  ['Синтетична перевірка словника','dictionaries','Клен: 12 13','13',2],
+  ['Синтетична перевірка шаблону','texts','{П}, я {П}, прийом','{П}, я {П}, прийом',1],
+ ]){
+  await evaluate(`document.querySelector('[data-group="overview"]').click();[...document.querySelectorAll('.attention-item')].find(r=>r.textContent.includes(${JSON.stringify(title)})).querySelector('button').click()`);
+  await until(()=>evaluate(`document.activeElement?.value===${JSON.stringify(line)}&&document.activeElement.closest('.phrase-pattern-row')?.classList.contains('is-draft')===true`));
+  const marker=await evaluate(`{const p=document.querySelector('[data-panel=${panel}]'),i=document.activeElement;({count:p.querySelectorAll('.phrase-pattern-row.is-draft').length,selection:i.value.slice(i.selectionStart,i.selectionEnd),badge:i.closest('.phrase-pattern-row').querySelector('.pattern-draft')?.checkVisibility(),visible:i.getBoundingClientRect().top>=0&&i.getBoundingClientRect().bottom<=innerHeight});}`);
+  if(marker.count!==count||marker.selection!==selected||!marker.badge||!marker.visible)throw Error('proposal draft is invisible '+JSON.stringify({title,...marker}));
+  const after=await evaluate(`fetch('/api/text-lists').then(r=>r.json())`);
+  if(JSON.stringify(after.lists)!==JSON.stringify(beforeSuggestions.lists)||after.revision!==beforeSuggestions.revision)throw Error('proposal preview saved changes');
+  fs.writeFileSync(path.join(root,panel+'-draft-'+count+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ }
+ console.log('flows: merged alias, existing dictionary number/new callsign, and temporary pattern are colored and focused');
+
+ await evaluate(`{const original=window.fetch;window.fetch=async(url,options)=>{const response=await original(url,options);let data=null;if(String(url).endsWith('/api/text-lists/noise-candidates'))data={records:2,items:[{text:'синтетичний стукіт',example:'синтетичний стукіт',count:2,reached_text:2,labels:{room:2},list:'short_garbage',flags:[],addable:true}]};if(String(url).endsWith('/api/text-lists/callsign-alias-candidates'))data={records:2,items:[{callsign:'Клен',heard:'клейн',count:2,similarity:90,flags:[],addable:true}]};return data?new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}}):response;};}`);
+ for(const [type,title,line] of [
+  ['short_garbage','Короткий шум','синтетичний стукіт'],
+  ['callsign_aliases','Аліаси позивних','Клен: клейн'],
+ ]){
+  await evaluate(`[...document.querySelectorAll('#text-lists .list-picker button')].find(b=>b.textContent.startsWith(${JSON.stringify(title)}+' ·')).click()`);
+  await until(()=>evaluate(`document.querySelector('#text-lists .list-picker button.on')?.textContent.startsWith(${JSON.stringify(title)}+' ·')===true`));
+  await evaluate(`document.querySelector('#text-lists details.list-right').open=true;document.querySelector('#text-lists .alias-candidates > button').click()`);
+  await until(()=>evaluate(`[...document.querySelectorAll('#text-lists .alias-candidates button')].some(b=>b.textContent==='Додати')`));
+  await evaluate(`[...document.querySelectorAll('#text-lists .alias-candidates button')].find(b=>b.textContent==='Додати').click()`);
+  await until(()=>evaluate(`document.activeElement?.value===${JSON.stringify(line)}&&document.activeElement.closest('.phrase-pattern-row')?.classList.contains('is-recent')===true`));
+  const saved=await evaluate(`{const row=document.activeElement.closest('.phrase-pattern-row');({label:row.querySelector('.pattern-draft').textContent,dirty:document.querySelector('#text-lists [data-action=save]').classList.contains('needs-save'),visible:row.querySelector('.pattern-draft').checkVisibility(),recent:document.querySelectorAll('#text-lists .is-recent').length});}`);
+  if(saved.label!=='Щойно збережено'||saved.dirty||!saved.visible||saved.recent!==1)throw Error('saved candidate not visibly distinguished '+JSON.stringify({type,...saved}));
+  if(!await evaluate(`fetch('/api/text-lists').then(r=>r.json()).then(d=>d.lists.${type}.entries.some(e=>e.raw_line===${JSON.stringify(line)}&&e.enabled))`))throw Error('candidate was not saved');
+ }
+ console.log('flows: saved noise and alias candidates are focused, blue, explicitly saved, and not dirty');
+
+ // Номер помилки — той самий у перевірці/збереженні, навіть із вимкненим рядком.
+ await evaluate(`(async()=>{const current=await fetch('/api/text-lists').then(r=>r.json());const entries=Array.from({length:24},(_,i)=>({raw_line:'синтетичний фільтр '+String.fromCharCode(1072+i),enabled:i!==0}));const response=await fetch('/api/text-lists/short_garbage',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({entries,expected_revision:current.revision})});if(!response.ok)throw Error(await response.text());})()`);
+ await evaluate(`[...document.querySelectorAll('#text-lists .list-picker button')].find(b=>b.textContent.startsWith('Короткий шум ·')).click()`);
+ await until(()=>evaluate(`document.querySelector('#text-lists .list-picker button.on')?.textContent.startsWith('Короткий шум ·')===true&&document.querySelectorAll('#text-lists .editor-row-number').length===24`));
+ await evaluate(`{const search=document.querySelector('#text-lists .pattern-search');search.value='синтетичний текст 42';search.dispatchEvent(new Event('input'));[...document.querySelectorAll('#text-lists button')].find(b=>b.textContent==='＋ Додати рядок').click();}`);
+ await until(()=>evaluate(`!![...document.querySelectorAll('#text-lists .row-issue-link')].find(b=>b.textContent==='Рядок 25 ↗')`));
+ for (const width of [1440,390]) {
+  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
+  await evaluate(`{const search=document.querySelector('#text-lists .pattern-search');search.value='фільтр';search.dispatchEvent(new Event('input'));[...document.querySelectorAll('#text-lists .row-issue-link')].find(b=>b.textContent==='Рядок 25 ↗').click();}`);
+  await until(()=>evaluate(`document.activeElement?.value==='синтетичний текст 42'`));
+  const target=await evaluate(`{const field=document.activeElement,row=field.closest('.phrase-pattern-row'),rect=field.getBoundingClientRect();({number:row.querySelector('.editor-row-number').textContent,marked:row.classList.contains('is-targeted'),selected:field.value.slice(field.selectionStart,field.selectionEnd),search:document.querySelector('#text-lists .pattern-search').value,visible:rect.top>=0&&rect.bottom<=innerHeight});}`);
+  if(target.number!=='25'||!target.marked||target.selected!=='синтетичний текст 42'||target.search||!target.visible)throw Error('warning did not reveal numbered row '+JSON.stringify({width,...target}));
+ }
+ fs.writeFileSync(path.join(root,'row-warning-jump.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ console.log('flows: row 25 error jumps through search filter, highlights and selects actual numbered row at 1440/390 px');
 
  const screenshot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'panel.png'),Buffer.from(screenshot.data,'base64'));
  await send('Emulation.setDeviceMetricsOverride',{width:1100,height:800,deviceScaleFactor:1,mobile:false});

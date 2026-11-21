@@ -209,6 +209,8 @@ def register(app, ctx):
         result["event_sync"] = sync_event_from_reference(db_path, result, admin)
         from services.archive_learning import sync_archive_learning
         result['learning_sync']=sync_archive_learning(db_path,recordings,record_id,admin)
+        from services.archive_telegram_recall import status as recall_status
+        result['telegram_recall'] = recall_status(recordings, record_id)
         from services.user_activity import record as record_activity
         record_activity(db_path,admin,'archive_review',record_id,
                         {'label':payload.label,'characters':len(payload.reference.strip()),'event_sync':result['event_sync']})

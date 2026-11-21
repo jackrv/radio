@@ -51,18 +51,25 @@ def state(db_path, fix_ids):
     return found
 
 
-def request_delete(db_path, fix_id, *, now=None):
+def request_delete(db_path, fix_id, *, now=None, retry_exhausted=True):
     """Поставити всі живі копії фрази в чергу на видалення. Повертає кількість копій."""
     now = time.time() if now is None else now
     with get_db(db_path) as db:
         db.execute("BEGIN IMMEDIATE")
         ensure_tables(db)
         ensure_media(db)
+        # Давні доставки могли зберігатися лише тут. Перенести адресу до
+        # tombstone: пізніша migrate_legacy бере тільки visible-рядки.
+        db.execute('''INSERT OR IGNORE INTO telegram_deliveries(fix_id,chat_id,message_id,kind)
+            SELECT fix_id,CAST(chat_id AS INTEGER),message_id,
+                CASE WHEN voice_file_id IS NULL THEN 'text' ELSE 'voice' END
+            FROM telegram_phrase_messages WHERE fix_id=? AND state='visible'
+                AND CAST(chat_id AS INTEGER)>0 AND message_id IS NOT NULL''', (fix_id,))
         db.execute("""INSERT INTO telegram_phrase_messages(fix_id,state) VALUES (?, 'deleting')
             ON CONFLICT(fix_id) DO UPDATE SET state='deleting'""", (fix_id,))
         count = db.execute("""UPDATE telegram_deliveries SET delete_requested=?, attempts=0, next_try=0
-            WHERE fix_id=? AND unavailable=0 AND (delete_requested IS NULL OR attempts>=?)""",
-                           (now, fix_id, MAX_ATTEMPTS)).rowcount
+            WHERE fix_id=? AND unavailable=0 AND (delete_requested IS NULL OR (? AND attempts>=?))""",
+                           (now, fix_id, int(retry_exhausted), MAX_ATTEMPTS)).rowcount
     # Фраза зникає з журналу й Mini App одразу; копії в чатах — щойно бот їх видалить.
     if not count and not _left(db_path, fix_id):
         deletion_result(db_path, fix_id, True)

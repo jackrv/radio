@@ -145,16 +145,23 @@ def sync_corrections(service, *, limit=5, now=None):
         service._legacy_imported = True
     with get_db(service.db_path) as db:
         ensure_tables(db)
-        # Expired mem references must not grow forever or resurrect old phrases.
+        # Текст mem живе 24 год, але адреса потрібна для відкликання до 48 год.
+        # Незавершене видалення не можна загубити під час очищення текстів.
         exists = db.execute("SELECT 1 FROM sqlite_master WHERE name='telegram_recent_phrases'").fetchone()
         if exists:
             db.execute("""DELETE FROM telegram_deliveries WHERE fix_id LIKE 'mem:%' AND NOT EXISTS
-                (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:'||p.token=fix_id AND created_at>?)""", (now-86400,))
+                (SELECT 1 FROM telegram_recent_phrases p WHERE 'mem:'||p.token=fix_id AND created_at>?)
+                AND (delete_requested IS NULL OR unavailable=1)
+                AND (unavailable=1 OR sent_at IS NULL OR sent_at<=?)""", (now-86400, now-48*3600))
+        live_mem = (" AND (d.fix_id NOT LIKE 'mem:%' OR EXISTS (SELECT 1 FROM telegram_recent_phrases p "
+                    "WHERE 'mem:'||p.token=d.fix_id AND p.created_at>?))" if exists
+                    else " AND d.fix_id NOT LIKE 'mem:%'")
         jobs = db.execute("""SELECT d.fix_id,d.chat_id,d.message_id,d.kind,c.revision
             FROM telegram_deliveries d JOIN correction_sources c ON c.fix_id=d.fix_id
             WHERE d.unavailable=0 AND d.delete_requested IS NULL
               AND d.applied_revision<c.revision AND d.skipped_revision<c.revision AND d.next_try<=? AND d.attempts<8
-            ORDER BY d.next_try,d.rowid LIMIT ?""", (now, limit)).fetchall()
+            """ + live_mem + " ORDER BY d.next_try,d.rowid LIMIT ?",
+            (now, now-86400, limit) if exists else (now, limit)).fetchall()
     for fix_id, chat, message, kind, revision in jobs:
         if getattr(service,"_maintenance_stop",None) is not None and service._maintenance_stop.is_set():
             break

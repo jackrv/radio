@@ -206,3 +206,13 @@ def test_lost_group_needs_unique_code_and_same_digits():
     assert constrain_dictionary_text('злива 42',cs,commands)[0]=='злива 42'    # інша група не дописується
     commands=command_dictionary(['грім 0 22'])
     assert constrain_dictionary_text('грім 23',cs,commands)[0]=='грім 23'      # не найближче число
+
+
+def test_zero_glued_to_command_name_is_split_only_for_an_exact_code():
+    cs,_=dictionaries()
+    commands=command_dictionary(['буря 0 11','буря 222','грім 22'])
+    assert tidy_text('буряна 11, прийом',cs,commands)=='БУРЯ 0 11, прийом'
+    assert tidy_text('буряна 11, буряна 11',cs,commands)=='БУРЯ 0 11, БУРЯ 0 11'
+    assert constrain_dictionary_text('буряна резонанс',cs,commands)[0]=='буря 0 резонанс'   # решту дописує completion
+    for raw in ('буряна 12','грімна 22','буряна 222','«буряна 11»','забуряна 11'):
+        assert constrain_dictionary_text(raw,cs,commands)[0]==raw,raw   # код не вигадується й не підбирається

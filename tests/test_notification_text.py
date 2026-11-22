@@ -48,8 +48,8 @@ def test_nothing_is_rewritten_without_exact_number():
 
 def test_spoken_numbers():
     assert spoken_number("4242") == "42 42"
-    assert spoken_number("022") == "022"
-    assert fmt_spoken(COMMANDS.find("злива 42 42, грім 022, сніг")) == "злива 42 42, грім 022, сніг"
+    assert spoken_number("022") == "0 22" and spoken_number("222") == "222"
+    assert fmt_spoken(COMMANDS.find("злива 42 42, грім 022, сніг")) == "злива 42 42, грім 0 22, сніг"
 
 
 def test_caption_has_commands_line_only_when_found():

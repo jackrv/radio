@@ -46,9 +46,45 @@ def _editable(text,token):
     return prefix.count('«')<=prefix.count('»') and prefix.count('"')%2==0
 
 
+# «буря нуль 11» Whisper пише «буряна 11»: «нуль» зливається з назвою команди.
+# 23.11.2026: 11 записів «<назва>на» при еталоні «<назва> 0 …», жодного «<назва>на» в еталонах.
+_GLUED_ZERO = ("на",)
+
+
+def split_glued_zero(text,callsigns,commands):
+    """«<команда>на 11» → «<команда> 0 11», лише якщо «0»+почуті цифри — точний код цієї команди.
+
+    Без цифр — «<команда> 0», лише коли код на нуль у команди єдиний.
+    """
+    if commands is None:return text,[]
+    tokens=list(TOKEN.finditer(text));edits=[];changes=[]
+    callsign_names=set(getattr(callsigns,'names',()) or ())
+    for i,token in enumerate(tokens[:-1]):
+        if not _editable(text,token) or token.group().isdigit():continue
+        word=basic_normalize(token.group())
+        if word in commands.names or word in callsign_names:continue
+        name=next((word[:-len(s)] for s in _GLUED_ZERO if word.endswith(s) and word[:-len(s)] in commands.names),None)
+        if not name or name in callsign_names or name in commands.any_number:continue
+        digits=[];end=token.end()
+        for item in tokens[i+1:]:
+            if not item.group().isdigit() or not _GAP.fullmatch(text[end:item.start()]):break
+            if item.end()<len(text) and (text[item.end()].isalnum() or text[item.end()]=='_'):break
+            digits.append(item.group());end=item.end()
+        allowed={code for code in commands.numbers.get(name,()) if code.isascii() and code.isdigit()}
+        if not digits:
+            # Без цифр — лише «<команда> 0», якщо код на нуль єдиний; решту дописує command_completion
+            # з позначкою «почуто» (погоджено власником 23.11.2026).
+            if len([code for code in allowed if code.startswith('0') and len(code)>1])!=1:continue
+        elif '0'+''.join(digits) not in allowed and '0'+digits[0] not in allowed:continue
+        edits.append((token.start(),token.end(),name+' 0'))
+        changes.append(dict(kind='glued_zero',name=name,heard=token.group(),expected=name+' 0'))
+    for start,end,value in reversed(edits):text=text[:start]+value+text[end:]
+    return text,changes
+
+
 def constrain_dictionary_text(text,callsigns,commands):
     if not text or _PROTECTED.search(text):return text,[]
-    changes=[]
+    text,changes=split_glued_zero(text,callsigns,commands)
     lookup=callsign_lookup(callsigns)
     # Число словами після відомого імені: змінюється запис, а не значення.
     tokens=list(TOKEN.finditer(text));edits=[]

@@ -14,8 +14,12 @@ def fmt(items):
 
 
 def spoken_number(number):
-    """Чотирицифровий код вимовляють парами: 4242 -> «42 42»."""
-    return f"{number[:2]} {number[2:]}" if len(number) == 4 and number.isdigit() else number
+    """Чотирицифровий код вимовляють парами: 4242 -> «42 42»; код із нулем попереду — 022 -> «0 22»."""
+    if len(number) == 4 and number.isdigit():
+        return f"{number[:2]} {number[2:]}"
+    if len(number) == 3 and number.isdigit() and number.startswith("0"):
+        return f"0 {number[1:]}"
+    return number
 
 
 def fmt_spoken(items, partial=()):
@@ -27,7 +31,8 @@ def fmt_spoken(items, partial=()):
         if not number:
             return name
         text = f"{name} {spoken_number(number)}"
-        return f"{text} (почуто «{number[:2]}»)" if (name, number) in partial else text
+        heard = "0" if number.startswith("0") and len(number) != 4 else number[:2]
+        return f"{text} (почуто «{heard}»)" if (name, number) in partial else text
     return ", ".join(one(name, number) for name, number, _ in items)
 
 

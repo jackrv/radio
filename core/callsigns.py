@@ -255,7 +255,15 @@ class Callsigns:
         Whisper часто зливає «сорок два сорок два» в одне «42». Лише дві цифри,
         лише код виду ABAB і лише коли далі не стоїть та сама пара (тоді код повний).
         """
-        if i >= len(items) or items[i][0] != "num" or len(items[i][1]) != 2:
+        if i >= len(items) or items[i][0] != "num":
+            return None, 0
+        if items[i][1] == "0":
+            # «буря нуль» без продовження: єдиний код цієї команди на нуль (23.11.2026, власник).
+            zero = [code for code in allowed if code.startswith("0") and len(code) > 1 and code.isdigit()]
+            if len(zero) != 1 or "0" in allowed or (i + 1 < len(items) and items[i + 1][0] == "num"):
+                return None, 0
+            return zero[0], 1
+        if len(items[i][1]) != 2:
             return None, 0
         code = items[i][1] * 2
         if code not in allowed:

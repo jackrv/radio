@@ -60,6 +60,7 @@
     $("codes-period").textContent = `діють з ${fmt(start)} до ${fmt(end)}`;
     $('codes-period').title=`Межа доби: ${String(changeHour).padStart(2,'0')}:00 за місцевим часом Mac. Параметр DAILY_CODES_CHANGE_HOUR у config.py.`;
     renderCodeChips('codes-input');
+    for (const card of $("codes-recent")?.querySelectorAll?.(".code-day") || []) card.classList.toggle("on", card.dataset?.day === $("codes-day").value);
   }
   async function dailyCodes() {
     const data = await request("/api/daily-codes");
@@ -72,13 +73,24 @@
     const box = $("codes-recent");
     box.replaceChildren();
     if (!data.items.length) { box.textContent = "Кодів ще не внесено."; return; }
-    box.append(el("span", "", "Останні дні: "));
+    // Картка дня, як на папірці: число доби великим | коди стовпчиком; рік і місяць — лише в підказці.
+    const list = el("div", "code-days");
     for (const item of data.items) {
-      const link = el("button", "ghost", `${item.day}: ${item.codes.join(", ")}`); link.type = "button";
-      link.title = `Діють з ${item.period?.[0] ?? ""} до ${item.period?.[1] ?? ""}`;
-      link.addEventListener("click", () => { $("codes-day").value = item.day; showDayCodes(); });
-      box.append(link);
+      const link = el("button", `code-day${item.day === $("codes-day").value ? " on" : ""}`); link.type = "button";
+      if (link.dataset) link.dataset.day = item.day;
+      const [, month, date] = item.day.split("-");
+      const codes = el("span", "code-day-codes");
+      codes.append(...item.codes.map(code => el("span", "", code)));
+      link.append(el("b", "code-day-num", String(Number(date))), codes);
+      link.title = `${date}.${month}: ${item.codes.join(", ")}\nДіють з ${item.period?.[0] ?? ""} до ${item.period?.[1] ?? ""}`;
+      link.setAttribute?.("aria-label", `${date}.${month}: ${item.codes.join(", ")}`);
+      link.addEventListener("click", () => {
+        $("codes-day").value = item.day; showDayCodes();
+        for (const other of list.children) other.classList.toggle("on", other === link);
+      });
+      list.append(link);
     }
+    box.append(el("span", "code-days-title", "Останні дні"), list);
   }
   function renderCodeChips(id) {
     const input=$(id); let chips=$(`${id}-chips`);
@@ -480,13 +492,25 @@
         fields.line.setAttribute('aria-label', current === null ? 'Новий порожній рядок' : `${generic ? 'Текст рядка' : 'Текст шаблону'} ${current}`);
       }
     };
+    // Строку цілком (з позначкою «Чернетка») — у середину списку; вікно не рухається, якщо рядок
+    // і так видно з запасом (раніше scrollIntoView центрував лише поле й завжди прокручував сторінку).
+    const revealRow = field => {
+      const row = field.closest?.('.phrase-pattern-row') || field;
+      const list = row.closest?.('.phrase-pattern-rows');
+      if (!list || !row.getBoundingClientRect || !list.getBoundingClientRect) { field.scrollIntoView?.({block: 'nearest', behavior: 'instant'}); return; }
+      const rowBox = row.getBoundingClientRect(), listBox = list.getBoundingClientRect();
+      list.scrollTop += (rowBox.top + rowBox.height / 2) - (listBox.top + list.clientHeight / 2);
+      const view = typeof window !== 'undefined' ? window.innerHeight : 0;
+      const box = row.getBoundingClientRect();
+      if (view && (box.top < 60 || box.bottom > view - 60)) row.scrollIntoView?.({block: 'center', behavior: 'instant'});
+    };
     const focusRow = (field, selection = null) => {
       const reveal = () => {
         if (root.isConnected === false || root.closest?.('[data-panel]')?.hidden || field.isConnected === false) return;
         field.focus({preventScroll: true});
         const selected = selection || {start: 0, end: field.value.length};
         field.setSelectionRange?.(selected.start, selected.end);
-        field.scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
+        revealRow(field);
       };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(reveal));
       else reveal();
@@ -566,8 +590,8 @@
       onChange();
       const fields = (generic ? activeRows : disabledRows).querySelectorAll("input");
       const field = fields[fields.length - 1];
-      field?.focus();
-      field?.scrollIntoView?.({block:"nearest",behavior:"smooth"});
+      field?.focus({preventScroll: true});
+      if (field) revealRow(field);
     });
     render();
     return {

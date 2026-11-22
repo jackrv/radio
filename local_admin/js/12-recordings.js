@@ -283,6 +283,8 @@
     });
     node.append(play, wave, time, speedSelect(), drafts);
     let peaks = null, loading = false, knownDuration = NaN, frame = 0, guide = null, textGuide = null, disposed = false, blobUrl = null;
+    // Кольори хвилі читаються раз (getComputedStyle на кожному кадрі гальмував), полотно — лише коли змінився піксель.
+    let colors = null, drawn = "";
     const duration = () => Number.isFinite(audio.duration) ? audio.duration : knownDuration;
     function draw() {
       if (disposed) return;
@@ -290,10 +292,15 @@
       if (!wave.getContext || !wave.clientWidth) return;
       const ratio = window.devicePixelRatio || 1, w = wave.clientWidth, h = wave.clientHeight;
       if (wave.width !== Math.round(w * ratio)) { wave.width = Math.round(w * ratio); wave.height = Math.round(h * ratio); }
-      const ctx = wave.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, w, h);
-      const css = getComputedStyle(wave), played = css.getPropertyValue("--wave-played").trim() || "#b8ef86",
-            rest = css.getPropertyValue("--wave-rest").trim() || "rgba(160,175,190,.4)";
       const progress = duration() > 0 ? Math.min(1, audio.currentTime / duration()) : 0;
+      time.textContent = `${clock(audio.currentTime)} / ${clock(duration())}`;
+      const key = `${w}|${h}|${ratio}|${Boolean(peaks)}|${Math.round(progress * w)}`;
+      if (key === drawn) return;
+      drawn = key;
+      if (!colors) { const css = getComputedStyle(wave);
+        colors = { played: css.getPropertyValue("--wave-played").trim() || "#b8ef86", rest: css.getPropertyValue("--wave-rest").trim() || "rgba(160,175,190,.4)" }; }
+      const { played, rest } = colors;
+      const ctx = wave.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, w, h);
       const n = Math.max(8, Math.floor(w / 3)), values = peaks ? peaks : null;
       for (let i = 0; i < n; i++) {
         const v = values ? values[Math.min(values.length - 1, Math.floor(i * values.length / n))] : 0.08;
@@ -302,7 +309,6 @@
         ctx.fillRect(i * 3, (h - bar) / 2, 2, bar);
       }
       if (progress > 0) { ctx.fillStyle = played; ctx.fillRect(Math.min(w - 2, progress * w), 0, 2, h); }
-      time.textContent = `${clock(audio.currentTime)} / ${clock(duration())}`;
     }
     async function loadWave() {
       if (disposed || peaks || loading || typeof fetch === "undefined") return;
@@ -334,10 +340,12 @@
     wave.addEventListener?.("pointerdown", event => { seek(event); wave.setPointerCapture?.(event.pointerId);
       const move = e => seek(e), up = () => { wave.removeEventListener("pointermove", move); wave.removeEventListener("pointerup", up); };
       wave.addEventListener("pointermove", move); wave.addEventListener("pointerup", up); });
-    window.addEventListener?.("resize", draw);
+    const resized = () => { colors = null; drawn = ""; draw(); };
+    window.addEventListener?.("resize", resized);
     return { node, drafts, loadWave: () => loadWave().then(draw), draw,
+      syncText: () => { if (!disposed) textGuide?.(audio.currentTime || 0, guide); },
       dispose: () => { disposed=true; audio.pause?.(); window.cancelAnimationFrame?.(frame);
-        window.removeEventListener?.('resize',draw); if(blobUrl)URL.revokeObjectURL?.(blobUrl); textGuide=null; },
+        window.removeEventListener?.('resize',resized); if(blobUrl)URL.revokeObjectURL?.(blobUrl); textGuide=null; },
       setTextGuide: callback => { textGuide = callback; draw(); } };
   }
   // Правки людини — пункт виду «person:<ID>»: на сервер іде вид «усі» з фільтром edits=<ID>.
@@ -388,8 +396,12 @@
     button.textContent = fresh ? "● Є нові записи — оновити" : "⟳ Оновити";
     button.classList?.toggle("fresh", fresh);
   }
+  let shownDraftCount = null, shownDraftCards = 0;
   function updateDraftCount() {
     const count = reviewCards.filter(card => card.dirty).length;
+    // Перемальовувати плашки всіх карток — лише коли число змінилося (інакше кожне натискання чіпало всю сторінку).
+    if (count === shownDraftCount && reviewCards.length === shownDraftCards) return;
+    shownDraftCount = count; shownDraftCards = reviewCards.length;
     // Пігулка біля плеєра кожної картки — завжди на місці (нічого не стрибає), лише перефарбовується:
     // сіра «усе збережено» або жовта з кількістю; клік веде до першої незбереженої.
     $("archive-drafts-nav").hidden = !count;
@@ -522,7 +534,7 @@
         tile("Сьогодні", typeof today === "number" ? num(today) : "—", `усього ${num(summary.reviewed)}`, today ? "live compact" : "compact",
              "Записів розмічено сьогодні; нижче — усього перевірених"),
         tile("WER до → після", `${pct(before)} → ${pct(after)}`,
-             delta == null ? "" : `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. обробка`,
+             delta == null ? "" : `обробка: ${delta <= 0 ? "−" : "+"}${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. ${delta <= 0 ? "помилок" : "помилок ⚠"}`,
              delta == null ? "wide" : delta <= 0 ? "good wide" : "bad wide",
              "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення)"),
         tile("У списку", num(page.total), VIEW_SHORT[editsValue() ? "person" : $("recording-view").value] || "", "compact",
@@ -764,8 +776,9 @@
         if (cueText !== input.value || cueGuide !== guide) {
           cueText = input.value; cueGuide = guide; cues = approximateWordCues(cueText, guide);
         }
-        const voiced = !audio.ended && guide?.spans.some(([a,b]) => a <= time && time < b);
-        const cue = voiced ? cues.find(c => c.start <= time && time < c.end) : null;
+        // Між словами маркер не гасне: на коротких паузах (< 0,2 с) лишається на останньому слові.
+        const near = !audio.ended && guide?.spans.some(([a,b]) => a <= time && time < b + .2);
+        const cue = near ? cues.findLast(c => c.start <= time) : null;
         const next = cue ? wordNodes.filter(n => n.from < cue.to && n.to > cue.from).map(n => n.node) : [];
         for (const node of activeNodes) if (!next.includes(node)) node.classList.remove?.("transcript-playing");
         for (const node of next) if (!activeNodes.includes(node)) node.classList.add("transcript-playing");
@@ -790,7 +803,7 @@
         }
         // Кінцевий перенос рядка textarea показує порожнім рядком — шар має робити так само.
         if (text.endsWith("\n")) markedText.append(el("span", "", " "));
-        custom.draw();
+        custom.syncText();
       }
       let lintTimer = null;
       // «Виправити оформлення» — усі рекомендовані правки оформлення одним натисканням; кнопка всередині поля праворуч.
@@ -937,7 +950,6 @@
       const textField = el("label", "recording-text");
       const inputLayer = el("div", "text-input-layer"); inputLayer.append(markedText, input);
       const inputBox = el("div", "text-input-box"); inputBox.append(inputLayer, fixAll);
-      input.addEventListener("input", () => renderHighlights());
       // «Почутий текст» і фартушок кодів доби — один рядок над полем.
       const textHead = el("div", "text-head"); textHead.append(el("span", "muted small", "Почутий текст"), codesApron(item.created));
       textField.append(textHead, inputBox, highlightLegend);

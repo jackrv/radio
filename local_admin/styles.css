@@ -381,6 +381,12 @@ td.good { color: var(--ok); font-weight: 700; }
 .pill-button { border: 1px solid transparent; cursor: pointer; }
 .pill-button:hover { filter: brightness(1.25); border-color: currentColor; }
 .pill-button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+/* Команда виконується: «Запускаю…», «Ставлю на паузу…» — нейтральна плашка з пульсуючою крапкою. */
+.pill-button.busy { color: var(--text); background: rgba(160, 175, 190, .14); border-color: rgba(160, 175, 190, .35); cursor: progress; }
+.pill-button.busy::before { background: var(--lime); animation: pill-busy 1s ease-in-out infinite; }
+.pill-button.busy:disabled { opacity: 1; }
+@keyframes pill-busy { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .pill-button.busy::before { animation: none; } }
 .switch { color: #c9d6e2; border-color: #3d5266; background: #172433; font-weight: 600; }
 .switch:hover { border-color: #5f7d99; color: #fff; }
 .switch:has(input:checked) { color: #172414; background: var(--lime); border-color: var(--lime); }
@@ -1478,12 +1484,14 @@ main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter:
 .mention-body p { margin: 0 0 3px; }
 /* Підсвітка в самому полі: шар під прозорим textarea з тими самими шрифтом, відступами й переносами.
    Лише фон/підкреслення — жодних змін ширини гліфів, інакше шар роз’їдеться з текстом. */
-.text-input-layer { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
-.text-input-layer > textarea { position: relative; z-index: 1; flex: 1 1 auto; width: 100%; }
+.text-input-layer { position: relative; flex: 1 1 auto; min-width: 0; display: flex; line-height: 1.6; }
+#recordings .text-input-layer > textarea { position: relative; z-index: 1; flex: 1 1 auto; width: 100%; padding: 9px 12px; line-height: inherit; }
 .transcript-backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
-  padding: 5px 8px; border: 1px solid transparent; font: inherit; letter-spacing: inherit;
+  padding: 9px 12px; border: 0; font: inherit; line-height: inherit; letter-spacing: inherit;
   white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; color: transparent; }
-.transcript-backdrop span { border-radius: 3px; }
+/* Фон рядкового елемента займає й місце під нижніми виносними (у, р), тож здається нижчим за слово:
+   шар піднято на 1 px — текст у полі не рухається, він в окремому textarea. */
+.transcript-backdrop span { position: relative; top: -1px; padding: 1px 0; border-radius: 4px; transition: background-color .12s, box-shadow .12s; }
 .transcript-callsign { background: rgba(184, 239, 134, .2); box-shadow: inset 0 -2px 0 rgba(184, 239, 134, .6); }
 .transcript-command { background: rgba(168, 207, 255, .18); box-shadow: inset 0 -2px 0 rgba(168, 207, 255, .55); }
 .transcript-boundary { background: #ffca8040; }
@@ -1552,6 +1560,19 @@ main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter:
 .codes-row > label { color: var(--muted); display: grid; gap: 6px; padding-top: 8px; }
 .codes-row input { width: 100%; min-width: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .codes-entry { min-width: 0; display: grid; gap: 8px; }
+/* «Останні дні»: картка-пігулка — число доби | коди стовпчиком */
+#codes-recent { display: grid; gap: 8px; }
+.code-days-title { color: var(--muted); }
+.code-days { display: flex; flex-wrap: wrap; gap: 8px; }
+.code-day { display: inline-flex; align-items: stretch; gap: 0; margin: 0; padding: 0; min-height: 0; border: 1px solid var(--border);
+  border-radius: 14px; background: var(--surface2); color: var(--text); font: inherit; cursor: pointer; overflow: hidden; }
+.code-day:hover { border-color: rgba(184, 239, 134, .55); }
+.code-day.on { border-color: var(--lime); background: rgba(184, 239, 134, .08); }
+.code-day-num { display: grid; place-items: center; min-width: 44px; padding: 6px 10px; font-size: 22px; font-weight: 700;
+  border-right: 1px solid var(--border); color: var(--text); }
+.code-day.on .code-day-num { color: var(--lime); border-right-color: rgba(184, 239, 134, .45); }
+.code-day-codes { display: grid; align-content: center; gap: 1px; padding: 6px 12px; text-align: left;
+  font-family: ui-monospace, Menlo, monospace; font-size: 13px; letter-spacing: .04em; color: var(--cyan); white-space: nowrap; }
 .codes-row .code-chips:empty { display:none; }
 .codes-row > button { min-height: 38px; }
 .codes-row #codes-day { margin-top: 2px; }

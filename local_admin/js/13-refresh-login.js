@@ -25,11 +25,18 @@
       else if (view === "activity") await activity();
       else if (view === "recordings") await refreshArchiveNotice();
       else if (view === "experiments") await labQueue();   // хід черги тестів
-    } catch (_) {
-      // Коротко в шапці; пояснення — у підказці при наведенні.
+    } catch (error) {
+      // Коротко в шапці; пояснення — у підказці при наведенні. «Немає зв’язку» — лише коли відповіді справді немає:
+      // відповідь з помилкою (сесія, збій розділу) — інша причина, і тоді приймач може бути цілком у порядку.
       $("refresh-ring")?.classList?.add("failed");
-      headerAlert("Немає зв’язку · повтор…",
-        "Не вдалося оновити дані (немає зв’язку з панеллю або служби перезапускаються). Повторюємо автоматично кожні 10 с.");
+      const status = error?.status, detail = error?.message || String(error);
+      if (typeof console !== "undefined") console.warn("Автооновлення не вдалося:", view, detail);
+      if (!status) headerAlert("Немає зв’язку · повтор…",
+        `Панель не відповідає (зв’язок, сон Mac чи перезапуск служб). Повторюємо кожні 10 с.\n${detail}`);
+      else if (status === 401 || status === 403) headerAlert("Сесія панелі завершилась · оновіть сторінку",
+        `Сервер відповів ${status}: панель, імовірно, перезапускали. Оновіть сторінку.\n${detail}`);
+      else headerAlert(`Помилка оновлення · ${(typeof titles !== "undefined" && titles[view]) || view}`,
+        `Сервер відповів ${status}; приймач і решта панелі можуть працювати. Повторюємо кожні 10 с.\n${detail}`);
     } finally { refreshPending = false; }
   }
   // Кільце навколо кнопки стану заповнюється до наступного оновлення за таймером.

@@ -34,6 +34,12 @@ test('failed background refresh releases its lock and retries successfully',asyn
  assert.match(h.$('updated').textContent,/Немає зв’язку/);
  h.context.overview=async()=>h.calls.push('recovered');await h.context.refresh();assert.deepEqual(h.calls,['recovered']);
 });
+test('server errors are not reported as a lost connection',async()=>{
+ const h=refreshHarness('system');const fail=status=>async()=>{const e=new Error('synthetic');e.status=status;throw e;};
+ h.context.overview=fail(401);await h.context.refresh();assert.match(h.$('updated').textContent,/Сесія панелі завершилась/);
+ h.context.overview=async()=>{};h.context.system=fail(500);await h.context.refresh();
+ assert.match(h.$('updated').textContent,/Помилка оновлення/);assert.doesNotMatch(h.$('updated').textContent,/зв’язку/);
+});
 test('slow background requests cannot overlap',async()=>{
  const h=refreshHarness();let finish;h.context.overview=()=>new Promise(resolve=>{h.calls.push('slow');finish=resolve;});
  const first=h.context.refresh();await h.context.refresh();assert.deepEqual(h.calls,['slow']);finish();await first;

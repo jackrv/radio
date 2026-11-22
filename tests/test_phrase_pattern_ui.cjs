@@ -246,7 +246,7 @@ test('inserted row is visibly dirty against saved baseline and reveal targets it
  assert.match(rows[1].className,/is-draft/);
  assert.equal(rows[1].querySelectorAll('span').find(n=>n.className.startsWith('pattern-draft')).textContent,'Чернетка');
  assert.equal(editor.hasChanges(),true);editor.reveal();
- assert.equal(fieldOf(rows[1]).focused,true);assert.equal(fieldOf(rows[1]).scrolled.block,'center');
+ assert.equal(fieldOf(rows[1]).focused,true);assert.equal(fieldOf(rows[1]).scrolled.block,'nearest');
  assert.equal(fieldOf(rows[0]).focused,undefined);
 });
 

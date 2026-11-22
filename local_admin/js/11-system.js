@@ -210,8 +210,14 @@
     await diagnosticHistory();
     await storageView();
     await telegramRetention();
-    await attentionSettings();
-    await audioDevices();
+    // Допоміжні картки не валять оновлення всієї сторінки: помилка — лише в самій картці
+    // (наприклад, браузер уже має новий інтерфейс, а служба панелі ще не перезапущена).
+    await attentionSettings().catch(error => {
+      $("attention-kinds")?.replaceChildren?.(el("p", "alert-text small", `Не вдалося завантажити: ${error.message}`)); });
+    await audioDevices().catch(error => {
+      $("audio-devices-result")?.replaceChildren?.(el("p", "alert-text small", error.status === 404
+        ? "Служба панелі ще не знає вибору пристроїв — перезапустіть її через лаунчер."
+        : `Не вдалося прочитати пристрої: ${error.message}`)); });
   }
   // ---------- Історія сесій ----------
   let selectedHistory = null;

@@ -51,18 +51,34 @@
   setInterval(paintPause, 1000);
   setInterval(pauseRefresh, 15000);
   // Плашка стану вгорі — перемикач без зайвих питань: пауза ↔ приймання, зупинений приймач — запустити.
-  $("receiver-pill").addEventListener("click", () => action(async () => {
-    const launcher = await request("/api/launcher").catch(() => ({}));
-    if (launcher.receiver_stopped) {
-      await request("/api/launcher/receiver-start", "POST");
-      note("Приймач запускається (близько 10 с)…");
-      setTimeout(() => action(overview), 10000);
-      return;
-    }
-    await pauseRefresh();
-    if (pauseState) await setPause(pauseState.pause_requested ? 0 : pauseMinutes);
-    await overview();
-  }));
+  // Поки команда виконується, плашка показує дію («Запускаю…») і не реагує на повторні натискання;
+  // знімається, щойно приймач прийшов у потрібний стан, або через ліміт часу.
+  function pendPill(text, target, seconds) {
+    pillPending = { text, target, until: Date.now() + seconds * 1000 };
+    paintPill(data?.receiver);
+    clearInterval(pillPoll);
+    pillPoll = setInterval(() => { if (!pillPending) clearInterval(pillPoll); else overview().catch(() => {}); }, 1500);
+  }
+  $("receiver-pill").addEventListener("click", () => {
+    if (pillPending) return;
+    const state = data?.receiver;
+    // Реакція одразу, ще до відповіді сервера.
+    pendPill(state === "listening" ? "Ставлю на паузу…" : state === "paused" ? "Відновлюю…" : "Перевіряю…", null, 15);
+    action(async () => { try {
+      const launcher = await request("/api/launcher").catch(() => ({}));
+      if (launcher.receiver_stopped || state === "stopped" || state === "offline") {
+        if (!launcher.receiver_stopped && state === "offline") { pillPending = null; await overview(); note("Приймач не працює, а лаунчер ним не керує — запустіть лаунчер."); return; }
+        pendPill("Запускаю…", "listening", 45);
+        await request("/api/launcher/receiver-start", "POST");
+        return;
+      }
+      await pauseRefresh();
+      const resume = pauseState?.pause_requested;
+      pendPill(resume ? "Відновлюю…" : "Ставлю на паузу…", resume ? "listening" : "paused", 20);
+      if (pauseState) await setPause(resume ? 0 : pauseMinutes);
+      await overview();
+    } catch (error) { pillPending = null; clearInterval(pillPoll); paintPill(data?.receiver); throw error; } }).finally?.(() => { if (pillPending && !pillPending.target) { pillPending = null; paintPill(data?.receiver); } });
+  });
 
   // ---------- Пошук у шапці ----------
   $("global-search").addEventListener("keydown", event => {
@@ -340,13 +356,25 @@
     box.title = text ? title : "";
     box.hidden = !text;
   }
+  let pillPending = null, pillPoll = 0;
+  function paintPill(state) {
+    const pill = $("receiver-pill");
+    if (pillPending && (state === pillPending.target || Date.now() > pillPending.until)) {
+      if (state !== pillPending.target) note("Приймач поки не відповів — стан оновиться сам.");
+      pillPending = null; clearInterval(pillPoll);
+    }
+    pill.disabled = Boolean(pillPending);
+    pill.setAttribute?.("aria-busy", String(Boolean(pillPending)));
+    if (pillPending) { pill.className = "pill pill-button busy"; pill.textContent = pillPending.text; return; }
+    pill.className = `pill pill-button ${receiverTone(state)}`;
+    pill.textContent = { listening: "Слухає ефір", paused: "Призупинено", stopped: "Зупинено", offline: "Не працює" }[state] || state || "—";
+  }
   async function overview() {
     data = await request("/api/overview");
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {}, o = data.overview;
     const state = data.receiver;
     const pill = $("receiver-pill");
-    pill.className = `pill pill-button ${receiverTone(state)}`;
-    pill.textContent = { listening: "Слухає ефір", paused: "Призупинено", stopped: "Зупинено", offline: "Не працює" }[state] || state;
+    paintPill(state);
     const age = d.updated_at ? now() - d.updated_at : null;
     // Час оновлення — у підказці кнопки; плашка в шапці лише коли є проблема.
     pill.title = `Натисніть, щоб поставити приймач на паузу чи відновити\nОновлено ${new Date().toLocaleTimeString("uk-UA")}`;

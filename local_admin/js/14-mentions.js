@@ -2,7 +2,7 @@
   let mentionSelection = null;
   const mentionPanel = el('section'); mentionPanel.dataset.panel = 'mentions'; mentionPanel.hidden = true;
   mentionPanel.append(el('h2', '', 'Вибірки за згадками'),
-    el('p', 'muted', 'У розмічених записах шукаємо лише в еталоні, у нерозмічених — у поточному тексті розпізнавання. Шум, сигнали й кімната виключені. Хибне розпізнавання може пропустити згадку.'));
+    el('p', 'muted', 'У розмічених записах шукаємо лише в еталоні, у нерозмічених — у поточному тексті розпізнавання. Шум, сигнали й кімната, а також нерозмічене, яке відсіяла програма, виключені. Хибне розпізнавання може пропустити згадку.'));
   const mentionForm = el('form', 'mention-form');
   const mentionTerms = el('input', 'mention-term-input'); mentionTerms.type = 'text'; mentionTerms.placeholder = '＋ Слово або фраза';
   mentionTerms.autocomplete = 'off';

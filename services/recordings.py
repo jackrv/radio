@@ -349,7 +349,8 @@ class RecordingStore:
         where = f"({reviewed}) AND ({condition})"
         if selected_ids is not None:
             where += ' AND id IN (SELECT value FROM json_each(?))'
-            where += " AND (label IS NULL OR label NOT IN ('noise','notification','room'))"
+            from services.mention_selection import SPEECH_FILTER
+            where += f" AND {SPEECH_FILTER}"
             params = (*params, json.dumps(selected_ids))
         if edits == "miniapp":
             where += " AND reference_source='miniapp'"

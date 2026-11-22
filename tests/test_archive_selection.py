@@ -199,3 +199,19 @@ def test_reviewed_and_unreviewed_share_strict_time_order(tmp_path):
     with store.connect() as db:db.execute('UPDATE recordings SET data=? WHERE id=?',(json.dumps({'raw_text':'Клен 12'}),b))
     assert find(store.root,'клен',0,300,order='old')['ids']==[a,b]
     assert find(store.root,'клен',0,300,order='new')['ids']==[b,a]
+
+
+def test_mentions_skip_unreviewed_records_filtered_by_program(tmp_path):
+    from services.mention_selection import page_selection
+    store = RecordingStore(tmp_path/'recordings')
+    a = store.save(b'\0\0'*1600, 16000, {'status': 'ready', 'raw_text': 'Клен 12'})
+    c = store.save(b'\0\0'*1600, 16000, {'status': 'blacklist', 'raw_text': 'Клен 7'})
+    d = store.save(b'\0\0'*1600, 16000, {'status': 'low_confidence', 'raw_text': 'Клен 8'})
+    assert find(store.root, 'клен', 0, 4e9)['ids'] == [a]
+    # Розмічене оператором як мовлення лишається у вибірці за еталоном.
+    store.review(d, 'Клен 8, прийом', 'speech', store.get(d)['revision'])
+    found = find(store.root, 'клен', 0, 4e9)
+    assert found['ids'] == [a, d]
+    saved = load_selection(tmp_path/'events.db', save_selection(tmp_path/'events.db', found))
+    assert [item['id'] for item in page_selection(store.root, saved, 0, 100)['items']] == [a, d]
+    assert {item['id'] for item in store.listing(limit=100, selected_ids=[a, c, d])['items']} == {a, d}

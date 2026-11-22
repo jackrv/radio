@@ -13,8 +13,11 @@ from services.sqlite_connection import read_only
 from services.private_files import private_open
 
 # Вихід ASR на позначеному шумі зберігається для оцінки хибного тексту,
-# але це не почуте мовлення й не має потрапляти до робочої вибірки.
-SPEECH_FILTER = "(label IS NULL OR label NOT IN ('noise','notification','room'))"
+# але це не почуте мовлення й не має потрапляти до робочої вибірки. Так само
+# не беремо нерозмічене, яке відсіяла програма (чорний список, низька впевненість,
+# луна словника…): це переважно шум із вигаданим текстом.
+SPEECH_FILTER = ("(label IS NULL OR label NOT IN ('noise','notification','room')) "
+                 "AND (reference IS NOT NULL OR status IN ('ready','empty_text'))")
 
 
 def selection_order(order):

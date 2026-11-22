@@ -296,3 +296,53 @@ def test_whisper_options_are_parsed_and_passed_without_changing_defaults():
     plain.transcribe_fn = lambda audio, **kw: calls.append(kw) or {}
     plain.transcribe(b"")
     assert "word_timestamps" not in calls[1], "приймач без змін"
+
+
+def test_resume_continues_same_records_on_same_snapshot_without_repeating_done(tmp_path, monkeypatch):
+    archive = tmp_path / "recordings"
+    store, speech, quiet = make_archive(archive)
+    db = tmp_path / "events.db"
+    from services.dictionary_store import init_db
+    init_db(db)
+    calls = []
+
+    class FakeWhisper:
+        def __init__(self, *args, **kwargs):
+            self.prompt = args[3]
+
+        def transcribe(self, audio):
+            calls.append(len(audio))
+            return {"segments": [{"text": "Вишня 210", "avg_logprob": -0.2, "no_speech_prob": 0.0,
+                                  "compression_ratio": 1.1, "temperature": 0.0, "start": 0, "end": 2}]}
+
+        extract_text = staticmethod(__import__("core.recognition", fromlist=["x"]).WhisperRecognizer.extract_text)
+
+    monkeypatch.setattr("config.DB_PATH", str(db))
+    monkeypatch.setattr(asr_lab, "OUTPUT", tmp_path / "experiments")
+    args = ["--archive", str(archive), "run", "--name", "q-base", "--variant", "rules"]
+    with patch("core.recognition.WhisperRecognizer", FakeWhisper):
+        asr_lab.main(args)
+    run_dir = next((tmp_path / "experiments").iterdir())
+    full = (run_dir / "results.jsonl").read_text().splitlines()
+    assert (run_dir / "records.txt").read_text().split() == [json.loads(line)["id"] for line in full]
+    # Пауза посеред прогону: підсумку немає, останній рядок обірваний; тим часом в архіві новий запис.
+    (run_dir / "metrics.json").unlink()
+    (run_dir / "results.jsonl").write_text(full[0] + "\n" + full[1][:15])
+    import numpy as np
+    store.save(np.zeros(16000, "<i2").tobytes(), 16000, {"status": "ready"})
+    snapshot = hashlib.sha256((run_dir / "events-snapshot.db").read_bytes()).hexdigest()
+    calls.clear()
+    with patch("core.recognition.WhisperRecognizer", FakeWhisper):
+        asr_lab.main([*args, "--resume", run_dir.name])
+    rows = [json.loads(line) for line in (run_dir / "results.jsonl").read_text().splitlines()]
+    assert [r["id"] for r in rows] == [json.loads(line)["id"] for line in full], "ті самі записи, кожен раз"
+    assert len(list((tmp_path / "experiments").iterdir())) == 1, "нова тека не створюється"
+    assert hashlib.sha256((run_dir / "events-snapshot.db").read_bytes()).hexdigest() == snapshot
+    params = json.loads((run_dir / "params.json").read_text())
+    assert len(params["resumed_utc"]) == 1 and params["records"] == len(full)
+    assert (run_dir / "metrics.json").is_file()
+    with pytest.raises(SystemExit):   # завершений прогін не продовжується
+        asr_lab.main([*args, "--resume", run_dir.name])
+    (run_dir / "metrics.json").unlink()
+    with pytest.raises(SystemExit, match="resegment"), patch("core.recognition.WhisperRecognizer", FakeWhisper):
+        asr_lab.main([*args, "--resegment", "energy", "--resume", run_dir.name])

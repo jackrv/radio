@@ -27,6 +27,10 @@ class QueueStop(BaseModel):
     now: bool = False
 
 
+class QueueResume(BaseModel):
+    now: bool = True
+
+
 class QueuePlan(BaseModel):
     windows: list[tuple[float, float]] = Field(max_length=8)
 
@@ -67,7 +71,10 @@ def register(app, ctx):
         capture["write_errors"] = counters.get("recordings.write_error", 0)
         capture["capture_write_errors"] = counters.get("recordings.capture.write_error", 0)
         for job in data["jobs"]:
-            job["progress"] = lab_queue.progress(root, job) if job["status"] in ("running", "done", "failed", "cancelled") else None
+            folder = job.get("run_dir") or job.get("resume_dir")
+            job["progress"] = lab_queue.progress(root, {"run_dir": folder}) if folder else None
+            job["resumable"] = lab_queue.resumable(root, job)
+            job["remaining"] = lab_queue.remaining_fraction(root, job) if job["status"] == "queued" else None
         presets = [{"key": key, **{k: v for k, v in p.items() if k != "args"}} for key, p in lab_queue.PRESETS.items()]
         # Оцінка тривалості кожного рецепта — та сама, за якою виконавець вирішує, чи тест уміщається у вікно.
         estimates = {key: lab_queue.estimate_seconds(root, key, records) for key in lab_queue.PRESETS}
@@ -85,7 +92,7 @@ def register(app, ctx):
         windows = validated_windows(payload.windows, now)
         records = labelled_records()
         estimates = {key: lab_queue.estimate_seconds(root, key, records) for key in lab_queue.PRESETS}
-        return lab_queue.plan_windows(windows, lab_queue.read(root)["jobs"], estimates, now=now)
+        return lab_queue.plan_windows(windows, lab_queue.read(root)["jobs"], estimates, now=now, root=root)
 
     @app.post("/api/lab/queue")
     def queue_add(payload: QueueAdd, admin=Depends(actor)):
@@ -104,12 +111,17 @@ def register(app, ctx):
             raise HTTPException(409, "Для режиму «лише запис» потрібно ввімкнути архів аудіо")
         if not any(j["status"] == "queued" for j in lab_queue.read(root)["jobs"]):
             raise HTTPException(422, "Черга порожня — додайте тест")
-        now = time.time()
-        windows = validated_windows(payload.windows or [], now)
-        lab_queue.set_windows(root, windows)
-        lab_queue.set_start_at(root, None if windows else payload.start_at)
-        lab_queue.start(root, launcher_root=launcher_root or ROOT)
+        _start(payload.windows or [], payload.start_at)
         return state()
+
+    def _start(windows, start_at):
+        import config
+        if not config.RECORD_AUDIO:
+            raise HTTPException(409, "Для режиму «лише запис» потрібно ввімкнути архів аудіо")
+        windows = validated_windows(windows, time.time())
+        lab_queue.set_windows(root, windows)
+        lab_queue.set_start_at(root, None if windows else start_at)
+        lab_queue.start(root, launcher_root=launcher_root or ROOT)
 
     @app.post("/api/lab/queue/stop")
     def queue_stop(payload: QueueStop, admin=Depends(actor)):
@@ -127,6 +139,25 @@ def register(app, ctx):
             lab_queue.retry(root, job_id)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+        return state()
+
+    @app.post("/api/lab/queue/{job_id}/pause")
+    def queue_pause(job_id: str, admin=Depends(actor)):
+        try:
+            lab_queue.pause(root, job_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        return state()
+
+    @app.post("/api/lab/queue/{job_id}/resume")
+    def queue_resume(job_id: str, payload: QueueResume, admin=Depends(actor)):
+        """Продовжити з того самого запису: одразу (now) або лише повернути в чергу — під розклад."""
+        try:
+            lab_queue.resume(root, job_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        if payload.now and not lab_queue.runner_active(lab_queue.read(root)):
+            _start([], None)
         return state()
 
     @app.post("/api/lab/queue/{job_id}/move")

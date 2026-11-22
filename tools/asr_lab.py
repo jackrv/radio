@@ -326,11 +326,13 @@ def parse_whisper_options(items):
 
 
 class Lab:
-    def __init__(self, args, run_dir):
+    def __init__(self, args, run_dir, reuse_snapshot=False):
         import config
         self.args = args
         self.log = logging.getLogger("asr_lab")
-        self.db_path = snapshot_database(run_dir / "events-snapshot.db")
+        snapshot = run_dir / "events-snapshot.db"
+        # Продовження прогону — на тому самому знімку словників і налаштувань, що й початок.
+        self.db_path = snapshot if reuse_snapshot and snapshot.is_file() else snapshot_database(snapshot)
         self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path,getattr(args,'archive',None))
         if args.prompt=='receiver-command-codes':
             from services.dictionary_loader import build_prompt
@@ -591,27 +593,92 @@ def run(args):
         return _run_checked(args)
 
 
+# Параметри, які мають збігтися, щоб продовження було тим самим прогоном.
+RESUME_KEYS = ("variant", "prompt", "model", "language", "temperature", "daily_codes", "whisper_phrases", "retry",
+               "names_file", "normalize", "min_rms_gate", "whisper_options", "seed", "resegment", "gate_db",
+               "bandpass", "split", "statuses", "labelled_only", "llm", "dictionary_fingerprint")
+
+
+def resume_dir(value):
+    """Тека прогону для --resume: шлях або назва в .local-experiments; лише незавершений прогін."""
+    path = Path(value)
+    if not path.is_absolute() and not path.exists():
+        path = OUTPUT / value
+    if not (path / "params.json").is_file() or not (path / "results.jsonl").is_file():
+        raise SystemExit(f"Немає незавершеного прогону для продовження: {value}")
+    if (path / "metrics.json").is_file():
+        raise SystemExit("Прогін уже завершено — продовжувати нічого")
+    return path
+
+
+def read_done(results_path):
+    """Готові рядки results.jsonl; обірваний останній рядок (процес зупинили під час запису) відкидається."""
+    done, keep = [], 0
+    with open(results_path, "rb") as f:
+        for line in f:
+            if not line.endswith(b"\n"):
+                break
+            try:
+                done.append(json.loads(line))
+            except ValueError:
+                break
+            keep += len(line)
+    if keep != results_path.stat().st_size:
+        with open(results_path, "r+b") as f:
+            f.truncate(keep)
+    return done
+
+
 def _run_checked(args):
     keep_awake()
     if getattr(args, "daily_codes", None) is None:
         # Як у приймачі: код доби в підказці, якщо його ввімкнено в config.py.
         import config
         args.daily_codes = "latest" if config.WHISPER_PROMPT_DAILY_CODE else "off"
-    started = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = OUTPUT / f"{started}_{re.sub(r'[^A-Za-z0-9_-]+', '-', args.name)}"
-    run_dir.mkdir(parents=True, mode=0o700)
-    OUTPUT.chmod(0o700)
+    resume = getattr(args, "resume", None)
     statuses = set(args.status.split(",")) if args.status else None
-    ids = set(Path(args.ids).read_text().split()) if args.ids else None
-    records = load_records(args.archive, statuses=statuses, labelled_only=args.labelled_only,
-                           split=args.split, limit=args.limit, ids=ids)
-    lab = Lab(args, run_dir)
-    params = {**lab.params(), "records": len(records), "archive": str(Path(args.archive).resolve()),
-              "started_utc": started, "git_head": os.popen(f"git -C {ROOT} rev-parse HEAD").read().strip()}
+    if resume:
+        run_dir = resume_dir(resume)
+        saved = json.loads((run_dir / "params.json").read_text())
+        ids_file = run_dir / "records.txt"
+        if ids_file.is_file():
+            ids = ids_file.read_text().split()
+        else:
+            # Прогін до появи records.txt: ті самі умови вибірки й лише записи, що існували на старті.
+            started_at = datetime.strptime(saved["started_utc"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).timestamp()
+            ids = [r["id"] for r in load_records(args.archive, statuses=statuses, labelled_only=args.labelled_only,
+                                                  split=args.split, limit=args.limit) if r["created"] <= started_at]
+        order = {record_id: i for i, record_id in enumerate(ids)}
+        records = sorted(load_records(args.archive, ids=set(ids)), key=lambda r: order[r["id"]])
+        lab = Lab(args, run_dir, reuse_snapshot=True)
+        current = lab.params()
+        changed = [key for key in RESUME_KEYS if key in saved and json.loads(json.dumps(current.get(key))) != saved[key]]
+        if changed:
+            raise SystemExit("Параметри відрізняються від початку прогону: " + ", ".join(changed))
+        results = read_done(run_dir / "results.jsonl")
+        done_ids = {item["id"] for item in results}
+        params = {**saved, "resumed_utc": [*saved.get("resumed_utc", []), datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")],
+                  "missing_on_resume": len(ids) - len(records)}
+        mode = "a"
+    else:
+        started = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_dir = OUTPUT / f"{started}_{re.sub(r'[^A-Za-z0-9_-]+', '-', args.name)}"
+        run_dir.mkdir(parents=True, mode=0o700)
+        ids = set(Path(args.ids).read_text().split()) if args.ids else None
+        records = load_records(args.archive, statuses=statuses, labelled_only=args.labelled_only,
+                               split=args.split, limit=args.limit, ids=ids)
+        lab = Lab(args, run_dir)
+        params = {**lab.params(), "records": len(records), "archive": str(Path(args.archive).resolve()),
+                  "started_utc": started, "git_head": os.popen(f"git -C {ROOT} rev-parse HEAD").read().strip()}
+        # Перелік записів фіксується: продовження після паузи пройде рівно ті самі.
+        (run_dir / "records.txt").write_text("".join(f"{r['id']}\n" for r in records))
+        results, done_ids, mode = [], set(), "w"
+    OUTPUT.chmod(0o700)
     (run_dir / "params.json").write_text(json.dumps(params, ensure_ascii=False, indent=2))
-    results = []
-    with open(run_dir / "results.jsonl", "w", encoding="utf-8") as out:
+    with open(run_dir / "results.jsonl", mode, encoding="utf-8") as out:
         for index, record in enumerate(records, 1):
+            if record["id"] in done_ids:
+                continue
             try:
                 pcm, sr = read_pcm(args.archive, record["id"])
                 if sr != lab.sample_rate:
@@ -746,6 +813,7 @@ def main(argv=None):
     qp.add_argument("--output", help="типово config.REVIEW_QUEUE_PATH")
     r = sub.add_parser("run")
     r.add_argument("--name", required=True)
+    r.add_argument("--resume", help="продовжити незавершений прогін (тека або її назва) з місця зупинки")
     r.add_argument("--variant", choices=VARIANTS, default="whisper")
     r.add_argument("--status", help="статуси через кому (типово — усі)")
     r.add_argument("--split", choices=("all", "tune", "holdout"), default="all")

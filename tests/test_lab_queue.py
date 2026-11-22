@@ -129,43 +129,103 @@ def test_capture_mode_is_disabled_even_when_the_runner_fails(tmp_path):
     assert [event[0] for event in capture.events] == ["start", "stop"]
 
 
-def test_windows_run_only_jobs_that_fit_and_restore_recognition_between_windows(tmp_path):
+def test_window_end_pauses_job_and_next_window_resumes_it_from_the_same_run(tmp_path, monkeypatch):
     for preset in ("base", "word-silence", "resegment"):
         lab_queue.add(tmp_path, preset)
     clock, launcher, capture, started = Clock(), FakeLauncher(), FakeCapture(), []
-    minutes = {"base": 85, "word-silence": 85, "resegment": 100}
+    left = {"base": 85 * 60, "word-silence": 85 * 60, "resegment": 100 * 60}
+    current = {}
 
     class Timed(FakeProcess):
         def __init__(self, preset):
-            super().__init__(0); self.left = minutes[preset] * 60
+            super().__init__(0); self.preset = preset
         def poll(self):
-            if self.left <= 0:
+            if self.returncode is None and left[self.preset] <= 0:
                 self.returncode = 0
+            return self.returncode
+        def wait(self):
             return self.returncode
 
     def spawn(args, log):
         preset = args[args.index("--name") + 1][2:]
-        started.append((preset, clock.t))
-        process = Timed(preset)
-        original = clock.sleep
-        def sleep(seconds):
-            original(seconds); process.left -= seconds
-        clock.sleep_hook = sleep
-        return process
+        resume = args[args.index("--resume") + 1] if "--resume" in args else None
+        if resume is None:   # як asr_lab: нова тека прогону
+            folder = tmp_path / f"{int(clock.t)}_q-{preset}"; folder.mkdir()
+        started.append((preset, clock.t, resume))
+        current["process"] = Timed(preset)
+        return current["process"]
 
     def sleep(seconds):
-        hook = getattr(clock, "sleep_hook", None)
-        (hook or clock.sleep)(seconds)
+        clock.sleep(seconds)
+        process = current.get("process")
+        if process is not None and process.returncode is None:
+            left[process.preset] -= seconds
+
+    def kill(pid):
+        current["process"].returncode = -15
+    monkeypatch.setattr(lab_queue, "_kill", kill)
 
     w1, w2 = (clock.t + 600, clock.t + 600 + 115 * 60), (clock.t + 600 + 135 * 60, clock.t + 600 + 355 * 60)
     lab_queue.set_windows(tmp_path, [w1, w2])
     lab_queue.run(tmp_path, launcher=launcher, capture=capture, spawn=spawn, sleep=sleep, now=clock.now, cooldown=300,
-                  estimate=lambda preset: minutes[preset] * 60)
-    assert [p for p, _ in started] == ["base", "word-silence", "resegment"]
-    assert w1[0] <= started[0][1] < w1[1] and all(w2[0] <= t < w2[1] for _, t in started[1:]), "другий і третій — у другому вікні"
+                  estimate=lambda preset: 85 * 60)
+    assert [(p, r is not None) for p, _, r in started] == [
+        ("base", False), ("word-silence", False), ("word-silence", True), ("resegment", False)]
+    assert w1[0] <= started[1][1] < w1[1], "другий тест почався в першому вікні"
+    assert all(w2[0] <= t < w2[1] for _, t, _ in started[2:]), "продовження — у другому вікні"
+    assert started[2][2].endswith("_q-word-silence"), "та сама тека прогону"
+    assert left["word-silence"] <= 0 and left["resegment"] <= 0
     assert launcher.commands == [], "приймач не зупиняється"
-    assert [event[0] for event in capture.events] == ["start", "stop", "start", "stop"]
+    assert [event[0] for event in capture.events if event[0] != "renew"] == ["start", "stop", "start", "stop"]
     assert [j["status"] for j in lab_queue.read(tmp_path)["jobs"]] == ["done", "done", "done"]
+
+
+def test_manual_pause_stops_queue_and_resume_continues_same_run_first(tmp_path, monkeypatch):
+    import json
+    a = lab_queue.add(tmp_path, "base"); b = lab_queue.add(tmp_path, "resegment")
+    clock, capture, calls = Clock(), FakeCapture(), []
+    folder = tmp_path / "20261122T190000Z_q-base"
+
+    class Paused(FakeProcess):
+        def poll(self):
+            self.polls += 1
+            if self.polls == 1:
+                lab_queue.pause(tmp_path, a["id"])
+            return self.returncode
+
+    def spawn(args, log):
+        calls.append(args)
+        if "--resume" not in args and "q-base" in args:
+            folder.mkdir()
+            (folder / "params.json").write_text(json.dumps({"records": 4}))
+            (folder / "results.jsonl").write_text('{"id": "1"}\n')
+            return Paused(0)
+        return FakeProcess(0)
+
+    killed = []
+    monkeypatch.setattr(lab_queue, "_kill", killed.append)
+    original = Paused.poll
+    def poll(self):
+        result = original(self)
+        if killed and self.returncode is None:
+            self.returncode = -15
+        return self.returncode
+    Paused.poll = poll
+    lab_queue.run(tmp_path, launcher=FakeLauncher(), capture=capture, spawn=spawn, sleep=clock.sleep, now=clock.now)
+    jobs = {j["id"]: j for j in lab_queue.read(tmp_path)["jobs"]}
+    assert jobs[a["id"]]["status"] == "paused" and jobs[b["id"]]["status"] == "queued", "черга зупинилась на паузі"
+    assert capture.events[-1][0] == "stop", "розпізнавання ефіру відновлено"
+    assert lab_queue.resumable(tmp_path, jobs[a["id"]])
+    lab_queue.resume(tmp_path, a["id"])
+    queued = [j for j in lab_queue.read(tmp_path)["jobs"] if j["status"] == "queued"]
+    assert [j["id"] for j in queued] == [a["id"], b["id"]], "продовження — першим"
+    assert abs(lab_queue.remaining_fraction(tmp_path, queued[0]) - 0.75) < 1e-9
+    lab_queue.run(tmp_path, launcher=FakeLauncher(), capture=FakeCapture(), spawn=spawn, sleep=clock.sleep, now=clock.now,
+                  cooldown=0)
+    assert calls[1][calls[1].index("--resume") + 1] == str(folder)
+    assert "--resume" not in calls[2]
+    with pytest.raises(LookupError):
+        lab_queue.resume(tmp_path, b["id"])
 
 
 def test_runner_does_not_start_whisper_test_until_receiver_confirms_unload(tmp_path):
@@ -214,13 +274,16 @@ def test_server_plan_matches_executor_and_keeps_cooldown_between_windows():
     jobs = [{'id':str(i),'preset':p,'status':'queued'} for i,p in enumerate(('base','word-silence','resegment'))]
     estimates = {'base':85*60,'word-silence':85*60,'resegment':100*60}
     plan = lab_queue.plan_windows([[0,115*60],[135*60,355*60]],jobs,estimates,now=0)
-    assert [[p['job']['preset'] for p in slot['jobs']] for slot in plan['plan']] == [['base'],['word-silence','resegment']]
+    assert [[p['job']['preset'] for p in slot['jobs']] for slot in plan['plan']] == [['base','word-silence'],['word-silence','resegment']]
+    assert [p['partial'] for p in plan['plan'][0]['jobs']] == [False, True]
     assert plan['left'] == []
-    short = [{'id':str(i),'preset':'base','status':'queued'} for i in range(2)]
-    result = lab_queue.plan_windows([[0,115],[115,230]],short,{'base':100},now=0,cooldown=60)
-    assert len(result['plan'][0]['jobs']) == 1 and result['plan'][1]['jobs'] == []
-    assert len(result['left']) == 1
-    assert lab_queue.first_fitting(short,160,230,lambda _:100) is None
+    split = lab_queue.plan_windows([[0,60*60],[2*3600,5*3600]],jobs[:1],{'base':100*60},now=0)
+    first, second = split['plan'][0]['jobs'], split['plan'][1]['jobs']
+    assert first[0]['partial'] and not second[0]['partial'], 'не встигає — пауза й продовження в наступному вікні'
+    assert first[0]['end'] == 60*60 - lab_queue.WINDOW_END_S
+    tiny = lab_queue.plan_windows([[0,5*60]],jobs,estimates,now=0)
+    assert tiny['plan'][0]['jobs'] == [] and len(tiny['left']) == 3, 'у 5 хв вікні тест не починається'
+    assert not lab_queue.window_usable(0, 5*60) and lab_queue.window_usable(0, 11*60)
 
 
 def test_clear_removes_only_done_and_interrupted_jobs_can_be_retried(tmp_path):
@@ -249,6 +312,11 @@ def test_short_telegram_summary_compares_with_base(tmp_path):
     lab_queue.add(tmp_path, "resegment")
     assert "Далі: «Повторна нарізка запису»" in lab_notify.summary_text(tmp_path, "X", "done", "20261122T210000Z_q-word-silence", 1)
     assert "помилка" in lab_notify.summary_text(tmp_path, "X", "failed", None, 1)
+    progress = {"done": 30, "total": 120}
+    assert "пауза — готово 30 з 120" in lab_notify.summary_text(tmp_path, "X", "paused", "d", 1, progress=progress)
+    assert "наступному вікні" in lab_notify.summary_text(tmp_path, "X", "window_paused", "d", 1, progress=progress)
+    assert "можна продовжити" in lab_notify.summary_text(tmp_path, "X", "failed", "d", 1, progress=progress)
+    assert lab_notify.start_text("X", 5, 0, resumed=True).startswith("▶️ Лабораторія: продовження «X»")
 
 
 def test_runner_reports_each_finished_job_through_notify(tmp_path, monkeypatch):

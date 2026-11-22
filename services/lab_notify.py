@@ -29,11 +29,18 @@ def _pct(v):
     return "—" if v is None else f"{v * 100:.1f}".replace(".", ",") + " %"
 
 
-def summary_text(root, title, status, run_dir, minutes):
+def summary_text(root, title, status, run_dir, minutes, progress=None):
     head = f"🧪 Лабораторія: «{title}»"
+    done = (f" — готово {progress['done']} з {progress['total']} записів" if progress and progress.get("total") else "")
+    if status == "paused":
+        return f"⏸ {head} — пауза{done}. Розпізнавання ефіру відновлюється; «Продовжити» — у панелі."
+    if status == "window_paused":
+        return f"⏸ {head} — закінчилось вікно{done}. Продовжиться з того ж місця в наступному вікні."
     after = next_line(root)
     if status != "done" or not run_dir:
         word = {"cancelled": "перервано", "failed": "помилка"}.get(status, status)
+        if status in ("cancelled", "failed") and progress and progress.get("done"):
+            word += f" ({progress['done']} з {progress.get('total') or '?'} записів збережено — можна продовжити)"
         return "\n".join(filter(None, [f"{head} — {word}. Подробиці в панелі: Аналіз → Експерименти.", after]))
     run_dir = Path(root) / run_dir
     s = _summary(run_dir)
@@ -56,9 +63,10 @@ def summary_text(root, title, status, run_dir, minutes):
     return "\n".join(filter(None, [*lines, after]))
 
 
-def start_text(title, minutes, left):
+def start_text(title, minutes, left, resumed=False):
     tail = f" · далі ще {left}" if left else ""
-    return (f"▶️ Лабораторія: старт «{title}», орієнтовно {minutes} хв{tail}.\n"
+    word = "продовження" if resumed else "старт"
+    return (f"▶️ Лабораторія: {word} «{title}», орієнтовно {minutes} хв{tail}.\n"
             "Ефір лише записується; сповіщення ефіру — після тестів.")
 
 

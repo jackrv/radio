@@ -460,7 +460,7 @@
   const clockTime = t => new Date(t * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
   // ---------- Вікна часу для тестів ----------
   // Рядки «з — до»; запам'ятовуються в браузері. Під ними — план: який тест у яке вікно потрапить
-  // (той самий розрахунок, що й у виконавця: тест стартує, лише якщо встигає до кінця вікна з запасом).
+  // (той самий розрахунок, що й у виконавця: що не встигає — пауза й продовження в наступному вікні).
   const WINDOWS_KEY = "radio345:lab-windows";
   const loadWindows = () => { try { const w = JSON.parse(localStorage.getItem(WINDOWS_KEY)); if (Array.isArray(w) && w.length) return w; } catch (_) { /* типово */ }
     return [["01:00", "02:55"], ["03:15", "06:55"]]; };
@@ -527,11 +527,11 @@
             const line = el("div", "lab-plan-window");
             line.append(el("b", "", `${dateValue(slot.window[0])} ${hm(slot.window[0])}–${hm(slot.window[1])}${dateValue(slot.window[1]) !== dateValue(slot.window[0]) ? " (+1 доба)" : ""} · ${Math.round((slot.window[1]-slot.window[0])/60)} хв`));
             line.append(el("span", slot.jobs.length ? "" : "muted", slot.jobs.length
-              ? slot.jobs.map(p => `${labPresets[p.job.preset]?.title || p.job.preset} (≈${Math.round((p.end - p.start) / 60)} хв, до ${hm(p.end)})`).join(" → ")
-              : "нічого не вміщається — приймач працює"));
+              ? slot.jobs.map(p => `${labPresets[p.job.preset]?.title || p.job.preset} (≈${Math.round((p.end - p.start) / 60)} хв, до ${hm(p.end)}${p.partial ? ", далі пауза до наступного вікна" : ""})`).join(" → ")
+              : "замале вікно — приймач працює"));
             return line;
           });
-          if (left.length) lines.push(el("div", "lab-plan-left", `Не вміститься: ${left.map(j => labPresets[j.preset]?.title || j.preset).join(", ")} — збільште вікна або приберіть тести.`));
+          if (left.length) lines.push(el("div", "lab-plan-left", `Не завершиться в цих вікнах: ${left.map(j => labPresets[j.preset]?.title || j.preset).join(", ")} — стане на паузу, решту можна продовжити пізніше.`));
           preview.replaceChildren(...lines);
         } catch (error) {
           if (revision === planRevision) preview.replaceChildren(el("p", "alert small", error.message));
@@ -549,7 +549,7 @@
     go.addEventListener("click", () => action(async () => {
       const windows = windowTimes(list);
       const checked = await request("/api/lab/plan", "POST", {windows});
-      if (!checked.plan.some(s => s.jobs.length)) { note("У ці вікна жоден тест не вміщається."); return; }
+      if (!checked.plan.some(s => s.jobs.length)) { note("Вікна замалі: потрібно хоча б 10 хв."); return; }
       await request("/api/lab/queue/start", "POST", { windows });
       note(`Заплановано: ${windows.map(w => `${hm(w[0])}–${hm(w[1])}`).join(", ")}. Поза вікнами приймач працює.`);
       await labQueue();
@@ -561,7 +561,7 @@
       shortcuts.append(quick);
     }
     box.append(el("div", "lab-windows-head", "Коли дозволено тести без розпізнавання ефіру"), shortcuts, rows, add, preview,
-      el("p", "muted small", "Місцевий час Mac. Між тестами — пауза від перегріву; у плані є запас часу. «Лише запис» зберігає звук, але не продовжує вікно: тест має встигнути до його кінця, щоб повернути розпізнавання вчасно. Поза вікнами — звичайне розпізнавання. Сторінку можна закрити."), go);
+      el("p", "muted small", "Місцевий час Mac. Між тестами — пауза від перегріву. Наприкінці вікна тест стає на паузу, приймач повертає розпізнавання, а в наступному вікні тест продовжується з того ж запису. Поза вікнами — звичайне розпізнавання. Сторінку можна закрити."), go);
     box.update = (next, jobs) => { q = next; queued = jobs; drawPlan(); };
     labWindowEditor = box;
     render();
@@ -582,7 +582,8 @@
     // Тривалість — оцінка з реальних прогонів (сервер), а не стале число рецепта.
     const estimate = preset => Math.round((q.estimates?.[preset] ?? (labPresets[preset]?.minutes || 30) * 60) / 60);
     const duration = m => m >= 60 ? `${Math.floor(m / 60)} год ${m % 60} хв` : `${m} хв`;
-    const minutes = queued.reduce((a, j) => a + estimate(j.preset), 0) + Math.max(0, queued.length - 1) * Math.round(q.cooldown_s / 60);
+    const left = j => Math.max(1, Math.round(estimate(j.preset) * (j.remaining ?? 1)));
+    const minutes = queued.reduce((a, j) => a + left(j), 0) + Math.max(0, queued.length - 1) * Math.round(q.cooldown_s / 60);
     $("lab-state").textContent = active ? LAB_STATE[runner.state] || runner.state : queued.length ? `у черзі ${queued.length} · ≈${duration(minutes)}` : "черга порожня";
     renderCaptureState(q.capture);
     // Банер показує режим приймача та помилки відновлення Whisper.
@@ -599,7 +600,7 @@
         : runner.state === "restoring_recognition" ? "Тести завершені; приймач завантажує Whisper і доробить накопичені фрагменти."
         : `Іде тест — приймач слухає й готує аудіофрагменти без розпізнавання. Очікують: ${num(q.capture?.pending_records || 0)}.`;
     }
-    const STATUS_ICON = { queued: "○", running: "◉", done: "✓", failed: "⚠", cancelled: "✕" };
+    const STATUS_ICON = { queued: "○", running: "◉", done: "✓", failed: "⚠", cancelled: "✕", paused: "⏸" };
     const rows = jobs.map((job, index) => {
       const preset = labPresets[job.preset] || { title: job.preset }, row = el("div", `lab-job ${job.status}`);
       const text = el("div", "lab-job-text");
@@ -610,7 +611,10 @@
       if (job.status === "done") bits.push(`готово о ${clockTime(job.finished)}`);
       if (job.status === "failed") bits.push(job.error || `помилка (код ${job.returncode ?? "?"})`);
       if (job.status === "cancelled") bits.push("скасовано");
-      if (job.status === "queued") bits.push(`≈${duration(estimate(job.preset))}`);
+      if (job.status === "paused") bits.push("на паузі");
+      const saved = job.progress?.done ? `${num(job.progress.done)}${job.progress.total ? ` з ${num(job.progress.total)}` : ""} записів готово` : "";
+      if (job.status !== "running" && job.status !== "done" && saved && (job.resumable || job.resume_dir)) bits.push(saved);
+      if (job.status === "queued") bits.push(job.resume_dir ? `продовження ≈${duration(left(job))}` : `≈${duration(estimate(job.preset))}`);
       text.append(el("span", "muted small", bits.join(" · ")));
       if (job.status === "running" && job.progress?.total) {
         const bar = el("span", "quality-track lab-progress"), fill = el("i");
@@ -623,10 +627,23 @@
         if (position > 0) tool("↑", "Раніше", async () => { await request(`/api/lab/queue/${job.id}/move`, "POST", { delta: -1 }); await labQueue(); });
         if (position < queued.length - 1) tool("↓", "Пізніше", async () => { await request(`/api/lab/queue/${job.id}/move`, "POST", { delta: 1 }); await labQueue(); });
       }
+      if (job.status === "running")
+        tool("⏸", "Пауза: зупинити тест і повернути розпізнавання ефіру; продовжити можна з того ж запису", async () => {
+          await request(`/api/lab/queue/${job.id}/pause`, "POST"); await labQueue(); note("Тест на паузі — розпізнавання ефіру відновлюється.");
+        });
+      if (job.resumable) {
+        tool("▶", "Продовжити зараз з того ж запису", async () => {
+          await request(`/api/lab/queue/${job.id}/resume`, "POST", { now: true }); await labQueue(); note("Тест продовжується з місця зупинки.");
+        });
+        tool("⏲", "Повернути в чергу з того ж запису — запустити за розкладом (вікна часу)", async () => {
+          await request(`/api/lab/queue/${job.id}/resume`, "POST", { now: false }); await labQueue();
+          note("Тест першим у черзі — оберіть вікна часу нижче.");
+        });
+      }
       if (["cancelled", "failed"].includes(job.status))
-        tool("↻", "Повторити: знову в чергу", async () => { await request(`/api/lab/queue/${job.id}/retry`, "POST"); await labQueue(); });
+        tool("↻", "Повторити з нуля: знову в чергу", async () => { await request(`/api/lab/queue/${job.id}/retry`, "POST"); await labQueue(); });
       tool("✕", job.status === "running" ? "Зупинити цей тест (черга піде далі)" : job.status === "queued" ? "Прибрати з черги" : "Прибрати з переліку", async () => {
-        if (job.status === "running" && !confirm("Зупинити тест, що йде? Його результат буде неповним.")) return;
+        if (job.status === "running" && !confirm("Зупинити тест, що йде, і перейти до наступного? Готові записи збережуться — його можна буде продовжити.")) return;
         await request(`/api/lab/queue/${job.id}`, "DELETE"); await labQueue();
       });
       row.append(el("span", "lab-job-icon", STATUS_ICON[job.status] || "•"), text, tools);
@@ -642,6 +659,11 @@
         await request("/api/lab/queue/start", "POST", {}); await labQueue();
       });
       controls.push(windowsEditor(q, queued));
+    }
+    if (active && running) {
+      button("⏸ Пауза", "", "Зупинити тест і чергу; розпізнавання ефіру відновиться. Продовжити — з того ж запису", async () => {
+        await request(`/api/lab/queue/${running.id}/pause`, "POST"); await labQueue(); note("Тест на паузі — розпізнавання ефіру відновлюється.");
+      });
     }
     if (active) {
       button("Зупинити після поточного", "ghost", "Дочекатися кінця тесту, що йде, і зупинити чергу", async () => { await request("/api/lab/queue/stop", "POST", { now: false }); await labQueue(); });

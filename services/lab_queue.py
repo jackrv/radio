@@ -8,7 +8,9 @@ run``), який переживає перезапуск служб:
 - перед важким тестом переводить приймач у режим «лише запис»: він далі слухає
   та зберігає фрагменти, а Whisper вивантажено; після тестів модель відновлюється;
 - між тестами тримає паузу, щоб Mac не перегрівався;
-- може чекати години старту («о 01:00»).
+- може чекати години старту («о 01:00»);
+- тест можна поставити на паузу (вручну чи в кінці вікна часу) і продовжити з того
+  самого запису: результати пишуться порядково, перелік записів зафіксовано (``--resume``).
 
 Сам тест (``tools.asr_lab``) читає розмічені записи; приймач паралельно додає нові
 фрагменти до архіву, щоб розпізнати їх після відновлення Whisper.
@@ -171,6 +173,44 @@ def retry(root, job_id):
                               "status": "queued", "added": time.time()})
 
 
+def resumable(root, job):
+    """Тест можна продовжити: є тека прогону з результатами, але без підсумку."""
+    run_dir = job.get("run_dir") or job.get("resume_dir")
+    if not run_dir or job["status"] not in ("paused", "failed", "cancelled"):
+        return False
+    folder = queue_dir(root) / run_dir
+    return (folder / "results.jsonl").is_file() and (folder / "params.json").is_file() and not (folder / "metrics.json").is_file()
+
+
+def pause(root, job_id):
+    """Пауза тесту, що йде: процес зупиняється, черга теж; розпізнавання ефіру відновлюється.
+
+    Готові записи лишаються в теці прогону — «Продовжити» дорахує решту.
+    """
+    with _locked(root) as state:
+        job = next((j for j in state["jobs"] if j["id"] == job_id), None)
+        if job is None or job["status"] != "running":
+            raise LookupError("Поставити на паузу можна лише тест, що йде")
+        job["pause"] = True
+        state["runner"]["stop"] = True
+        _kill(job.get("pid"))
+
+
+def resume(root, job_id):
+    """Призупинений (чи перерваний/невдалий) тест — на початок черги з тієї самої теки прогону."""
+    with _locked(root) as state:
+        job = next((j for j in state["jobs"] if j["id"] == job_id), None)
+        if job is None or not resumable(root, job):
+            raise LookupError("Продовжити можна лише незавершений тест із збереженими результатами")
+        job.update(status="queued", resume_dir=job.get("run_dir") or job["resume_dir"])
+        for key in ("pause", "cancel", "error", "returncode", "finished", "pid"):
+            job.pop(key, None)
+        state["jobs"].remove(job)
+        first = next((i for i, j in enumerate(state["jobs"]) if j["status"] == "queued"), len(state["jobs"]))
+        state["jobs"].insert(first, job)
+        return job
+
+
 def request_stop(root, now=False):
     """Зупинити виконавця після поточного тесту (або одразу — now=True)."""
     with _locked(root) as state:
@@ -185,31 +225,50 @@ def request_stop(root, now=False):
 # Відносна тривалість рецепта (до «як зараз»): повторна нарізка — довша.
 DURATION_FACTOR = {"resegment": 1.2}
 SECONDS_PER_RECORD = 4.0      # якщо минулих прогонів немає (18.11.2026: 2,9–4,0 с на запис)
-WINDOW_MARGIN = 1.15          # запас до кінця вікна
+WINDOW_MARGIN = 1.15          # запас оцінки тривалості (план і сповіщення)
+WINDOW_END_S = 20             # тест стає на паузу за стільки секунд до кінця вікна
+MIN_SLICE_S = 10 * 60         # коротший залишок вікна не варто перемикання приймача
 
 
-def first_fitting(jobs, start, end, estimate):
-    """Одна умова придатності для плану панелі й реального виконавця."""
-    return next((job for job in jobs if start + estimate(job["preset"]) * WINDOW_MARGIN <= end), None)
+def window_usable(start, end):
+    """Одна умова для плану панелі й реального виконавця: у вікні ще є час на шматок тесту."""
+    return start + MIN_SLICE_S <= end - WINDOW_END_S
 
 
-def plan_windows(windows, jobs, estimates, *, now, cooldown=COOLDOWN_S):
-    left = [{"id": j["id"], "preset": j["preset"]} for j in jobs if j["status"] == "queued"]
+def remaining_fraction(root, job):
+    """Частка тесту, що лишилась: продовження рахує лише недороблені записи."""
+    if not job.get("resume_dir"):
+        return 1.0
+    done = progress(root, {"run_dir": job["resume_dir"]}) or {}
+    if not done.get("total"):
+        return 1.0
+    return max(0.0, 1 - done["done"] / done["total"])
+
+
+def plan_windows(windows, jobs, estimates, *, now, cooldown=COOLDOWN_S, root=None):
+    """Розклад по вікнах: тест, що не встигає, стає на паузу й продовжується в наступному вікні."""
+    left = [{"id": j["id"], "preset": j["preset"],
+             "seconds": estimates[j["preset"]] * (remaining_fraction(root, j) if root else 1.0) * WINDOW_MARGIN}
+            for j in jobs if j["status"] == "queued"]
     plan, last_finish = [], None
     for start, end in windows:
         slot = {"window": [start, end], "jobs": []}
         at = max(start, now, last_finish + cooldown if last_finish is not None else start)
-        while left:
-            job = first_fitting(left, at, end, lambda key: estimates[key])
-            if job is None:
-                break
-            seconds = estimates[job["preset"]]
-            slot["jobs"].append({"job": job, "start": at, "end": at + seconds})
-            last_finish = at + seconds
+        while left and window_usable(at, end):
+            job = left[0]
+            take = min(job["seconds"], end - WINDOW_END_S - at)
+            job["seconds"] -= take
+            finished = job["seconds"] <= 1
+            slot["jobs"].append({"job": {"id": job["id"], "preset": job["preset"]}, "start": at, "end": at + take,
+                                 "partial": not finished})
+            last_finish = at + take
             at = last_finish + cooldown
-            left.remove(job)
+            if not finished:
+                break
+            left.pop(0)
         plan.append(slot)
-    return {"plan": plan, "left": left, "cooldown_s": cooldown, "margin": WINDOW_MARGIN, "now": now}
+    return {"plan": plan, "left": [{"id": j["id"], "preset": j["preset"]} for j in left],
+            "cooldown_s": cooldown, "margin": WINDOW_MARGIN, "now": now}
 
 
 def set_windows(root, windows):
@@ -228,7 +287,7 @@ def estimate_seconds(root, preset, records):
         try:
             params = json.loads((folder / "params.json").read_text())
             began = datetime.strptime(params["started_utc"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).timestamp()
-            if params.get("records"):
+            if params.get("records") and not params.get("resumed_utc"):   # з паузами час на запис невідомий
                 rate = ((folder / "results.jsonl").stat().st_mtime - began) / params["records"]
                 if not math.isfinite(rate) or rate <= 0:
                     continue
@@ -441,13 +500,12 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             if not queued:
                 break
             job = queued[0]
-            # Вікна часу: режим «лише запис» вмикаємо тільки для тесту, що встигає до кінця вікна.
+            # Вікна часу: режим «лише запис» лише всередині вікна; наприкінці вікна тест стає на паузу.
             windows = runner.get("windows")
             window_end = None
             if windows:
                 inside = next((w for w in windows if w[0] <= now() < w[1]), None)
-                fitting = first_fitting(queued, now(), inside[1], estimate) if inside else None
-                if fitting is None:
+                if inside is None or not window_usable(now(), inside[1]):
                     following = [w for w in windows if w[0] > now()]
                     if capture_by_us and not stop_capture():   # поза вікном — звичайне розпізнавання
                         break
@@ -456,7 +514,7 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                     _set(root, state="waiting", until=following[0][0])
                     sleep(min(30, following[0][0] - now()))
                     continue
-                job, window_end = fitting, inside[1]
+                window_end = inside[1]
             start_at = runner.get("start_at")
             if start_at and now() < start_at:
                 _set(root, state="waiting", until=start_at)
@@ -472,40 +530,56 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 continue
             preset = PRESETS[job["preset"]]
             name = f"q-{job['preset']}"
-            if notify and last_finish is None:   # наступні старти оголошує підсумок попереднього тесту
+            resume_from = job.get("resume_dir")
+            if notify and (last_finish is None or resume_from):   # інші старти оголошує підсумок попереднього тесту
                 try:
                     from services import lab_notify
                     left = sum(j["status"] == "queued" for j in read(root)["jobs"]) - 1
-                    notify(lab_notify.start_text(preset["title"], max(1, round(estimate(job["preset"]) / 60)), left))
+                    minutes = max(1, round(estimate(job["preset"]) * remaining_fraction(root, job) / 60))
+                    notify(lab_notify.start_text(preset["title"], minutes, left, resumed=bool(resume_from)))
                 except Exception:
                     pass
             logs = queue_dir(root) / "queue-logs"
             logs.mkdir(exist_ok=True)
             began = now()
             with open(logs / f"{job['id']}.log", "a") as log:
-                process = spawn([sys.executable, "-m", "tools.asr_lab", "run", "--name", name, *preset["args"]], log)
+                command = [sys.executable, "-m", "tools.asr_lab", "run", "--name", name, *preset["args"]]
+                if resume_from:
+                    command += ["--resume", str(queue_dir(root) / resume_from)]
+                process = spawn(command, log)
                 _finish_job(root, job["id"], status="running", pid=process.pid, started=began)
                 _set(root, state="running", current=job["id"], until=None)
                 while process.poll() is None:
                     sleep(5)
                     renew_capture()
-                    if window_end and now() >= window_end - 20:   # вікно закінчується — приймач важливіший
-                        _finish_job(root, job["id"], cancel=True, error="перервано: закінчилось вікно часу")
+                    if window_end and now() >= window_end - WINDOW_END_S:   # вікно закінчується — приймач важливіший
+                        _finish_job(root, job["id"], window_pause=True)
                         _kill(process.pid)
                         process.wait() if hasattr(process, "wait") else None
-                    run_dir = _run_dir_for(root, name, began)
+                    run_dir = resume_from or _run_dir_for(root, name, began)
                     if run_dir:
                         _finish_job(root, job["id"], run_dir=run_dir)
             current = next((j for j in read(root)["jobs"] if j["id"] == job["id"]), {})
-            status = "cancelled" if current.get("cancel") else "done" if process.returncode == 0 else "failed"
-            _finish_job(root, job["id"], status=status, finished=now(), returncode=process.returncode, pid=None,
-                        run_dir=_run_dir_for(root, name, began))
+            run_dir = resume_from or _run_dir_for(root, name, began)
+            stopped = current.get("pause") or current.get("window_pause")
+            status = ("cancelled" if current.get("cancel") else "done" if process.returncode == 0
+                      else "paused" if stopped and run_dir else "failed")
+            if status == "paused" and current.get("window_pause"):
+                # Кінець вікна: тест лишається першим у черзі й продовжиться в наступному вікні.
+                _finish_job(root, job["id"], status="queued", resume_dir=run_dir, run_dir=run_dir, pid=None,
+                            window_pause=None, returncode=None)
+                status = "window_paused"
+            else:
+                _finish_job(root, job["id"], status=status, finished=now(), returncode=process.returncode, pid=None,
+                            run_dir=run_dir, pause=None, window_pause=None,
+                            **({"resume_dir": run_dir} if status == "paused" else {}))
             last_finish = now()
             # Короткий підсумок адміністраторам; збій надсилання не зупиняє чергу.
             try:
                 from services import lab_notify   # лише текст; надсилання — через notify (CLI-виконавець)
-                text = lab_notify.summary_text(root, preset["title"], status, _run_dir_for(root, name, began),
-                                               max(1, round((last_finish - began) / 60)))
+                text = lab_notify.summary_text(root, preset["title"], status, run_dir,
+                                               max(1, round((last_finish - began) / 60)),
+                                               progress=progress(root, {"run_dir": run_dir}) if run_dir else None)
                 if notify:
                     notify(text)
             except Exception:

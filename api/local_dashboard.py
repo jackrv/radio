@@ -69,7 +69,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     experiments_dir = Path(experiments_dir) if experiments_dir else ROOT / ".local-experiments"
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
-                                max_bytes=config.RECORDINGS_MAX_BYTES)
+                                max_bytes=config.RECORDINGS_MAX_BYTES,
+                                low_rms_retention_seconds=config.RECORDINGS_LOW_RMS_RETENTION_SECONDS)
     suggestion_worker = None
     if suggestions:
         # Фонова перевірка списків у процесі панелі: приймач не навантажується.

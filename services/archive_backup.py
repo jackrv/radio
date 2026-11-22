@@ -57,7 +57,7 @@ def create_archive_backup(root, destination, *, progress=lambda *_: None):
     try:
         index = stage / 'index.sqlite3'
         os.close(private_open(index))
-        with closing(read_only(root / 'index.sqlite3')) as source, sqlite3.connect(index) as target:
+        with closing(read_only(root / 'index.sqlite3')) as source, closing(sqlite3.connect(index)) as target:
             source.backup(target)
             if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise ValueError('Індекс архіву не пройшов перевірку цілісності')

@@ -16,12 +16,13 @@
       box.append(kv([
         ["WAV за індексом", `${storageSize(audio.bytes)} / ${storageSize(audio.max_bytes)} · ${(full*100).toFixed(1)}%`, full>=0.9 ? "caution" : ""],
         ["До ліміту", storageSize(audio.remaining_bytes)],
-        ["Захищено розміткою", `${num(audio.protected_count)} записів · ${storageSize(audio.protected_bytes)}`],
-        ["Нерозмічені", `${num(audio.unreviewed_count)} · ${storageSize(audio.unreviewed_bytes)} · до ${audio.retention_days} днів`],
+        ["Захищені: розмітка / очікування ASR", `${num(audio.protected_count)} записів · ${storageSize(audio.protected_bytes)}`],
+        ["Без захисту", `${num(audio.unreviewed_count)} · ${storageSize(audio.unreviewed_bytes)} · до ${audio.retention_days} днів`],
         ["Найближча межа за віком", audio.next_age_expiry_at ? `${new Date(audio.next_age_expiry_at*1000).toLocaleString("uk-UA")}` : "нерозмічених немає"],
         ["Підлягає очищенню зараз", `${num(audio.due_count)} записів · ${storageSize(audio.due_bytes)}`, audio.due_count ? "caution" : ""],
         ["Індекс SQLite та WAL/SHM", storageSize(audio.metadata_bytes)],
       ]));
+      if (audio.low_rms_retention_seconds != null) box.append(el("p", "small", `Тихі записи без розмітки: до ${Math.round(audio.low_rms_retention_seconds / 60)} хв від запису. Решта нерозмічених — до ${audio.retention_days} днів.`));
       if (audio.estimated_full_at) box.append(el("p", "small caution", `Ліміт може бути досягнутий близько ${new Date(audio.estimated_full_at*1000).toLocaleString("uk-UA")} за темпом останньої години. Це оцінка, не розклад.`));
       const g = audio.unreviewed_by_group;
       if (g) box.append(kv([
@@ -29,7 +30,7 @@
         ["Нерозмічені: інше мовлення", `${num(g.speech.count)} · ${storageSize(g.speech.bytes)}`],
         ["Нерозмічені: відсіяне програмою", `${num(g.filtered.count)} · ${storageSize(g.filtered.bytes)}`],
       ]));
-      box.append(el("p", "small muted", "Очищення виконується після збереження нового аудіо: за віком або обсягом — що настане раніше. Коли місця бракує, першим видаляється відсіяне програмою (тиша, закороткі, чорний список…), потім інше мовлення, ефір — останнім; у кожній групі спершу старіші. Розмічені записи не видаляються, але займають частину ліміту. Ліміт стосується WAV за індексом, не всього каталогу."));
+      box.append(el("p", "small muted", "Очищення виконується після збереження нового аудіо та раз на хвилину за відсутності нових записів: за віком або обсягом — що настане раніше. Коли місця бракує, першим видаляється відсіяне програмою (тиша, закороткі, чорний список…), потім інше мовлення, ефір — останнім; у кожній групі спершу старіші. Розмічені й записи, що ще очікують розпізнавання, захищені та займають частину ліміту. Ліміт стосується WAV за індексом, не всього каталогу."));
       if (audio.protected_bytes >= audio.max_bytes) box.append(el("p", "alert", "Захищені записи вже займають увесь ліміт: нові нерозмічені можуть видалятися одразу. Розмітка не очищається автоматично."));
     } else box.append(el("p", "muted", "Аудіоархів ще не створено або його індекс недоступний."));
     for (const log of s.logs) box.append(el("p", "small", `${log.name}: ${storageSize(log.bytes)} загалом; активний ${storageSize(log.active_bytes)} / ${storageSize(log.max_file_bytes)}. До ротації близько ${storageSize(log.remaining_to_rotation_bytes)}. Архівів ${log.archive_count}/${log.max_archives}${log.rotations_until_oldest_removed ? `; найстаріший буде замінено через ${log.rotations_until_oldest_removed} ротацій` : ""}.`));

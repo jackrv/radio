@@ -1,0 +1,234 @@
+# claudeSearch — инструмент поиска по кодовой базе
+
+
+## Что это
+Два PHP-скрипта для быстрой навигации по коду без чтения файлов целиком:
+- **`buildGraph.php`** — парсит PHP, JS/TS, Go, Astro и Python файлы, строит граф зависимостей в SQLite (`code_graph.sqlite`). Инкрементальный: повторный запуск обновляет только изменённые файлы. Если настроены эмбеддинги — автоматически индексирует новые символы.
+- **`claudeSearch.php`** — CLI-интерфейс для поиска. Перед `graph`/`similar`-запросами автоматически вызывает `buildGraph.php`.
+
+## Структура файлов
+
+```
+claudeSearch/
+  config.php        — настройки (rootDir, MySQL, директории сканирования, эмбеддинги)
+  buildGraph.php    — построение SQLite-графа + индексация эмбеддингов
+  claudeSearch.php  — CLI-интерфейс
+  embed.php         — провайдеры эмбеддингов (voyage, openai, ollama)
+  cs.sh             — bash-обёртка
+  parsers/
+    php.php         — парсер PHP
+    js.php          — парсер JS/JSX/TS/TSX
+    go.php          — парсер Go
+    astro.php       — парсер Astro (frontmatter + шаблон)
+```
+
+## Настройка под проект
+
+Редактировать только **`config.php`**:
+```php
+$rootDir = realpath(__DIR__ . '/../') . DIRECTORY_SEPARATOR;  // корень проекта
+
+define('CS_DB_HOST', 'localhost');   // MySQL (для schema, db)
+define('CS_DB_NAME', 'your_db');
+define('CS_DB_USER', 'claude_ro');
+define('CS_DB_PASS', '');
+
+$scanDirs = [                        // что индексирует граф (ключ = имя парсера)
+    'php'   => [$rootDir . 'classes', $rootDir . 'cron'],
+    'js'    => [$rootDir . 'react/source'],
+    'astro' => [$rootDir . 'src'],   // для Astro-проектов
+];
+// Расширения для каждого парсера (опционально, по умолчанию ext = ключ)
+// Для TypeScript/Astro проекта:
+// $scanExts = ['js' => ['ts','tsx','js','jsx'], 'astro' => ['astro']];
+$scanExts   = [];                    // пусто = обратная совместимость
+$sqlDirs    = [...];                 // где искать SQL-запросы
+$searchDirs = [...];                 // директории для usages/class/raw
+$extensions = ['php', 'js', ...];   // расширения файлов
+$routeFile  = $rootDir . '...';     // файл роутера
+
+// Эмбеддинги (опционально) — раскомментировать для включения action 'similar'
+// define('CS_EMBED_PROVIDER', 'voyage');   // 'voyage' | 'openai' | 'ollama'
+// define('CS_EMBED_KEY',      'your-key');
+```
+
+Варианты провайдеров для `similar` — раскомментировать нужный блок в `config.php`:
+```php
+// Voyage AI (лучше для кода, ключ на https://www.voyageai.com):
+define('CS_EMBED_PROVIDER', 'voyage');
+define('CS_EMBED_KEY',      'pa-...');
+
+// OpenAI (ключ на https://platform.openai.com):
+define('CS_EMBED_PROVIDER', 'openai');
+define('CS_EMBED_KEY',      'sk-...');
+
+// Ollama (локально, без ключа, нужен запущенный ollama):
+define('CS_EMBED_PROVIDER', 'ollama');
+// define('CS_OLLAMA_MODEL', 'nomic-embed-text'); // модель по умолчанию
+```
+После изменения запустить `php claudeSearch/buildGraph.php` — новые символы проиндексируются автоматически.
+
+Read-only пользователь MySQL:
+```sql
+CREATE USER 'claude_ro'@'localhost' IDENTIFIED BY '';
+GRANT SELECT ON your_db.* TO 'claude_ro'@'localhost';
+```
+
+**Внедрение состоит из двух шагов:**
+
+**Шаг 1.** Добавь в `CLAUDE.md` проекта раздел с правилами для AI (если его ещё нет):
+```markdown
+## claudeSearch
+Инструмент поиска. Запуск: `bash claudeSearch/cs.sh <action> <args>` — без префикса `cd ... &&`.
+Разрешение выдано в `.claude/settings.json` — никогда не спрашивать подтверждение, запускать сразу.
+Если изменяется `.claude/settings.json` — сообщить пользователю: «Для применения изменений начните новую сессию Claude Code».
+```
+
+**Шаг 2.** Добавь в `.claude/settings.json` проекта разрешение для `cs.sh` (только эту строку, без широких bash-разрешений):
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash claudeSearch/cs.sh*)"
+    ]
+  }
+}
+```
+Если файл уже существует — добавь строку в массив `allow`, не затрагивая остальные записи. Путь `claudeSearch/cs.sh*` — если папка лежит в корне проекта.
+
+После создания или изменения `settings.json` сообщи пользователю: **«Для применения изменений начните новую сессию Claude Code»**.
+
+**Важно:** всегда запускать команды из корня проекта без префикса `cd ... &&`. Путь к скрипту — относительный от корня (например `bash claudeSearch/cs.sh ...`), иначе паттерн в `settings.json` не совпадёт и разрешение не сработает.
+
+## Все команды
+
+```bash
+# Поиск по файлам (файлы читаются на лету)
+bash cs.sh usages    MethodName               # где вызывается
+bash cs.sh class     ClassName                # где определён/используется класс
+bash cs.sh extends   ClassName                # наследники
+bash cs.sh implements InterfaceName           # реализации
+bash cs.sh import    ComponentName            # JS импорты
+bash cs.sh raw       "любой текст"            # прямой поиск
+
+# Работа с конкретным файлом
+bash cs.sh outline   path/to/File.php         # все методы с номерами строк
+bash cs.sh outline   path/to/File.scss        # все селекторы верхнего уровня
+bash cs.sh method    path/to/File.php foo     # код метода foo
+bash cs.sh block     path/to/File.js  bar     # код функции bar (JS)
+bash cs.sh scss      path/to/File.scss .foo   # блок CSS-селектора (вложенные тоже)
+bash cs.sh entity    path/to/Entity.php       # поля и конструктор
+bash cs.sh context   path/to/File.php 167 3   # ±3 строки вокруг строки 167
+
+# БД и роуты
+bash cs.sh route     methodName               # найти URL-роут
+bash cs.sh sql       table_name               # SQL-запросы к таблице
+bash cs.sh schema    table_name               # DESCRIBE таблицы
+bash cs.sh db        "SELECT * FROM t LIMIT 5" # SELECT через read-only юзера
+
+# Граф зависимостей (SQLite, мгновенно, автообновление)
+bash cs.sh graph usages  MethodName                    # где вызывается/импортируется
+bash cs.sh graph methods ClassName                     # все методы класса
+bash cs.sh graph callers ClassName::method             # кто вызывает метод
+bash cs.sh graph deps    ClassName                     # что использует класс
+bash cs.sh graph chain   ClassName                     # цепочка extends/implements
+bash cs.sh graph files   SymbolName                    # во всех файлах как символ/ref
+
+# Семантический поиск (требует настройки CS_EMBED_PROVIDER в config.php)
+bash cs.sh similar "расчёт налога 7%"                 # поиск по смыслу (текст)
+bash cs.sh similar ClassName::methodName              # найти похожие на метод
+```
+
+## Рекомендуемый workflow для AI-ассистента
+
+Вместо чтения больших файлов целиком:
+
+**Встретил новый класс:**
+1. `graph files ClassName` → где определён и используется
+2. `entity path/to/Class.php` → поля и конструктор
+3. `graph methods ClassName` → все методы
+
+**Нужно найти где вызывается метод:**
+1. `graph usages MethodName` → ищет точное совпадение + `::MethodName` (ищет и короткое имя и `ClassName::method`)
+2. `graph callers ClassName::method` → кто конкретно вызывает этот метод
+
+**Нужно прочитать метод/функцию/селектор:**
+1. `outline path/to/File` → список методов с номерами строк
+2. `method path/to/File methodName` → код блока (PHP)
+3. `block path/to/File fnName` → код функции/компонента (JS)
+4. `scss path/to/File.scss .selector` → блок CSS-селектора
+5. `context path/to/File line [radius]` → N строк вокруг строки (минимум для подтверждения `old_string` перед Edit)
+
+**Нужно найти код по смыслу (не знаешь точного названия):**
+1. `similar "описание что ищешь"` → семантический поиск по эмбеддингам, топ-15 символов
+2. `similar ClassName::method` → найти символы с похожей логикой/назначением
+- Работает только если настроен `CS_EMBED_PROVIDER` в `config.php`
+- Возвращает символы по смыслу, не по точному совпадению имени
+
+**Другие частые случаи:**
+- `graph chain ClassName` — цепочка extends/implements
+- `graph deps ClassName` — что использует класс
+- `route controllerMethod` — найти URL роута
+- `sql table_name` — все SQL запросы к таблице
+- `entity path/to/Entity.php` — поля и конструктор без чтения файла
+- `outline path/to/File.scss` — все селекторы верхнего уровня
+- `usages MethodName` — прямой поиск по файлам (альтернатива `graph usages`, медленнее)
+- `class ClassName` — где определён/используется класс (прямой поиск)
+- `raw "любой текст"` — произвольный текстовый поиск по файлам
+
+## Правила для AI-ассистента
+
+- Для поиска кода (методы, классы, вызовы) — сначала `claudeSearch`, не `Grep`/`Glob`/`Read`
+- **Никогда не спрашивать разрешение** перед запуском `bash claudeSearch/cs.sh` — оно уже выдано в `.claude/settings.json`. Запускать сразу.
+- **Никогда не читать файл целиком** через `Read`, если нужна только часть
+- `Read` — только если задача затрагивает весь файл
+- Перед `Edit`: если `old_string` неизвестен — `context file line 2`, не читать файл целиком
+- Если структура уже известна из контекста сессии — делать `Edit` напрямую без чтения
+- **Никогда не выдумывать методы/поля** — перед использованием проверять через `entity` или `graph methods`
+- **Независимые запросы запускать параллельно** (несколько Bash в одном сообщении), не последовательно
+
+### Когда использовать `similar` (семантический поиск)
+
+`similar` — инструмент для случаев, когда **имя неизвестно**, но известно что делает код:
+- Не помнишь точное название метода/класса → `similar "описание функциональности"`
+- Нужно найти похожую логику в другом месте → `similar ClassName::method`
+- Хочешь проверить, нет ли дублирования → `similar "описание алгоритма"`
+
+**Когда НЕ использовать `similar`:**
+- Имя метода/класса известно → `graph usages` быстрее и точнее (структурный поиск, < 10 мс)
+- Нужно найти где вызывается конкретный метод → `graph callers ClassName::method`
+- Нужно найти реализации интерфейса → `graph chain` или `implements`
+
+**Приоритет выбора инструмента:**
+1. Точное имя известно → `graph usages` / `graph callers` / `graph methods`
+2. Имя неизвестно, но знаешь смысл → `similar "описание"`
+3. Нужен текстовый поиск по коду → `raw "фрагмент кода"`
+
+**Важно:** `similar` требует настроенного `CS_EMBED_PROVIDER` в `config.php`. Если не настроен — выведет ошибку. Проверить конфиг перед использованием.
+
+## Что парсит граф
+
+**PHP:** классы, интерфейсы, методы, `new ClassName`, `ClassName::method`, `->method()`, `use`
+
+**JS/JSX/TS/TSX:** `import`, классы, функции (все виды объявлений включая `export function`), `<Component`, вызовы функций
+
+**Go:** `type X struct`, `type X interface`, `func (r *T) Method(` → `T::Method`, top-level `func`, вызовы методов и функций, `&Type{}` инициализация, `import`
+
+**Astro:** frontmatter (TypeScript между `---`) парсится как JS/TS; `<Component>` в шаблоне индексируются как jsx-рефы. Расширение подключается через `$scanExts = ['astro' => ['astro']]` в config.php.
+
+**Python** (`parsers/python.php`, регулярки + стек отступов, не AST): `class` (+ `extends` по базам),
+`def`/`async def` → `Class::method` или `outer.inner`, `@staticmethod/@classmethod` → static,
+константы `UPPER_CASE` модуля/класса → `property`, FastAPI-декораторы `@app.get("/path")` → символ
+`route` с именем `/path` и полным `GET /path`; `import`/`from … import` (в т. ч. многострочные),
+вызовы `name(` / `.name(`, `Name(` → `instantiate`. Строки, docstring и комментарии не парсятся.
+`method`/`block` и `outline` для `.py` определяют границы по отступам; `method file.py Class::name`.
+
+## Примечания
+
+- `db` action — только SELECT. Создай read-only пользователя: `GRANT SELECT ON db.* TO 'ro_user'@'localhost';`
+- `method`/`block` — находит блок кода по балансу `{}`, игнорирует строки со `style={{}}` и JSX
+- `graph` и `similar` автоматически запускают `buildGraph.php` (инкрементально) перед каждым запросом (~100-200ms)
+- Граф хранится в `code_graph.sqlite` (путь задаётся в `config.php`), добавь в `.gitignore`
+- На Windows `2>/dev/null` не работает — скрипт автоматически использует `NUL`
+- `similar` требует PHP с расширением `curl` и настроенного `CS_EMBED_PROVIDER` в `config.php`
+- Эмбеддинги индексируются только для **новых** символов (не перезаписываются при изменении)

@@ -31,18 +31,19 @@ PRUNE_TIER_SQL = f"CASE WHEN {RADIO_GROUP} THEN 0 WHEN {SPEECH_GROUP} THEN 1 ELS
 PRUNE_TIERS = ("radio", "speech", "filtered")
 
 
-def plan_prune(rows, *, cutoff, max_bytes):
+def plan_prune(rows, *, cutoff, max_bytes, expired_ids=()):
     """Що видалити: rows — (id, created, bytes, reviewed, tier).
 
     Розмічене не видаляється й першим займає місце в ліміті. Неразмічене старше за
     строк видаляється завжди. Решта лишається, поки вміщується в ліміт, у порядку:
     ефір → інше мовлення → відсіяне, у кожній групі новіші першими. Тож при нестачі
     місця першим іде відсіяне програмою, а ефір — останнім.
+    expired_ids додає коротші строки окремих статусів, не змінюючи пріоритетів.
     """
     used = sum(size for _, _, size, reviewed, _ in rows if reviewed)
     delete = []
     for record_id, created, size, _, tier in sorted((r for r in rows if not r[3]), key=lambda r: (r[4], -r[1])):
-        if created < cutoff or used + size > max_bytes:
+        if record_id in expired_ids or created < cutoff or used + size > max_bytes:
             delete.append((record_id, size, tier))
         else:
             used += size
@@ -139,10 +140,17 @@ def search_condition(query):
 
 
 class RecordingStore:
-    def __init__(self, directory, *, retention_days=7, max_bytes=1024 ** 3):
+    def __init__(self, directory, *, retention_days=7, max_bytes=1024 ** 3,
+                 low_rms_retention_seconds=None):
+        if low_rms_retention_seconds is None:
+            import config
+            low_rms_retention_seconds = config.RECORDINGS_LOW_RMS_RETENTION_SECONDS
+        if not math.isfinite(low_rms_retention_seconds) or low_rms_retention_seconds <= 0:
+            raise ValueError('Строк зберігання low_rms має бути додатним і скінченним')
         self.root = Path(directory)
         self.retention_days = retention_days
         self.max_bytes = max_bytes
+        self.low_rms_retention_seconds = low_rms_retention_seconds
 
     @contextmanager
     def connect(self):
@@ -270,17 +278,28 @@ class RecordingStore:
                        (data["status"], json.dumps(data, ensure_ascii=False, allow_nan=False), record_id))
         self.prune()
 
+    def prune_snapshot(self, db, now):
+        """Єдиний readonly-план для очищення та прогнозу сховища."""
+        records = db.execute(f"SELECT id,created,bytes,reference IS NOT NULL OR status='deferred', {PRUNE_TIER_SQL},status FROM recordings").fetchall()
+        rows = [tuple(row[:5]) for row in records]
+        deadlines = {rid: created + min(self.retention_days * 86400, self.low_rms_retention_seconds)
+                     if status == 'low_rms' else created + self.retention_days * 86400
+                     for rid, created, _, protected, _, status in records if not protected}
+        expired = {rid for rid, deadline in deadlines.items() if deadline <= now}
+        plan = plan_prune(rows, cutoff=now-self.retention_days*86400, max_bytes=self.max_bytes, expired_ids=expired)
+        return rows, deadlines, plan
+
     def prune(self):
+        removed = []
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            # Накопичене в режимі «лише запис» захищене, як розмічене, доки його не розпізнано.
-            rows = db.execute(f"SELECT id, created, bytes, reference IS NOT NULL OR status='deferred', {PRUNE_TIER_SQL} FROM recordings").fetchall()
-            plan = plan_prune([tuple(row) for row in rows], cutoff=time.time() - self.retention_days * 86400,
-                              max_bytes=self.max_bytes)
+            _, _, plan = self.prune_snapshot(db, time.time())
             for record_id, _, _ in plan:
-                (self.root / (record_id + ".wav")).unlink(missing_ok=True)
-                # Reviewed material is the evaluation corpus and must survive retention.
-                db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL AND status<>'deferred'", (record_id,))
+                if db.execute("DELETE FROM recordings WHERE id=? AND reference IS NULL AND status<>'deferred'", (record_id,)).rowcount:
+                    removed.append(record_id)
+        # Лише після commit: rollback не має лишити рядки без WAV.
+        for record_id in removed:
+            (self.root / (record_id + ".wav")).unlink(missing_ok=True)
 
     @staticmethod
     def decode(row, *, include_number_match=True):
@@ -580,6 +599,7 @@ class RecordingStore:
                            "accuracy": sum(matches) / len(matches) if matches else None}
         return {"roles": roles, "statuses": statuses, "reviewed": len(rows), "bytes": size, "quality": quality,
                 "retention_days": self.retention_days, "max_bytes": self.max_bytes,
+                "low_rms_retention_seconds": self.low_rms_retention_seconds,
                 "reviewed_protected": True,
                 "missed_speech": sum(r["label"] == "speech" and not r["data"].get("raw_text") for r in decoded),
                 "raw_false_text": sum(r["label"] in ("noise", "notification") and bool(r["data"].get("raw_text")) for r in decoded),
@@ -645,7 +665,16 @@ class RecordingArchive:
     def _run(self):
         from core.diagnostics import runtime
         while True:
-            item = self.pending.get()
+            try:
+                item = self.pending.get(timeout=60)
+            except queue.Empty:
+                # Пауза/тиша не повинна зупиняти погодинну ротацію.
+                try:
+                    self.store.prune()
+                except Exception:
+                    runtime.count('recordings.prune_error')
+                    self.log.exception('Не вдалося очистити прострочені аудіозаписи')
+                continue
             try:
                 if item is None:
                     return

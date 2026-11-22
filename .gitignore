@@ -45,6 +45,7 @@ diagnostics-report.json
 .radio-diagnostics-*
 .local-backups/
 .local-experiments/
+.local-models/
 .local-notification-sounds/
 .radio345.lock
 .radio345-launcher/
@@ -62,3 +63,7 @@ diagnostics-report.json
 # Особистий робочий простір VS Code
 radio345.code-workspace
 .asr-lab.lock
+
+# Локальний індекс claudeSearch та службові файли SQLite
+/claudeSearch/code_graph.sqlite
+/claudeSearch/code_graph.sqlite-*

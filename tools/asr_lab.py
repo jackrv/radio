@@ -171,7 +171,8 @@ def bandpass(pcm, sample_rate, low=300.0, high=3400.0, ramp=100.0):
 def snapshot_database(target):
     """Знімок events.db для відтворюваності; робоча база не змінюється."""
     import config
-    with read_only(config.DB_PATH) as source, sqlite3.connect(target) as copy:
+    from contextlib import closing
+    with closing(read_only(config.DB_PATH)) as source, closing(sqlite3.connect(target)) as copy:
         source.backup(copy)
     os.chmod(target, 0o600)
     # Таблиці правил у копії (стара база могла їх не мати); робоча база не змінюється.

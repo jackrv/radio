@@ -181,7 +181,8 @@ def main():
         from services.recordings import RecordingStore, RecordingArchive
         recording_archive = RecordingArchive(
             RecordingStore(config.RECORDINGS_DIR, retention_days=config.RECORDINGS_RETENTION_DAYS,
-                           max_bytes=config.RECORDINGS_MAX_BYTES),
+                           max_bytes=config.RECORDINGS_MAX_BYTES,
+                           low_rms_retention_seconds=config.RECORDINGS_LOW_RMS_RETENTION_SECONDS),
             {key: getattr(config, key) for key in ("MODEL_REPO", "LLM_REPO", "USE_LLM", "LANGUAGE", "SR",
              "GAIN", "MIN_RMS", "NORMALIZE", "VAD_LEVEL", "SILENCE_END_MS", "MIN_SPEECH_MS",
              "MAX_SEGMENT_S", "PREROLL_MS", "SPECTRAL_NOTIFICATION_MODE")}, log)

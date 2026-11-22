@@ -105,6 +105,7 @@ VAD_LEVEL = 2
 RECORD_AUDIO = True
 RECORDINGS_DIR = BASE_DIR / ".local-recordings"
 RECORDINGS_RETENTION_DAYS = 7
+RECORDINGS_LOW_RMS_RETENTION_SECONDS = 60 * 60
 RECORDINGS_MAX_BYTES = 5 * 1024 * 1024 * 1024
 # Короткі фрагменти, відкинуті VAD (переважно клавіатура й клацання), не зберігаються:
 # вони займали майже половину архіву й майже не потрібні для розмітки.

@@ -12,7 +12,7 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await until(()=>serverOutput.includes('\n'));const port=JSON.parse(serverOutput.split('\n')[0]).port;
  await until(async()=>{try{return (await fetch(`http://127.0.0.1:${port}/`)).ok;}catch{return false;}});
  const profile=path.join(root,'chrome');
- chrome=spawn(chromeBin,['--headless=new','--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-sync','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'});
+ chrome=spawn(chromeBin,['--headless=new','--mute-audio','--autoplay-policy=no-user-gesture-required','--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-sync','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'});
  const active=path.join(profile,'DevToolsActivePort');await until(()=>fs.existsSync(active));
  const dp=fs.readFileSync(active,'utf8').split('\n')[0];const pages=await (await fetch(`http://127.0.0.1:${dp}/json`)).json();
  ws=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j;});
@@ -85,6 +85,16 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await until(()=>evaluate(`document.querySelector('.transcript-callsign')!==null`));
  await evaluate(`document.querySelector('[data-panel=recordings] audio').load()`);
  await until(()=>evaluate(`document.querySelector('[data-panel=recordings] audio').readyState>=1`));
+ // Справжні slider/API/play/pause на синтетичному WAV; Chrome вимкнув звук,
+ // тож аудіо тесту не може потрапити в мікрофон живого приймача.
+ await evaluate(`{const original=window.fetch;window.__holdRequests=[];window.fetch=async(url,options)=>{const response=await original(url,options);if(String(url).endsWith('/api/listening-hold')&&options?.method==='PUT')window.__holdRequests.push({seconds:JSON.parse(options.body).seconds,ok:response.ok});return response;};const range=document.querySelector('#pause-range');range.value='5';range.dispatchEvent(new Event('input'));range.dispatchEvent(new Event('change'));}`);
+ await until(()=>evaluate(`fetch('/api/receiver-pause').then(r=>r.json()).then(s=>s.pause_requested&&s.remaining_seconds>240)`));
+ await evaluate(`{const audio=document.querySelector('[data-panel=recordings] audio');audio.muted=true;audio.play();}`);
+ await until(()=>evaluate(`window.__holdRequests.some(r=>r.ok&&r.seconds>1)`));
+ if(!await evaluate(`fetch('/api/receiver-pause').then(r=>r.json()).then(s=>s.pause_requested)`))throw Error('playback cleared global pause');
+ await evaluate(`document.querySelector('[data-panel=recordings] audio').pause()`);
+ await until(()=>evaluate(`window.__holdRequests.some(r=>r.ok&&r.seconds===1)`));
+ if(!await evaluate(`fetch('/api/receiver-pause').then(r=>r.json()).then(s=>s.pause_requested)`))throw Error('stopping playback cleared global pause');
  const marker=async time=>{await evaluate(`{const a=document.querySelector('[data-panel=recordings] audio');a.currentTime=${time};a.dispatchEvent(new Event('seeked'));}`);await sleep(80);return evaluate(`[...document.querySelectorAll('.transcript-playing')].map(n=>n.textContent).join('')`);};
  const first=await marker(.5), later=await marker(2.6), gap=await marker(1.7);
  if(!first||!later||first===later||gap)throw Error('approximate marker mismatch '+JSON.stringify({first,later,gap}));
@@ -106,6 +116,10 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await until(()=>evaluate(`window.__reviewedRecalls.some(r=>r.label==='noise'&&r.telegram_recall?.status==='scheduled'&&r.telegram_recall.after_seconds>15)`));
  if(!await evaluate(`[...document.querySelectorAll('#recordings .save-status')].some(n=>n.textContent.includes('відкликання копій Telegram'))`))throw Error('scheduled recall is invisible after noise label');
  console.log('flows: noise label durably schedules known Telegram copy with visible undo grace');
+ if(!await evaluate(`fetch('/api/receiver-pause').then(r=>r.json()).then(s=>s.pause_requested)`))throw Error('archive annotation cleared global pause');
+ await evaluate(`{const range=document.querySelector('#pause-range');range.value='0';range.dispatchEvent(new Event('input'));range.dispatchEvent(new Event('change'));}`);
+ await until(()=>evaluate(`fetch('/api/receiver-pause').then(r=>r.json()).then(s=>!s.pause_requested)`));
+ console.log('flows: global pause → muted WAV playback/hold → release → annotation preserves pause; explicit resume works');
  await evaluate(`document.querySelector('[data-group="mentions"]').click()`);
  await until(()=>evaluate(`document.querySelector('.mention-results')?.children.length===1`));
  console.log('flows: newly labelled noise removed when returning to selection');

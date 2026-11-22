@@ -26,13 +26,14 @@ def _files(paths):
 
 def audio_status(store, now):
     index = store.root / 'index.sqlite3'
-    empty = {'available':False, 'retention_days':store.retention_days, 'max_bytes':store.max_bytes}
+    empty = {'available':False, 'retention_days':store.retention_days, 'max_bytes':store.max_bytes,
+             'low_rms_retention_seconds':store.low_rms_retention_seconds}
     if not index.is_file() or index.is_symlink() or store.root.is_symlink():
         return empty
-    from services.recordings import PRUNE_TIER_SQL, PRUNE_TIERS, plan_prune
+    from services.recordings import PRUNE_TIERS
     try:
         with closing(read_only(index, timeout=2)) as db:
-            records = db.execute(f'SELECT id,created,bytes,reference IS NOT NULL,{PRUNE_TIER_SQL} FROM recordings').fetchall()
+            records, deadlines, plan = store.prune_snapshot(db, now)
     except sqlite3.Error:
         return empty
     rows = sorted(((created, size, reviewed) for _, created, size, reviewed, _ in records), reverse=True)
@@ -40,7 +41,6 @@ def audio_status(store, now):
     protected = sum(row[1] for row in rows if row[2])
     unreviewed = [row for row in rows if not row[2]]
     # Те саме рішення, що й prune(), але без видалення файлів і змін у SQLite.
-    plan = plan_prune(records, cutoff=now-store.retention_days*86400, max_bytes=store.max_bytes)
     due_count, due_bytes = len(plan), sum(size for _, size, _ in plan)
     tiers = {name: {'count': 0, 'bytes': 0} for name in PRUNE_TIERS}
     for _, _, size, reviewed, tier in records:
@@ -57,7 +57,7 @@ def audio_status(store, now):
             'unreviewed_count':len(unreviewed), 'unreviewed_bytes':total-protected,
             'remaining_bytes':remaining, 'metadata_bytes':sum(i.st_size for _,i in metadata),
             'oldest_unreviewed_at':oldest,
-            'next_age_expiry_at':oldest+store.retention_days*86400 if oldest is not None else None,
+            'next_age_expiry_at':min(deadlines.values(), default=None),
             'due_count':due_count, 'due_bytes':due_bytes, 'unreviewed_by_group':tiers,
             'incoming_bytes_last_hour':sum(r[1] for r in recent),
             'estimated_full_at':now+remaining/rate if remaining and rate and len(recent)>=5 else None}

@@ -61,7 +61,7 @@ def learn_saved_archive(db_path, store, actor, *, progress=lambda *_:None):
     backup=backups/('events-before-archive-learning-'+uuid.uuid4().hex+'.db')
     os.close(private_open(backup,os.O_CREAT|os.O_EXCL|os.O_WRONLY))
     try:
-        with closing(read_only(db_path)) as source,sqlite3.connect(backup) as target:
+        with closing(read_only(db_path)) as source,closing(sqlite3.connect(backup)) as target:
             source.backup(target)
             if target.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('Резервна копія не пройшла перевірку')
     except BaseException:

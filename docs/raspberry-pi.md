@@ -113,10 +113,22 @@ git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt   # якщо с�
 sudo systemctl restart radio345-node   # якщо змінився deploy/radio345-node.service — повторіть sed … | tee вище
 ```
 
+## Перевірено на Pi
+
+22.11.2026, Pi 5 4 ГБ, без USB-карти — через віртуальну `snd-aloop` і 25 хв ефіру з архіву
+([звіт](reports/2026-11-22-pi-node-load.md)):
+
+- навантаження: вузол ~0,9 % одного ядра й 45 МБ, три ffmpeg разом ~1,5 %; 61 °C після хвилини
+  `stress-ng` на 4 ядрах, без троттлінгу;
+- захоплення на Linux іде зі змінним блоком і нарізається на кадри в Python: фіксований блок
+  PortAudio/ALSA втрачав ~60 % звуку (`input overflow`, ривки на iPhone).
+
+Пробний ефір без карти: `sudo modprobe snd-aloop`, у `.env` `RADIO_INPUT_DEVICE=hw:2,1`
+(номер — з `services.audio_devices`), перезапуск служби, `aplay -D plughw:2,0 запис.wav`.
+
 ## Ще не перевірено на Pi
 
 - USB-карта на 16 кГц під ALSA; можливо, знадобиться пристрій `plughw`/`default` з перетворенням частоти.
 - gpiod v2 і номер чипа GPIO на Pi 5.
 - Скидання лінії PTT при падінні процесу.
-- Навантаження: VAD, фільтр сигналів і два кодувальники ffmpeg.
 - PTT підключайте лише через оптопару чи транзистор, з увімкненим TOT рації.

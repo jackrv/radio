@@ -12,6 +12,7 @@
 """
 
 import os
+import sys
 
 
 class DeviceNotFound(RuntimeError):
@@ -61,9 +62,60 @@ def input_stream_factory(name, log=None):
             label = sd.query_devices(device)["name"] if device is not None else "системний"
             log.info("Вхід звуку: %s", label, extra={"console": True})
             state["reported"] = device
+        if rechunk_on_this_platform() and kwargs.get("blocksize"):
+            # PortAudio/ALSA з фіксованим блоком на Pi віддавав ~40 % кадрів (input overflow),
+            # зі змінним — повний потік; VAD потрібні рівні кадри, тож ріжемо самі.
+            kwargs["callback"] = rechunking_callback(
+                kwargs["callback"], kwargs["blocksize"], kwargs["samplerate"],
+                bytes_per_frame=2 * kwargs.get("channels", 1))
+            kwargs["blocksize"] = 0
         return sd.RawInputStream(device=device, **kwargs)
 
     return open_stream
+
+
+def rechunk_on_this_platform(platform=None):
+    return (platform or sys.platform).startswith("linux")
+
+
+class _ChunkTime:
+    __slots__ = ("currentTime", "inputBufferAdcTime")
+
+    def __init__(self, current, adc):
+        self.currentTime = current
+        self.inputBufferAdcTime = adc
+
+
+def rechunking_callback(callback, frames_per_chunk, sample_rate, bytes_per_frame=2):
+    """Callback PortAudio зі змінним блоком → виклики ``callback`` рівними кадрами.
+
+    Залишок чекає наступного виклику; час АЦП кожного кадру зсунуто на його
+    позицію відносно початку поточного буфера (для залишку — від'ємну).
+    Стан потоку (overflow тощо) передається з першим кадром після нього.
+    """
+    chunk_bytes = frames_per_chunk * bytes_per_frame
+    state = {"tail": b"", "status": None}
+
+    def on_audio(indata, frame_count, time_info, status):
+        if status:
+            state["status"] = status
+        carried = len(state["tail"]) // bytes_per_frame
+        data = state["tail"] + bytes(indata)
+        try:
+            current = float(time_info.currentTime)
+            adc = float(time_info.inputBufferAdcTime)
+        except (AttributeError, TypeError, ValueError):
+            current = adc = 0.0
+        pos = 0
+        while len(data) - pos >= chunk_bytes:
+            offset = pos // bytes_per_frame - carried
+            chunk_time = _ChunkTime(current, adc + offset / sample_rate if adc > 0 else 0.0)
+            callback(data[pos:pos + chunk_bytes], frames_per_chunk, chunk_time, state["status"])
+            state["status"] = None
+            pos += chunk_bytes
+        state["tail"] = data[pos:]
+
+    return on_audio
 
 
 def describe():

@@ -26,6 +26,26 @@ def test_find_device_by_name_and_kind():
         ad.find_device("pro", "input", DEVICES)
 
 
+def test_rechunking_callback_emits_equal_frames_with_shifted_adc_time():
+    got = []
+    cb = ad.rechunking_callback(lambda d, n, t, s: got.append((d, n, t.inputBufferAdcTime, s)), 4, 1000)
+    samples = bytes(range(20))  # 10 кадрів int16
+    cb(samples[:6], 3, SimpleNamespace(currentTime=5.0, inputBufferAdcTime=1.0), "overflow")
+    assert got == []
+    cb(samples[6:], 7, SimpleNamespace(currentTime=5.0, inputBufferAdcTime=1.003), None)
+    assert [g[0] for g in got] == [samples[:8], samples[8:16]]
+    assert [g[1] for g in got] == [4, 4]
+    assert got[0][2] == pytest.approx(1.0) and got[1][2] == pytest.approx(1.004)
+    assert [g[3] for g in got] == ["overflow", None]
+    cb(samples[:4], 2, SimpleNamespace(currentTime=6.0, inputBufferAdcTime=1.010), None)
+    assert got[-1][0] == samples[16:20] + samples[:4]
+
+
+def test_rechunk_only_on_linux():
+    assert ad.rechunk_on_this_platform("linux")
+    assert not ad.rechunk_on_this_platform("darwin")
+
+
 def test_configured_env_overrides_config():
     cfg = SimpleNamespace(RADIO_OUTPUT_DEVICE="Speakers")
     assert ad.configured("RADIO_OUTPUT_DEVICE", cfg, env={}) == "Speakers"

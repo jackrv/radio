@@ -1,0 +1,83 @@
+"""Вибір звукових пристроїв за частиною назви (USB-аудіокарта рації).
+
+Номери пристроїв змінюються після перепідключення, тому в налаштуваннях —
+частина назви без урахування регістру (`RADIO_INPUT_DEVICE`, `RADIO_OUTPUT_DEVICE`;
+`.env` має пріоритет над config.py). Порожньо — системний пристрій за замовчуванням.
+Якщо заданий пристрій не знайдено, мовчки на інший не перемикаємось: приймач
+повторює спробу (кожні 5 с), передача відмовляє — щоб звук не пішов «не туди».
+
+Список пристроїв: `.venv/bin/python -m services.audio_devices`.
+"""
+
+import os
+
+
+class DeviceNotFound(RuntimeError):
+    pass
+
+
+def configured(name, config, env=None):
+    env = os.environ if env is None else env
+    value = env.get(name)
+    if value is None:
+        value = getattr(config, name, "")
+    return (value or "").strip()
+
+
+def find_device(name, kind, devices=None):
+    """Індекс пристрою або None для системного; ``kind``: input | output."""
+    if not name:
+        return None
+    if devices is None:
+        import sounddevice as sd
+        devices = sd.query_devices()
+    key = "max_input_channels" if kind == "input" else "max_output_channels"
+    wanted = name.casefold()
+    matches = [i for i, d in enumerate(devices) if d.get(key, 0) > 0 and wanted in d["name"].casefold()]
+    if not matches:
+        raise DeviceNotFound(f"Звуковий пристрій «{name}» ({'вхід' if kind == 'input' else 'вихід'}) не знайдено")
+    # Точний збіг назви важливіший за перший частковий.
+    exact = [i for i in matches if devices[i]["name"].casefold() == wanted]
+    return (exact or matches)[0]
+
+
+def input_stream_factory(name, log=None):
+    """Фабрика для ApplicationSupervisor: пристрій шукається при кожному (пере)відкритті."""
+    import sounddevice as sd
+
+    state = {"reported": None}
+
+    def open_stream(**kwargs):
+        try:
+            device = find_device(name, "input")
+        except DeviceNotFound as e:
+            if log and state["reported"] != "missing":
+                log.error("%s; повторюю спробу", e, extra={"console": True})
+            state["reported"] = "missing"
+            raise
+        if log and state["reported"] != device:
+            label = sd.query_devices(device)["name"] if device is not None else "системний"
+            log.info("Вхід звуку: %s", label, extra={"console": True})
+            state["reported"] = device
+        return sd.RawInputStream(device=device, **kwargs)
+
+    return open_stream
+
+
+def describe():
+    import sounddevice as sd
+    lines = []
+    for i, d in enumerate(sd.query_devices()):
+        kinds = []
+        if d["max_input_channels"]:
+            kinds.append(f"вхід ×{d['max_input_channels']}")
+        if d["max_output_channels"]:
+            kinds.append(f"вихід ×{d['max_output_channels']}")
+        lines.append(f"{i:>3}  {d['name']}  ({', '.join(kinds)}; {int(d['default_samplerate'])} Гц)")
+    default_in, default_out = sd.default.device
+    lines.append(f"Системні: вхід {default_in}, вихід {default_out}")
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    print(describe())

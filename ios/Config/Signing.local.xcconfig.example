@@ -1,0 +1,3 @@
+// Скопіюйте в Signing.local.xcconfig і заповніть.
+DEVELOPMENT_TEAM = ABCDE12345
+RADIO345_BUNDLE_ID = com.example.radio345

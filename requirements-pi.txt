@@ -1,0 +1,10 @@
+# Радіовузол на Raspberry Pi (services/radio_node.py): без Whisper/MLX, Telegram і панелі.
+# Системне: sudo apt install ffmpeg libportaudio2 python3-venv; Tailscale — окремо.
+numpy==2.5.4
+sounddevice==0.5.6
+webrtcvad-wheels==2.0.14.post1
+python-dotenv==1.2.4
+# Ключ PTT через GPIO (RADIO_PTT=gpio:…); лише Linux.
+gpiod>=2.2; sys_platform == "linux"
+# Ключ PTT через USB-serial (RADIO_PTT=serial:…).
+pyserial>=3.5

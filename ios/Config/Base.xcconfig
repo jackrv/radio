@@ -1,0 +1,6 @@
+// Radio 345 · iOS. Особисті значення підпису — у Signing.local.xcconfig (не в Git):
+//   DEVELOPMENT_TEAM = <Team ID з Xcode → Settings → Accounts>
+//   RADIO345_BUNDLE_ID = <унікальний ідентифікатор, наприклад com.ваше-імʼя.radio345>
+RADIO345_BUNDLE_ID = local.radio345.listener
+PRODUCT_BUNDLE_IDENTIFIER = $(RADIO345_BUNDLE_ID)
+#include? "Signing.local.xcconfig"

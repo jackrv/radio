@@ -44,6 +44,8 @@ diagnostics.json
 diagnostics-report.json
 .radio-diagnostics-*
 .local-backups/
+.local-radio-stream-token
+.local-ios/
 .local-experiments/
 .local-models/
 .local-notification-sounds/

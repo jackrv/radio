@@ -56,6 +56,25 @@ TELEGRAM_AUTO_DELETE_HOURS = 0
 # локальній панелі («Налаштування → Обробка без перезапуску»).
 COOLDOWN_S = 3.0
 LOG_CALLSIGNS_ONLY = True
+# Прослуховування відібраних фраз на iPhone: Safari через Tailscale (docs/iphone-radio.md).
+# Вмикається тут або RADIO_STREAM=1 у .env; режим — як особисті режими Telegram
+# (all / watch / commands), RADIO_STREAM_MODE у .env має пріоритет.
+RADIO_STREAM_ENABLED = False
+RADIO_STREAM_HOST = ""  # порожньо — IPv4 Tailscale цього Mac; 0.0.0.0 заборонено
+RADIO_STREAM_PORT = 8346
+RADIO_STREAM_MODE = "watch"
+RADIO_STREAM_TOKEN_FILE = BASE_DIR / ".local-radio-stream-token"
+# PTT з iPhone. Поки передавача немає — звук грає на динаміках Mac (перевірка);
+# на час передачі приймач не слухає мікрофон (напівдуплекс), див. docs/iphone-radio.md.
+RADIO_STREAM_TRANSMIT = True
+# Звукові пристрої за частиною назви (USB-карта рації); порожньо — системні.
+# Список: .venv/bin/python -m services.audio_devices. .env має пріоритет.
+RADIO_INPUT_DEVICE = ""
+RADIO_OUTPUT_DEVICE = ""
+# Ключ PTT: none | gpio:17 | gpio:gpiochip0:17 | serial:/dev/ttyUSB0:rts (див. services/ptt_key.py).
+RADIO_PTT = "none"
+RADIO_PTT_LEAD_MS = 150   # від натискання ключа до звуку
+RADIO_PTT_TAIL_MS = 200   # ключ ще тримається після останнього звуку
 # Довга фраза — сміття Whisper, якщо слів ≥ MIN_WORDS і (унікальних < RATIO або
 # слів більше ніж тривалість × MAX_WORDS_PER_S + EXTRA_WORDS).
 GARBAGE_MIN_WORDS = 12

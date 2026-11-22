@@ -43,6 +43,7 @@ def build_transcriber(
     recorder=None,
     stop_event=None,
     abandon_event=None,
+    radio_stream=None,
 ):
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
@@ -97,6 +98,7 @@ def build_transcriber(
         db_path=config.DB_PATH,
         log_callsigns_only=config.LOG_CALLSIGNS_ONLY,
         log=log,
+        radio_stream=radio_stream,
     )
 
     # Вмикається в панелі («Обробка без перезапуску»); початкове значення — config.py.
@@ -166,6 +168,9 @@ def build_transcriber(
         spectral_matcher=spectral_matcher,
         spectral_mode=spectral_mode,
     )
+    if radio_stream is not None:
+        # Той самий фільтр і режим — для каналу «наживо без сигналів».
+        radio_stream.set_signal_matcher(spectral_matcher, lambda: worker.spectral_mode)
 
     code_format_cache = {}
 

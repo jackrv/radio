@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Mac доступний лише за http://100.x.y.z (Tailscale, трафік уже шифрує WireGuard).
+		     Не додавати NSAllowsLocalNetworking: поруч із ним iOS ігнорує NSAllowsArbitraryLoads. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Мікрофон потрібен лише під час утримання кнопки PTT: ваш голос передається на Mac.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Підключення до приймача Radio 345 на вашому Mac.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>radio345</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>radio345</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

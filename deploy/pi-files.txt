@@ -1,0 +1,29 @@
+# Файли для Raspberry Pi: git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt
+# Не редагуйте вручну: .venv/bin/python -m tools.pi_files --write (повноту перевіряє pytest).
+.gitignore
+config.py
+core/__init__.py
+core/audio.py
+core/bounded_queue.py
+core/console.py
+core/diagnostic_history.py
+core/diagnostics.py
+core/log_security.py
+core/notification_spectral.py
+core/notification_templates.py
+core/queue_monitor.py
+core/restart_policy.py
+core/segment_timing.py
+core/supervisor.py
+core/vad.py
+deploy/pi-files.txt
+deploy/radio345-node.service
+docs/raspberry-pi.md
+mobile/radio.html
+requirements-pi.txt
+services/__init__.py
+services/audio_devices.py
+services/private_files.py
+services/ptt_key.py
+services/radio_node.py
+services/radio_stream.py

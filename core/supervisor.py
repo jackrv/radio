@@ -82,6 +82,8 @@ class ApplicationSupervisor:
         recognition_health=None,
         on_recognition_problem=None,
         on_vad_discard=None,
+        on_live_audio=None,
+        input_muted=None,
         transcriber_stop=None,
         transcriber_abandon=None,
         shutdown_timeout_s=12.0,
@@ -90,6 +92,11 @@ class ApplicationSupervisor:
         self.transcriber_abandon = transcriber_abandon
         self.shutdown_timeout_s = shutdown_timeout_s
         self.on_vad_discard = on_vad_discard
+        # Мовлення наживо (потік для iPhone): кадри від початку VAD-сегмента до його кінця.
+        self.on_live_audio = on_live_audio
+        # Напівдуплекс: поки iPhone передає (PTT), мікрофон Mac чує власні динаміки —
+        # такий вхід не розпізнається й не йде в потік; незавершений сегмент відкидається.
+        self.input_muted = input_muted
         self.frames = frames
         self.segments = segments
         self.on_audio = on_audio
@@ -153,6 +160,29 @@ class ApplicationSupervisor:
             self.on_recognition_problem(kind, value)
         except Exception:
             self.log.exception("Не вдалося повідомити про стан розпізнавання")
+
+    def _input_is_muted(self):
+        try:
+            return bool(self.input_muted())
+        except Exception:
+            runtime.count("radio_stream.input_muted_error")
+            return False
+
+    def _feed_live(self, frame, was_speech, segmenter):
+        """Передає мовлення наживо; збій споживача не впливає на розпізнавання."""
+        in_speech = getattr(segmenter, "in_speech", False)
+        if in_speech and not was_speech:
+            pcm, phase = b"".join(getattr(segmenter, "voiced", ()) or (frame,)), "start"  # разом із preroll
+        elif in_speech:
+            pcm, phase = frame, "frame"
+        elif was_speech:
+            pcm, phase = frame, "end"
+        else:
+            return
+        try:
+            self.on_live_audio(bytes(pcm), phase)
+        except Exception:
+            runtime.count("radio_stream.live_error")
 
     def run(self):
         """Запускает рабочие потоки и цикл обработки аудиокадров."""
@@ -498,7 +528,16 @@ class ApplicationSupervisor:
 
                     last_frame_at = time.monotonic()
 
+                    if self.input_muted is not None and self._input_is_muted():
+                        if getattr(segmenter, "in_speech", False):
+                            segmenter = new_segmenter()
+                            runtime.count("radio_stream.segment_cut_by_transmit")
+                        continue
+
+                    was_speech = getattr(segmenter, "in_speech", False)
                     segment = segmenter.process(frame)
+                    if self.on_live_audio is not None:
+                        self._feed_live(frame, was_speech, segmenter)
 
                     if segment is not None:
                         if self.pause_gate is None:

@@ -1,0 +1,20 @@
+# Радіовузол Radio 345 на Raspberry Pi.
+# sudo cp deploy/radio345-node.service /etc/systemd/system/ && sudo systemctl enable --now radio345-node
+# Шлях і користувача змініть під свою Pi.
+[Unit]
+Description=Radio 345 radio node (live stream + PTT)
+After=network-online.target tailscaled.service sound.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/radio345
+ExecStart=/home/pi/radio345/.venv/bin/python -m services.radio_node
+Restart=always
+RestartSec=5
+# Процес відпускає ключ PTT при виході (atexit + systemd SIGTERM); KillMode лише основному процесу.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

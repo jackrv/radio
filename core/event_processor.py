@@ -18,6 +18,7 @@ class EventProcessor:
         log_callsigns_only,
         log,
         rollback=None,
+        radio_stream=None,
     ):
         self.callsigns = callsigns
         self.commands = commands
@@ -32,6 +33,8 @@ class EventProcessor:
         self.rollback = rollback
         # Особисті режими: функція(wants) -> отримувачі за поточними правами з бази.
         self.select_recipients = select_recipients
+        # Потік для iPhone (services/radio_stream.py): ті самі режими, що в Telegram.
+        self.radio_stream = radio_stream
 
     def process(self, text, pcm, raw_text=None):
         original = text
@@ -104,6 +107,8 @@ class EventProcessor:
                 or (mode == "commands" and bool(cmd_found or cs_found))
             )
 
+        self._publish_stream(wants, watch_str, to_str, from_str, text, pcm)
+
         recipients = self.select_recipients(wants)
 
         if recipients and self.fresh(("tg", text)):
@@ -142,3 +147,18 @@ class EventProcessor:
                 self.log.exception(
                     "Помилка надсилання сповіщення Telegram"
                 )
+
+    def _publish_stream(self, wants, watch_str, to_str, from_str, text, pcm):
+        """Фраза в потік для iPhone; незалежно від Telegram і його отримувачів."""
+        stream = self.radio_stream
+        if stream is None:
+            return
+        try:
+            if not stream.wants(wants) or not self.fresh(("stream", text)):
+                return
+            from services.telegram_outbox import build_caption
+            stream.publish(pcm, build_caption(watch_str or "Ефір", to_str, from_str, text))
+            runtime.count("radio_stream.published")
+        except Exception:
+            runtime.count("radio_stream.error")
+            self.log.exception("Помилка передачі фрази в потік для iPhone")

@@ -108,6 +108,10 @@ def on_audio(indata, frame_count, time_info, status):
 
 
 
+# Потік відібраних фраз для iPhone; запускається в main(), якщо ввімкнено.
+radio_stream = None
+
+
 # ---------- Поток распознавания и LLM ----------
 asr_stop = threading.Event()
 asr_abandon = threading.Event()
@@ -129,6 +133,7 @@ def transcriber():
         recorder=recording_archive,
         stop_event=asr_stop,
         abandon_event=asr_abandon,
+        radio_stream=radio_stream,
     )
 
     worker.recognizer.warmup()
@@ -262,6 +267,11 @@ def main():
 
     telegram_service.start_maintenance()
 
+    global radio_stream
+    from services.audio_devices import configured, input_stream_factory
+    from services.radio_stream import start_radio_stream
+    radio_stream = start_radio_stream(config, log)
+
     supervisor = ApplicationSupervisor(
         transcriber_stop=asr_stop.set,
         transcriber_abandon=asr_abandon.set,
@@ -294,6 +304,10 @@ def main():
         on_recognition_problem=report_recognition,
         on_vad_discard=(recording_archive.vad_short
                         if recording_archive and config.RECORDINGS_SAVE_VAD_SHORT else None),
+        on_live_audio=radio_stream.live_audio if radio_stream is not None else None,
+        input_muted=radio_stream.input_muted if radio_stream is not None else None,
+        # Вхід за частиною назви (RADIO_INPUT_DEVICE); при кожному перевідкритті шукається знову.
+        stream_factory=input_stream_factory(configured("RADIO_INPUT_DEVICE", config), log),
     )
     # Щоденна перевірена копія бази в .local-backups/ (останні 7).
     backup_stop = start_backup_scheduler(DB_PATH, config.BASE_DIR / ".local-backups", log=log)
@@ -301,6 +315,11 @@ def main():
         supervisor.run()
     finally:
         backup_stop.set()
+        if radio_stream is not None:
+            try:
+                radio_stream.stop()
+            except Exception:
+                log.exception("Не вдалося зупинити потік для iPhone")
         try:
             telegram_service.shutdown(timeout=10.0)
         finally:

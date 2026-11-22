@@ -1,5 +1,5 @@
   // ---------- Навігація: розділи й вкладки ----------
-  const titles = { recordings: "Аудіоархів", overview: "Огляд", filter: "Сигнали сповіщень", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", preview: "Mini App", quality: "Якість по днях", experiments: "Експерименти", system: "Система" };
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", filter: "Сигнали сповіщень", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", preview: "Mini App", quality: "Якість по днях", experiments: "Експерименти", system: "Стан", sessions: "Діагностика", storage: "Дані й копії", checks: "Перевірки" };
   const GROUPS = {
     mentions: ["Вибірки", ["mentions"]],
     overview: ["Огляд", ["overview"]],
@@ -8,7 +8,7 @@
     signals: ["Сигнали сповіщень", ["filter"]],
     people: ["Люди", ["users", "activity", "preview"]],
     analysis: ["Аналіз", ["quality", "experiments"]],
-    system: ["Система", ["system"]],
+    system: ["Система", ["system", "sessions", "storage", "checks"]],
   };
   titles.mentions = 'Вибірки';
   // Дані, які змінюються поза цією вкладкою, перечитуються при кожному відкритті.
@@ -112,7 +112,8 @@
     show(titles[wanted] ? wanted : "overview", { history: "none" });
   });
 
-  // Логотип і назва — «додому»: Огляд і на початок сторінки.
-  function goHome() { show("overview"); pageScrollTo({ top: 0, behavior: "smooth" }); }
+  // Логотип: на широкому екрані згортає меню (14-mentions.js), на вузькому — «додому».
+  const wideSidebar = () => matchMedia("(min-width: 901px)").matches;
+  function goHome() { if (wideSidebar()) return; show("overview"); pageScrollTo({ top: 0, behavior: "smooth" }); }
   $("brand")?.addEventListener("click", goHome);
   $("brand")?.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); goHome(); } });

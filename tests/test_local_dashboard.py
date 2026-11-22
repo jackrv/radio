@@ -777,6 +777,16 @@ def test_done_button_hides_a_suggestion_kind_and_can_be_undone(local):
     assert data["suggestions"] == [] and data["suggestions_hidden"] == 1
     assert client.post("/api/suggestions/restore", headers={"Origin": ORIGIN}).json() == {"restored": 1}
     assert client.get("/api/attention").json()["suggestions_hidden"] == 0
+    # «Не перевіряти»: вид зникає одразу, не обчислюється знову й вмикається назад.
+    assert client.post("/api/suggestions/mute", headers={"Origin": ORIGIN}, json={"kind": "bogus", "muted": True}).status_code == 422
+    assert client.post("/api/suggestions/mute", headers={"Origin": ORIGIN}, json={"kind": "noise", "muted": True}).json() == {"kind": "noise", "muted": True}
+    data = client.get("/api/attention").json()
+    assert data["suggestions"] == [] and {"kind": "noise", "title": "Короткий шум і галюцинації", "muted": True} in data["suggestion_kinds"]
+    current, _ = refresh(path, store)
+    assert not [s for s in current if s["kind"] == "noise"]
+    client.post("/api/suggestions/mute", headers={"Origin": ORIGIN}, json={"kind": "noise", "muted": False})
+    refresh(path, store)
+    assert [g["kind"] for g in client.get("/api/attention").json()["suggestions"]] == ["noise"]
 
 
 def test_archive_card_deletes_a_sent_phrase_for_every_recipient(local):
@@ -1018,3 +1028,32 @@ def test_sample_file_work_does_not_block_other_http_requests(local, monkeypatch)
         finally:
             release.set()
         assert upload.result(timeout=2).status_code == 200
+
+
+def test_audio_devices_are_listed_saved_by_name_and_applied_at_startup(local, monkeypatch):
+    import json, subprocess
+    from types import SimpleNamespace
+    from services.management.audio_settings import apply_audio_settings
+    client, path, _ = local
+    listing = {"inputs": [{"name": "Synthetic USB Codec", "channels": 1, "default": False},
+                          {"name": "Synthetic Mic", "channels": 1, "default": True}],
+               "outputs": [{"name": "Synthetic Speakers", "channels": 2, "default": True}]}
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=json.dumps(listing)))
+    monkeypatch.delenv("RADIO_INPUT_DEVICE", raising=False)
+    monkeypatch.delenv("RADIO_OUTPUT_DEVICE", raising=False)
+    data = client.get("/api/audio-devices").json()
+    assert data["devices"] == listing and data["settings"]["revision"] == 0 and data["settings"]["env_override"] == []
+    values = {"RADIO_INPUT_DEVICE": "Synthetic USB Codec", "RADIO_OUTPUT_DEVICE": ""}
+    saved = client.put("/api/audio-devices", headers={"Origin": ORIGIN}, json={"values": values, "expected_revision": 0}).json()
+    assert saved["values"]["RADIO_INPUT_DEVICE"] == "Synthetic USB Codec" and saved["revision"] == 1
+    # Застаріла ревізія й керівні символи відхиляються.
+    assert client.put("/api/audio-devices", headers={"Origin": ORIGIN}, json={"values": values, "expected_revision": 0}).status_code == 409
+    bad = {**values, "RADIO_INPUT_DEVICE": "a\nb"}
+    assert client.put("/api/audio-devices", headers={"Origin": ORIGIN}, json={"values": bad, "expected_revision": 1}).status_code == 422
+    target = SimpleNamespace()
+    apply_audio_settings(path, target)
+    assert target.RADIO_INPUT_DEVICE == "Synthetic USB Codec" and target.RADIO_OUTPUT_DEVICE == ""
+    # Без PortAudio список недоступний, але збережений вибір повертається.
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
+    data = client.get("/api/audio-devices").json()
+    assert data["devices"] is None and data["error"] and data["settings"]["revision"] == 1

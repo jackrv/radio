@@ -94,6 +94,8 @@ def diagnostics_view(data):
         if isinstance(value,dict): return {k:numbers(v) for k,v in value.items() if isinstance(k,str) and re.fullmatch(r"[a-zA-Z0-9_.:-]{1,90}",k)}
         if value in ("ready","ready_fallback","notification","low_rms","empty_text","garbage","blacklist","low_confidence","dictionary_echo","stale","error","whisper_error","discarded","adc","callback","s","ratio",
                      "ok","stuck","failing","loading","failed","disabled"): return value
+        # Короткий hex-відбиток (ревізія словників) — не довільний текст.
+        if isinstance(value,str) and re.fullmatch(r"[0-9a-f]{8,16}", value): return value
         return None
     result = {"available":True, **{k:numbers(data[k]) for k in ("schema","started_at","updated_at","ended_at","counters","gauges","timings","asr_latency","notification_spectral") if k in data}}
     if isinstance(data.get("session"), str) and re.fullmatch(r"[0-9a-f]{32}", data["session"]):

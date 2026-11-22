@@ -109,28 +109,36 @@
     const time = el("span", "row-time");
     time.append(el("b", "row-hm", `${pad(at.getHours())}:${pad(at.getMinutes())}`), el("small", "row-sec", `:${pad(at.getSeconds())}`));
     if (!today) time.append(el("small", "row-day", `${pad(at.getDate())}.${pad(at.getMonth() + 1)}`));
-    const kind = item.reference != null ? ROW_KIND[item.label] || item.label
-      : ((typeof STATUS !== "undefined" && STATUS[item.status]) || item.status);
-    const d = item.data || {}, event = /^db:(\d+)$/.exec(d.fix_id || "");
-    const duration = d.signal?.duration_s;
-    const meta = [item.corrections?.length ? "✎" : "", typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "",
-                  event ? `№${event[1]}` : "", d.fix_id ? "✈" : "",
-                  // У розмічених (вони йдуть за часом розмітки) — ще й коли розмічено.
-                  item.reviewed_at && ["reviewed", "miniapp"].includes($("recording-view").value)
-                    ? `✓ ${new Date(item.reviewed_at * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}` : ""].filter(Boolean).join(" · ");
-    // Еталон оператора — звичайним; текст Whisper нерозміченого запису — приглушено.
-    const heard = (d.raw_text || "").trim();
-    const text = el("div", item.reference != null ? "row-text" : "row-text heard",
-                    item.reference || heard || "Whisper: порожньо — варто прослухати");
-    // Суперечність розмітки: «мовлення» без тексту або шум / кімната / сигнал із текстом.
-    const reference = (item.reference || "").trim(), speechLike = ["speech", "unclear"].includes(item.label);
-    const conflict = item.reference != null && (speechLike ? !reference : Boolean(reference));
-    row.classList.toggle("conflict", conflict);
-    row.classList.toggle("empty", item.reference == null && !heard);
-    if (doubtful(item)) { row.classList.add("doubtful"); row.title = row.title || "Whisper не впевнений — найімовірніше, текст треба правити"; }
-    if (conflict) row.title = speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст";
+    const d = item.data || {};
+    const kind = el("span", "row-kind"), metaNode = el("span", "row-meta"), text = el("div", "row-text");
+    // Рядок перемальовується з картки: після будь-якої зміни поля (і кнопками) та після збереження.
+    function refresh(typed) {
+      const event = /^db:(\d+)$/.exec(d.fix_id || "");
+      kind.textContent = item.reference != null ? ROW_KIND[item.label] || item.label
+        : ((typeof STATUS !== "undefined" && STATUS[item.status]) || item.status);
+      const duration = d.signal?.duration_s;
+      metaNode.textContent = [item.corrections?.length ? "✎" : "", typeof duration === "number" ? `${duration.toFixed(1).replace(".", ",")} с` : "",
+                    event ? `№${event[1]}` : "", d.fix_id ? "✈" : "",
+                    // У розмічених (вони йдуть за часом розмітки) — ще й коли розмічено.
+                    item.reviewed_at && ["reviewed", "miniapp"].includes($("recording-view").value)
+                      ? `✓ ${new Date(item.reviewed_at * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}` : ""].filter(Boolean).join(" · ");
+      // Незбережена правка — як набрано; інакше еталон оператора звичайним, текст Whisper нерозміченого — приглушено.
+      const heard = (d.raw_text || "").trim();
+      const editing = typed !== undefined && controller.dirty;
+      text.className = editing || item.reference != null ? "row-text" : "row-text heard";
+      text.textContent = editing ? typed || "—" : item.reference || heard || "Whisper: порожньо — варто прослухати";
+      // Суперечність розмітки: «мовлення» без тексту або шум / кімната / сигнал із текстом.
+      const reference = (item.reference || "").trim(), speechLike = ["speech", "unclear"].includes(item.label);
+      const conflict = item.reference != null && (speechLike ? !reference : Boolean(reference));
+      row.classList.toggle("conflict", conflict);
+      row.classList.toggle("empty", item.reference == null && !heard);
+      row.classList.toggle("doubtful", doubtful(item));
+      row.title = conflict ? (speechLike ? "Позначено мовлення, але тексту немає" : "Позначено без мовлення, але є текст")
+        : doubtful(item) ? "Whisper не впевнений — найімовірніше, текст треба правити" : "";
+    }
+    refresh();
     const head = el("div", "row-head");
-    head.append(time, el("span", "row-kind", kind), el("span", "row-meta", meta));
+    head.append(time, kind, metaNode);
     const body = el("div", "row-main"); body.append(head, text);
     row.append(body);
     // Видалення в Telegram — частина рядка праворуч (лише для свіжих надісланих записів).
@@ -138,8 +146,7 @@
     row.addEventListener("click", () => activateReview(controller, false));
     row.addEventListener("keydown", event => { if (event.key === "Enter") activateReview(controller, false); });   // далі Enter веде до тексту
     $("recording-rows").append(row);
-    // Набраний текст — у рядку переліку; клас картки — так само на рядку.
-    controller.card.addEventListener("input", event => { if (event.target?.tagName === "TEXTAREA") text.textContent = event.target.value || "—"; });
+    controller.refreshRow = refresh;
     if (typeof MutationObserver !== "undefined") {
       const sync = () => {
         for (const name of ["active", "done", "dirty", "has-remarks"]) row.classList.toggle(name, controller.card.classList.contains(name));
@@ -747,11 +754,13 @@
       // Перевірка оформлення: пробіли, цифри групами, «з», апостроф, назви словника.
       // Лише підказки: зберегти можна будь-який текст.
       const lint = el("div", "text-check");
-      const markedText = el("div", "transcript-preview");
-      markedText.setAttribute("aria-label", "Позивні, команди й місця для перевірки");
-      const highlightLegend = el("small", "muted", "≈ Маркер слова орієнтовний: паузи й довжина слів. Позивні · КОМАНДИ · / межа · підкреслення — перевірити. Натисніть слово для переходу в поле.");
-      let wordNodes = [], activeNodes = [], cueText = null, cueGuide = null, cues = [];
+      // Підсвітка — шар під прозорим полем із тим самим текстом і переносами (окремої копії тексту немає).
+      const markedText = el("div", "transcript-backdrop");
+      markedText.setAttribute("aria-hidden", "true");
+      const highlightLegend = el("small", "muted highlight-legend", "Позивні · команди · межа · хвиля — перевірити; ≈ слово, що звучить, орієнтовне.");
+      let wordNodes = [], activeNodes = [], cueText = null, cueGuide = null, cues = [], markedValue = null, markedSpans = [];
       function markPlayingWord(time, guide) {
+        if (markedValue !== input.value) renderHighlights();
         if (cueText !== input.value || cueGuide !== guide) {
           cueText = input.value; cueGuide = guide; cues = approximateWordCues(cueText, guide);
         }
@@ -762,10 +771,13 @@
         for (const node of next) if (!activeNodes.includes(node)) node.classList.add("transcript-playing");
         activeNodes = next;
       }
-      function renderHighlights(spans = []) {
+      function renderHighlights(spans) {
+        const text = input.value;
+        // Без нових позначок старі лишаються, доки текст той самий; після правки — лише слова для маркера.
+        spans = spans ?? (markedValue === text ? markedSpans : []);
+        markedValue = text; markedSpans = spans;
         markedText.replaceChildren();
         wordNodes = []; activeNodes = [];
-        const text = input.value;
         const words = [...text.matchAll(/[\p{L}\p{N}]+(?:[’'ʼ`-][\p{L}\p{N}]+)*/gu)];
         const cuts = [...new Set([0, text.length, ...words.flatMap(m => [m.index, m.index+m[0].length]), ...spans.flatMap(s => [s.start, s.end])])].sort((a,b) => a-b);
         for (let i = 1; i < cuts.length; i++) {
@@ -774,9 +786,10 @@
           const kinds = spans.filter(s => s.start <= a && s.end >= b).map(s => s.kind);
           const token = el("span", kinds.map(k => `transcript-${k}`).join(" "), text.slice(a,b));
           wordNodes.push({from:a, to:b, node:token});
-          token.addEventListener("click", () => { input.focus(); input.setSelectionRange(a,b); });
           markedText.append(token);
         }
+        // Кінцевий перенос рядка textarea показує порожнім рядком — шар має робити так само.
+        if (text.endsWith("\n")) markedText.append(el("span", "", " "));
         custom.draw();
       }
       let lintTimer = null;
@@ -922,10 +935,12 @@
       // Наслідки видно ще до натискання: еталон запису з подією оновить і її, і повідомлення в Telegram.
       { const ev = /^db:(\d+)$/.exec(item.data?.fix_id || ""); if (ev && save.dataset) save.dataset.target = `→ подія №${ev[1]} і Telegram`; }
       const textField = el("label", "recording-text");
-      const inputBox = el("div", "text-input-box"); inputBox.append(input, fixAll);
+      const inputLayer = el("div", "text-input-layer"); inputLayer.append(markedText, input);
+      const inputBox = el("div", "text-input-box"); inputBox.append(inputLayer, fixAll);
+      input.addEventListener("input", () => renderHighlights());
       // «Почутий текст» і фартушок кодів доби — один рядок над полем.
       const textHead = el("div", "text-head"); textHead.append(el("span", "muted small", "Почутий текст"), codesApron(item.created));
-      textField.append(textHead, inputBox, markedText, highlightLegend);
+      textField.append(textHead, inputBox, highlightLegend);
       custom.setTextGuide(markPlayingWord);
       renderHighlights();
       checkText(0);
@@ -964,6 +979,7 @@
         dirtyBadge.hidden = !controller.dirty;
         card.classList.toggle("dirty", controller.dirty);
         updateDraftCount();
+        controller.refreshRow?.(input.value);
       }
       form.addEventListener("input", updateDirty); form.addEventListener("change", updateDirty);
       // Стан збереження — і в рядку для читачів екрана, і дрібно всередині самої кнопки.
@@ -1124,7 +1140,7 @@
   rememberValue("learning-filter", "radio345:learning-filter");
   rememberValue("role", "radio345:preview-role");
 
-  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
+  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, sessions: system, storage: system, checks: system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

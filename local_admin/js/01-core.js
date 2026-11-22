@@ -1,5 +1,6 @@
   const $ = id => document.getElementById(id);
   const REFRESH_MS = 10000;
+  const SYSTEM_VIEWS = new Set(["system", "sessions", "storage", "checks"]);   // вкладки «Система»
   let busy = false, data = null, view = "overview", timer = null;
   const loaded = new Set();
 

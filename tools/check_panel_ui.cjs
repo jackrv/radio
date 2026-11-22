@@ -107,7 +107,7 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  if(await marker(.5)!==edited)throw Error('speed changed timeline mapping');
  console.log('word-marker',JSON.stringify({first,later,gap,edited}));
 
- const marked=await evaluate(`({text:document.querySelector('.transcript-preview').textContent,stored:localStorage.getItem('radio345:mention-terms')})`);
+ const marked=await evaluate(`({text:document.querySelector('.transcript-backdrop').textContent,stored:localStorage.getItem('radio345:mention-terms')})`);
  if(marked.stored!=='Клен 12')throw Error('mention terms not persisted');
  fs.writeFileSync(path.join(root,'archive-highlights.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await evaluate(`{const original=window.fetch;window.__reviewedRecalls=[];window.fetch=async(url,options)=>{const response=await original(url,options);if(String(url).endsWith('/review')&&options?.method==='PUT'&&response.ok)window.__reviewedRecalls.push(await response.clone().json());return response;};}`);
@@ -231,7 +231,7 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  if(JSON.stringify(afterChecks.lists)!==JSON.stringify(originalLists.lists)||afterChecks.revision!==originalLists.revision)throw Error('draft evaluation saved a text list');
  console.log('flows: six draft types evaluated without saving; prompt syntax checked separately');
 
- await evaluate(`document.querySelector('#sidebar-toggle').click()`);
+ await evaluate(`document.querySelector('#brand').click()`);
  await evaluate(`document.querySelector('[data-group="system"]').click()`);
  await until(()=>evaluate(`document.querySelector('#telegram-retention input')!==null`));
  await until(()=>evaluate(`[...document.querySelectorAll('#telegram button')].some(b=>b.textContent==='Пропустити ці оновлення')`));

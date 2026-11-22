@@ -34,7 +34,8 @@ KINDS = {
               "позивних і не додає хибних. Перегляньте чернетку рядка в редакторі й збережіть, якщо згодні."),
     "noise": ("Короткий шум і галюцинації", "texts:short_garbage",
               "Цей текст повторюється на записах, які ви позначили як шум. Перевірте чернетку в редакторі й збережіть, якщо згодні."),
-    "approval": ("Заміни чекають дозволу", "learning", ""),
+    "approval": ("Заміни чекають дозволу", "learning",
+                 "Ви кілька разів однаково виправили звичайне слово. Програма не вмикає таку заміну сама: дозвольте її в «Навчанні», якщо вона завжди правильна, або вимкніть."),
     "conflict": ("Конфлікти навчання", "learning", ""),
     "dictionary": ("Номери позивних для словника", "dictionaries",
                    "Ці номери кілька разів є у ваших еталонах, але не у словнику. Перевірте чернетку в редакторі або натисніть «Готово»."),
@@ -91,6 +92,33 @@ def ensure_dismissed(db):
     columns = {row[1] for row in db.execute('PRAGMA table_info(suggestion_dismissed)')}
     for name, definition in [('title', "TEXT NOT NULL DEFAULT ''"), ('record', 'TEXT')]:
         if name not in columns: db.execute(f'ALTER TABLE suggestion_dismissed ADD COLUMN {name} {definition}')
+
+
+def ensure_muted(db):
+    db.execute("CREATE TABLE IF NOT EXISTS suggestion_muted (kind TEXT PRIMARY KEY, muted_at REAL NOT NULL)")
+
+
+def muted_kinds(db_path):
+    """Види, які оператор вимкнув: їх не перевіряють і не показують у «Потребує уваги»."""
+    with get_db(db_path) as db:
+        ensure_muted(db)
+        return {row[0] for row in db.execute("SELECT kind FROM suggestion_muted")}
+
+
+def set_muted(db_path, kind, muted, *, now=None):
+    if kind not in KINDS:
+        raise ValueError("Невідомий вид пропозицій")
+    with get_db(db_path) as db:
+        ensure_muted(db)
+        if muted:
+            db.execute("INSERT OR REPLACE INTO suggestion_muted (kind, muted_at) VALUES (?, ?)",
+                       (kind, time.time() if now is None else now))
+            # Поточні пропозиції вимкненого виду зникають одразу, не чекаючи перевірки.
+            ensure_table(db)
+            db.execute("DELETE FROM suggestion_state WHERE kind=?", (kind,))
+        else:
+            db.execute("DELETE FROM suggestion_muted WHERE kind=?", (kind,))
+    return {"kind": kind, "muted": bool(muted)}
 
 
 def dismiss(db_path, kind, keys=None, *, now=None):
@@ -272,8 +300,10 @@ def dictionary_conflicts(db_path):
     return out
 
 
-def collect(db_path, store, *, patterns=None, progress=None):
-    """Поточні пропозиції. ``patterns`` — готовий результат глибокої перевірки шаблонів (або None)."""
+def collect(db_path, store, *, patterns=None, progress=None, skip=frozenset()):
+    """Поточні пропозиції. ``patterns`` — готовий результат глибокої перевірки шаблонів (або None).
+
+    ``skip`` — вимкнені оператором види: їх не обчислюємо (див. ``muted_kinds``)."""
     from core.callsigns import normalize
     from services.alias_candidates import collect as alias_collect
     from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
@@ -291,7 +321,7 @@ def collect(db_path, store, *, patterns=None, progress=None):
     records = store.labelled_texts()
     speech = [r for r in records if r["label"] in ("speech", "unclear")]
 
-    candidates = [c for c in alias_collect([{"id": "", "reference": r["reference"], "raw_text": r["raw_text"]} for r in speech],
+    candidates = [] if "alias" in skip else [c for c in alias_collect([{"id": "", "reference": r["reference"], "raw_text": r["raw_text"]} for r in speech],
                                            callsigns, names, active.get("callsign_aliases", {}))
                   # Лише чисті кандидати: без позначок (інший словник, позивний без номера…) і помітно схожі.
                   if c["addable"] and not c["flags"] and c["similarity"] >= MIN_ALIAS_SIMILARITY and c["count"] >= MIN_REPEATS]
@@ -300,11 +330,11 @@ def collect(db_path, store, *, patterns=None, progress=None):
                                f"«{c['heard']}» → {c['callsign']} (×{c['count']}; {effect})", c["count"]))
 
     noise_keys = {noise_key(v) for v in (*active.get("blacklist", ()), *active.get("short_garbage", ()))}
-    for c in noise_collect(records, noise_keys, set(names)):
+    for c in ([] if "noise" in skip else noise_collect(records, noise_keys, set(names))):
         if c["addable"] and c["count"] >= MIN_REPEATS and c["reached_text"]:
             out.append(_suggestion("noise", f"{c['list']}:{c['text']}", f"«{c['text']}» (×{c['count']})", c["count"]))
 
-    queue = learning_queue(db_path)
+    queue = {"items": []} if {"approval", "conflict"} <= skip else learning_queue(db_path)
     for item in queue["items"]:
         if item["state"] == "needs_approval":
             out.append(_suggestion("approval", f"{item['original']}>{item['corrected']}", f"«{item['original']}» → «{item['corrected']}»"))
@@ -313,7 +343,7 @@ def collect(db_path, store, *, patterns=None, progress=None):
 
     # Номери відомих позивних і нові позивні з еталонів, що повторилися.
     gaps = Counter()
-    for r in speech:
+    for r in ([] if "dictionary" in skip else speech):
         words = re.findall(r"[^\W_]+", normalize(r["reference"] or ""))
         for i in range(len(words) - 1):
             word, number = words[i], words[i + 1]
@@ -329,9 +359,11 @@ def collect(db_path, store, *, patterns=None, progress=None):
 
     for line in patterns or ():
         out.append(_suggestion("pattern", line["pattern"], f"{line['pattern']} (краще {line['better']}, гірше 0)", line["better"]))
-    out += reference_checks(db_path, store)
-    out += dictionary_conflicts(db_path)
-    return out
+    if any(kind.startswith("ref_") and kind not in skip for kind in KINDS):
+        out += reference_checks(db_path, store)
+    if "list_conflict" not in skip:
+        out += dictionary_conflicts(db_path)
+    return [s for s in out if s["kind"] not in skip]
 
 
 def deep_patterns(db_path, store, *, progress=None):
@@ -366,7 +398,10 @@ def refresh(db_path, store, *, deep=False, now=None, progress=None):
         meta = db.execute("SELECT last_deep, deep_json FROM suggestion_meta WHERE id=1").fetchone()
     last_deep, deep_json = meta if meta else (None, None)
     patterns = json.loads(deep_json) if deep_json else []
-    if deep or last_deep is None or now - last_deep >= DEEP_CHECK_HOURS * 3600:
+    skip = muted_kinds(db_path)
+    if "pattern" in skip:
+        patterns = []      # найважча перевірка — не запускаємо для вимкненого виду
+    elif deep or last_deep is None or now - last_deep >= DEEP_CHECK_HOURS * 3600:
         patterns = deep_patterns(db_path, store, progress=progress)
         last_deep = now
     else:
@@ -374,7 +409,7 @@ def refresh(db_path, store, *, deep=False, now=None, progress=None):
         from services.text_lists import read_lists
         disabled = {e["raw_line"] for e in read_lists(db_path)["lists"]["phrase_patterns"]["entries"] if not e["enabled"]}
         patterns = [p for p in patterns if p["pattern"] in disabled]
-    current = collect(db_path, store, patterns=patterns, progress=progress)
+    current = collect(db_path, store, patterns=patterns, progress=progress, skip=skip)
     if progress:
         progress(0, 0)
     keys = {s["key"]: s for s in current}
@@ -403,8 +438,11 @@ def overview(db_path, now=None):
     with get_db(db_path) as db:
         ensure_table(db)
         ensure_dismissed(db)
+        ensure_muted(db)
         rows = db.execute("""SELECT kind, title, first_seen, record, key FROM suggestion_state
-            WHERE key NOT IN (SELECT key FROM suggestion_dismissed) ORDER BY first_seen DESC""").fetchall()
+            WHERE key NOT IN (SELECT key FROM suggestion_dismissed)
+              AND kind NOT IN (SELECT kind FROM suggestion_muted) ORDER BY first_seen DESC""").fetchall()
+        muted = {row[0] for row in db.execute("SELECT kind FROM suggestion_muted")}
         hidden = db.execute("SELECT COUNT(*) FROM suggestion_dismissed").fetchone()[0]
         meta = db.execute("SELECT last_deep FROM suggestion_meta WHERE id=1").fetchone()
     groups = {}
@@ -437,7 +475,8 @@ def overview(db_path, now=None):
         # Записи архіву відкриваються пошуком за номерами (до 20 за раз).
         if group["records"]:
             group["target"] = "recordings:" + ",".join(group["records"])
-    return {"groups": [groups[k] for k in KINDS if k in groups], "checked": meta is not None, "hidden": hidden}
+    return {"groups": [groups[k] for k in KINDS if k in groups], "checked": meta is not None, "hidden": hidden,
+            "kinds": [{"kind": k, "title": KINDS[k][0], "muted": k in muted} for k in KINDS]}
 
 
 class SuggestionWorker:

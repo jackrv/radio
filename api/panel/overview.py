@@ -14,7 +14,7 @@ from services.receiver_status import read_receiver_status
 from services.sqlite_connection import get_db
 from services.user_store import PERMISSIONS
 from services.telegram_sync import sync_status
-from api.panel.models import SuggestionDismiss, SuggestionRestore
+from api.panel.models import AudioDevicesUpdate, SuggestionDismiss, SuggestionMute, SuggestionRestore
 from api.panel.common import ROOT, spectral_settings, events_by_hour, users_overview, backups_overview, read_diagnostics
 
 def register(app, ctx):
@@ -121,7 +121,7 @@ def register(app, ctx):
         fresh = recordings.view_counts(time.time() - 86400)
         from services import suggestions as suggestion_service
         found = suggestion_service.overview(db_path)
-        return {"suggestions": found["groups"], "suggestions_hidden": found["hidden"],
+        return {"suggestions": found["groups"], "suggestions_hidden": found["hidden"], "suggestion_kinds": found["kinds"],
                 "suggestions_pending": bool(suggestion_worker and suggestion_worker.pending),
                 "codes_day": day, "codes_missing": not codes,
                 "approvals": learning.get("needs_approval", 0), "conflicts": learning.get("conflict", 0),
@@ -163,6 +163,15 @@ def register(app, ctx):
             raise HTTPException(422, "Невідомий вид пропозицій")
         return {"dismissed": suggestion_service.dismiss(db_path, payload.kind)}
 
+    @app.post("/api/suggestions/mute")
+    def suggestions_mute(payload: SuggestionMute, admin=Depends(actor)):
+        """«Не перевіряти»: вид пропозицій більше не обчислюється й не показується (вмикається в «Система»)."""
+        from services import suggestions as suggestion_service
+        try:
+            return suggestion_service.set_muted(db_path, payload.kind, payload.muted)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
     @app.post("/api/suggestions/restore")
     def suggestions_restore(payload: SuggestionRestore | None = None, admin=Depends(actor)):
         from services import suggestions as suggestion_service
@@ -179,6 +188,35 @@ def register(app, ctx):
         """Перевірити всі списки зараз (зокрема шаблони фраз на еталонах), не чекаючи фонової перевірки."""
         try:
             return start_task(ctx, "suggestions", deep=True)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.get("/api/audio-devices")
+    def audio_devices(admin=Depends(actor)):
+        """Звукові пристрої Mac і вибір приймача. Список — в окремому процесі: свіжий після
+        перепідключення USB і без ініціалізації PortAudio в процесі панелі."""
+        import json, subprocess, sys
+        from services.management.audio_settings import read_audio_settings
+        result = {"settings": read_audio_settings(db_path), "devices": None, "error": None}
+        try:
+            run = subprocess.run([sys.executable, "-m", "services.audio_devices", "--json"], cwd=ROOT,
+                                 capture_output=True, text=True, timeout=15)
+            if run.returncode == 0:
+                result["devices"] = json.loads(run.stdout)
+            else:
+                result["error"] = "Не вдалося отримати список звукових пристроїв"
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            result["error"] = "Не вдалося отримати список звукових пристроїв"
+        return result
+
+    @app.put("/api/audio-devices")
+    def audio_devices_save(payload: AudioDevicesUpdate, admin=Depends(actor)):
+        from services.management.audio_settings import write_audio_settings
+        from services.management.common import ManagementConflict
+        try:
+            return write_audio_settings(db_path, admin, payload.values.model_dump(), payload.expected_revision)
+        except ManagementConflict as exc:
+            raise HTTPException(409, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 

@@ -50,7 +50,7 @@ function harness(page, extraSummary = {}, options = {}) {
 
 const item = {id:'a'.repeat(32),created:1,status:'ready',data:{raw_text:'текст',final_text:'текст'},reference:null,revision:0};
 
-test('transcript preview renders server marks as text and selects their editor range', async () => {
+test('editor backdrop renders server marks over the same text', async () => {
   const text = 'Клен / <img>';
   const ui = harness({items:[{...item,data:{raw_text:text}}],total:1}, {}, {
     timers:true, textCheck: () => ({issues:[],formatted:null,highlights:[
@@ -61,9 +61,8 @@ test('transcript preview renders server marks as text and selects their editor r
   const {input,nodes} = editor(ui);
   const marked = nodes.find(n => n.className === 'transcript-callsign');
   assert.equal(marked.textContent, 'Клен');
-  marked.click();
-  assert.equal(input.focused,true);
-  assert.equal(input.selectionStart,0); assert.equal(input.selectionEnd,4);
+  const layer = nodes.find(n => n.className === 'transcript-backdrop');
+  assert.equal(layer.children.map(n => n.textContent).join(''), input.value);
   assert.equal(nodes.filter(n => n.className === 'transcript-problem').map(n => n.textContent).join(''),'<img>');
 });
 
@@ -155,7 +154,7 @@ function descendants(node) {
 }
 function editor(ui) {
   const nodes = descendants(ui.$('recordings'));
-  return {nodes, form:nodes.find(n=>n.listeners.submit), input:nodes.find(n=>n.className==='text-input-box').children[0]};
+  return {nodes, form:nodes.find(n=>n.listeners.submit), input:nodes.find(n=>n.className==='text-input-layer').children[1]};
 }
 
 test('dirty badge and count follow edits and reverting them, including unsaved first-time references', async () => {
@@ -168,6 +167,23 @@ test('dirty badge and count follow edits and reverting them, including unsaved f
   input.value=initial;form.listeners.input();
   assert.equal(ui.cards()[0].dirty,false);assert.equal(ui.$('archive-drafts-nav').hidden,true);assert.equal(ui.cards()[0].draftsPill.disabled,true);
   const clean={preventDefault(){this.prevented=true;}};ui.windowEvents.beforeunload(clean);assert.equal(clean.prevented,undefined);
+});
+
+test('archive row follows button edits and shows the saved reference', async () => {
+  const ui=harness({items:[{...item,data:{raw_text:'клен прийом'}}],total:1},{},{timers:true,
+    textCheck:()=>({issues:[{kind:'format',message:'кома',fixed_text:'Клен, прийом'}],formatted:'Клен, прийом',highlights:[]}),
+    review:body=>({...body,revision:1})});
+  await ui.load(); await new Promise(resolve => setImmediate(resolve));
+  const nodes=()=>descendants(ui.$('recordings')).concat(descendants(ui.$('recording-rows')));
+  const rowText=()=>nodes().find(n=>String(n.className).startsWith('row-text'));
+  const {input,form}=editor(ui);
+  input.value='Клен прийом';form.listeners.input();
+  assert.equal(rowText().textContent,'Клен прийом');
+  nodes().find(n=>n.className==='fix-all').listeners.click();
+  assert.equal(input.value,'Клен, прийом'); assert.equal(rowText().textContent,'Клен, прийом');
+  await ui.save();
+  assert.equal(rowText().textContent,'Клен, прийом'); assert.equal(rowText().className,'row-text');
+  assert.equal(nodes().find(n=>n.className==='row-kind').textContent,'Мовлення');
 });
 
 test('cancelled refresh preserves draft and restores the filters describing the visible cards',async()=>{

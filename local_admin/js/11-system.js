@@ -46,17 +46,108 @@
     const box = $("telegram-retention"); if (!box) return;
     const state = await request('/api/runtime-settings');
     box.replaceChildren();
-    const label = el('label', '', 'Видаляти копії фраз у Telegram через');
+    const label = el('label', 'retention-field', 'Видаляти копії фраз через');
     const hours = el('input'); hours.type = 'number'; hours.min = '0'; hours.max = '47';
     hours.value = state.values.TELEGRAM_AUTO_DELETE_HOURS || 0;
-    label.append(hours);
+    label.append(hours, el('span', 'muted', 'год.'));
     const save = el('button', 'ghost', 'Зберегти');
     save.addEventListener('click', () => action(async () => {
       await request('/api/runtime-settings', 'PUT', {values:{TELEGRAM_AUTO_DELETE_HOURS:Number(hours.value)}, expected_revision:state.revision});
       await telegramRetention(); note('Срок збереження копій у Telegram оновлено.');
     }));
-    box.append(label, el('span', 'muted small', 'год. 0 — вимкнено; 1–47 — увімкнено. Лише копії з відомим часом доставки. Аудіоархів і навчання не видаляються.'), save);
+    box.append(label, save, el('p', 'muted small retention-hint', '0 — вимкнено; 1–47 — увімкнено. Лише копії з відомим часом доставки. Аудіоархів і навчання не видаляються.'));
   }
+  // Перевірки «Потребує уваги»: які види шукати у фоні та історія рішень «Готово».
+  let attentionSettingsAt = 0;
+  async function attentionSettings(force = false) {
+    const box = $("attention-kinds"); if (!box) return;
+    if (!force && Date.now() - attentionSettingsAt < 60000) return;   // фонове оновлення «Система» — раз на хвилину
+    attentionSettingsAt = Date.now();
+    const a = await request("/api/attention");
+    box.replaceChildren(...(a.suggestion_kinds || []).map(kind => {
+      const label = el("label", `attention-kind${kind.muted ? " muted-kind" : ""}`);
+      const input = el("input"); input.type = "checkbox"; input.checked = !kind.muted;
+      input.addEventListener("change", () => action(async () => {
+        await request("/api/suggestions/mute", "POST", {kind: kind.kind, muted: !input.checked});
+        note(input.checked ? `«${kind.title}» знову перевіряється (з наступною перевіркою).` : `«${kind.title}» більше не перевіряється.`);
+        attentionAt = 0; await attentionSettings(true);
+      }));
+      label.append(input, el("span", "", kind.title));
+      return label;
+    }));
+    const history = $("attention-history");
+    history.querySelector("summary").textContent = `Історія рішень оператора${a.suggestions_hidden ? ` (${a.suggestions_hidden})` : ""}`;
+    if (history.open) await attentionHistory();
+  }
+  async function attentionHistory() {
+    const list = $("attention-history-list");
+    const history = await request("/api/suggestions/resolved");
+    const rows = history.items.map(entry => {
+      const row = el("div", "attention-item");
+      const restore = el("button", "ghost small-button", "Повернути на перевірку"); restore.type = "button";
+      restore.addEventListener("click", () => action(async () => {
+        await request("/api/suggestions/restore", "POST", {keys: [entry.key]}); attentionAt = 0; await attentionSettings(true);
+      }));
+      row.append(el("span", "small", `${stamp(entry.at)} · ${entry.title || entry.kind}`), restore);
+      return row;
+    });
+    list.replaceChildren(el("p", "muted small", history.total
+      ? `Рішень збережено: ${history.total}. Показано останні ${history.items.length}. «Готово» — рішення оператора, а не автоматичне виправлення.`
+      : "Рішень ще немає."), ...rows);
+  }
+  $("attention-history")?.addEventListener?.("toggle", event => { if (event.target.open) action(attentionHistory); });
+
+  // ---------- Звукові пристрої: список з окремого процесу, вибір діє після перезапуску приймача ----------
+  let audioState = null;
+  async function audioDevices(force = false) {
+    if (audioState && !force) return;
+    const result = $("audio-devices-result"), save = $("audio-devices-save");
+    result.replaceChildren(el("p", "muted small", "Читаю список пристроїв…"));
+    audioState = await request("/api/audio-devices");
+    const {settings, devices, error} = audioState;
+    const fill = (select, key, list) => {
+      const chosen = settings.values[key] || "";
+      const system = (list || []).find(d => d.default);
+      const options = [["", `Системний за замовчуванням${system ? ` (${system.name})` : ""}`]];
+      for (const d of list || []) options.push([d.name, `${d.name} · ${d.channels} кан.`]);
+      if (chosen && !(list || []).some(d => d.name === chosen || d.name.toLowerCase().includes(chosen.toLowerCase())))
+        options.push([chosen, `${chosen} — зараз не знайдено`]);
+      select.replaceChildren(...options.map(([value, text]) => { const o = el("option", "", text); o.value = value; return o; }));
+      // Збережене може бути частиною назви: показуємо перший пристрій, що їй відповідає.
+      const match = (list || []).find(d => d.name === chosen) || (list || []).find(d => chosen && d.name.toLowerCase().includes(chosen.toLowerCase()));
+      select.value = chosen ? (match ? match.name : chosen) : "";
+      select.dataset.saved = select.value;
+      select.disabled = settings.env_override.includes(key);
+      select.title = select.disabled ? `Задано в .env (${key}) — .env має пріоритет над панеллю` : "";
+    };
+    fill($("audio-input"), "RADIO_INPUT_DEVICE", devices?.inputs);
+    fill($("audio-output"), "RADIO_OUTPUT_DEVICE", devices?.outputs);
+    save.disabled = true;
+    const notes = [];
+    if (error) notes.push(el("p", "small alert-text", `${error}. Збережений вибір показано без перевірки.`));
+    if (settings.env_override.length) notes.push(el("p", "muted small", `Задано в .env: ${settings.env_override.join(", ")} — ці поля змінюються лише там.`));
+    result.replaceChildren(...notes);
+  }
+  function audioDirty() {
+    const dirty = ["audio-input", "audio-output"].some(id => $(id).value !== $(id).dataset.saved);
+    $("audio-devices-save").disabled = !dirty;
+  }
+  $("audio-input")?.addEventListener?.("change", audioDirty);
+  $("audio-output")?.addEventListener?.("change", audioDirty);
+  $("audio-devices-refresh")?.addEventListener?.("click", () => action(() => audioDevices(true)));
+  $("audio-devices-save")?.addEventListener?.("click", () => action(async () => {
+    const settings = await request("/api/audio-devices", "PUT", {expected_revision: audioState.settings.revision,
+      values: {RADIO_INPUT_DEVICE: $("audio-input").value, RADIO_OUTPUT_DEVICE: $("audio-output").value}});
+    audioState.settings = settings;
+    for (const id of ["audio-input", "audio-output"]) $(id).dataset.saved = $(id).value;
+    $("audio-devices-save").disabled = true;
+    const restart = el("button", "ghost small-button", "Перезапустити зараз"); restart.type = "button";
+    restart.addEventListener("click", () => $("launcher-restart").click());
+    const line = el("p", "small saved-text", "Збережено. Приймач візьме пристрої після перезапуску. ");
+    line.append(restart);
+    $("audio-devices-result").replaceChildren(line);
+  }));
+
   async function system() {
     if (!backupTask) backupJob().resume();
     if (!data) await overview();
@@ -119,6 +210,8 @@
     await diagnosticHistory();
     await storageView();
     await telegramRetention();
+    await attentionSettings();
+    await audioDevices();
   }
   // ---------- Історія сесій ----------
   let selectedHistory = null;
@@ -179,7 +272,7 @@
     if (!backupTask) backupTask = serverJobPanel({button: $("backup-now"), box: $("backup-job-result"), kind:"backup",
       start: () => request("/api/backups", "POST"), render: r => {
         $("backup-job-result").replaceChildren(el("p", "small", `Копію створено: ${r.name}`));
-        if (view === "system") system();
+        if (SYSTEM_VIEWS.has(view)) system();
       }});
     return backupTask;
   }

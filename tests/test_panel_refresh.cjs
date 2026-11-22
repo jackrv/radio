@@ -11,6 +11,8 @@ function refreshHarness(view='dictionaries') {
  $('recording-view').value='radio';
  const context=vm.createContext({$,view,busy:false,timer:null,REFRESH_MS:10000,
   document:{visibilityState:'visible',addEventListener:(n,f)=>{events[n]=f;}},window:{addEventListener:(n,f)=>{events[n]=f;}},
+  SYSTEM_VIEWS:new Set(['system','sessions','storage','checks']),
+  headerAlert:text=>{$('updated').textContent=text;},
   overview:async()=>{calls.push('overview');},system:async()=>{calls.push('system');},
   filterView:async()=>{calls.push('filter');},activity:async()=>{calls.push('activity');},
   periodSince:()=>null,periodUntil:()=>null,searchQuery:()=>'',recordingFilterIds:['recording-view','recording-period','recording-order','recording-search'],apiView:()=>'radio',editsValue:()=>'',orderValue:()=>'new',
@@ -29,7 +31,7 @@ test('hidden and busy panels skip requests, and returning to a visible page refr
 });
 test('failed background refresh releases its lock and retries successfully',async()=>{
  const h=refreshHarness();h.context.overview=async()=>{throw new Error('offline');};await h.context.refresh();
- assert.match(h.$('updated').textContent,/не оновлено/);
+ assert.match(h.$('updated').textContent,/Немає зв’язку/);
  h.context.overview=async()=>h.calls.push('recovered');await h.context.refresh();assert.deepEqual(h.calls,['recovered']);
 });
 test('slow background requests cannot overlap',async()=>{
@@ -54,7 +56,7 @@ function dashboardOverviewHarness(view) {
   drawFunnel:()=>calls.push('drawFunnel'),live:async()=>calls.push('live'),drawLatency:()=>calls.push('drawLatency'),
   drawHealth:()=>calls.push('drawHealth'),fitOverview:()=>calls.push('fitOverview')});
  const source=fs.readFileSync(path.join(__dirname,'../local_admin/js/05-overview.js'),'utf8');
- const start=source.indexOf('  async function overview() {');
+ const start=source.indexOf('  function headerAlert(');
  const end=source.indexOf('\n  // Широкий екран:',start);
  vm.runInContext(`let data=null;${source.slice(start,end)}\nglobalThis.refreshOverview=overview;`,context);
  return {context,calls,nodes};
@@ -63,7 +65,8 @@ function dashboardOverviewHarness(view) {
 test('hidden overview refresh updates the header without rebuilding hidden panels',async()=>{
  const h=dashboardOverviewHarness('texts');await h.context.refreshOverview();
  assert.deepEqual(h.calls,['/api/overview','attention']);
- assert.equal(h.nodes.get('updated').textContent.length>0,true);
+ assert.equal(h.nodes.get('updated').hidden,true);
+ assert.match(h.nodes.get('receiver-pill').title,/Оновлено/);
 });
 test('visible overview still refreshes its dashboard panels',async()=>{
  const h=dashboardOverviewHarness('overview');await h.context.refreshOverview();

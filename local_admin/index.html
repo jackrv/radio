@@ -25,7 +25,7 @@
 </section>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand" id="brand" role="link" tabindex="0" title="На «Огляд»"><svg class="emblem" viewBox="0 0 160 160" aria-hidden="true">
+    <div class="brand" id="brand" role="button" tabindex="0" title="Згорнути меню" aria-label="Згорнути меню" aria-expanded="true"><svg class="emblem" viewBox="0 0 160 160" aria-hidden="true">
   <defs>
     <linearGradient id="emblem-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#17222e"/>
@@ -52,8 +52,7 @@
     <rect x="102" y="70" width="8" height="20" rx="4"/>
   </g>
       </svg>
-      <div><div class="title">Radio <b>345</b></div><div class="overline">локальна панель</div></div></div>
-    <button id="sidebar-toggle" class="ghost" type="button" aria-label="Згорнути меню" aria-expanded="true">☰ <span>Згорнути меню</span></button>
+      <div><div class="title">Radio <b>345</b></div><div class="overline">локальна панель</div></div><span class="brand-toggle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v16"/><path d="M19 12H9"/><path d="M13 8l-4 4 4 4"/></svg></span><svg class="brand-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 7l-5 5 5 5"/></svg></div>
     <nav id="nav">
       <button data-group="overview" class="active"><span>◎</span>Огляд</button>
       <button data-group="recordings"><span>▶</span>Аудіоархів <b id="archive-todo-nav" class="todo-count" hidden></b><b id="archive-drafts-nav" class="draft-count" hidden></b></button>
@@ -73,22 +72,20 @@
         <div class="pause-scale"><span>0</span><span>15</span><span>30</span><span>45</span><span>60 хв</span></div>
       </div>
     </div>
-    <p class="aside-note"><span class="tagline">від сигналу до інформації</span>Лише 127.0.0.1. Не публікується через ngrok.</p>
   </aside>
 
   <main>
     <header class="topbar">
       <div class="title-row"><h1 id="view-title">Огляд</h1><input id="global-search" type="search" placeholder="Пошук: 1a2b3c4d, №253 або текст" aria-label="Пошук в аудіоархіві"></div>
       <p id="feedback" class="toast" role="status">Перевіряємо доступ…</p>
-      <div class="top-actions"><button id="receiver-pill" class="pill pill-button" type="button" title="Натисніть, щоб поставити приймач на паузу чи відновити">—</button><span id="updated" class="muted small"></span></div>
+      <div class="top-actions"><span id="updated" class="header-alert" hidden></span><span id="refresh-ring" class="refresh-ring"><button id="receiver-pill" class="pill pill-button" type="button" title="Натисніть, щоб поставити приймач на паузу чи відновити">—</button></span></div>
     </header>
     <div id="tabs" class="tabs" role="navigation" hidden></div>
 
     <div id="content" hidden>
       <!-- Огляд -->
       <section data-panel="overview">
-        <article class="panel attention" id="attention-panel" hidden><div class="panel-head"><h2>Потребує уваги</h2><button id="suggestions-refresh" class="ghost small-button" title="Перевірити всі списки й шаблони на еталонах зараз (фоново — раз на 30 хв)">Перевірити зараз</button></div><div id="attention" class="attention-list"></div></article>
-        <div id="suggestions-check-result" class="attention-job-inline" role="status"></div>
+        <article class="panel attention" id="attention-panel" hidden><div class="panel-head"><h2>Потребує уваги</h2></div><div id="attention" class="attention-list"></div></article>
         <div id="sync-events-result" role="status"></div>
         <!-- Стан служб і подробиці проблем — в одному рядку, без дубльованих плиток. -->
         <div id="health-line" class="health-line" role="status"></div>
@@ -376,20 +373,25 @@
           <p class="muted small">Зеленим — найкраще значення в колонці серед завершених. «Без правок» і помилки рахуються за вашими еталонами; для тестів «лише Whisper» — на сирому тексті, без обробки.</p></article>
       </section>
 
+      <!-- Система: вкладки «Стан», «Діагностика», «Дані й копії», «Перевірки» (усі заповнює system()). -->
       <section data-panel="system" hidden>
         <article class="panel"><h2>Керування службами</h2><p class="muted small">Повна зупинка також закриває доступ до цієї панелі. Пауза мікрофона й стан приймача доступні в боковому меню.</p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
-        <div class="sys-grid">
+        <article class="panel" id="audio-devices-panel">
+          <div class="panel-head"><h2>Звукові пристрої</h2><button id="audio-devices-refresh" class="ghost small-button" type="button" title="Перечитати список, наприклад після підключення USB-карти">Оновити список</button></div>
+          <p class="muted small">Пристрій зберігається за назвою, тож переживає перепідключення USB. Діє після перезапуску приймача; якщо вибраного пристрою немає, приймач чекає на нього й не перемикається на інший сам.</p>
+          <div class="audio-devices">
+            <label>Вхід ефіру<select id="audio-input" aria-label="Вхід ефіру"></select></label>
+            <label>Вихід передачі (PTT)<select id="audio-output" aria-label="Вихід передачі"></select></label>
+            <button id="audio-devices-save" class="ghost" type="button" disabled>Зберегти</button>
+          </div>
+          <div id="audio-devices-result" role="status"></div>
+        </article>
+        <div class="sys-grid sys-grid-two">
           <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>
           <article class="panel sys"><h3>Telegram</h3><div id="telegram"></div><div id="telegram-retention" class="toolbar"></div></article>
-          <article class="panel sys"><div class="panel-head"><h3>Резервні копії бази</h3><button id="backup-now" class="ghost">Створити</button></div><div id="backup-job-result" role="status"></div>
-            <div id="backups-summary"></div>
-            <details><summary>Усі копії</summary><div id="backups" class="sys-list"></div></details></article>
-          <article class="panel sys"><h3>Резервна копія аудіокорпусу</h3>
-            <p class="muted small">Окремо від events.db: WAV, еталони й індекс. Повна перевірка контрольних сум; копії не видаляються автоматично.</p>
-            <button id="archive-backup-now" class="ghost">Створити копію корпусу</button><div id="archive-backup-result" role="status"></div>
-            <button id="archive-inventory-now" class="ghost">Звірити WAV з індексом</button><div id="archive-inventory-result" role="status"></div>
-          </article>
         </div>
+      </section>
+      <section data-panel="sessions" hidden>
         <article class="panel">
           <div class="panel-head"><h2>Історія сесій</h2>
             <div class="toolbar"><select id="history-session" aria-label="Сесія" disabled></select><button id="history-download" class="ghost" disabled>JSON</button><button id="history-refresh" class="ghost">Оновити</button></div></div>
@@ -402,7 +404,28 @@
           <details><summary>Усі лічильники поточної сесії</summary><div class="table-wrap"><table id="counters" class="compact"></table></div></details>
           <details><summary>Повна діагностика (JSON)</summary><pre id="diagnostics"></pre></details>
         </article>
+      </section>
+      <section data-panel="storage" hidden>
+        <div class="sys-grid sys-grid-two">
+          <article class="panel sys"><div class="panel-head"><h3>Резервні копії бази</h3><button id="backup-now" class="ghost">Створити</button></div><div id="backup-job-result" role="status"></div>
+            <div id="backups-summary"></div>
+            <details><summary>Усі копії</summary><div id="backups" class="sys-list"></div></details></article>
+          <article class="panel sys"><h3>Резервна копія аудіокорпусу</h3>
+            <p class="muted small">Окремо від events.db: WAV, еталони й індекс. Повна перевірка контрольних сум; копії не видаляються автоматично.</p>
+            <div class="toolbar sys-actions"><button id="archive-backup-now" class="ghost">Створити копію корпусу</button><button id="archive-inventory-now" class="ghost">Звірити WAV з індексом</button></div>
+            <div id="archive-backup-result" role="status"></div><div id="archive-inventory-result" role="status"></div>
+          </article>
+        </div>
         <article class="panel"><h2>Сховище й автоматичне очищення</h2><div id="storage-status" aria-live="polite">Завантаження…</div></article>
+      </section>
+      <section data-panel="checks" hidden>
+        <article class="panel" id="attention-settings-panel">
+          <div class="panel-head"><h2>Перевірки «Потребує уваги»</h2><button id="suggestions-refresh" class="ghost small-button" title="Перевірити всі ввімкнені види зараз (фоново — раз на 30 хв)">Перевірити зараз</button></div>
+          <p class="muted small">Вимкнений вид не перевіряється у фоні й не з’являється в «Потребує уваги». «Готово» ховає лише поточні знахідки; нові того ж виду з’являться знову.</p>
+          <div id="suggestions-check-result" role="status"></div>
+          <div id="attention-kinds" class="attention-kinds"></div>
+          <details id="attention-history"><summary>Історія рішень оператора</summary><div id="attention-history-list"></div></details>
+        </article>
       </section>
 
     </div>

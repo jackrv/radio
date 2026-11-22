@@ -162,6 +162,7 @@
       start: () => request("/api/suggestions/refresh", "POST"), render: r => {
         $("suggestions-check-result").replaceChildren(el("p", "small", `Перевірено: пропозицій ${r.total}, нових ${r.new}.`));
         attention(true);
+        if (typeof attentionSettings === "function") attentionSettings(true);
       }});
     return suggestionTask;
   }
@@ -214,10 +215,7 @@
       $("learning-filter").value = filter;
       show("learning");   // «Навчання» щоразу перезавантажується (ALWAYS_RELOAD)
     };
-    const examples = list => list?.length ? ` — ${list.join("; ")}${list.length < 3 ? "" : "…"}` : "";
-    if (a.approvals) item("warn", `Замін, що чекають вашого дозволу: ${a.approvals}${examples(a.approval_examples)}.`, "Переглянути", openLearning("needs_approval"), null,
-      "Ви кілька разів однаково виправили звичайне слово. Таку заміну програма не вмикає сама: дозвольте її в «Навчанні», якщо вона завжди правильна, або вимкніть.");
-    if (a.conflicts) item("bad", `Конфліктів у навчанні: ${a.conflicts} — одне слово виправлено по-різному${examples(a.conflict_examples)}.`, "Переглянути", openLearning("conflict"));
+    // Дозволи й конфлікти навчання — звичайні групи пропозицій нижче: з «Готово» й «Не перевіряти».
     if (a.telegram_failed) item("bad", `Правок, що не дійшли в Telegram після всіх спроб: ${a.telegram_failed}.`, "Система", () => show("system"));
     // Пропозиції з розмітки, що накопичилися в усіх списках (фонова перевірка панелі).
     for (const g of a.suggestions || []) {
@@ -227,36 +225,23 @@
       if (g.kind === "ref_event") extra.push(["Оновити всі", () => syncEventsJob().run()]);
       extra.push(["✓ Готово", () => action(async () => {
         const r = await request("/api/suggestions/dismiss", "POST", {kind: g.kind});
-        note(`Позначено як переглянуті: ${r.dismissed}. Повернути можна в історії рішень.`);
+        note(`Позначено як переглянуті: ${r.dismissed}. Повернути можна в «Система» → «Перевірки».`);
         await attention(true);
       })]);
-      item(g.new ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
-        reviews[0].title, () => { void reviewSuggestion(reviews[0].suggestion); }, extra, g.hint);
+      extra.push(["Не перевіряти", () => action(async () => {
+        await request("/api/suggestions/mute", "POST", {kind: g.kind, muted: true});
+        note(`«${g.title}» більше не перевіряється. Увімкнути — у «Система» → «Перевірки».`);
+        await attention(true);
+      })]);
+      const learningFilter = {approval: "needs_approval", conflict: "conflict"}[g.kind];
+      const open = learningFilter ? openLearning(learningFilter) : () => { void reviewSuggestion(reviews[0].suggestion); };
+      item(g.new || learningFilter ? "warn" : "info", `${g.title}: ${g.count}${fresh} — ${g.examples.join("; ")}${g.count > g.examples.length ? "…" : ""}`,
+        reviews[0].title, open, extra, g.hint);
     }
     // Нерозмічений ефір за добу — плиткою «Ефір без розмітки» на робочому столі, тут не дублюємо.
-    if (a.suggestions_hidden) {
-      const row = el("div", "attention-footer");
-      const b = el("button", "link-button", `Показати приховані (${a.suggestions_hidden})`); b.type = "button";
-      b.textContent = 'Історія рішень оператора';
-      b.addEventListener("click", () => action(async () => {
-        const history = await request('/api/suggestions/resolved');
-        const list = el('div', 'decision-history');
-        for (const entry of history.items) {
-          const card = el('div','attention-item');
-          const restore = el('button','ghost small-button','Повернути на перевірку'); restore.type='button';
-          restore.addEventListener('click', () => action(async () => {
-            await request('/api/suggestions/restore','POST',{keys:[entry.key]}); await attention(true);
-          }));
-          card.append(el('p','small',`${stamp(entry.at)} · ${entry.title || entry.kind}`),restore); list.append(card);
-        }
-        row.replaceChildren(el('p','muted small',`Рішень збережено: ${history.total}. Показано останні ${history.items.length}. «Готово» означає рішення оператора, а не автоматичне виправлення.`),list);
-      }));
-      row.append(b);
-      items.push(row);
-    }
+    // Порожній розділ не показуємо: історія рішень і вимкнені перевірки — у «Система».
     $("attention").replaceChildren(...items);
-    $("attention-panel").hidden = false;
-    if (!items.length) $('attention').append(el('p','muted small','Поточних зауважень немає.'));
+    $("attention-panel").hidden = !items.length;
   }
 
   // ---------- Огляд ----------
@@ -349,6 +334,12 @@
   }
   $("quality-open")?.addEventListener("click", () => show("quality"));
 
+  function headerAlert(text, title = "") {
+    const box = $("updated");
+    box.textContent = text;
+    box.title = text ? title : "";
+    box.hidden = !text;
+  }
   async function overview() {
     data = await request("/api/overview");
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {}, o = data.overview;
@@ -357,8 +348,11 @@
     pill.className = `pill pill-button ${receiverTone(state)}`;
     pill.textContent = { listening: "Слухає ефір", paused: "Призупинено", stopped: "Зупинено", offline: "Не працює" }[state] || state;
     const age = d.updated_at ? now() - d.updated_at : null;
-    $("updated").textContent = `оновлено ${new Date().toLocaleTimeString("uk-UA")}`;
-    $("updated").title = "";
+    // Час оновлення — у підказці кнопки; плашка в шапці лише коли є проблема.
+    pill.title = `Натисніть, щоб поставити приймач на паузу чи відновити\nОновлено ${new Date().toLocaleTimeString("uk-UA")}`;
+    const stale = (state === "listening" || state === "paused") && age !== null && age > 120;
+    headerAlert(stale ? `Діагностика застаріла · ${ago(age)}` : "",
+      "Приймач працює, але його діагностика не оновлювалась понад 2 хв. Подробиці — у «Система».");
     attention();
     if (view !== "overview") return;
     if (typeof suggestionPanel === "function" && !suggestionTask) suggestionPanel().resume();
@@ -378,12 +372,12 @@
         fresh ? (models.length ? `моделі: ${models.join(" / ")}` : "") : "приймач не надсилає свіжих метрик",
         health === "ok" ? "ok" : health === "unknown" ? "" : "bad", () => show("settings"), "Налаштування розпізнавання"],
       ["Метрики", age === null ? "—" : `${ago(age)} тому`, "оновлюється кожні ~30 с",
-        age === null ? "" : age > 120 ? "warn" : "ok", () => show("system"), "Система: історія діагностики"],
+        age === null ? "" : age > 120 ? "warn" : "ok", () => show("sessions"), "Система: історія діагностики"],
       ["Telegram", !fresh ? "Немає даних" : g["workers.telegram_alive"] === false ? "Потік зупинено" : "Працює",
         `правок у черзі: ${num(sync.pending)}${sync.exhausted ? ` · не вдалося: ${sync.exhausted}` : ""}`,
         !fresh ? (sync.exhausted ? "bad" : "") : g["workers.telegram_alive"] === false || sync.exhausted ? "bad" : sync.pending ? "warn" : "ok", () => show("system"), "Система: Telegram"],
       ["Копія бази", backupAge === null ? "Немає" : `${ago(backupAge)} тому`, `${data.backups.length} автоматичних`,
-        backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok", () => show("system"), "Система: резервні копії"],
+        backupAge === null ? "bad" : backupAge > 30 * 3600 ? "warn" : "ok", () => show("storage"), "Система: резервні копії"],
       ["Сигнали", !data.samples ? "Немає зразків" : SPECTRAL_MODES[data.spectral?.mode] || "Спектральний",
         `зразків: ${data.samples} · відкинуто: ${num(c["asr.outcome.notification"] || 0)} · кандидатів: ${num(c["asr.spectral.candidate"] || 0)}`,
         data.samples ? (data.spectral?.mode === "active" ? "ok" : "info") : "warn", () => show("filter"), "Сигнали: фільтр"],

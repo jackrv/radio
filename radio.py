@@ -181,6 +181,8 @@ def main():
     )
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
+    from services.management.audio_settings import apply_audio_settings
+    apply_audio_settings(DB_PATH, config)   # звукові пристрої з панелі
     global recording_archive
     if config.RECORD_AUDIO:
         from services.recordings import RecordingStore, RecordingArchive

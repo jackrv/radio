@@ -28,6 +28,11 @@ class SuggestionDismiss(BaseModel):
     kind: str = Field(max_length=40)
 
 
+class SuggestionMute(BaseModel):
+    kind: str = Field(max_length=40)
+    muted: bool
+
+
 class SuggestionRestore(BaseModel):
     keys: list[str] = Field(max_length=100)
 
@@ -108,6 +113,16 @@ class RecognitionValues(BaseModel):
         if self.MIN_SPEECH_MS >= self.MAX_SEGMENT_S * 1000:
             raise ValueError("Мінімальна тривалість мовлення має бути меншою за максимальний сегмент")
         return self
+
+
+class AudioDeviceValues(BaseModel):
+    RADIO_INPUT_DEVICE: str = Field(max_length=200)
+    RADIO_OUTPUT_DEVICE: str = Field(max_length=200)
+
+
+class AudioDevicesUpdate(BaseModel):
+    values: AudioDeviceValues
+    expected_revision: int = Field(ge=0, strict=True)
 
 
 class SettingsUpdate(BaseModel):

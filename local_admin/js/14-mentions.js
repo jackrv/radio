@@ -132,20 +132,36 @@
     element.append(input,toggle,popup);
     return {element,input};
   }
-  function mentionDateControl(title, name) {
+  function mentionDateControl(title, name, {now=false}={}) {
     const element=el('fieldset','mention-date-control');
-    element.append(el('legend','muted small',title));
+    const legend=el('legend','muted small',title);element.append(legend);
     const fields=el('div','mention-date-fields'), date=el('input'), clock=mentionTimeControl(name), time=clock.input;
     date.type='date';
     for(const field of [date,time]) { field.required=true; field.lang='uk-UA'; }
     date.setAttribute('aria-label',`${name}: дата`); time.setAttribute('aria-label',`${name}: час`);
-    fields.append(date,clock.element);element.append(fields);
-    return {element,date,time,
+    // День назад/вперед — одним кліком, без календаря.
+    const step=delta=>{
+      const d=new Date(`${date.value||localInput(Date.now()).slice(0,10)}T00:00`);d.setDate(d.getDate()+delta);
+      date.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      element.dispatchEvent?.(new Event('change',{bubbles:true}));
+    };
+    const prev=el('button','mention-day-step','‹'),next=el('button','mention-day-step','›');
+    prev.type=next.type='button';prev.title='На день раніше';next.title='На день пізніше';
+    prev.setAttribute('aria-label',`${name}: на день раніше`);next.setAttribute('aria-label',`${name}: на день пізніше`);
+    prev.addEventListener('click',()=>step(-1));next.addEventListener('click',()=>step(1));
+    fields.append(prev,date,next,clock.element);element.append(fields);
+    if(now) {
+      const nowButton=el('button','link-button mention-now','зараз');nowButton.type='button';nowButton.title='Поставити поточний час';
+      nowButton.addEventListener('click',()=>{control.value=localInput(Date.now()+60000);element.dispatchEvent?.(new Event('change',{bubbles:true}));});
+      legend.append(' · ',nowButton);
+    }
+    const control={element,date,time,
       get value() { const value=mentionTimeValue(time.value);return date.value && value ? `${date.value}T${value}` : ''; },
       set value(value) { date.value=value.slice(0,10);time.value=value.slice(11,16);time.setCustomValidity?.(''); },
     };
+    return control;
   }
-  const mentionSince=mentionDateControl('Від','Початок періоду'), mentionUntil=mentionDateControl('До','Кінець періоду');
+  const mentionSince=mentionDateControl('Від','Початок періоду'), mentionUntil=mentionDateControl('До','Кінець періоду',{now:true});
   mentionTerms.required=true;
   mentionSince.value = localInput(Date.now()-86400000); mentionUntil.value = localInput(Date.now()+60000);
   const mentionOrder = el('select'); mentionOrder.setAttribute('aria-label', 'Порядок часу');
@@ -200,22 +216,47 @@
   const mentionTermLabel = el('div', 'mention-terms'), mentionTermLine=el('div','mention-term-line');
   mentionTermLine.append(mentionPills,mentionTerms);
   mentionTermLabel.append(el('span', 'muted small', 'Що шукаємо'), mentionTermLine, el('small','muted','Enter або кома — додати. × — прибрати. Список зберігається.'));
-  const mentionPresets=el('div','mention-period-presets');
+  // Пресети періоду: один клік підставляє період і, якщо згадки задано, одразу шукає.
+  const MENTION_LAST_KEY='radio345:mention-last-until';
+  const lastMentionUntil=()=>{try{const v=Number(localStorage.getItem(MENTION_LAST_KEY));return v>0?v:null;}catch(_){return null;}};
+  const mentionPresets=el('div','mention-period-presets'), presetButtons=[];
   mentionPresets.append(el('span','muted small','Період'));
-  for(const [kind,title] of [['today','Сьогодні'],['yesterday','Учора'],['24h','24 год']]) {
-    const button=el('button','ghost small-button',title);button.type='button';
-    button.title='Підставити період; для пошуку натисніть «Знайти»';
+  const HOUR=3600000;
+  const presetRange=kind=>{
+    const now=Date.now(), midnight=new Date(now);midnight.setHours(0,0,0,0);
+    const ago={'1h':HOUR,'3h':3*HOUR,'12h':12*HOUR,'24h':24*HOUR,'7d':7*24*HOUR}[kind];
+    if(ago)return [now-ago,now+60000];
+    if(kind==='today')return [midnight,now+60000];
+    if(kind==='yesterday'){const start=new Date(midnight);start.setDate(start.getDate()-1);return [start,midnight];}
+    if(kind==='last'){const last=lastMentionUntil();return last?[last,now+60000]:null;}
+    return null;
+  };
+  const markPreset=kind=>{for(const b of presetButtons)b.classList.toggle('on',b.dataset.preset===kind);};
+  for(const [kind,title] of [['1h','1 год'],['3h','3 год'],['12h','12 год'],['24h','24 год'],['today','Сьогодні'],['yesterday','Учора'],['7d','7 днів'],['last','Від минулої вибірки']]) {
+    const button=el('button','ghost small-button',title);button.type='button';button.dataset.preset=kind;
+    button.title='Підставити період і знайти';
     button.addEventListener('click',()=>{
-      const now=Date.now(), midnight=new Date(now);midnight.setHours(0,0,0,0);
-      const start=new Date(midnight);if(kind==='yesterday')start.setDate(start.getDate()-1);
-      mentionSince.value=localInput(kind==='24h'?now-86400000:start);
-      mentionUntil.value=localInput(kind==='yesterday'?midnight:now+60000);
+      const range=presetRange(kind);if(!range)return;
+      mentionSince.value=localInput(range[0]);mentionUntil.value=localInput(range[1]);markPreset(kind);
+      if(allMentionTerms())mentionForm.requestSubmit?.();
     });
-    mentionPresets.append(button);
+    presetButtons.push(button);mentionPresets.append(button);
+  }
+  const lastPreset=presetButtons.at(-1);
+  function renderLastPreset() {
+    const last=lastMentionUntil();lastPreset.disabled=!last;
+    lastPreset.title=last?`Від ${new Date(last).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} (кінець минулої вибірки) до зараз`:'Ще не було вибірки в цьому браузері';
+  }
+  renderLastPreset();
+  for(const control of [mentionSince,mentionUntil]) {
+    control.element.addEventListener?.('input',()=>markPreset(null));
+    control.element.addEventListener?.('change',()=>markPreset(null));
   }
   const mentionDates = el('div', 'mention-controls');
-  const mentionOrderLabel=el('label','mention-order');mentionOrderLabel.append(el('span','muted small','Порядок часу'),mentionOrder);
-  mentionDates.append(mentionSince.element,mentionUntil.element,mentionOrderLabel);
+  // Порядок — компактно в рядку пресетів праворуч, не займає окремого місця.
+  const mentionOrderLabel=el('label','mention-order');mentionOrderLabel.append(el('span','muted small','Порядок'),mentionOrder);
+  mentionPresets.append(mentionOrderLabel);
+  mentionDates.append(mentionSince.element,mentionUntil.element);
   const mentionButtons = el('div', 'toolbar'); mentionButtons.append(mentionSearch, mentionArchive);
   mentionForm.append(mentionTermLabel, mentionPresets, mentionDates, mentionButtons);
   mentionPanel.append(mentionForm, mentionFeedback, mentionResults, mentionMore);
@@ -229,6 +270,11 @@
       mentionResults.replaceChildren();
       if(!keepQuery)mentionQuery = new URLSearchParams({terms:allMentionTerms(), since:new Date(mentionSince.value).getTime()/1000,
         until:new Date(mentionUntil.value).getTime()/1000, order:mentionOrder.value, limit:'100'});
+      if(!keepQuery){
+        // «Від минулої вибірки»: кінець цього періоду (не пізніше зараз) — початок наступного.
+        try{localStorage.setItem(MENTION_LAST_KEY,String(Math.min(new Date(mentionUntil.value).getTime(),Date.now())));}catch(_){}
+        renderLastPreset();
+      }
     }
     const query = new URLSearchParams(mentionQuery); query.set('offset', mentionOffset);
     mentionSearch.disabled = true; mentionMore.disabled = true;
@@ -292,8 +338,7 @@
       await runMentions(false);
     }
   };
-  const attentionResult=$('suggestions-check-result');
-  if (attentionResult) $('attention-panel')?.append(attentionResult);
+  // ---------- Кінець вибірок ----------
 
   const clearSelection = el('button', 'ghost small-button', 'Вийти з вибірки'); clearSelection.id='clear-recording-selection'; clearSelection.hidden=!archiveSelection; clearSelection.type = 'button';
   clearSelection.title = 'Повернути весь архів замість знімка знайдених записів';
@@ -301,10 +346,12 @@
   $('recording-search')?.parentElement?.append(clearSelection);
 
   // Згортання меню не приховує назви від допоміжних технологій.
-  const sidebarToggle = $('sidebar-toggle');
+  const sidebarToggle = $('brand');
   function collapseSidebar(collapsed) {
     document.body.classList.toggle('sidebar-collapsed', collapsed);
     sidebarToggle?.setAttribute('aria-expanded', String(!collapsed));
+    const toggleText = collapsed ? 'Розгорнути меню' : 'Згорнути меню';
+    sidebarToggle?.setAttribute('aria-label', toggleText); if (sidebarToggle) sidebarToggle.title = toggleText;
     try { localStorage.setItem('radio345:sidebar', collapsed ? 'collapsed' : 'open'); } catch (_) {}
     if(['texts','dictionaries'].includes(view))requestAnimationFrame(fitRecognition);
   }
@@ -318,9 +365,19 @@
     const icon=svg('svg',{viewBox:'0 0 24 24','aria-hidden':'true',width:'24',height:'24',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'});
     icon.append(svg('path',{d:navPaths[b.dataset.group] || navPaths.overview}));
     b.querySelector('span')?.replaceChildren(icon);
+    // Підпис в окремому елементі: при згортанні він лише зникає, іконка не зсувається.
+    for (const node of [...b.childNodes]) if (node.nodeType === 3 && node.textContent.trim()) {
+      const label = el('em', 'nav-label', node.textContent.trim()); node.replaceWith(label);
+    }
   }
+  // Після анімації ширини — перерахувати висоту редакторів.
+  document.querySelector('.app')?.addEventListener('transitionend', event => {
+    if (event.target === event.currentTarget && ['texts','dictionaries'].includes(view)) fitRecognition();
+  });
   try { collapseSidebar(localStorage.getItem('radio345:sidebar') === 'collapsed'); } catch (_) {}
-  sidebarToggle?.addEventListener('click', () => collapseSidebar(!document.body.classList.contains('sidebar-collapsed')));
+  const toggleSidebar = () => { if (matchMedia('(min-width: 901px)').matches) collapseSidebar(!document.body.classList.contains('sidebar-collapsed')); };
+  sidebarToggle?.addEventListener('click', toggleSidebar);
+  sidebarToggle?.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') toggleSidebar(); });
 
   // Роль у прев'ю — кнопками; прихований select зберігає чинний контракт.
   const roleSelect = $('role');

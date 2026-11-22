@@ -19,28 +19,37 @@
     refreshPending = true;
     try {
       await overview();
-      $("updated").classList?.remove("refresh-failed");
-      $("updated").setAttribute?.("role", "status");
-      if (view === "system") await system();
+      $("refresh-ring")?.classList?.remove("failed");
+      if (SYSTEM_VIEWS.has(view)) await system();
       else if (view === "filter") await filterView();
       else if (view === "activity") await activity();
       else if (view === "recordings") await refreshArchiveNotice();
       else if (view === "experiments") await labQueue();   // хід черги тестів
     } catch (_) {
       // Коротко в шапці; пояснення — у підказці при наведенні.
-      $("updated").textContent = "⚠ не оновлено · повтор…";
-      $("updated").classList?.add("refresh-failed");
-      $("updated").setAttribute?.("role", "status");
-      $("updated").setAttribute?.("aria-live", "polite");
-      $("updated").title = "Не вдалося оновити дані (немає зв’язку з панеллю або служби перезапускаються). Повторюємо автоматично кожні 10 с.";
+      $("refresh-ring")?.classList?.add("failed");
+      headerAlert("Немає зв’язку · повтор…",
+        "Не вдалося оновити дані (немає зв’язку з панеллю або служби перезапускаються). Повторюємо автоматично кожні 10 с.");
     } finally { refreshPending = false; }
+  }
+  // Кільце навколо кнопки стану заповнюється до наступного оновлення за таймером.
+  function refreshRing() {
+    const ring = $("refresh-ring");
+    if (!ring?.classList) return;
+    ring.style.setProperty("--refresh-ms", `${REFRESH_MS}ms`);
+    ring.classList.remove("ticking");
+    void ring.offsetWidth;   // перезапуск CSS-анімації
+    ring.classList.add("ticking");
   }
   function schedule() {
     clearInterval(timer);
-    timer = setInterval(refreshPanel, REFRESH_MS);
+    refreshRing();
+    timer = setInterval(() => { refreshRing(); refreshPanel(); }, REFRESH_MS);
   }
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshPanel(); });
-  window.addEventListener("online", refreshPanel);
+  // Позачергове оновлення вирівнює таймер, щоб кільце відповідало дійсності.
+  const refreshNow = () => { refreshPanel(); if (timer !== null) schedule(); };
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshNow(); });
+  window.addEventListener("online", refreshNow);
 
   // ---------- Вхід ----------
   // Без входу — окремий екран із причиною й способами входу, а не порожній макет.

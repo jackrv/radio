@@ -6,7 +6,7 @@ function setup(){
  const c=vm.createContext({el:(tag,cls,text)=>Object.assign(new E(),{textContent:text||''}),$,URLSearchParams,
    document:{querySelector:()=>new E()},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},action:f=>f(),loaders:{},loaded:new Set(),show(){},archiveSelection:'',
    request:(...args)=>new Promise((resolve,reject)=>pending.push({resolve,reject,args}))});
- vm.runInContext(source.slice(0,source.indexOf('  const attentionResult'))+'\nglobalThis.ui={search:runMentions,refresh:loaders.mentions,feedback:mentionFeedback,results:mentionResults,archive:mentionArchive,order:mentionOrder,terms:mentionTerms,pills:mentionPills,since:mentionSince,until:mentionUntil,timeValue:mentionTimeValue,dialValue:mentionDialValue,selection:()=>mentionSelection};',c);
+ vm.runInContext(source.slice(0,source.indexOf('  // ---------- Кінець вибірок ----------'))+'\nglobalThis.ui={search:runMentions,refresh:loaders.mentions,feedback:mentionFeedback,results:mentionResults,archive:mentionArchive,order:mentionOrder,terms:mentionTerms,pills:mentionPills,since:mentionSince,until:mentionUntil,timeValue:mentionTimeValue,dialValue:mentionDialValue,selection:()=>mentionSelection};',c);
  return {ui:c.ui,pending,$,storage};
 }
 const result=(selection,text)=>({selection,total:1,items:[{id:selection,created:1,text,reviewed:false,mentions:['Клен']}]});

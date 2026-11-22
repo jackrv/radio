@@ -29,17 +29,32 @@ input[type=search] { flex: 1; min-width: 200px; }
 .app { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
 .app { height: 100dvh; min-height: 0; overflow: hidden; }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 22px 14px; border-right: 1px solid #1e2b39; display: flex; flex-direction: column; gap: 22px; background: #0d1520; }
-.brand { display: flex; gap: 11px; align-items: center; padding: 0 6px; }
+.brand { display: flex; gap: 11px; align-items: center; padding: 0 3px; white-space: nowrap; overflow: hidden; }
+.brand > div { transition: opacity .14s ease; }
 .logo { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: #253c2f; border: 1px solid #6a925d; color: var(--lime); font-weight: 900; font-size: 13px; }
 .overline { font-size: 9px; letter-spacing: .16em; color: #8795a7; font-weight: 800; }
 .title { font-weight: 700; letter-spacing: .07em; }
 .title b { color: var(--lime); }
 nav { display: flex; flex-direction: column; gap: 4px; }
-nav button { background: transparent; color: #93a2b5; text-align: left; font-weight: 500; display: flex; gap: 10px; align-items: center; padding: 9px 11px; border: 1px solid transparent; }
-nav button span { width: 18px; text-align: center; }
+nav button { background: transparent; color: #93a2b5; text-align: left; font-weight: 500; display: flex; gap: 10px; align-items: center; padding: 8px 12px; border: 1px solid transparent; white-space: nowrap; overflow: hidden; }
+nav button > span { width: 24px; height: 24px; flex: none; display: grid; place-items: center; }
+nav button > span svg { display: block; }
+.nav-label { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; transition: opacity .14s ease; }
+.brand-chevron { margin-left: auto; flex: none; color: var(--muted); opacity: .45; transition: opacity .14s ease; }
+.brand:hover .brand-chevron, .brand:focus-visible .brand-chevron { opacity: 1; }
+/* Наведення на логотип: емблема змінюється на підказку «згорнути/розгорнути» в тому ж квадраті. */
+.brand { position: relative; }
+.emblem { transition: opacity .14s ease; }
+.brand-toggle-icon { position: absolute; left: 3px; top: 50%; width: 44px; height: 44px; margin-top: -22px; display: none; place-items: center; border-radius: 12px; border: 1px solid rgba(184, 239, 134, .35); background: #172532; color: var(--lime2); opacity: 0; transition: opacity .14s ease; pointer-events: none; }
+.brand-toggle-icon svg { transition: transform .18s ease; }
+@media (min-width: 901px) {
+  .brand-toggle-icon { display: grid; }
+  .brand:hover .brand-toggle-icon, .brand:focus-visible .brand-toggle-icon { opacity: 1; }
+  .brand:hover .emblem, .brand:focus-visible .emblem { opacity: 0; }
+  body.sidebar-collapsed .brand-toggle-icon svg { transform: scaleX(-1); }
+}
 nav button:hover { background: #172532; color: #fff; }
 nav button.active { background: #253b31; border-color: #425844; color: #d9f3c8; font-weight: 700; }
-.aside-note { margin-top: auto; font-size: 11px; color: #6d7d8f; padding: 0 8px; }
 
 main { padding: 22px 28px 40px; min-width: 0; }
 main { min-height: 0; height: 100%; overflow: auto; overscroll-behavior: contain; scroll-padding: 12px; }
@@ -130,7 +145,6 @@ iframe { display: block; width: 100%; height: 760px; border: 1px solid var(--bor
   .app > .sidebar { max-height: 35dvh; overflow-y: auto; }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px; }
   nav { flex-direction: row; flex-wrap: wrap; }
-  .aside-note { display: none; }
   main { padding: 16px; }
   .grid.two, .grid.eval { grid-template-columns: 1fr; }
   .funnel-row { grid-template-columns: 120px minmax(0, 1fr) 44px; }
@@ -228,13 +242,34 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .attention-item.warn { border-left-color: var(--warn); } .attention-item.bad { border-left-color: var(--bad); }
 .attention-item button { flex-shrink: 0; padding: 4px 10px; font-size: 12px; }
 .warn-list li.error { color: var(--bad); }
-@media (max-width: 1250px) { .top-actions #updated { display: none; } }
-@media (max-width: 1250px) { .top-actions #updated.refresh-failed { display: inline-block; color: var(--warning, #e8b86b); max-width: 12rem; white-space: normal; } }
+/* Плашка проблеми в шапці: з’являється лише коли щось не так. */
+.header-alert { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; color: var(--warn); background: rgba(232, 184, 107, .1); border: 1px solid rgba(232, 184, 107, .4); cursor: help; animation: header-alert-in .18s ease; }
+.header-alert::before { content: "!"; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--warn); color: #1b1408; font-size: 11px; font-weight: 800; }
+.header-alert[hidden] { display: none; }
+/* Кільце таймера оновлення навколо кнопки стану; жовте й пульсує, коли оновлення не вдалося. */
+@property --ring-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.refresh-ring { position: relative; display: inline-flex; border-radius: 99px; color: rgba(184, 239, 134, .55); }
+.refresh-ring::after { content: ""; position: absolute; inset: -3px; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(currentColor var(--ring-angle), rgba(255, 255, 255, .06) 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.refresh-ring.ticking::after { animation: ring-fill var(--refresh-ms, 10s) linear forwards; }
+.refresh-ring.failed { color: var(--warn); }
+.refresh-ring.failed::after { --ring-angle: 360deg; animation: ring-alert 1.6s ease-in-out infinite; }
+@keyframes ring-fill { from { --ring-angle: 0deg; } to { --ring-angle: 360deg; } }
+@keyframes ring-alert { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .refresh-ring.ticking::after, .refresh-ring.failed::after { animation: none; --ring-angle: 360deg; } }
+@keyframes header-alert-in { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .header-alert { animation: none; } }
 @media (max-width: 900px) { .top-actions { flex-wrap: wrap; } }
 .card.clickable { cursor: pointer; transition: border-color .15s, background .15s; }
 .card.clickable:hover { border-color: #4f7359; background: #16222f; }
 .card.clickable:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
-.sys-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; align-items: start; }
+.sys-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; align-items: stretch; }
+.panel.sys .sys-actions { margin: 8px 0 0; gap: 8px; }
+#telegram-retention { margin: 10px 0 0; gap: 8px; font-size: 12px; }
+#telegram-retention .retention-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+#telegram-retention .retention-hint { flex-basis: 100%; margin: 0; }
 .panel.sys { padding: 12px 14px; }
 .panel.sys h3 { margin: 0 0 8px; font-size: 13px; }
 .panel.sys .panel-head { margin-bottom: 8px; } .panel.sys .panel-head h3 { margin: 0; }
@@ -243,7 +278,14 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .sys-list { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow: auto; }
 .sys-row { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 table.compact td, table.compact th { padding: 4px 8px; font-size: 12px; }
-@media (max-width: 1100px) { .sys-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1500px) { .sys-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.audio-devices { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 10px; }
+.audio-devices label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); flex: 1 1 260px; min-width: 0; }
+.audio-devices select { width: 100%; }
+#audio-devices-result p { margin: 8px 0 0; } #audio-devices-result button { margin-left: 6px; }
+.alert-text { color: var(--warn); } .saved-text { color: var(--ok); }
+.sys-grid.sys-grid-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 800px) { .sys-grid, .sys-grid.sys-grid-two { grid-template-columns: 1fr; } }
 .card.clickable.picked { border-color: var(--lime); background: #1a2b22; }
 /* Картки всіх сторінок — компактно, в один ряд, поки вистачає ширини. */
 .cards { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
@@ -351,7 +393,6 @@ td.good { color: var(--ok); font-weight: 700; }
 .brand .title { font-size: 16px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
 .brand .title b { color: var(--lime2); font-weight: 600; }
 .brand .overline { color: var(--muted); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 9px; }
-.tagline { display: block; margin-bottom: 6px; color: var(--lime2); font-style: italic; letter-spacing: .02em; }
 nav button.active { background: linear-gradient(90deg, rgba(184, 239, 134, .16), rgba(140, 196, 255, .05)); border-color: rgba(184, 239, 134, .45); color: #eaffde; box-shadow: var(--glow); }
 button:not(.ghost):not(.danger):not(.pill):not(.tab):not(.small-button) { box-shadow: 0 0 10px rgba(184, 239, 134, .22); }
 button.ghost { border-color: rgba(184, 239, 134, .4); }
@@ -434,7 +475,11 @@ nav button.active { box-shadow: none; }
 .learning-conflict p { margin: 5px 0; }
 .learning-conflict-variant { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .attention-hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
-.attention-footer { display: flex; justify-content: flex-end; }
+.attention-kinds { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.attention-kind { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 8px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface2); font-size: 12px; cursor: pointer; user-select: none; }
+.attention-kind:has(input:checked) { border-color: rgba(184, 239, 134, .4); }
+.attention-kind.muted-kind { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, .25); }
+#attention-history-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .link-button { background: none; border: none; padding: 2px 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; }
 .link-button:hover { color: var(--text); }
 .danger-text { color: var(--bad); }
@@ -1431,35 +1476,40 @@ main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter:
 .mention-time { font-variant-numeric: tabular-nums; font-weight: 650; }
 .mention-body { min-width: 0; overflow-wrap: anywhere; }
 .mention-body p { margin: 0 0 3px; }
-.transcript-preview { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 0; line-height: 1.65; }
-.transcript-preview span { cursor: text; }
-.transcript-callsign { color: var(--lime); font-weight: 650; }
-.transcript-command { color: #a8cfff; font-weight: 750; }
-.transcript-boundary { color: #ffca80; background: #ffca8020; padding: 0 3px; border-radius: 3px; }
-.transcript-problem { text-decoration: underline wavy var(--bad); text-underline-offset: 4px; background: #ff777715; }
-.transcript-playing { background: #e1bd5260; outline: 1px solid #e1bd52; border-radius: 3px; }
+/* Підсвітка в самому полі: шар під прозорим textarea з тими самими шрифтом, відступами й переносами.
+   Лише фон/підкреслення — жодних змін ширини гліфів, інакше шар роз’їдеться з текстом. */
+.text-input-layer { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+.text-input-layer > textarea { position: relative; z-index: 1; flex: 1 1 auto; width: 100%; }
+.transcript-backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  padding: 5px 8px; border: 1px solid transparent; font: inherit; letter-spacing: inherit;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; color: transparent; }
+.transcript-backdrop span { border-radius: 3px; }
+.transcript-callsign { background: rgba(184, 239, 134, .2); box-shadow: inset 0 -2px 0 rgba(184, 239, 134, .6); }
+.transcript-command { background: rgba(168, 207, 255, .18); box-shadow: inset 0 -2px 0 rgba(168, 207, 255, .55); }
+.transcript-boundary { background: #ffca8040; }
+.transcript-problem { text-decoration: underline wavy var(--bad); text-decoration-skip-ink: none; text-underline-offset: 4px; background: #ff777720; }
+.transcript-backdrop .transcript-playing { background: #e1bd5270; box-shadow: 0 0 0 1px #e1bd52; }
+.recording-text .highlight-legend { font-size: 11px; }
 @media (max-width: 750px) { .mention-row { grid-template-columns: minmax(0,1fr) auto; } .mention-time { grid-column: 1 / -1; } }
 [data-panel="mentions"] textarea { min-width: 220px; flex: 1 1 320px; }
-#nav button > span { font-size: 22px; min-width: 28px; text-align: center; }
-#telegram-retention input { width: 5rem; }
+#telegram-retention input { width: 4.5rem; }
 @media (min-width: 1100px) {
   .list-layout, .list-layout:has(.phrase-pattern-editor), .list-layout.dictionary-layout { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); }
 }
 @media (min-width: 901px) {
+  /* Згортання без стрибків: відступи, розміри й вісь іконок (центр 39px) однакові в обох станах. */
+  .app { transition: grid-template-columns .18s ease; }
+  .sidebar { overflow-x: hidden; }
   body.sidebar-collapsed .app { grid-template-columns: 78px minmax(0, 1fr); }
-  body.sidebar-collapsed .sidebar { padding: 16px 8px; gap: 16px; }
-  body.sidebar-collapsed .brand > div, body.sidebar-collapsed #sidebar-toggle > span { display: none; }
-  body.sidebar-collapsed .brand svg { width: 48px; height: 48px; }
-  body.sidebar-collapsed #nav button { font-size: 0; justify-content: center; padding: 12px 6px; }
-  body.sidebar-collapsed #nav button > span { font-size: 24px; }
+  body.sidebar-collapsed .brand > div, body.sidebar-collapsed .brand-chevron, body.sidebar-collapsed .nav-label { opacity: 0; }
   body.sidebar-collapsed #nav button > b { display: none; }
-  body.sidebar-collapsed .launcher-box { padding: 6px; }
   body.sidebar-collapsed .launcher-line > .small { display: none; }
   body.sidebar-collapsed .launcher-icons { flex-wrap: wrap; }
   body.sidebar-collapsed .launcher-box > p { display: none; }
-  body.sidebar-collapsed .pause-slider, body.sidebar-collapsed .aside-note { display: none; }
+  body.sidebar-collapsed .pause-slider { display: none; }
 }
-@media (max-width: 900px) { .launcher-box { margin-top: 0; } }
+@media (max-width: 900px) { .launcher-box { margin-top: 0; } .brand-chevron { display: none; } }
+@media (prefers-reduced-motion: reduce) { .app, .nav-label, .brand > div, .brand-chevron, .emblem, .brand-toggle-icon, .brand-toggle-icon svg { transition: none; } }
 
 /* Робочі екрани: одна головна колонка, компактні дії й стійкі розміри. */
 [data-panel="dictionaries"] .list-layout,
@@ -1526,17 +1576,20 @@ main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter:
 #recordings .text-input-box .fix-all { width: 110px; flex: 0 0 110px; font-size: 11px; }
 #recordings .recording-text .text-head { flex-wrap: wrap; align-items: center; }
 #recordings .recording-text .text-head .codes-apron { margin: 0 0 0 auto; max-width: 100%; }
-.transcript-preview { background: #0c1622; border-radius: 8px; padding: 8px 10px; margin-top: 5px; }
 #recordings .recording-type { flex-wrap: wrap; }
 .mention-form { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
 .mention-term-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .mention-term-input { flex: 0 1 190px; width: 190px; min-width: 140px; max-width: 100%; padding: 7px 10px; background: var(--surface2); color: var(--text); border: 1px dashed var(--border); border-radius: 8px; font: inherit; font-size: 13px; }
 .mention-period-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .mention-period-presets > span { margin-right: 4px; }
+.mention-period-presets button.ghost.on { border-color: var(--lime); color: #172414; background: var(--lime); }
+.mention-day-step { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.mention-day-step:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.mention-now { font-size: 12px; padding: 0; }
 .mention-controls { gap: 12px; }
-.mention-date-control { border: 0; padding: 0; margin: 0; min-width: 0; flex: 0 1 258px; }
+.mention-date-control { border: 0; padding: 0; margin: 0; min-width: 0; flex: 0 1 300px; }
 .mention-date-control legend { padding: 0; margin-bottom: 5px; }
-.mention-date-fields { display: grid; grid-template-columns: minmax(0,1fr) 110px; width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; }
+.mention-date-fields { display: grid; grid-template-columns: 26px minmax(0,1fr) 26px 110px; width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; }
 .mention-date-fields:focus-within { border-color: var(--cyan); }
 .mention-date-fields input { width: 100%; min-width: 0; padding: 7px 8px; border: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
 .mention-time-control { display:flex; align-items:center; min-width:0; border-left:1px solid var(--border); }
@@ -1562,8 +1615,8 @@ main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter:
 .mention-dial-ticks > i::before { content:''; position:absolute; left:50%; top:0; width:1px; height:3px; background:var(--muted); opacity:.35; }
 .mention-time-popover > p { margin-bottom:0; font-size:11px; }
 .mention-date-fields input::-webkit-calendar-picker-indicator { opacity: .65; cursor: pointer; }
-.mention-controls > .mention-order { flex: 0 1 190px; }
-.mention-order select { width: 100%; }
+.mention-period-presets > .mention-order { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.mention-order select { width: auto; padding: 4px 8px; font-size: 12px; }
 .mention-row { background: var(--surface); }
 button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 @media (max-width: 900px) {

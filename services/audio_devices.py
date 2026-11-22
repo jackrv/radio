@@ -6,7 +6,9 @@
 Якщо заданий пристрій не знайдено, мовчки на інший не перемикаємось: приймач
 повторює спробу (кожні 5 с), передача відмовляє — щоб звук не пішов «не туди».
 
-Список пристроїв: `.venv/bin/python -m services.audio_devices`.
+Список пристроїв: `.venv/bin/python -m services.audio_devices` (або `--json`).
+Вибір у панелі («Система» → «Стан») зберігається в SQLite й діє після
+перезапуску приймача (services/management/audio_settings.py).
 """
 
 import os
@@ -79,5 +81,23 @@ def describe():
     return "\n".join(lines)
 
 
+def list_devices():
+    """Входи й виходи для вибору в панелі (назва — те, що зберігається в налаштуваннях)."""
+    import sounddevice as sd
+    devices = sd.query_devices()
+    default_in, default_out = sd.default.device
+    result = {"inputs": [], "outputs": []}
+    for i, d in enumerate(devices):
+        for kind, key, default in (("inputs", "max_input_channels", default_in), ("outputs", "max_output_channels", default_out)):
+            if d[key]:
+                result[kind].append({"name": d["name"], "channels": int(d[key]), "default": i == default})
+    return result
+
+
 if __name__ == "__main__":
-    print(describe())
+    import sys
+    if "--json" in sys.argv:
+        import json
+        print(json.dumps(list_devices(), ensure_ascii=False))
+    else:
+        print(describe())

@@ -105,7 +105,7 @@ def main():
     from core.log_security import configure_logging
 
     load_dotenv(config.BASE_DIR / ".env")
-    configure_logging("")
+    configure_logging("", starting_message="Радіовузол без розпізнавання; чекаємо аудіовхід (USB-карта).")
     log = logging.getLogger("radio.node")
     supervisor, stream = build_node(config, log)
     if supervisor is None:

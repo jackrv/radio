@@ -13,8 +13,12 @@ from collections import deque
 
 
 class ConsoleDashboard(logging.Handler):
-    def __init__(self, provider=None, stream=None, receiver_provider=None):
+    # Поки знімок є, а стану приймача ще немає (радіовузол на Pi перекриває: моделей там немає).
+    STARTING_MESSAGE = "Приймач ініціалізується; моделі та аудіопотік готуються."
+
+    def __init__(self, provider=None, stream=None, receiver_provider=None, starting_message=None):
         super().__init__()
+        self.starting_message = starting_message or self.STARTING_MESSAGE
         self.stream = stream or sys.stdout
         self.provider = provider or (lambda: None)
         self.events = deque(maxlen=8)
@@ -169,7 +173,7 @@ class ConsoleDashboard(logging.Handler):
             state = (data.get("gauges") or {}).get("receiver.state")
             if state in ("listening", "paused", "stopped"):
                 return state, ""
-            return "starting", "Приймач ініціалізується; моделі та аудіопотік готуються."
+            return "starting", self.starting_message
         if now - self.started < 60:
             return "starting", "Першого актуального знімка приймача ще немає. Очікуємо запуск."
         return "lost", "Немає актуальних даних приймача. Перевірте radio.log."

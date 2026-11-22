@@ -24,7 +24,7 @@ final class Transmitter {
     var lastError: String?
 
     var isAvailable: Bool { serverEnabled }
-    var unavailableReason: String { "Передачу на Mac вимкнено" }
+    var unavailableReason: String { "Передачу на приймачі вимкнено" }
 
     private var engine: AVAudioEngine?
     private let outlet = SocketOutlet()
@@ -44,7 +44,7 @@ final class Transmitter {
             guard let socket = outlet.socket,
                   let data = Self.convert(buffer, with: converter, to: outFormat) else { return }
             socket.send(.data(data.pcm)) { error in
-                if error != nil { Task { @MainActor in self?.failed("Зв'язок із Mac перервано") } }
+                if error != nil { Task { @MainActor in self?.failed("Зв'язок із приймачем перервано") } }
             }
             Task { @MainActor in self?.push(level: data.level) }
         }
@@ -66,7 +66,7 @@ final class Transmitter {
             return
         }
         guard let url, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            lastError = "Некоректна адреса Mac"
+            lastError = "Некоректна адреса приймача"
             return
         }
         parts.scheme = parts.scheme == "https" ? "wss" : "ws"

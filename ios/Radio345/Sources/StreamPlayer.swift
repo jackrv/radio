@@ -79,7 +79,7 @@ final class StreamPlayer: NSObject, URLSessionDataDelegate {
             self.lock.lock()
             let silentFor = Date().timeIntervalSince(self.lastDataAt)
             self.lock.unlock()
-            if silentFor > 6 { self.fail("Немає даних від Mac") }
+            if silentFor > 6 { self.fail("Немає даних від приймача") }
         }
         timer.resume()
         watchdog = timer
@@ -130,7 +130,7 @@ final class StreamPlayer: NSObject, URLSessionDataDelegate {
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else {
             completionHandler(.cancel)
-            return fail(code == 401 ? "Токен не підійшов" : "Mac відповів \(code)")
+            return fail(code == 403 ? "Доступ лише з вашого облікового запису Tailscale" : "Приймач відповів \(code)")
         }
         completionHandler(.allow)
     }
@@ -145,7 +145,7 @@ final class StreamPlayer: NSObject, URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        fail(error.map { "Зв'язок перервано: \($0.localizedDescription)" } ?? "Mac закрив з'єднання")
+        fail(error.map { "Зв'язок перервано: \($0.localizedDescription)" } ?? "Приймач закрив з'єднання")
     }
 
     // MARK: AudioFileStream

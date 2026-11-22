@@ -77,7 +77,7 @@ class RedactingFormatter(logging.Formatter):
         return result
 
 
-def configure_logging(token):
+def configure_logging(token, starting_message=None):
     formatter = RedactingFormatter(
         "%(asctime)s [%(levelname)s] %(message)s",
         "%Y-%m-%d %H:%M:%S",
@@ -91,7 +91,8 @@ def configure_logging(token):
             backupCount=LOG_BACKUP_COUNT,
             encoding="utf-8",
         ),
-        ConsoleDashboard(provider=lambda: __import__("core.diagnostics", fromlist=["runtime"]).runtime.snapshot()),
+        ConsoleDashboard(provider=lambda: __import__("core.diagnostics", fromlist=["runtime"]).runtime.snapshot(),
+                         starting_message=starting_message),
     ]
 
     handlers[0].namer = archive_log_name

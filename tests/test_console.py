@@ -351,3 +351,10 @@ def test_ngrok_normal_start_has_no_recovery_message():
     from core.console import child_event
     state = {}
     assert child_event("ngrok", 'lvl=info msg="client session established" obj=tunnels.session', state) is None
+
+
+def test_starting_message_can_be_overridden_for_radio_node():
+    fresh = {"updated_at": time.time(), "gauges": {}}
+    assert ConsoleDashboard(stream=io.StringIO())._state_info(fresh)[1].startswith("Приймач ініціалізується")
+    node = ConsoleDashboard(stream=io.StringIO(), starting_message="Радіовузол: синтетичний стан")
+    assert node._state_info(fresh) == ("starting", "Радіовузол: синтетичний стан")

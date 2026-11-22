@@ -1,35 +1,51 @@
 import Foundation
 import Security
 
-/// Адреса Mac у Tailscale і токен потоку. Токен — у Keychain, адреса — в UserDefaults.
+/// Куди підключатися: приймач на Mac чи радіовузол на Raspberry Pi.
+enum Receiver: String, CaseIterable, Identifiable {
+    case mac, pi
+    var id: String { rawValue }
+    var title: String { self == .mac ? "Mac" : "Pi" }
+}
+
+/// Адреси Mac і Pi у Tailscale (UserDefaults). Токена немає: сервер пускає лише
+/// пристрої вашого облікового запису Tailscale.
 @Observable
 final class ConnectionSettings {
-    private static let hostKey = "radio345.host"
+    private static let receiverKey = "radio345.receiver"
     private static let channelKey = "radio345.channel"
-    private static let tokenAccount = "radio345.streamToken"
 
-    var host: String { didSet { UserDefaults.standard.set(host, forKey: Self.hostKey) } }
-    var token: String { didSet { Keychain.save(token, account: Self.tokenAccount) } }
+    var receiver: Receiver { didSet { UserDefaults.standard.set(receiver.rawValue, forKey: Self.receiverKey) } }
+    var macHost: String { didSet { UserDefaults.standard.set(macHost, forKey: "radio345.host") } }
+    var piHost: String { didSet { UserDefaults.standard.set(piHost, forKey: "radio345.piHost") } }
     var channel: StreamChannel {
         didSet { UserDefaults.standard.set(channel.rawValue, forKey: Self.channelKey) }
     }
 
     /// Канал «наживо» без звуків сповіщень (+ затримка початку передачі ~2–3 с).
     var filterSignals: Bool { didSet { UserDefaults.standard.set(filterSignals, forKey: "radio345.filterSignals") } }
-    /// Вмикати «Вдома», коли iPhone повертається в мережу Mac.
+    /// Вмикати «Вдома», коли iPhone повертається в мережу приймача.
     var autoHome: Bool { didSet { UserDefaults.standard.set(autoHome, forKey: "radio345.autoHome") } }
 
     init() {
-        filterSignals = UserDefaults.standard.bool(forKey: "radio345.filterSignals")
-        autoHome = UserDefaults.standard.object(forKey: "radio345.autoHome") as? Bool ?? true
-        host = UserDefaults.standard.string(forKey: Self.hostKey) ?? ""
-        token = Keychain.load(account: Self.tokenAccount) ?? ""
-        channel = StreamChannel(rawValue: UserDefaults.standard.string(forKey: Self.channelKey) ?? "") ?? .selected
+        let defaults = UserDefaults.standard
+        filterSignals = defaults.bool(forKey: "radio345.filterSignals")
+        autoHome = defaults.object(forKey: "radio345.autoHome") as? Bool ?? true
+        receiver = Receiver(rawValue: defaults.string(forKey: Self.receiverKey) ?? "") ?? .mac
+        macHost = defaults.string(forKey: "radio345.host") ?? ""
+        piHost = defaults.string(forKey: "radio345.piHost") ?? ""
+        channel = StreamChannel(rawValue: defaults.string(forKey: Self.channelKey) ?? "") ?? .selected
+        // Старий токен із Keychain більше не потрібен.
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrAccount as String: "radio345.streamToken"] as CFDictionary)
     }
 
-    var isConfigured: Bool { baseURL != nil && !token.isEmpty }
+    /// Адреса обраного приймача.
+    var host: String { receiver == .mac ? macHost : piHost }
 
-    /// `http://100.x.y.z:8346` — без шляху; порт типово 8346.
+    var isConfigured: Bool { baseURL != nil }
+
+    /// `http://radio345:8346` — без шляху; порт типово 8346.
     var baseURL: URL? {
         var text = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
@@ -45,26 +61,8 @@ final class ConnectionSettings {
     func url(_ path: String, query: [URLQueryItem] = []) -> URL? {
         guard let base = baseURL, var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
         parts.path = path
-        parts.queryItems = [URLQueryItem(name: "t", value: token)] + query
+        parts.queryItems = query.isEmpty ? nil : query
         return parts.url
-    }
-
-    /// Приймає посилання зі сторінки (`http://100.x:8346/#t=…`) або `radio345://…`.
-    @discardableResult
-    func apply(link: String) -> Bool {
-        guard var parts = URLComponents(string: link.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-        let fragment = parts.fragment ?? ""
-        let fromFragment = fragment.split(separator: "&").first { $0.hasPrefix("t=") }.map { String($0.dropFirst(2)) }
-        let fromQuery = parts.queryItems?.first { $0.name == "t" }?.value
-        guard let newToken = (fromFragment ?? fromQuery)?.removingPercentEncoding, !newToken.isEmpty else { return false }
-        if parts.scheme == "radio345" { parts.scheme = "http" }
-        parts.path = ""
-        parts.query = nil
-        parts.fragment = nil
-        guard let hostPart = parts.host, !hostPart.isEmpty else { return false }
-        host = parts.port.map { "\(hostPart):\($0)" } ?? hostPart
-        token = newToken
-        return true
     }
 }
 
@@ -82,27 +80,5 @@ enum StreamChannel: String, CaseIterable, Identifiable {
         self == .selected
             ? "Фрази за режимом Telegram, після розпізнавання"
             : "Усе мовлення одразу, без відбору за текстом"
-    }
-}
-
-enum Keychain {
-    static func save(_ value: String, account: String) {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account]
-        SecItemDelete(query as CFDictionary)
-        guard !value.isEmpty else { return }
-        var add = query
-        add[kSecValueData as String] = Data(value.utf8)
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(add as CFDictionary, nil)
-    }
-
-    static func load(account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account,
-            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }

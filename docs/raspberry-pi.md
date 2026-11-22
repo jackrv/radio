@@ -8,7 +8,7 @@ Pi поруч із рацією знімає звук, віддає потоки
 
 ## Що потрапляє на Pi
 
-Лише файли з [deploy/pi-files.txt](../deploy/pi-files.txt): код вузла, сторінка для Safari, залежності,
+Лише файли з [deploy/pi-files.txt](../deploy/pi-files.txt): код вузла, залежності,
 служба й ця інструкція. Список не редагують вручну. Після змін коду:
 
 ```bash
@@ -16,7 +16,7 @@ Pi поруч із рацією знімає звук, віддає потоки
 ```
 
 `pytest` (`tests/test_pi_files.py`) падає, якщо вузол імпортує файл, якого немає в списку.
-Приватне (`.env`, зразки сигналів, токен) у git не потрапляє, на Pi його копіюють окремо.
+Приватне (`.env`, зразки сигналів) у git не потрапляє, на Pi його копіюють окремо.
 
 ## Система
 
@@ -43,6 +43,10 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
 
 - менше запису на карту: `Storage=volatile` у `/etc/systemd/journald.conf`
   (журнал у пам’яті, після перезавантаження зникає) або `log2ram`;
+- підкачка лише в пам’яті (zram), без файла `/var/swap` на карті (на 8 ГБ звільняє 2 ГБ):
+  `printf '[Main]\nMechanism=zram\n' | sudo tee /etc/rpi/swap.conf.d/80-zram-only.conf`
+  (спершу `sudo mkdir -p /etc/rpi/swap.conf.d`), перезавантаження, `losetup -l` порожній →
+  `sudo rm -f /var/swap`. Перевірено на Trixie, 22.11.2026;
 - `sudo apt install unattended-upgrades`, лише оновлення безпеки;
 - апаратний watchdog: `RuntimeWatchdogSec=15` у `/etc/systemd/system.conf`.
   Система, що зависла, перезавантажиться сама;
@@ -50,16 +54,19 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
 - overlay FS (лише читання) — пізніше, після налагодження: захищає карту від
   раптового вимкнення живлення, але заважає оновленням.
 
-## Встановлення (один раз)
+## Встановлення
+
+Команди можна повторювати: вже зроблене пропускається.
 
 ```bash
-sudo apt install git ffmpeg libportaudio2 python3-venv
-# Tailscale: https://tailscale.com/download/linux, потім sudo tailscale up
+sudo apt install -y git ffmpeg libportaudio2 python3-venv
+# Tailscale: https://tailscale.com/download/linux, потім sudo tailscale up --ssh
 
-git clone --filter=blob:none --sparse https://github.com/jackrv/radio.git ~/radio345
+[ -d ~/radio345/.git ] || git clone --filter=blob:none --sparse https://github.com/jackrv/radio.git ~/radio345
 cd ~/radio345
 git sparse-checkout set --no-cone --stdin < <(git show HEAD:deploy/pi-files.txt)
-python3 -m venv .venv && .venv/bin/pip install -r requirements-pi.txt
+[ -d .venv ] || python3 -m venv .venv
+.venv/bin/pip install -r requirements-pi.txt
 .venv/bin/python -m services.audio_devices        # знайти назву USB-карти
 ```
 
@@ -73,18 +80,24 @@ RADIO_OUTPUT_DEVICE=USB
 RADIO_PTT=gpio:17
 ```
 
-Зразки сигналів (за бажанням) — з Mac: `scp .local-notification-sounds/*.wav pi@<pi>:radio345/.local-notification-sounds/`.
+Зразки сигналів (за бажанням) — з Mac: `scp .local-notification-sounds/*.wav <користувач>@radio345:radio345/.local-notification-sounds/`.
 
-Служба:
+Пробний запуск вручну (Ctrl+C — вихід): `.venv/bin/python -m services.radio_node`.
+Без USB-карти вхід не відкриється (у Pi 5 немає мікрофонного входу), але потік і доступ з iPhone
+вже можна перевірити.
+
+Служба — під поточним користувачем (у файлі зразок для `pi`):
 
 ```bash
-sudo cp deploy/radio345-node.service /etc/systemd/system/
+sed "s/^User=.*/User=$USER/; s|/home/pi/|$HOME/|g" deploy/radio345-node.service \
+  | sudo tee /etc/systemd/system/radio345-node.service >/dev/null
+sudo systemctl daemon-reload
 sudo systemctl enable --now radio345-node
 journalctl -u radio345-node -f
 ```
 
-Токен для iPhone створюється в `~/radio345/.local-radio-stream-token`. У застосунку
-вкажіть адресу Pi в Tailscale замість адреси Mac.
+Токена немає: Pi пускає лише пристрої вашого облікового запису Tailscale (не ставте Pi тег).
+У застосунку: Налаштування → «Pi», адреса — ім'я Pi в Tailscale (напр. `radio345`).
 
 ## Оновлення
 
@@ -92,7 +105,7 @@ journalctl -u radio345-node -f
 cd ~/radio345 && git pull
 git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt   # якщо список змінився
 .venv/bin/pip install -r requirements-pi.txt
-sudo systemctl restart radio345-node
+sudo systemctl restart radio345-node   # якщо змінився deploy/radio345-node.service — повторіть sed … | tee вище
 ```
 
 ## Ще не перевірено на Pi

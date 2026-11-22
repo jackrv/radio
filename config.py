@@ -63,7 +63,6 @@ RADIO_STREAM_ENABLED = False
 RADIO_STREAM_HOST = ""  # порожньо — IPv4 Tailscale цього Mac; 0.0.0.0 заборонено
 RADIO_STREAM_PORT = 8346
 RADIO_STREAM_MODE = "watch"
-RADIO_STREAM_TOKEN_FILE = BASE_DIR / ".local-radio-stream-token"
 # PTT з iPhone. Поки передавача немає — звук грає на динаміках Mac (перевірка);
 # на час передачі приймач не слухає мікрофон (напівдуплекс), див. docs/iphone-radio.md.
 RADIO_STREAM_TRANSMIT = True

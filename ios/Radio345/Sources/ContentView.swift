@@ -172,8 +172,8 @@ struct ListenVisualizer: View {
     private var statusText: String {
         if !model.isListening {
             switch model.macReachable {
-            case .some(false): return "Mac недоступний · перевірте Tailscale"
-            case .some(true): return "Mac на зв'язку"
+            case .some(false): return "\(model.settings.receiver.title) недоступний · перевірте Tailscale"
+            case .some(true): return "\(model.settings.receiver.title) на зв'язку"
             case .none: return "Не слухаю"
             }
         }
@@ -481,8 +481,6 @@ struct SettingsView: View {
     @Environment(RadioModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     var isSheet = false
-    @State private var link = ""
-    @State private var message: String?
 
     var body: some View {
         @Bindable var settings = model.settings
@@ -493,12 +491,12 @@ struct SettingsView: View {
                     Toggle("Відсіювати сигнали в «Наживо»", isOn: $settings.filterSignals)
                         .onChange(of: settings.filterSignals) { model.settingsChanged() }
                 } footer: {
-                    Text("Звуки сповіщень телефонів не граються. Початок кожної передачі звучить на ~2–3 с пізніше: Mac чекає, щоб відрізнити сигнал від мовлення.")
+                    Text("Звуки сповіщень телефонів не граються. Початок кожної передачі звучить на ~2–3 с пізніше: приймач чекає, щоб відрізнити сигнал від мовлення.")
                 }
                 Section {
                     Toggle("Вмикати «Вдома» автоматично", isOn: $settings.autoHome)
                 } footer: {
-                    Text("Коли iPhone повертається в мережу Mac, звук вимикається, щоб мікрофон Mac не чув телефон. Режим знімається сам, щойно iPhone виходить із цієї мережі.")
+                    Text("Коли iPhone повертається в мережу приймача, звук вимикається, щоб його мікрофон не чув телефон. Режим знімається сам, щойно iPhone виходить із цієї мережі.")
                 }
                 Section {
                     Toggle("Сповіщення з текстом фрази", isOn: $bindable.notifyInBackground)
@@ -508,27 +506,21 @@ struct SettingsView: View {
             }
 
             Section {
-                TextField("http://100.x.y.z:8346/#t=…", text: $link, axis: .vertical)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("Вставити з буфера") { link = UIPasteboard.general.string ?? "" }
-                Button("Застосувати посилання") {
-                    let ok = model.settings.apply(link: link)
-                    message = ok ? "Збережено" : "Посилання без адреси чи токена"
-                    if ok { link = ""; model.settingsChanged() }
+                Picker("Приймач", selection: $settings.receiver) {
+                    ForEach(Receiver.allCases) { Text($0.title).tag($0) }
                 }
-                .disabled(link.isEmpty)
-                if let message { Text(message).foregroundStyle(Color.radioMuted) }
+                .pickerStyle(.segmented)
+                .onChange(of: settings.receiver) { model.receiverChanged() }
+                TextField("Адреса Mac (ім'я або 100.x.y.z)", text: $settings.macHost)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                    .onSubmit { if settings.receiver == .mac { model.receiverChanged() } }
+                TextField("Адреса Pi (напр. radio345)", text: $settings.piHost)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                    .onSubmit { if settings.receiver == .pi { model.receiverChanged() } }
             } header: {
                 Text("Підключення")
             } footer: {
-                Text("Адреса — з рядка «Потік для iPhone» у журналі приймача, токен — з .local-radio-stream-token на Mac.")
-            }
-
-            Section("Вручну") {
-                TextField("Адреса Mac (100.x.y.z:8346)", text: $settings.host)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                SecureField("Токен", text: $settings.token)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Text("Ім'я пристрою в Tailscale або адреса 100.x.y.z; порт типово 8346. Токен не потрібен: приймач пускає лише пристрої вашого облікового запису Tailscale.")
             }
         }
         .scrollContentBackground(.hidden)

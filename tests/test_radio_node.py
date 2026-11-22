@@ -93,7 +93,7 @@ def test_transmit_presses_key_around_audio_and_releases_on_error():
     key = FakeKey()
     key.press = lambda: order.append("press")
     key.release = lambda: order.append("release")
-    stream = rs.RadioStream(sample_rate=16000, host="127.0.0.1", port=0, token="t", transmit=True,
+    stream = rs.RadioStream(sample_rate=16000, host="127.0.0.1", port=0, transmit=True,
                             player_factory=Player, ptt_key=key, ptt_lead_s=0.01, ptt_tail_s=0.01)
     stream.transmit_session(iter([b"\0\0", b"\0\0"]))
     assert order == ["press", "audio", "audio", "release"]

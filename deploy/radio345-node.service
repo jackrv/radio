@@ -1,6 +1,5 @@
 # Радіовузол Radio 345 на Raspberry Pi.
-# sudo cp deploy/radio345-node.service /etc/systemd/system/ && sudo systemctl enable --now radio345-node
-# Шлях і користувача змініть під свою Pi.
+# Встановлення з підстановкою користувача й шляху: docs/raspberry-pi.md, розділ «Служба».
 [Unit]
 Description=Radio 345 radio node (live stream + PTT)
 After=network-online.target tailscaled.service sound.target

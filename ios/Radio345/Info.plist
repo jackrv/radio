@@ -8,25 +8,14 @@
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- Mac доступний лише за http://100.x.y.z (Tailscale, трафік уже шифрує WireGuard).
+		<!-- Приймач доступний лише за http://100.x.y.z (Tailscale, трафік уже шифрує WireGuard).
 		     Не додавати NSAllowsLocalNetworking: поруч із ним iOS ігнорує NSAllowsArbitraryLoads. -->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Мікрофон потрібен лише під час утримання кнопки PTT: ваш голос передається на Mac.</string>
+	<string>Мікрофон потрібен лише під час утримання кнопки PTT: ваш голос передається на приймач.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Підключення до приймача Radio 345 на вашому Mac.</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>radio345</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>radio345</string>
-			</array>
-		</dict>
-	</array>
+	<string>Підключення до приймача Radio 345 (Mac чи Raspberry Pi).</string>
 </dict>
 </plist>

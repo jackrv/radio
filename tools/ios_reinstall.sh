@@ -84,7 +84,7 @@ xcodebuild -quiet \
   build
 
 APP="$STATE/build/Build/Products/Release-iphoneos/Radio345.app"
-log "Встановлюю на $DEVICE…"
+log "Встановлюю на ${DEVICE}…"
 if ! xcrun devicectl device install app --device "$DEVICE" "$APP"; then
   log "Встановлення не вдалося: iPhone недоступний (інша мережа, вимкнений, заблокований після перезавантаження)."
   log "Повтор — під час наступного запуску."

@@ -1,7 +1,5 @@
 import json
-import os
 import shutil
-import stat
 import time
 import urllib.error
 import urllib.request
@@ -33,17 +31,6 @@ def test_mixer_plays_clips_then_silence_and_drops_oldest_backlog(monkeypatch):
     assert second[len(tone(0.05)):] == bytes(len(tone(0.05)))
 
 
-def test_token_file_created_private_and_env_wins(tmp_path, monkeypatch):
-    monkeypatch.delenv("RADIO_STREAM_TOKEN", raising=False)
-    path = tmp_path / "token"
-    token = rs.load_token(path)
-    assert len(token) >= 24
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
-    assert rs.load_token(path) == token
-    monkeypatch.setenv("RADIO_STREAM_TOKEN", "synthetic-token")
-    assert rs.load_token(path) == "synthetic-token"
-
-
 @pytest.mark.parametrize("address, allowed", [
     ("127.0.0.1", True), ("::1", True), ("100.101.102.103", True),
     ("fd7a:115c:a1e0::1", True), ("::ffff:100.64.0.5", True),
@@ -57,7 +44,7 @@ def test_start_refuses_unspecified_host_and_disabled(tmp_path, monkeypatch):
     monkeypatch.delenv("RADIO_STREAM", raising=False)
     log = Mock()
     cfg = SimpleNamespace(RADIO_STREAM_ENABLED=False, RADIO_STREAM_HOST="0.0.0.0", RADIO_STREAM_PORT=0,
-                          RADIO_STREAM_MODE="watch", RADIO_STREAM_TOKEN_FILE=tmp_path / "t", SR=SR)
+                          RADIO_STREAM_MODE="watch", SR=SR)
     assert rs.start_radio_stream(cfg, log) is None
     monkeypatch.setenv("RADIO_STREAM", "1")
     monkeypatch.setattr(rs.shutil, "which", lambda name: "/usr/bin/" + name)
@@ -102,23 +89,26 @@ def test_stream_failure_does_not_block_telegram():
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg недоступний")
 def test_http_stream_events_and_clip_on_loopback():
-    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0, token="synthetic-token").start()
+    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0).start()
     try:
         base = "http://127.0.0.1:%d" % stream._server.server_address[1]
+        with pytest.raises(urllib.error.HTTPError) as missing:
+            urllib.request.urlopen(base + "/", timeout=5)
+        assert missing.value.code == 404  # сторінки для Safari більше немає
+        stream.peers.is_owner = lambda address: False
         with pytest.raises(urllib.error.HTTPError) as denied:
             urllib.request.urlopen(base + "/events", timeout=5)
-        assert denied.value.code == 401
-        page = urllib.request.urlopen(base + "/", timeout=5).read().decode()
-        assert "Рація 345" in page
+        assert denied.value.code == 403
+        stream.peers.is_owner = lambda address: True
 
         clip_id = stream.publish(tone(0.5), "Подія: Ефір\n\nсинтетична фраза")
-        events = json.load(urllib.request.urlopen(base + "/events?t=synthetic-token", timeout=5))
+        events = json.load(urllib.request.urlopen(base + "/events", timeout=5))
         assert [c["caption"] for c in events["clips"]] == ["Подія: Ефір\n\nсинтетична фраза"]
         assert "pcm" not in events["clips"][0]
-        clip = urllib.request.urlopen(base + f"/clip/{clip_id}.mp3?t=synthetic-token", timeout=10).read()
+        clip = urllib.request.urlopen(base + f"/clip/{clip_id}.mp3", timeout=10).read()
         assert len(clip) > 500
 
-        live = urllib.request.urlopen(base + "/stream.mp3?t=synthetic-token", timeout=10)
+        live = urllib.request.urlopen(base + "/stream.mp3", timeout=10)
         assert live.headers["Content-Type"] == "audio/mpeg"
         data, deadline = b"", time.monotonic() + 8
         while len(data) < 2000 and time.monotonic() < deadline:
@@ -151,16 +141,16 @@ def test_supervisor_feeds_live_speech_with_preroll_and_isolates_errors():
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg недоступний")
 def test_live_channel_streams_separately():
-    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0, token="synthetic-token").start()
+    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0).start()
     try:
         base = "http://127.0.0.1:%d" % stream._server.server_address[1]
-        live = urllib.request.urlopen(base + "/live.mp3?t=synthetic-token", timeout=10)
+        live = urllib.request.urlopen(base + "/live.mp3", timeout=10)
         stream.live_audio(tone(0.3))
         data, deadline = b"", time.monotonic() + 8
         while len(data) < 2000 and time.monotonic() < deadline:
             data += live.read1(4096)
         assert len(data) >= 2000
-        events = json.load(urllib.request.urlopen(base + "/events?t=synthetic-token", timeout=5))
+        events = json.load(urllib.request.urlopen(base + "/events", timeout=5))
         assert events["live_listeners"] == 1 and events["clips"] == []
         live.close()
     finally:
@@ -169,11 +159,11 @@ def test_live_channel_streams_separately():
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg недоступний")
 def test_new_listener_gets_burst_of_recent_audio():
-    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0, token="synthetic-token").start()
+    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0).start()
     try:
         time.sleep(2.0)  # накопичити запас
         base = "http://127.0.0.1:%d" % stream._server.server_address[1]
-        live = urllib.request.urlopen(base + "/live.mp3?t=synthetic-token", timeout=10)
+        live = urllib.request.urlopen(base + "/live.mp3", timeout=10)
         started = time.monotonic()
         data = b""
         while len(data) < int(rs.BYTES_PER_S * 1.2) and time.monotonic() - started < 5:
@@ -228,19 +218,58 @@ def test_signal_gate_passes_through_when_filter_off():
     assert out == [b"ab", b"cd"]
 
 
-def test_home_detector_uses_direct_private_tailscale_path():
-    status = {"Peer": {
-        "a": {"TailscaleIPs": ["100.64.0.2"], "CurAddr": "192.168.1.20:41641"},
-        "b": {"TailscaleIPs": ["100.64.0.3"], "CurAddr": "8.8.8.8:41641"},
-        "c": {"TailscaleIPs": ["100.64.0.4"], "CurAddr": ""},
-    }}
-    home = rs.HomeDetector(lambda: status)
-    assert home.is_home("100.64.0.2") is True
-    assert home.is_home("100.64.0.3") is False
-    assert home.is_home("100.64.0.4") is False
-    assert home.is_home("100.64.0.9") is False
-    broken = rs.HomeDetector(lambda: (_ for _ in ()).throw(OSError("synthetic")))
+def _status():
+    return {
+        "Self": {"UserID": 7, "TailscaleIPs": ["100.64.0.1"]},
+        "Peer": {
+            "a": {"UserID": 7, "TailscaleIPs": ["100.64.0.2", "fd7a:115c:a1e0::2"], "CurAddr": "192.168.1.20:41641"},
+            "b": {"UserID": 7, "TailscaleIPs": ["100.64.0.3"], "CurAddr": "8.8.8.8:41641"},
+            "c": {"UserID": 9, "TailscaleIPs": ["100.64.0.4"], "CurAddr": "192.168.1.21:41641"},
+        },
+    }
+
+
+def test_tailnet_peers_home_uses_direct_private_path():
+    peers = rs.TailnetPeers(_status)
+    assert peers.is_home("100.64.0.2") is True
+    assert peers.is_home("100.64.0.3") is False
+    assert peers.is_home("100.64.0.9") is False
+    broken = rs.TailnetPeers(lambda: (_ for _ in ()).throw(OSError("synthetic")))
     assert broken.is_home("100.64.0.2") is False
+
+
+def test_tailnet_peers_owner_only_same_account():
+    peers = rs.TailnetPeers(_status)
+    assert peers.is_owner("100.64.0.2") is True
+    assert peers.is_owner("fd7a:115c:a1e0::2") is True
+    assert peers.is_owner("::ffff:100.64.0.3") is True
+    assert peers.is_owner("100.64.0.1") is True        # сам вузол
+    assert peers.is_owner("127.0.0.1") is True
+    assert peers.is_owner("100.64.0.4") is False       # пристрій іншого облікового запису (shared)
+    assert peers.is_owner("100.64.0.9") is False
+    assert peers.is_owner("junk") is False
+    assert rs.TailnetPeers(lambda: {}).is_owner("100.64.0.2") is False
+    broken = rs.TailnetPeers(lambda: (_ for _ in ()).throw(OSError("synthetic")))
+    assert broken.is_owner("100.64.0.2") is False
+
+
+def test_tailnet_peers_refreshes_unknown_address_rate_limited(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(rs.time, "monotonic", lambda: clock[0])
+    calls, status = [], {"Self": {"UserID": 7}, "Peer": {}}
+    peers = rs.TailnetPeers(lambda: calls.append(1) or status)
+    assert peers.is_owner("100.64.0.2") is False
+    status = {"Self": {"UserID": 7}, "Peer": {"a": {"UserID": 7, "TailscaleIPs": ["100.64.0.2"]}}}
+    clock[0] += 1
+    assert peers.is_owner("100.64.0.2") is False and len(calls) == 1   # не частіше ніж раз на 2 с
+    clock[0] += 2
+    assert peers.is_owner("100.64.0.2") is True and len(calls) == 2
+    assert peers.is_owner("100.64.0.2") is True and len(calls) == 2    # відомий — з кешу
+
+
+def test_unknown_self_account_denies_everyone():
+    peers = rs.TailnetPeers(lambda: {"Peer": {"a": {"TailscaleIPs": ["100.64.0.2"]}}})
+    assert peers.is_owner("100.64.0.2") is False
 
 
 def _ws_client_frame(opcode, payload, mask=b"\x01\x02\x03\x04"):
@@ -266,12 +295,12 @@ def test_transmit_websocket_plays_pcm_and_mutes_receiver_input():
         def __exit__(self, *exc):
             return False
 
-    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0, token="synthetic-token",
+    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0,
                             transmit=True, player_factory=FakePlayer).start()
     try:
         port = stream._server.server_address[1]
         sock = socket.create_connection(("127.0.0.1", port), timeout=5)
-        sock.sendall(("GET /transmit?t=synthetic-token HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\n"
+        sock.sendall(("GET /transmit HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\n"
                       "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                       "Sec-WebSocket-Version: 13\r\n\r\n").encode())
         reply = sock.recv(1024).decode()
@@ -297,7 +326,7 @@ def test_transmit_websocket_plays_pcm_and_mutes_receiver_input():
 
 
 def test_transmit_disabled_by_default_and_supervisor_drops_muted_input():
-    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0, token="t")
+    stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0)
     assert stream.transmit_enabled is False and stream.input_muted() is False
     from core.supervisor import ApplicationSupervisor
     sup = ApplicationSupervisor.__new__(ApplicationSupervisor)

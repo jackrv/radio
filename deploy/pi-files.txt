@@ -19,7 +19,6 @@ core/vad.py
 deploy/pi-files.txt
 deploy/radio345-node.service
 docs/raspberry-pi.md
-mobile/radio.html
 requirements-pi.txt
 services/__init__.py
 services/audio_devices.py

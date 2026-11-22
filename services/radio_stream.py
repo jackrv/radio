@@ -1,31 +1,27 @@
-"""Прослуховування відібраних фраз на iPhone (Safari) через Tailscale.
+"""Ефір для застосунку на iPhone через Tailscale: потоки, історія фраз, PTT.
 
-Один безперервний MP3-потік: тиша, а коли фраза пройшла той самий відбір, що
-й голосові Telegram, — її аудіо. Safari тримає безперервний <audio> у фоні та
-при заблокованому екрані, тож окремі кліки на кожну фразу не потрібні.
+Безперервні MP3-потоки: тиша, а коли є мовлення (чи фраза пройшла той самий
+відбір, що й голосові Telegram) — його аудіо; безперервність тримає застосунок у фоні.
 
-Слухає лише конкретну адресу (типово Tailscale IPv4), не 0.0.0.0. Доступ — за
-токеном з .env (RADIO_STREAM_TOKEN) або з `.local-radio-stream-token`.
-Передача з iPhone в ефір (PTT) не реалізована: див. docs/ideas.md.
+Слухає лише конкретну адресу (типово Tailscale IPv4), не 0.0.0.0. Доступ без
+токена: лише пристрої того самого облікового запису Tailscale, що й цей вузол
+(`tailscale status --json`; пристрої, якими з вами поділилися, — ні). Див. TailnetPeers.
 """
 
 import base64
 import collections
 import hashlib
-import hmac
 import ipaddress
 import itertools
 import json
 import os
 import queue
-import secrets
 import shutil
 import struct
 import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 CHUNK_S = 0.1
@@ -51,7 +47,6 @@ BITRATE = "32k"
 TAILSCALE_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 TAILNET = ipaddress.ip_network("100.64.0.0/10")
 TAILNET6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
-PAGE = Path(__file__).resolve().parent.parent / "mobile" / "radio.html"
 
 
 def tailscale_ipv4():
@@ -72,31 +67,19 @@ def tailscale_ipv4():
     return None
 
 
-def load_token(path):
-    """Токен з RADIO_STREAM_TOKEN або з файлу; створює файл з правами 600."""
-    token = os.environ.get("RADIO_STREAM_TOKEN", "").strip()
-    if token:
-        return token
-    path = Path(path)
-    if path.exists():
-        token = path.read_text().strip()
-        if token:
-            return token
-    token = secrets.token_urlsafe(24)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(token + "\n")
-    return token
-
-
-def client_allowed(address):
+def _ip(address):
     try:
         ip = ipaddress.ip_address(address)
     except ValueError:
-        return False
+        return None
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
-    return ip.is_loopback or ip in TAILNET or ip in TAILNET6
+    return ip
+
+
+def client_allowed(address):
+    ip = _ip(address)
+    return bool(ip) and (ip.is_loopback or ip in TAILNET or ip in TAILNET6)
 
 
 class ClipMixer:
@@ -312,25 +295,50 @@ class SignalGate:
         return bool(self.matcher.is_candidate(score, outside, extra))
 
 
-class HomeDetector:
-    """iPhone у тій самій домашній мережі, що й Mac: Tailscale з'єднаний напряму
-    через приватну адресу (не через ретранслятор DERP). Кеш 15 с."""
+class TailnetPeers:
+    """Знімок ``tailscale status --json`` (кеш 15 с):
+
+    * ``is_owner(ip)`` — пристрій того самого облікового запису Tailscale, що й цей
+      вузол (замість токена). Loopback — свій. Невідома адреса оновлює знімок
+      позачергово, але не частіше ніж раз на 2 с: щойно під'єднаний iPhone не чекає.
+    * ``is_home(ip)`` — iPhone у тій самій домашній мережі: Tailscale з'єднаний
+      напряму через приватну адресу (не через ретранслятор DERP).
+
+    Tailscale недоступний — нікого, крім loopback, не пускаємо."""
+
+    TTL_S = 15.0
+    MISS_REFRESH_S = 2.0
 
     def __init__(self, status_fn=None):
         self.status_fn = status_fn or _tailscale_status
-        self._cache = (0.0, {})
+        self._at = float("-inf")
+        self._peers = {}
         self._lock = threading.Lock()
 
-    def is_home(self, ip):
+    def _get(self, ip, refresh_missing=False):
         with self._lock:
-            at, peers = self._cache
-            if time.monotonic() - at > 15:
+            age = time.monotonic() - self._at
+            if age > self.TTL_S or (refresh_missing and ip not in self._peers and age > self.MISS_REFRESH_S):
                 try:
-                    peers = _local_peers(self.status_fn())
+                    self._peers = _peer_table(self.status_fn())
                 except Exception:
-                    peers = {}
-                self._cache = (time.monotonic(), peers)
-        return bool(peers.get(ip, False))
+                    self._peers = {}
+                self._at = time.monotonic()
+            return self._peers.get(ip)
+
+    def is_owner(self, address):
+        ip = _ip(address)
+        if ip is None:
+            return False
+        if ip.is_loopback:
+            return True
+        peer = self._get(str(ip), refresh_missing=True)
+        return bool(peer and peer["owner"])
+
+    def is_home(self, address):
+        ip = _ip(address)
+        peer = self._get(str(ip)) if ip is not None else None
+        return bool(peer and peer["local"])
 
 
 def _tailscale_status():
@@ -341,18 +349,20 @@ def _tailscale_status():
     return json.loads(out or "{}")
 
 
-def _local_peers(status):
-    """{tailscale_ip: True, якщо пряме з'єднання через приватну адресу}."""
+def _peer_table(status):
+    """{tailscale_ip: {"owner": той самий обліковий запис, "local": пряме з'єднання
+    через приватну адресу}}. Власні адреси вузла теж «свої»."""
+    me = (status.get("Self") or {}).get("UserID")
     result = {}
+    for tip in (status.get("Self") or {}).get("TailscaleIPs") or ():
+        result[tip] = {"owner": me is not None, "local": False}
     for peer in (status.get("Peer") or {}).values():
         addr = (peer.get("CurAddr") or "").rsplit(":", 1)[0].strip("[]")
-        try:
-            ip = ipaddress.ip_address(addr) if addr else None
-        except ValueError:
-            ip = None
+        ip = _ip(addr) if addr else None
         local = bool(ip and ip.is_private and ip not in TAILNET and not ip.is_loopback)
+        owner = me is not None and peer.get("UserID") == me
         for tip in peer.get("TailscaleIPs") or ():
-            result[tip] = local
+            result[tip] = {"owner": owner, "local": local}
     return result
 
 
@@ -486,12 +496,12 @@ class RadioStream:
     """Канали: ``selected`` — фрази після розпізнавання й відбору;
     ``live`` — усе мовлення за VAD одразу, без текстового відбору."""
 
-    def __init__(self, *, sample_rate, host, port, token, mode="watch", log=None, transmit=False,
-                 player_factory=None, ptt_key=None, ptt_lead_s=0.0, ptt_tail_s=0.0):
+    def __init__(self, *, sample_rate, host, port, mode="watch", log=None, transmit=False,
+                 player_factory=None, ptt_key=None, ptt_lead_s=0.0, ptt_tail_s=0.0, peers=None):
         if mode not in ("all", "watch", "commands"):
             raise ValueError(f"Невідомий режим потоку: {mode}")
         self.sample_rate = sample_rate
-        self.host, self.port, self.token, self.mode = host, port, token, mode
+        self.host, self.port, self.mode = host, port, mode
         self.log = log
         self.channels = {
             "selected": _Channel("selected", sample_rate, MAX_PENDING_S, log, BURST_S),
@@ -500,7 +510,7 @@ class RadioStream:
         }
         self.gate = SignalGate(sample_rate, self.channels["live_clean"].mixer.add)
         self._gate_queue = queue.Queue(2000)
-        self.home_detector = HomeDetector()
+        self.peers = peers or TailnetPeers()
         # Передача: поки що звук грає на динаміках Mac; з передавачем — на його вхід + PTT.
         self.transmit_enabled = bool(transmit)
         self.player_factory = player_factory or SharedSpeaker()
@@ -633,9 +643,8 @@ class RadioStream:
 
     # ---------- HTTP ----------
 
-    def authorized(self, query, headers):
-        supplied = (query.get("t") or [""])[0] or headers.get("X-Radio-Token", "")
-        return bool(supplied) and hmac.compare_digest(supplied.encode(), self.token.encode())
+    def authorized(self, address):
+        return client_allowed(address) and self.peers.is_owner(address)
 
     def start(self):
         self._server = _QuietServer((self.host, self.port), _handler_for(self))
@@ -693,15 +702,10 @@ def _handler_for(stream):
             self.do_GET()
 
         def do_GET(self):
-            if not client_allowed(self.client_address[0]):
-                return self._send(403, b"forbidden")
+            if not stream.authorized(self.client_address[0]):
+                return self._send(403, b"not your tailscale device")
             url = urlsplit(self.path)
             query = parse_qs(url.query)
-            if url.path in ("/", "/index.html"):
-                return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8",
-                                  (("X-Frame-Options", "DENY"),))
-            if not stream.authorized(query, self.headers):
-                return self._send(401, b"unauthorized")
             if url.path == "/stream.mp3":
                 return self._stream(stream.channels["selected"])
             if url.path == "/live.mp3":
@@ -719,7 +723,7 @@ def _handler_for(stream):
                     "clips": stream.history(after),
                     "listeners": stream.listeners,
                     "live_listeners": stream.channels["live"].listeners + stream.channels["live_clean"].listeners,
-                    "at_home": stream.home_detector.is_home(self.client_address[0]),
+                    "at_home": stream.peers.is_home(self.client_address[0]),
                     "signals_dropped": stream.gate.dropped,
                     "transmit": stream.transmit_enabled,
                     "transmitting": stream._tx_active,
@@ -858,13 +862,12 @@ def start_radio_stream(config, log, force=False):
     transmit = getattr(config, "RADIO_STREAM_TRANSMIT", False)
     key = None
     try:
-        token = load_token(config.RADIO_STREAM_TOKEN_FILE)
         if transmit:
             spec = configured("RADIO_PTT", config) or "none"
             key = GuardedKey(make_key(spec), TX_MAX_S + 5, log)
         stream = RadioStream(
             sample_rate=config.SR, host=host, port=config.RADIO_STREAM_PORT,
-            token=token, mode=mode, log=log, transmit=transmit,
+            mode=mode, log=log, transmit=transmit,
             player_factory=SharedSpeaker(device=configured("RADIO_OUTPUT_DEVICE", config)),
             ptt_key=key,
             ptt_lead_s=getattr(config, "RADIO_PTT_LEAD_MS", 0) / 1000,
@@ -878,7 +881,6 @@ def start_radio_stream(config, log, force=False):
     if transmit:
         log.info("Передача з iPhone: вихід %s, ключ PTT — %s",
                  configured("RADIO_OUTPUT_DEVICE", config) or "системний", key.name, extra={"console": True})
-    log.info("Потік для iPhone: http://%s:%s/ (режим %s; токен у %s)",
-             host, config.RADIO_STREAM_PORT, mode,
-             config.RADIO_STREAM_TOKEN_FILE.name, extra={"console": True})
+    log.info("Потік для iPhone: %s:%s (режим %s; доступ — ваші пристрої в Tailscale)",
+             host, config.RADIO_STREAM_PORT, mode, extra={"console": True})
     return stream

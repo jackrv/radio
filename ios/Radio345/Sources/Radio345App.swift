@@ -9,7 +9,6 @@ struct Radio345App: App {
             ContentView()
                 .environment(model)
                 .preferredColorScheme(.dark)
-                .onOpenURL { model.settings.apply(link: $0.absoluteString) }
         }
     }
 }

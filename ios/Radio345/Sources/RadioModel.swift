@@ -107,7 +107,7 @@ final class RadioModel {
 
     func start() {
         guard settings.isConfigured else {
-            state = .failed("Вкажіть адресу Mac і токен")
+            state = .failed("Вкажіть адресу \(settings.receiver.title) у налаштуваннях")
             return
         }
         do {
@@ -148,7 +148,7 @@ final class RadioModel {
         // Новий запит щоразу: сервер віддає свіжий запас і живий край ефіру.
         guard let url = settings.url(settings.channel.path(filterSignals: settings.filterSignals),
                                      query: [URLQueryItem(name: "s", value: String(Int(Date().timeIntervalSince1970)))]) else {
-            state = .failed("Некоректна адреса Mac")
+            state = .failed("Некоректна адреса \(settings.receiver.title)")
             return
         }
         let player = StreamPlayer(url: url, maxQueuedSeconds: settings.channel == .live ? 2.5 : 6) { [weak self] event in
@@ -243,9 +243,9 @@ final class RadioModel {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if code == 401 {
+            if code == 403 {
                 macReachable = true
-                if !isListening { state = .failed("Токен не підійшов") }
+                if !isListening { state = .failed("Доступ лише з вашого облікового запису Tailscale") }
                 return
             }
             guard code == 200 else { macReachable = false; return }
@@ -285,6 +285,18 @@ final class RadioModel {
     func endTransmit() async {
         await transmitter.end()
         streamPlayer?.muted = atHome
+    }
+
+    /// Перемикання Mac ↔ Pi: інший сервер — інша історія фраз і стан мережі.
+    func receiverChanged() {
+        lastClipId = 0
+        clips = []
+        macReachable = nil
+        inMacNetwork = nil
+        awayPolls = 0
+        transmitter.serverEnabled = false
+        settingsChanged()
+        startPolling()
     }
 
     /// Перезапуск потоку після зміни налаштувань (фільтр сигналів).

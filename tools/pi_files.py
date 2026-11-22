@@ -34,7 +34,6 @@ ENTRY_MODULES = (
 )
 
 EXTRA_FILES = (
-    "mobile/radio.html",          # сторінка для Safari
     "requirements-pi.txt",
     "deploy/radio345-node.service",
     "deploy/pi-files.txt",

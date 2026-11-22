@@ -3,7 +3,9 @@
 Лише підказка: нічого не записує. Пара «почуте слово → позивний» з’являється,
 коли Whisper поставив перед тим самим номером інше слово, ніж оператор
 у правильному тексті, або (для позивного без номера) написав схоже слово
-замість нього. Оператор сам вирішує, що додати; збереження перевіряє список
+замість нього. Записи, де нинішня обробка тексту вже знайшла цей позивний
+(нечіткий пошук, номери, чинні алиаси), не рахуються: алиас там нічого не змінить.
+Оператор сам вирішує, що додати; збереження перевіряє список
 тими самими правилами, що й ручну правку.
 """
 from collections import defaultdict
@@ -31,11 +33,13 @@ def _fold(word):
     return word.translate(FOLD)
 
 
-def collect(records, callsigns, all_names, current_aliases):
+def collect(records, callsigns, all_names, current_aliases, resolved=None):
     """records: [{"id", "reference", "raw_text"}] — розмічене мовлення.
 
-    all_names — імена всіх словників; current_aliases — {почуте: позивний}.
+    all_names — імена всіх словників; current_aliases — {почуте: позивний};
+    resolved — {id запису: позивні, які обробка вже знайшла у фінальному тексті}.
     """
+    resolved = resolved or {}
     found = defaultdict(lambda: {"count": 0, "records": [], "numbers": set()})
 
     def add(heard, name, number, record_id):
@@ -62,7 +66,7 @@ def collect(records, callsigns, all_names, current_aliases):
             if not names or len(names) != 1:
                 continue
             name = next(iter(names))
-            if _fold(heard) != _fold(name):
+            if _fold(heard) != _fold(name) and name not in resolved.get(record["id"], ()):
                 add(heard, name, number, record["id"])
 
         ref_words = {_fold(v) for kind, v in ref_items if kind == "word"}
@@ -73,7 +77,7 @@ def collect(records, callsigns, all_names, current_aliases):
                 continue
             options = [(fuzz.ratio(_fold(w), _fold(name)), w) for w in hyp_words
                        if _fold(w) not in ref_words and len(w) >= MIN_LENGTH]
-            if options:
+            if options and name not in resolved.get(record["id"], ()):
                 score, heard = max(options)
                 if score >= STANDALONE_MIN_SIMILARITY:
                     add(heard, name, None, record["id"])
@@ -116,3 +120,28 @@ def collect(records, callsigns, all_names, current_aliases):
                                        & set(flags))})
     result.sort(key=lambda c: (not c["addable"], -c["count"], c["heard"]))
     return result
+
+
+def final_callsigns(records, db_path, archive):
+    """{id: позивні фінального тексту} — справжня обробка з чинними списками; лише читання.
+
+    Збій (немає таблиць, стара база) — порожній словник: кандидати як раніше, за сирим текстом.
+    """
+    from unittest.mock import Mock
+    from core.text_analysis import analyze_text
+    from services.text_replay import load_setup, templates
+    try:
+        dictionaries, short_garbage, values = load_setup(db_path, archive)
+        current = {"phrases": tuple(values.get("phrase_templates", ())),
+                   "patterns": tuple(values.get("phrase_patterns", ())),
+                   "aliases": (dict(values.get("aliases", {})), dict(values.get("callsign_aliases", {})))}
+        result = {}
+        with templates(**current):
+            for record in records:
+                raw = record.get("raw_text") or ""
+                if raw.strip():
+                    found = analyze_text(raw, *dictionaries, short_garbage, Mock()).callsigns
+                    result[record["id"]] = {name for name, *_ in found}
+        return result
+    except Exception:
+        return {}

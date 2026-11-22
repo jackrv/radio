@@ -54,3 +54,27 @@ def test_callsign_word_is_blocked_and_standalone_callsign_gets_candidates():
     dubok = items[("дубок", "дуб")]
     assert dubok["count"] == 1 and "no_number" in dubok["flags"] and dubok["addable"]
     assert ("прийнято", "дуб") not in items, "слова з правильного тексту не стають кандидатами"
+
+
+def test_records_already_fixed_by_processing_do_not_count():
+    cs = Callsigns.from_lines(LINES)
+    records = [rec(1, "Вишня 210, прийом", "гуща 210, прийом"), rec(2, "Вишня 210", "гуща 210"),
+               rec(3, "Дуб, прийом", "дул, прийом")]
+    items = by_heard(collect(records, cs, set(cs.names), {}, resolved={"r1": {"вишня"}, "r3": {"дуб"}}))
+    assert items[("гуща", "вишня")]["records"] == ["r2"], "у r1 обробка вже знайшла позивний"
+    assert ("дул", "дуб") not in items
+    assert not collect(records[:1], cs, set(cs.names), {}, resolved={"r1": {"вишня"}})
+
+
+def test_final_callsigns_uses_real_processing_and_survives_broken_database(tmp_path):
+    import sqlite3
+    from services.alias_candidates import final_callsigns
+    from services.dictionary_store import init_db
+    db = tmp_path / "events.db"
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'вишня: 210')")
+    found = final_callsigns([rec(1, "Вишня 210", "вишня 210, прийом"), rec(2, "Вишня 210", "")], db, tmp_path)
+    assert found == {"r1": {"вишня"}}
+    (tmp_path / "bad.db").write_text("not sqlite")
+    assert final_callsigns([rec(1, "x", "вишня 210")], tmp_path / "bad.db", tmp_path) == {}

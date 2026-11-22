@@ -101,7 +101,10 @@ def register(app, ctx):
             all_names, _ = _dictionary_names(db)
         callsigns = Callsigns.from_lines(lines)
         records = recordings.labelled_speech()
-        return {"items": collect(records, callsigns, all_names, active["callsign_aliases"]), "records": len(records)}
+        from services.alias_candidates import final_callsigns
+        resolved = final_callsigns(records, db_path, recordings.root)
+        return {"items": collect(records, callsigns, all_names, active["callsign_aliases"], resolved),
+                "records": len(records)}
 
     @app.get("/api/text-lists/noise-candidates")
     def noise_candidates(admin=Depends(actor)):

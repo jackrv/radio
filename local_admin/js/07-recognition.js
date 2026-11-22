@@ -949,11 +949,12 @@
     load.addEventListener("click", () => action(async () => {
       if (out.childNodes.length) { out.replaceChildren(); load.textContent = "Кандидати з архіву"; return; }
       load.textContent = "Сховати кандидатів";
+      out.replaceChildren(el("p", "muted small", "Перевіряю розмічені записи через обробку тексту…"));
       const data = await request("/api/text-lists/callsign-alias-candidates");
       out.replaceChildren();
       if (!data.items.length) { out.append(el("p", "muted small", `Розмічених записів мовлення: ${data.records}. Кандидатів немає.`)); return; }
       out.append(el("p", "muted small", `З ${data.records} розмічених записів: слово Whisper перед тим самим номером, що й позивний у правильному тексті. `
-        + "Додавайте лише варіанти, які не можуть бути звичайним словом."));
+        + "Записи, де обробка тексту вже знайшла цей позивний, не враховано. Додавайте лише варіанти, які не можуть бути звичайним словом."));
       const table = el("table"), head = el("tr");
       for (const h of ["Почуто", "Позивний", "Разів", "Схожість", "Примітки", ""]) head.append(el("th", "", h));
       table.append(head);

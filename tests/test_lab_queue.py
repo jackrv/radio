@@ -233,3 +233,32 @@ def test_clear_removes_only_done_and_interrupted_jobs_can_be_retried(tmp_path):
     lab_queue.retry(tmp_path, a["id"])
     jobs = lab_queue.read(tmp_path)["jobs"]
     assert [(j["preset"], j["status"], j["note"]) for j in jobs] == [("base", "queued", "еталон")]
+
+
+def test_short_telegram_summary_compares_with_base(tmp_path):
+    import json
+    from services import lab_notify
+    def run_dir(name, **summary):
+        d = tmp_path / name; d.mkdir()
+        (d / "metrics.json").write_text(json.dumps({"summary": {"speech_records": 100, **summary}}))
+    run_dir("20261122T200000Z_q-base", exact_phrases=10, wer=0.6, digits_exact=0.3, missed_speech=5, false_text_on_non_speech=7)
+    run_dir("20261122T210000Z_q-word-silence", exact_phrases=12, wer=0.58, digits_exact=0.31, missed_speech=6, false_text_on_non_speech=3)
+    text = lab_notify.summary_text(tmp_path, "Whisper: слова й довгі паузи", "done", "20261122T210000Z_q-word-silence", 42)
+    assert "42 хв" in text and "Без правок: 12 (база 10)" in text and "WER: 58,0 % (база 60,0 %)" in text
+    assert "вигадки на шумі/сигналах: 3 (база 7)" in text and "Черга завершена" in text
+    lab_queue.add(tmp_path, "resegment")
+    assert "Далі: «Повторна нарізка запису»" in lab_notify.summary_text(tmp_path, "X", "done", "20261122T210000Z_q-word-silence", 1)
+    assert "помилка" in lab_notify.summary_text(tmp_path, "X", "failed", None, 1)
+
+
+def test_runner_reports_each_finished_job_through_notify(tmp_path, monkeypatch):
+    sent = []
+    lab_queue.add(tmp_path, "base")
+    launcher, capture, clock = FakeLauncher(), FakeCapture(), Clock()
+
+    def spawn(args, log):
+        return FakeProcess(0)
+    lab_queue.run(tmp_path, launcher=launcher, spawn=spawn, sleep=clock.sleep, now=clock.now, cooldown=0,
+                  capture=capture, notify=sent.append, estimate=lambda preset: 600)
+    assert len(sent) == 2 and sent[0].startswith("▶️ Лабораторія: старт «Як зараз у приймачі», орієнтовно 10 хв")
+    assert "Як зараз у приймачі" in sent[1] and "Черга завершена" in sent[1]

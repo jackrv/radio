@@ -364,7 +364,7 @@ def _run_dir_for(root, name, since):
 
 
 def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S,
-        estimate=None, capture=None):
+        estimate=None, capture=None, notify=None):
     """Виконує тести по черзі, доки є що виконувати або не попросили зупинитись.
 
     root — тека експериментів (черга); лабораторія запускається з кореня проєкту.
@@ -472,6 +472,13 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 continue
             preset = PRESETS[job["preset"]]
             name = f"q-{job['preset']}"
+            if notify and last_finish is None:   # наступні старти оголошує підсумок попереднього тесту
+                try:
+                    from services import lab_notify
+                    left = sum(j["status"] == "queued" for j in read(root)["jobs"]) - 1
+                    notify(lab_notify.start_text(preset["title"], max(1, round(estimate(job["preset"]) / 60)), left))
+                except Exception:
+                    pass
             logs = queue_dir(root) / "queue-logs"
             logs.mkdir(exist_ok=True)
             began = now()
@@ -494,6 +501,15 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             _finish_job(root, job["id"], status=status, finished=now(), returncode=process.returncode, pid=None,
                         run_dir=_run_dir_for(root, name, began))
             last_finish = now()
+            # Короткий підсумок адміністраторам; збій надсилання не зупиняє чергу.
+            try:
+                from services import lab_notify   # лише текст; надсилання — через notify (CLI-виконавець)
+                text = lab_notify.summary_text(root, preset["title"], status, _run_dir_for(root, name, began),
+                                               max(1, round((last_finish - began) / 60)))
+                if notify:
+                    notify(text)
+            except Exception:
+                pass
     finally:
         if capture_by_us:
             try:
@@ -520,7 +536,9 @@ def main(argv=None):
             except BlockingIOError:
                 print("Виконавець черги вже працює")
                 return 1
-            run(root, launcher=Launcher(Path(args.launcher_root)))
+            from services import lab_notify
+            run(root, launcher=Launcher(Path(args.launcher_root)),
+                notify=lambda text: lab_notify.send(text, Path(args.launcher_root)))
     return 0
 
 

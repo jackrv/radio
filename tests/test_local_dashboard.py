@@ -710,6 +710,8 @@ def test_storage_status_endpoint_requires_auth_and_does_not_create_archive(setup
 
 
 def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path, monkeypatch):
+    # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
+    monkeypatch.setattr('core.template_text.CLOSING_TURN', False)
     from services import panel_jobs as text_jobs
     monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
     """Кнопка «Перевірити на моїх еталонах»: порівняння до/після, нічого не зберігається."""
@@ -897,7 +899,7 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         assert client.post("/session", json={"token": KEY}, headers={"Origin": ORIGIN}).status_code == 204
         h = {"Origin": ORIGIN}
         state = client.get("/api/lab/queue").json()
-        assert {p["key"] for p in state["presets"]} >= {"base", "no-prompt"} and "args" not in state["presets"][0]
+        assert {p["key"] for p in state["presets"]} >= {"base", "dictionary-blocks"} and "args" not in state["presets"][0]
         assert state["capture"] == {
             "active": False, "until": None, "unloaded": None, "pending_records": 0,
             "archive": {"saved": 0, "pending": 0, "processed": 0, "last_recorded_at": None, "audio_seconds": 0},
@@ -906,7 +908,7 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         assert client.post("/api/lab/queue/start", json={}, headers=h).status_code == 422, "порожня черга"
         assert client.post("/api/lab/queue", json={"preset": "nope"}, headers=h).status_code == 422
         a = client.post("/api/lab/queue", json={"preset": "base"}, headers=h).json()["jobs"][0]["id"]
-        b = client.post("/api/lab/queue", json={"preset": "no-retry", "note": "друга перевірка"}, headers=h).json()["jobs"][1]["id"]
+        b = client.post("/api/lab/queue", json={"preset": "word-silence", "note": "друга перевірка"}, headers=h).json()["jobs"][1]["id"]
         order = client.post(f"/api/lab/queue/{b}/move", json={"delta": -1}, headers=h).json()["jobs"]
         assert [j["id"] for j in order] == [b, a]
         assert client.post("/api/lab/queue/start", json={"start_at": 4000000000}, headers=h).status_code == 200

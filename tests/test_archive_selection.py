@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from services.recordings import RecordingStore
-from services.archive_backup import create_archive_backup, verify_archive_backup, restore_archive_backup, inventory
+from services.archive_inventory import inventory
 from services.mention_selection import find, save_selection, load_selection
 
 
@@ -43,27 +43,6 @@ def test_selection_order_override_sorts_all_pages_and_archive_without_changing_m
     assert saved['ids']==before and saved['order']=='old'
     assert find(store.root,'клен',0,4e9,order='unreviewed')['ids'][0]==f'{106:032x}'
     with pytest.raises(ValueError):page_selection(store.root,saved,0,100,order='invalid')
-
-
-def test_archive_backup_restore_and_corruption(tmp_path):
-    store,a,b=corpus(tmp_path)
-    result=create_archive_backup(store.root,tmp_path/'backups')
-    copy=tmp_path/'backups'/result['name']
-    assert verify_archive_backup(copy)=={'records':2,'verified':True}
-    assert restore_archive_backup(copy,tmp_path/'restored')=={'records':2,'verified':True}
-    restored=RecordingStore(tmp_path/'restored')
-    assert restored.audio(a)==store.audio(a)
-    with pytest.raises(FileExistsError): restore_archive_backup(copy,store.root)
-    (copy/(a+'.wav')).write_bytes(b'bad')
-    with pytest.raises(ValueError): verify_archive_backup(copy)
-    assert not (tmp_path/'do-not-create').exists()
-
-
-def test_backup_missing_audio_never_publishes_partial_copy(tmp_path):
-    store,a,_=corpus(tmp_path)
-    (store.root/(a+'.wav')).unlink()
-    with pytest.raises(FileNotFoundError): create_archive_backup(store.root,tmp_path/'backups')
-    assert not list((tmp_path/'backups').iterdir())
 
 
 def test_inventory_grace_and_no_automatic_deletion(tmp_path):

@@ -123,6 +123,46 @@ def fix_double_over(text):
     return _OVER_RUN.sub(run, text)
 
 
+# Кінцевий оборот «прийнято, прийом», почутий Whisper як «прийом» + випадкове слово (22.11.2026,
+# docs/reports/2026-11-22-closing-turn.md). Лише в самому кінці тексту; «випадкове» — слово поза
+# словниками, зворотами й службовими словами. Правила вивчено на tune/train, обрано на tune/val,
+# перевірено один раз на holdout: 0 гірших фраз, 0 змін на noise/notification/room.
+#   R2  «… прийом прийом [прийом…]»     → «… прийнято, прийом»
+#   R1  «… прийом <випадкове>»           → «… прийнято, прийом»
+#   R3  «… <число|позивний> <випадкове> прийом» → «… <число|позивний> прийнято, прийом»
+CLOSING_TURN = True
+_CLOSING_FAMILY = {"прийом", "прийнято", "прийняв", "я"}
+
+
+def fix_closing_turn(text, is_known, is_callsign):
+    """Кінцевий «прийнято, прийом» замість «прийом» + випадкового слова; решта тексту не змінюється."""
+    if not CLOSING_TURN:
+        return text
+    tokens = list(_TOKEN.finditer(text))
+    words = [basic_normalize(m.group()) for m in tokens]
+    if len(words) < 2 or words[-2:] == ["прийнято", "прийом"]:
+        return text
+
+    def random_word(w):
+        return not w.isdigit() and w not in _CLOSING_FAMILY and not is_known(w)
+
+    start = None
+    if words[-1] == "прийом" and words[-2] == "прийом":
+        start = len(words) - 2
+        while start > 0 and words[start - 1] == "прийом":
+            start -= 1
+    elif words[-2] == "прийом" and random_word(words[-1]):
+        start = len(words) - 2
+    elif (len(words) >= 3 and words[-1] == "прийом" and random_word(words[-2])
+          and (words[-3].isdigit() or is_callsign(words[-3]))):
+        start = len(words) - 2
+    if start is None:
+        return text
+    first = tokens[start]
+    accepted = "Прийнято" if first.group()[:1].isupper() else "прийнято"
+    return text[:first.start()] + accepted + ", прийом" + text[tokens[-1].end():]
+
+
 _NAME = r"([^\W\d_]{3,})"
 _HUNDREDS_SPLIT = re.compile(_NAME + r",?\s+(\d00),\s*(\d{1,2})\b(?!\s*\d)")
 _NAME_COMMA_NUMBER = re.compile(_NAME + r",\s+(\d{1,4})\b")
@@ -241,4 +281,8 @@ def template_text(text, callsigns, known_names=()):
             pos = end
     # Шаблони цілих фраз — після слів і зворотів: виправляють лише написання почутих слів.
     from core.phrase_patterns import apply_patterns
-    return strip_final_period(split_code_pairs(fix_double_over(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names))))
+    text = fix_double_over(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names))
+    callsign_names = {_fold(n) for n in callsigns.names}
+    text = fix_closing_turn(text, lambda w: protected(w) or _fold(w) in vocabulary,
+                            lambda w: _fold(w) in callsign_names or basic_normalize(w) in address_forms)
+    return strip_final_period(split_code_pairs(text))

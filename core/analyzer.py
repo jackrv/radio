@@ -224,6 +224,40 @@ def _header_callsigns(text, callsigns):
 _SENDER_PHRASES = (("посилку", "отримав"), ("прийняв",))
 
 
+def confident_roles(text, to_found, from_found, callsigns):
+    """Ролі з тексту Whisper без сумнівних позивних без номера.
+
+    Позивний без номера Whisper часто бере з підказки. У «кому/від» він лишається, лише
+    якщо стоїть у впевненій позиції: на початку фрази (в «шапці» з позивних і цифр),
+    одразу після «я» або у фразі до 3 слів. Знахідки позивних і доставка не змінюються.
+    22.11.2026, docs/reports/2026-11-22-callsign-leak.md: holdout хибних у ролях 102 → 70,
+    вірних 135 → 134.
+    """
+    if not any(not item[1] for item in (*to_found, *from_found)):
+        return to_found, from_found
+    words = [w.translate(FOLD) for w in normalize(text).split()]
+    try:
+        names = {n.translate(FOLD) for n in getattr(callsigns, "names", ())}
+    except TypeError:
+        names = set()
+
+    def confident(name):
+        if len(words) <= 3:
+            return True
+        target = name.translate(FOLD)
+        for i, word in enumerate(words):
+            if word != target:
+                continue
+            if i > 0 and words[i - 1] == "я":
+                return True
+            if all(w in names or w.isdigit() for w in words[:i]):
+                return True
+        return False
+
+    keep = lambda found: [item for item in found if item[1] or confident(item[0])]
+    return keep(to_found), keep(from_found)
+
+
 def split_roles(text: str, callsigns):
     """Разделяет найденные позывные на адресата и отправителя.
 

@@ -48,9 +48,6 @@ def register(app, ctx):
     def backups(admin=Depends(actor)):
         return {"items": backups_overview(backup_dir)}
 
-    @app.post('/api/archive-backups', status_code=202)
-    def archive_backup(admin=Depends(actor)):
-        return start_task(ctx, 'archive_backup', actor_id=admin)
 
     @app.post('/api/archive-inventory', status_code=202)
     def archive_inventory(admin=Depends(actor)):

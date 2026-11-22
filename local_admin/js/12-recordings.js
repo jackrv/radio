@@ -533,15 +533,20 @@
         bar.append(fill); goal.append(bar);
       }
       const today = summary.reviewed_today;
-      const before = quality.raw_text.wer, after = quality.final_text.wer;
+      // WER: крупно — сьогоднішній ефір (як «Без правок»), дрібно — за весь час.
+      const allBefore = quality.raw_text.wer, allAfter = quality.final_text.wer;
+      const qt = summary.quality_today, hasToday = qt?.final_text?.wer != null && qt?.raw_text?.wer != null;
+      const before = hasToday ? qt.raw_text.wer : allBefore, after = hasToday ? qt.final_text.wer : allAfter;
       const delta = before != null && after != null ? after - before : null;
       const tiles = [goal,
         tile("Сьогодні", typeof today === "number" ? num(today) : "—", `усього ${num(summary.reviewed)}`, today ? "live compact" : "compact",
              "Записів розмічено сьогодні; нижче — усього перевірених"),
-        tile("WER до → після", `${pct(before)} → ${pct(after)}`,
-             delta == null ? "" : `обробка: ${delta <= 0 ? "−" : "+"}${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. ${delta <= 0 ? "помилок" : "помилок ⚠"}`,
+        tile(hasToday ? "WER сьогодні до → після" : "WER до → після", `${pct(before)} → ${pct(after)}`,
+             [delta == null ? "" : `обробка: ${delta <= 0 ? "−" : "+"}${Math.abs(delta * 100).toFixed(1).replace(".", ",")} п.п. ${delta <= 0 ? "помилок" : "помилок ⚠"}`,
+              hasToday ? `за весь час ${pct(allBefore)} → ${pct(allAfter)}` : ""].filter(Boolean).join(" · "),
              delta == null ? "wide" : delta <= 0 ? "good wide" : "bad wide",
-             "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення)"),
+             "Частка помилкових слів: сирий текст Whisper → після обробки (позивні, номери, оформлення). " +
+             "Крупно — сьогоднішній ефір за днем запису; дрібно — усі розмічені фрази."),
         tile("У списку", num(page.total), VIEW_SHORT[editsValue() ? "person" : $("recording-view").value] || "", "compact",
              `Скільки записів у списку праворуч — за вибраним видом, періодом і пошуком. Вид: ${$("recording-view").selectedOptions?.[0]?.dataset.title || "—"}`)];
       if (searchQuery()) {

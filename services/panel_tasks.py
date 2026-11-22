@@ -9,7 +9,7 @@ def execute(job, progress):
     from services.recordings import RecordingStore
     options = job.get("options") or {}
     actor = job.get("actor_id")
-    if job["kind"] in ("backup", "archive_backup", "archive_inventory", "archive_learning", "training_export", "sync_events") and actor is None:
+    if job["kind"] in ("backup", "archive_inventory", "archive_learning", "training_export", "sync_events") and actor is None:
         raise PermissionError("Для операції потрібен адміністратор")
     if actor is not None:
         from contextlib import closing
@@ -22,11 +22,8 @@ def execute(job, progress):
     if job['kind']=='archive_learning':
         from services.archive_learning import learn_saved_archive
         return learn_saved_archive(job['db_path'],store,actor,progress=progress)
-    if job["kind"] == "archive_backup":
-        from services.archive_backup import create_archive_backup
-        return create_archive_backup(store.root, Path(job['db_path']).resolve().parent / '.local-archive-backups', progress=progress)
     if job["kind"] == "archive_inventory":
-        from services.archive_backup import inventory
+        from services.archive_inventory import inventory
         return inventory(store.root)
     if job["kind"] == "backup":
         from services.db_backup import create_backup

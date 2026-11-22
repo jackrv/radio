@@ -583,6 +583,13 @@ class RecordingStore:
         # Зведення не використовує number_match; його нормалізація дорожча за WER/CER.
         decoded = [self.decode(row, include_number_match=False) for row in rows]
         day_start = _day_start()
+        # WER лише сьогоднішнього ефіру (за днем запису): видно дію свіжих правил, а не всю історію.
+        today_speech = [r for r in decoded if r["label"] == "speech" and r["created"] >= day_start]
+        quality_today = {}
+        for stage in ("raw_text", "final_text"):
+            count = sum(r["quality"][stage]["reference_words"] for r in today_speech)
+            errors = sum(r["quality"][stage]["word_errors"] for r in today_speech)
+            quality_today[stage] = {"wer": errors / count if count else None, "reference_words": count}
         for stage in ("raw_text", "final_text"):
             speech = [r for r in decoded if r["label"] == "speech"]
             errors = sum(r["quality"][stage]["word_errors"] for r in speech)
@@ -598,6 +605,7 @@ class RecordingStore:
             roles[role] = {"evaluated": len(matches), "correct": sum(matches),
                            "accuracy": sum(matches) / len(matches) if matches else None}
         return {"roles": roles, "statuses": statuses, "reviewed": len(rows), "bytes": size, "quality": quality,
+                "quality_today": quality_today,
                 "retention_days": self.retention_days, "max_bytes": self.max_bytes,
                 "low_rms_retention_seconds": self.low_rms_retention_seconds,
                 "reviewed_protected": True,

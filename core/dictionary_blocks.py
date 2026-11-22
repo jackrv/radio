@@ -86,12 +86,18 @@ def constrain_dictionary_text(text,callsigns,commands):
                 digits.append(item.group());ends.append(item.end());end=item.end()
                 if len(''.join(digits))>=9:break
             if not digits:continue
-            candidates=[];exact=[]
+            candidates=[];exact=[];forms=[]
             for code in allowed:
                 if not code.isascii() or not code.isdigit():continue
                 groups=command_groups(commands,name,code);length=len(code)
                 used=next((j+1 for j in range(len(digits)) if len(''.join(digits[:j+1]))==length),None)
-                if used is None:continue
+                if used is None:
+                    # Втрачений провідний нуль: «0 22» почуто як «22» — та сама група, лише форма коду,
+                    # не найближче число. 22.11.2026: 7 вірних, 0 гірших. Половину подвоєної пари
+                    # («42» при 4242) відновлює core.command_completion із позначкою «почуто».
+                    if code=='0'+digits[0]:
+                        forms.append((tokens[i+1].start(),ends[0],' '.join(command_groups(commands,name,code))))
+                    continue
                 heard=''.join(digits[:used]);target=' '.join(groups)
                 if heard==code:exact.append((tokens[i+1].start(),ends[used-1],target));continue
                 if len(groups)<2:continue
@@ -100,7 +106,8 @@ def constrain_dictionary_text(text,callsigns,commands):
                 # Одна ціла група вже почута правильно; відновлюється цілий словниковий блок.
                 if any(a==b for a,b in zip(groups,split)):
                     candidates.append((tokens[i+1].start(),ends[used-1],target))
-            chosen=max(exact,key=lambda item:item[1]) if exact else candidates[0] if len(candidates)==1 else None
+            chosen=(max(exact,key=lambda item:item[1]) if exact else candidates[0] if len(candidates)==1
+                    else forms[0] if not candidates and len(forms)==1 else None)
             if chosen and text[chosen[0]:chosen[1]]!=chosen[2]:
                 edits.append(chosen);changes.append(dict(kind='command_block',name=name,heard=text[chosen[0]:chosen[1]],expected=chosen[2]))
         else:

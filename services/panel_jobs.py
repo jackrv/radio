@@ -14,8 +14,8 @@ from contextlib import contextmanager
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = ("queued", "running")
 LISTS = ("phrase_templates", "phrase_patterns", "callsign_aliases", "aliases", "blacklist", "short_garbage")
-KINDS = ("impact", "evaluate", "suggestions", "notification_evaluation", "backup", "archive_backup", "archive_inventory", "archive_learning", "training_export", "sync_events")
-NON_CANCELLABLE = ("backup", "archive_backup", "archive_learning", "training_export", "sync_events")
+KINDS = ("impact", "evaluate", "suggestions", "notification_evaluation", "backup", "archive_inventory", "archive_learning", "training_export", "sync_events")
+NON_CANCELLABLE = ("backup", "archive_learning", "training_export", "sync_events")
 
 
 class QueueFull(ValueError):

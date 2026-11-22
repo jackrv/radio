@@ -285,7 +285,6 @@
   $("backup-now").addEventListener("click", () => backupJob().run());
 
   for (const [kind, endpoint, id, render] of [
-    ['archive_backup', '/api/archive-backups', 'archive-backup', r => `Копію ${r.name} перевірено: ${num(r.records)} записів · ${storageSize(r.bytes)}. Зберігається локально у .local-archive-backups/.`],
     ['archive_inventory', '/api/archive-inventory', 'archive-inventory', r => `Індекс: ${num(r.indexed)}; WAV: ${num(r.wav_files)}. Без WAV: ${r.missing.length}; без індексу старше години: ${r.orphans.length} · ${storageSize(r.orphan_bytes)}. Нічого не видалено.`],
   ]) {
     const button = $(`${id}-now`), box = $(`${id}-result`);

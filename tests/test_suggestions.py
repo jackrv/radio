@@ -51,7 +51,9 @@ def test_repeated_findings_become_suggestions_and_disappear_once_applied(tmp_pat
     assert "noise" not in {g["kind"] for g in overview(path)["groups"]}, "застосоване зникає"
 
 
-def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path):
+def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path, monkeypatch):
+    # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
+    monkeypatch.setattr('core.template_text.CLOSING_TURN', False)
     path = base_db(tmp_path)
     store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])
     data = read_lists(path)
@@ -64,7 +66,9 @@ def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path):
     ]
 
 
-def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path):
+def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path, monkeypatch):
+    # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
+    monkeypatch.setattr('core.template_text.CLOSING_TURN', False)
     from services.text_replay import countercheck
     path = base_db(tmp_path)
     store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])

@@ -14,11 +14,10 @@ from services.sqlite_connection import get_db
 from tools.check_sqlite_concurrency import run_stress
 
 
-@pytest.mark.parametrize("kind", ["archive", "learning", "lab"])
+@pytest.mark.parametrize("kind", ["learning", "lab"])
 @pytest.mark.parametrize("fail_backup", [False, True])
 def test_snapshot_connections_close_before_file_reads_and_on_failure(tmp_path, monkeypatch, kind, fail_backup):
     import config
-    from services.archive_backup import create_archive_backup
     from services.archive_learning import learn_saved_archive
     from services.recordings import RecordingStore
     from services.user_store import bootstrap_admin, init_users_db
@@ -61,8 +60,6 @@ def test_snapshot_connections_close_before_file_reads_and_on_failure(tmp_path, m
     monkeypatch.setattr(config, "DB_PATH", str(path))
 
     def run():
-        if kind == "archive":
-            return create_archive_backup(store.root, tmp_path / "backups")
         if kind == "learning":
             return learn_saved_archive(path, store, 1001)
         return snapshot_database(tmp_path / "snapshot.db")

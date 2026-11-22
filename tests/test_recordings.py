@@ -366,6 +366,12 @@ def test_summary_counts_phrases_without_edits_and_todays_reviews(tmp_path):
     assert summary['no_edits']==1 and summary['quality']['final_text']['reviewed_speech']==2
     assert summary['reviewed_today']==2
     assert summary['speech_today']==2 and summary['no_edits_today']==1
+    # WER сьогодні: 4 слова еталона, 1 помилка у final («клен» без «сорок»)
+    assert summary['quality_today']['final_text']['wer']==0.25 and summary['quality_today']['raw_text']['wer']==0.25
+    with store.connect() as db:
+        db.execute("UPDATE recordings SET created=created-3*86400")
+    later=store.summary()
+    assert later['quality_today']['final_text']['wer'] is None and later['quality']['final_text']['wer']==0.25
 
 
 def test_summary_skips_unused_number_checks_and_reads_day_boundary_once(tmp_path, monkeypatch):

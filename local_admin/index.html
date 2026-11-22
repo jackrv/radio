@@ -411,10 +411,10 @@
           <article class="panel sys"><div class="panel-head"><h3>Резервні копії бази</h3><button id="backup-now" class="ghost">Створити</button></div><div id="backup-job-result" role="status"></div>
             <div id="backups-summary"></div>
             <details><summary>Усі копії</summary><div id="backups" class="sys-list"></div></details></article>
-          <article class="panel sys"><h3>Резервна копія аудіокорпусу</h3>
-            <p class="muted small">Окремо від events.db: WAV, еталони й індекс. Повна перевірка контрольних сум; копії не видаляються автоматично.</p>
-            <div class="toolbar sys-actions"><button id="archive-backup-now" class="ghost">Створити копію корпусу</button><button id="archive-inventory-now" class="ghost">Звірити WAV з індексом</button></div>
-            <div id="archive-backup-result" role="status"></div><div id="archive-inventory-result" role="status"></div>
+          <article class="panel sys"><h3>Цілісність аудіоархіву</h3>
+            <p class="muted small">Чи для кожного запису індексу є WAV і навпаки. Лише перевірка — нічого не видаляє.</p>
+            <div class="toolbar sys-actions"><button id="archive-inventory-now" class="ghost">Звірити WAV з індексом</button></div>
+            <div id="archive-inventory-result" role="status"></div>
           </article>
         </div>
         <article class="panel"><h2>Сховище й автоматичне очищення</h2><div id="storage-status" aria-live="polite">Завантаження…</div></article>

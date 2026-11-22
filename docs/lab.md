@@ -49,6 +49,9 @@
 | `--bandpass`, `--temperature`, `--model`, `--min-rms` | обробка звуку й декодування |
 | `--whisper-option` | інші опції; `beam_size`, `patience` і дублікати заборонені |
 
+Рецепти черги в панелі (22.11.2026): `base`, `dictionary-blocks`, `word-silence`, `resegment`; вирішені досліди
+(без підказки/коду доби/фраз/словників, без другого шансу, bandpass, turbo) прибрано, параметри CLI лишилися.
+
 Ще не запущені рецепти (живий ефір не змінено):
 `dictionary-blocks` (`--prompt receiver-command-codes`, коди команд у підказці) і
 `word-silence` (`word_timestamps` + `hallucination_silence_threshold=2`; дивитися

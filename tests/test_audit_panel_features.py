@@ -59,12 +59,11 @@ def test_editor_highlights_are_optional_and_read_only(local):
     assert client.post('/api/text-check', json=request).status_code == 403
 
 
-def test_archive_inventory_and_backup_are_background_jobs(local):
+def test_archive_inventory_is_background_job(local):
     client,path,tmp=local
     store=RecordingStore(tmp/'recordings')
     store.save(b'\0\0'*1600,16000,{'status':'ready','raw_text':'synthetic'})
-    result=finish_job(client,path,client.post('/api/archive-backups',headers={'Origin':ORIGIN}))
-    assert result['records']==1
+    assert client.post('/api/archive-backups',headers={'Origin':ORIGIN}).status_code in (404,405)
     report=finish_job(client,path,client.post('/api/archive-inventory',headers={'Origin':ORIGIN}))
     assert report['missing']==[] and report['orphans']==[]
 

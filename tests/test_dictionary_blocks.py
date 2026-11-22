@@ -189,3 +189,20 @@ def test_lab_cannot_learn_callsign_number_from_holdout_references(tmp_path):
         db.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'клен: 600')")
     setup,*_=dictionaries_from(db_path,archive)
     assert setup[0].number_rules=={},'двох джерел tune недостатньо; holdout не є третім голосом'
+
+
+def test_lost_leading_zero_of_the_same_code_is_restored():
+    cs,commands=dictionaries()
+    assert tidy_text('грім 22, прийом',cs,commands)=='ГРІМ 0 22, прийом'
+    # половину пари лишає command_completion — з позначкою «почуто»
+    assert constrain_dictionary_text('злива 42, прийом',cs,commands)[0]=='злива 42, прийом'
+
+
+def test_lost_group_needs_unique_code_and_same_digits():
+    cs,_=dictionaries()
+    commands=command_dictionary(['грім 0 22','грім 22'])
+    assert constrain_dictionary_text('грім 22',cs,commands)[0]=='грім 22'      # «22» сам дозволений код
+    commands=command_dictionary(['злива 42 43'])
+    assert constrain_dictionary_text('злива 42',cs,commands)[0]=='злива 42'    # інша група не дописується
+    commands=command_dictionary(['грім 0 22'])
+    assert constrain_dictionary_text('грім 23',cs,commands)[0]=='грім 23'      # не найближче число

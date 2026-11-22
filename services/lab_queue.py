@@ -49,6 +49,8 @@ def _with(base, **changes):
     return args
 
 
+# Лише актуальні рецепти; вирішені досліди (без підказки, без коду доби, turbo, bandpass тощо)
+# прибрано 22.11.2026 — висновки в docs/lab-details.md і docs/ideas.md.
 PRESETS = {
     "base": {"title": "Як зараз у приймачі",
              "about": "Еталон для порівняння: увесь шлях, як в ефірі — Whisper із підказкою (позивні й останній код доби), "
@@ -64,30 +66,9 @@ PRESETS = {
                  "--whisper-option", "hallucination_silence_threshold=2"],
         "minutes": 30,
     },
-    "no-prompt": {"title": "Без підказки Whisper",
-                  "about": "Контрольний дослід: раніше відмова від підказки погіршила якість. Повторюйте лише з новими даними для перевірки цієї залежності; це не рекомендована зміна приймача.",
-                  "args": _with(BASE, prompt="none", daily_codes="off"), "minutes": 30},
-    "no-codes": {"title": "Без коду доби в підказці",
-                 "about": "Підказка лише з позивними, без останнього коду доби. Чи допомагає код доби правильно чути числа.",
-                 "args": _with(BASE, daily_codes="off"), "minutes": 30},
-    "no-whisper-phrases": {"title": "Без фраз із підказки",
-                           "about": "Залишити словники й код доби, але прибрати власний список фраз для Whisper.",
-                           "args": _with(BASE, prompt="receiver-no-phrases"), "minutes": 30},
-    "no-dictionary-prompt": {"title": "Без словників у підказці",
-                             "about": "Залишити власні фрази й код доби, але прибрати позивні та інші назви зі словників.",
-                             "args": _with(BASE, prompt="receiver-no-dictionary"), "minutes": 30},
-    "no-retry": {"title": "Без другого шансу",
-                 "about": "Не повторювати розпізнавання без підказки, коли Whisper зациклився. Скільки фраз рятує другий шанс.",
-                 "args": _with(BASE, retry="off"), "minutes": 25},
-    "bandpass": {"title": "Фільтр частот мовлення",
-                 "about": "Перед Whisper прибрати низький гул і високе шипіння (лишити смугу голосу). Може допомогти на шумному ефірі.",
-                 "args": _with(BASE, bandpass="on"), "minutes": 30},
     "resegment": {"title": "Повторна нарізка запису",
                   "about": "Різати запис на шматки з урахуванням гучності над фоном. Може зменшити вигадані слова на тиші між передачами.",
                   "args": _with(BASE, resegment="energy"), "minutes": 35},
-    "turbo": {"title": "Швидша модель (turbo)",
-              "about": "Whisper large-v3-turbo замість large-v3: у кілька разів швидша, зазвичай трохи гірша. Чи прийнятна якість.",
-              "args": _with(BASE, model="mlx-community/whisper-large-v3-turbo"), "minutes": 15},
 }
 _NOTE = re.compile(r"[\w\s.,:;!?()«»'’ʼ\"/+-]{0,200}\Z")
 
@@ -201,8 +182,8 @@ def request_stop(root, now=False):
                     _kill(job.get("pid"))
 
 
-# Відносна тривалість рецепта (до «як зараз»): turbo швидша, повторна нарізка — довша.
-DURATION_FACTOR = {"turbo": 0.4, "resegment": 1.2}
+# Відносна тривалість рецепта (до «як зараз»): повторна нарізка — довша.
+DURATION_FACTOR = {"resegment": 1.2}
 SECONDS_PER_RECORD = 4.0      # якщо минулих прогонів немає (18.11.2026: 2,9–4,0 с на запис)
 WINDOW_MARGIN = 1.15          # запас до кінця вікна
 

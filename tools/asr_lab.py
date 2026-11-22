@@ -453,7 +453,7 @@ class Lab:
     def process(self, pcm):
         import config
         from core.audio import prepare_audio
-        from core.analyzer import fmt, is_low_confidence_short, looks_like_garbage, split_roles, strip_dictionary_echo
+        from core.analyzer import confident_roles, fmt, is_low_confidence_short, looks_like_garbage, split_roles, strip_dictionary_echo
         from core.pipeline import build_text_pipeline
         from core.analyzer import correction_is_safe
         from services.text_lists import blacklist_key
@@ -548,7 +548,7 @@ class Lab:
         result["hypothesis"] = text
         result["stage"] = stage
         callsigns = self.dictionaries[0]
-        to_found, from_found = split_roles(text, callsigns)
+        to_found, from_found = confident_roles(text, *split_roles(text, callsigns), callsigns)
         result["hypothesis_recipient"], result["hypothesis_sender"] = fmt(to_found), fmt(from_found)
         timing["total_s"] = time.perf_counter() - started
         return result, timing

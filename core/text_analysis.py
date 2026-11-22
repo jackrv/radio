@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from core.analyzer import canonical_text, is_bare_callsign, is_short_garbage, split_roles
+from core.analyzer import canonical_text, confident_roles, is_bare_callsign, is_short_garbage, split_roles
 from core.template_text import template_text
 from core.transcript_format import tidy_text
 from core.dictionary_blocks import constrain_dictionary_text
@@ -36,7 +36,7 @@ def analyze_text(text, callsigns, commands, watch, short_garbage, log):
     cs_found = callsigns.find(text)
     cmd_found = commands.find(text)
     watch_found = watch.find(text)
-    to_found, from_found = split_roles(text, callsigns)
+    to_found, from_found = confident_roles(text, *split_roles(text, callsigns), callsigns)
     rejected = None
     if is_short_garbage(text, short_garbage) and not cs_found and not cmd_found and not watch_found:
         rejected = "short_garbage"

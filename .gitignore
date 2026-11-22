@@ -60,7 +60,6 @@ diagnostics-report.json
 .local-training/
 .local-text-checks/
 .local-selections/
-.local-archive-backups/
 
 # Особистий робочий простір VS Code
 radio345.code-workspace

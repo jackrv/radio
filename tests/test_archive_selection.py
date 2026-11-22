@@ -203,10 +203,12 @@ def test_reviewed_and_unreviewed_share_strict_time_order(tmp_path):
 
 def test_mentions_skip_unreviewed_records_filtered_by_program(tmp_path):
     from services.mention_selection import page_selection
+    import time
+    now = time.time() - 60
     store = RecordingStore(tmp_path/'recordings')
-    a = store.save(b'\0\0'*1600, 16000, {'status': 'ready', 'raw_text': 'Клен 12'})
-    c = store.save(b'\0\0'*1600, 16000, {'status': 'blacklist', 'raw_text': 'Клен 7'})
-    d = store.save(b'\0\0'*1600, 16000, {'status': 'low_confidence', 'raw_text': 'Клен 8'})
+    a = store.save(b'\0\0'*1600, 16000, {'status': 'ready', 'raw_text': 'Клен 12', 'captured_at': now})
+    c = store.save(b'\0\0'*1600, 16000, {'status': 'blacklist', 'raw_text': 'Клен 7', 'captured_at': now + 1})
+    d = store.save(b'\0\0'*1600, 16000, {'status': 'low_confidence', 'raw_text': 'Клен 8', 'captured_at': now + 2})
     assert find(store.root, 'клен', 0, 4e9)['ids'] == [a]
     # Розмічене оператором як мовлення лишається у вибірці за еталоном.
     store.review(d, 'Клен 8, прийом', 'speech', store.get(d)['revision'])

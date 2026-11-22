@@ -73,7 +73,7 @@ def read_manifest(path=MANIFEST):
     if not path.exists():
         return set()
     return {
-        line.strip() for line in path.read_text(encoding="utf-8").splitlines()
+        line.strip().lstrip("/") for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     }
 
@@ -82,9 +82,11 @@ def write_manifest(files, path=MANIFEST):
     header = (
         "# Файли для Raspberry Pi: git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt\n"
         "# Не редагуйте вручну: .venv/bin/python -m tools.pi_files --write (повноту перевіряє pytest).\n"
+        "# Шляхи з «/» на початку: без нього шаблон no-cone збігається на будь-якій глибині\n"
+        "# (.gitignore тягнув ios/.gitignore і claudeSearch/.gitignore).\n"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(header + "".join(f"{f}\n" for f in sorted(files)), encoding="utf-8")
+    path.write_text(header + "".join(f"/{f}\n" for f in sorted(files)), encoding="utf-8")
 
 
 def main(argv=None):

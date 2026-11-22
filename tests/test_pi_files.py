@@ -14,6 +14,12 @@ def test_manifest_covers_radio_node_imports():
     )
 
 
+def test_manifest_paths_are_anchored_to_repo_root():
+    lines = [line for line in pi_files.MANIFEST.read_text(encoding="utf-8").splitlines()
+             if line.strip() and not line.startswith("#")]
+    assert lines and all(line.startswith("/") for line in lines)
+
+
 def test_manifest_files_exist_and_are_not_private():
     root = Path(pi_files.ROOT)
     for name in pi_files.read_manifest():

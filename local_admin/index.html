@@ -123,14 +123,14 @@
             <select id="recording-view" aria-label="Що показати" title="Що показати">
               <optgroup label="Розмітка — ще не розмічені, нові першими">
                 <option value="radio">Ефір: є позивний або подія</option>
-                <option value="speech">Інше мовлення (часто розмови в кімнаті)</option>
-                <option value="deferred">Очікують розпізнавання</option>
-                <option value="filtered">Шум, сигнали й короткі (відсіяне програмою)</option>
+                <option value="speech" data-rare>Інше мовлення (часто розмови в кімнаті)</option>
+                <option value="deferred" data-rare>Очікують розпізнавання</option>
+                <option value="filtered" data-rare>Шум, сигнали й короткі (відсіяне програмою)</option>
               </optgroup>
               <optgroup label="Перегляд">
                 <option value="reviewed">Розмічені (останні першими)</option>
                 <option value="miniapp">Правки з Mini App</option>
-                <option value="captured">Записано під час тестів (разом з обробленими)</option>
+                <option value="captured" data-rare>Записано під час тестів (разом з обробленими)</option>
                 <option value="telegram">Надіслано в Telegram</option>
                 <option value="all">Усі записи</option>
               </optgroup>
@@ -140,7 +140,8 @@
                 <option value="no_roles">Мовлення без ролей</option>
                 <option value="unclear">Нерозбірливі</option>
               </optgroup>
-              <!-- Заповнюється з журналу дій: «Правки: Ім'я (N)»; значення — person:<ID>. -->
+              <!-- Заповнюється з журналу дій: «Правки: Ім'я (N)»; значення — person:<ID>.
+                   Рідкісні види (data-rare) і правки людей приховані: видно, лише коли їх відкрито посиланням з «Аналіз»/«Люди». -->
               <optgroup id="recording-people" label="Правки людей у Mini App"></optgroup>
             </select>
             <select id="recording-period" aria-label="Період" title="Період">

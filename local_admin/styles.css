@@ -1674,3 +1674,57 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .health-item.bad .health-detail { color:var(--bad); }
 .mention-row.unreviewed { border-left:3px solid var(--cyan); background:#142639; }
 .mention-row.reviewed { border-left:3px solid var(--border); }
+
+/* ===== Аудіоархів на вузькому екрані (≤ 900 px — там, де перелік уже не стоїть праворуч): нічого не вилазить за край ===== */
+@media (max-width: 900px) {
+  .archive-split, .archive-main { min-width: 0; max-width: 100%; }
+  /* Шапка: плитки у дві колонки, WER — на всю ширину; пауза мікрофона — смуга над фільтрами. */
+  .archive-bar { display: flex; flex-direction: column; gap: 8px; }
+  .archive-bar > .mic-square { order: 1; align-self: stretch; width: 100% !important; max-width: none; height: auto; min-height: 0; aspect-ratio: auto;
+    flex-direction: row; justify-content: flex-start; gap: 8px; padding: 7px 28px 7px 12px; }
+  .mic-square .mic-text { font-size: 12px; text-align: left; }
+  .archive-bar > .archive-filters { order: 2; }
+  .mic-square .mic-icon { font-size: 18px; }
+  .archive-stats { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: row dense; margin-top: 0; }
+  .stat-tile { min-width: 0; }
+  .stat-tile.goal, .stat-tile.wide, .stat-tile.search { grid-column: 1 / -1; }
+  .archive-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .archive-filters #recording-view, .archive-filters #recording-search { grid-column: 1 / -1; }
+  .archive-filters select, .archive-filters input, .archive-filters button { width: 100%; min-width: 0; margin: 0; }
+  /* Картка: тип запису — 2 колонки, ролі й поле — у межах картки, «Зберегти» і «Далі одразу» одна під одною. */
+  .recording-type { flex-direction: column; align-items: stretch; }
+  .recording-type .segmented { grid-template-columns: 1fr 1fr; }
+  .recording-type .segmented button { min-width: 0; white-space: normal; text-align: left; }
+  .recording-type .recording-chips, .roles-table { max-width: 100%; min-width: 0; }
+  .roles-table { width: 100%; }
+  .roles-table input { min-width: 0; }
+  .recording-text .text-head { flex-wrap: wrap; }
+  .recording-text .text-head .codes-apron { margin: 0; max-width: 100%; }
+  .text-input-box .fix-all { width: 84px; flex-basis: 84px; }
+  #recordings .recording-body .recording-actions { flex-direction: column; margin: 6px 0 0; border-radius: 10px; }
+  .recording-actions .autoplay-toggle { width: 100%; }
+  .recording-body .save-actions { width: 100%; }
+}
+
+/* ===== Бокове меню на вузькому екрані: один компактний рядок (емблема + вкладки) замість блоку на пів екрана ===== */
+@media (max-width: 900px) {
+  /* Колонка не ширша за екран: інакше рядок вкладок (nowrap) розтягує всю сторінку. */
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .app > .sidebar { min-width: 0; max-height: none; height: auto; overflow: visible; flex-direction: row; flex-wrap: nowrap; align-items: center;
+    gap: 6px; padding: 6px 10px; border-right: 0; border-bottom: 1px solid #1e2b39; }
+  .sidebar .brand { flex: none; padding: 0; cursor: default; }
+  .sidebar .brand > div, .sidebar .brand .brand-toggle-icon { display: none; }
+  .sidebar .brand .emblem { width: 34px; height: 34px; }
+  #nav { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  #nav::-webkit-scrollbar { display: none; }
+  #nav button { flex: none; margin: 0; padding: 6px 10px; font-size: 13px; }
+  /* Лаунчер і пауза мікрофона — у «Система → Стан» і в плашці стану вгорі. */
+  .sidebar .launcher-box { display: none; }
+}
+@media (max-width: 600px) {
+  /* Лише значки: назва сторінки й так у заголовку; підказка — при наведенні/утриманні. */
+  #nav { justify-content: space-between; }
+  #nav button { position: relative; padding: 7px; }
+  #nav .nav-label { display: none; }
+  #nav button > b { position: absolute; top: -2px; right: -4px; transform: scale(.8); }
+}

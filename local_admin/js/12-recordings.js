@@ -491,14 +491,19 @@
     // Люди з правками в Mini App — пунктами виду (обраний лишається обраним).
     { const chosen = $("recording-view").value;
       for (const person of page.editors || []) personOption(person.user_id, person.name, person.corrections);
-      $("recording-people").hidden = !($("recording-people").children || []).length;
       $("recording-view").value = chosen; }
-    // Кількість записів у кожному виді — за обраний період.
-    for (const option of $("recording-view").options) {
-      option.dataset.title ||= option.textContent;
-      const count = page.views?.[option.value];
-      option.textContent = `${option.dataset.title}${typeof count === "number" ? ` · ${count}` : ""}`;
-    }
+    // Кількість записів у кожному виді — за обраний період. Список короткий: порожні й рідкісні види
+    // (тести, черга, відсіяне, правки людей) приховані, крім обраного — туди ведуть посилання з інших сторінок.
+    { const chosen = $("recording-view").value;
+      for (const option of $("recording-view").options) {
+        option.dataset.title ||= option.textContent;
+        const count = page.views?.[option.value];
+        option.textContent = `${option.dataset.title}${typeof count === "number" ? ` · ${count}` : ""}`;
+        const rare = option.dataset.rare !== undefined || option.value.startsWith("person:");
+        option.hidden = option.value !== chosen && (rare || count === 0);
+      }
+      for (const group of $("recording-view").querySelectorAll?.("optgroup") || [])
+        group.hidden = ![...group.children].some(option => !option.hidden); }
     const quality = summary.quality;
     $("recording-summary-details").textContent = `Записів: ${Object.values(summary.statuses).reduce((a,b) => a+b, 0)} · перевірено: ${summary.reviewed} · аудіо: ${(summary.bytes / 1048576).toFixed(1)} МБ · WER Whisper: ${pct(quality.raw_text.wer)} · WER виходу: ${pct(quality.final_text.wer)} · мовлення без тексту: ${summary.missed_speech} · хибний текст на шумі ефіру/сигналі: ${summary.false_text} · кімнатний шум: ${summary.room ?? 0} (з текстом: ${summary.room_false_text ?? 0}) · кілька передач у записі: ${summary.multiple_messages ?? 0} з ${summary.speech_reviewed ?? 0} · точність «кому»: ${pct(summary.roles?.recipient?.accuracy)} (${summary.roles?.recipient?.evaluated || 0}) · «від кого»: ${pct(summary.roles?.sender?.accuracy)} (${summary.roles?.sender?.evaluated || 0}). Неперевірені: ${summary.low_rms_retention_seconds != null ? `тихі — ${Math.round(summary.low_rms_retention_seconds / 60)} хв, решта — ` : ""}${summary.retention_days} днів / ${(summary.max_bytes / 1073741824).toFixed(1)} ГБ; перевірені зберігаються.`;
     // Шапка: плитки — головна мета («Без правок», зі шкалою), сьогоднішня робота, WER до → після, записів у виді.

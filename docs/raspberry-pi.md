@@ -32,24 +32,29 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
   `ssh-keygen -t ed25519 -C radio345`, потім `ssh-add --apple-use-keychain ~/.ssh/id_ed25519`.
   В Imager вставляйте лише `.pub`;
 - Wi-Fi з країною (без неї Wi-Fi не ввімкнеться) або кабель Ethernet. Біля
-  передавача кабель надійніший;
+  передавача кабель надійніший. Для 5 ГГц канал роутера 36–48: канали 52–144 (DFS)
+  роутер мусить кидати на 1–10 хв, якщо «почує» радар, і перший запуск на них довгий.
+  Налаштування мережі з Imager застосовуються лише під час першого запуску; далі —
+  `nmcli` чи `sudo nmtui`;
 - часовий пояс;
 - Raspberry Pi Connect не вмикайте: віддалений доступ дає Tailscale.
 
 Перший вхід із Mac у тій самій мережі: `ssh pi@radio345.local`. Після
 `sudo tailscale up --ssh` Pi доступна з будь-якої мережі.
 
-Для роботи цілодобово:
+Для роботи цілодобово (стан на Trixie, перевірено 22.11.2026):
 
-- менше запису на карту: `Storage=volatile` у `/etc/systemd/journald.conf`
-  (журнал у пам’яті, після перезавантаження зникає) або `log2ram`;
+- журнал уже в пам’яті за замовчуванням (`journalctl --header` → `/run/log/journal`),
+  log2ram не потрібен;
+- апаратний watchdog уже ввімкнено: `systemctl show -p RuntimeWatchdogUSec` → `1min`.
+  Система, що зависла, перезавантажиться сама;
+- `sudo apt full-upgrade` після встановлення й `sudo apt install unattended-upgrades`
+  (типово — лише оновлення безпеки);
 - підкачка лише в пам’яті (zram), без файла `/var/swap` на карті (на 8 ГБ звільняє 2 ГБ):
   `printf '[Main]\nMechanism=zram\n' | sudo tee /etc/rpi/swap.conf.d/80-zram-only.conf`
   (спершу `sudo mkdir -p /etc/rpi/swap.conf.d`), перезавантаження, `losetup -l` порожній →
-  `sudo rm -f /var/swap`. Перевірено на Trixie, 22.11.2026;
-- `sudo apt install unattended-upgrades`, лише оновлення безпеки;
-- апаратний watchdog: `RuntimeWatchdogSec=15` у `/etc/systemd/system.conf`.
-  Система, що зависла, перезавантажиться сама;
+  `sudo rm -f /var/swap`;
+- `swapon`, `losetup`, `iw` лежать у `/usr/sbin`: без sudo — повний шлях;
 - батарейка RTC (ML2032), щоб після ввімкнення без мережі був правильний час;
 - overlay FS (лише читання) — пізніше, після налагодження: захищає карту від
   раптового вимкнення живлення, але заважає оновленням.

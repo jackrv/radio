@@ -24,8 +24,8 @@ def test_endpoint_validation_does_not_echo_input(url):
 
 def test_update_html_changes_only_endpoint(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
-    (tmp_path / "miniapp").mkdir()
-    page = tmp_path / "miniapp/index.html"
+    (tmp_path / "apps/miniapp").mkdir(parents=True)
+    page = tmp_path / "apps/miniapp/index.html"
     original = '<meta name="radio345-api" content="https://old.example">\n<script src="correction-editor.js?v=4"></script>\n'
     page.write_text(original)
     assert launcher.update_miniapp_api_url("https://NEW.example/") is True
@@ -35,8 +35,8 @@ def test_update_html_changes_only_endpoint(tmp_path, monkeypatch):
 
 def test_update_html_requires_one_meta(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
-    (tmp_path / "miniapp").mkdir()
-    page = tmp_path / "miniapp/index.html"
+    (tmp_path / "apps/miniapp").mkdir(parents=True)
+    page = tmp_path / "apps/miniapp/index.html"
     page.write_text("unchanged")
     with pytest.raises(RuntimeError):
         launcher.update_miniapp_api_url("https://new.example")

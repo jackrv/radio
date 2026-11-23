@@ -1,6 +1,6 @@
 """Публічна HTTPS-адреса API для Mini App: ngrok з постійним доменом, окремий процес.
 
-Нічого не комітить, не пушить і не змінює miniapp/: якщо адреса в сторінці інша — лише попереджає.
+Нічого не комітить, не пушить і не змінює apps/miniapp/: якщо адреса в сторінці інша — лише попереджає.
 Запуск: ``./r345 up --only api tunnel`` (потрібні ngrok і RADIO345_NGROK_URL у .env).
 """
 import json
@@ -38,9 +38,9 @@ def valid_https_endpoint(url):
 
 
 def page_api_url(root=ROOT):
-    """Адреса API, записана в miniapp/index.html, або None."""
+    """Адреса API, записана в apps/miniapp/index.html, або None."""
     try:
-        html = (Path(root) / "miniapp" / "index.html").read_text(encoding="utf-8")
+        html = (Path(root) / "apps" / "miniapp" / "index.html").read_text(encoding="utf-8")
     except OSError:
         return None
     match = re.search(r'<meta\s+name=["\']radio345-api["\']\s+content=["\']([^"\']+)["\']', html)
@@ -84,7 +84,7 @@ def run(desired, executable, stop, say, *, reachable=api_reachable, urls=public_
         if wait(1.0) or stop.is_set():
             return 0
     if page() != desired:
-        say("⚠️ Адреса в miniapp/index.html інша: опублікована Mini App не побачить цей API. Файл не змінено.")
+        say("⚠️ Адреса в apps/miniapp/index.html інша: опублікована Mini App не побачить цей API. Файл не змінено.")
     process = subprocess.Popen([executable, "http", str(API_PORT), "--url", desired, "--log=stdout", "--log-level=warn"],
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                errors="replace")

@@ -8,7 +8,7 @@
 відібрані фрази. Тому звук іде у фоні й при заблокованому екрані, а на екрані блокування є
 кнопки «Пауза/Відтворити». Браузерну версію (Safari) прибрано 22.11.2026: лише застосунок.
 
-Код: [services/radio_stream.py](../services/radio_stream.py), застосунок: [ios/](../ios/).
+Код: [services/radio_stream.py](../services/radio_stream.py), застосунок: [apps/ios/](../apps/ios/).
 
 ## Канали
 
@@ -32,13 +32,13 @@
 
 ## Застосунок для iPhone (SwiftUI)
 
-Проєкт `ios/Radio345.xcodeproj`, iOS 17+. Має обидва канали, список із повтором, екран блокування,
+Проєкт `apps/ios/Radio345.xcodeproj`, iOS 17+. Має обидва канали, список із повтором, екран блокування,
 локальні сповіщення з текстом (поки застосунок слухає) і кнопку передачі. Кнопка поки вимкнена,
 інтерфейс `Transmitter` уже готовий.
 
 Перший раз:
 1. Xcode → Settings → Accounts: додайте Apple ID (безкоштовний Personal Team).
-2. `cp ios/Config/Signing.local.xcconfig.example ios/Config/Signing.local.xcconfig` і впишіть
+2. `cp apps/ios/Config/Signing.local.xcconfig.example apps/ios/Config/Signing.local.xcconfig` і впишіть
    Team ID та унікальний bundle ID.
 3. Підключіть iPhone кабелем, увімкніть Developer Mode (Налаштування → Конфіденційність і безпека).
    У Xcode → Window → Devices and Simulators позначте «Connect via network».

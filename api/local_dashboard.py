@@ -206,14 +206,14 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
         def make_home(selected):
             def preview_home():
-                html = (ROOT / "miniapp/index.html").read_text()
+                html = (ROOT / "apps/miniapp/index.html").read_text()
                 html = re.sub(r'(<meta name="radio345-api" content=")[^"]*',
                               r'\g<1>/preview/' + selected, html)
                 html = html.replace('https://telegram.org/js/telegram-web-app.js', '/preview-bridge.js')
                 return HTMLResponse(html)
             return preview_home
         preview.add_api_route("/",make_home(role),methods=["GET"])
-        preview.mount("/",StaticFiles(directory=ROOT/"miniapp"))
+        preview.mount("/",StaticFiles(directory=ROOT/"apps/miniapp"))
         app.mount("/preview/"+role,preview)
     return app
 

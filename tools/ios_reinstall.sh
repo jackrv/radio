@@ -8,7 +8,7 @@
 #   tools/ios_reinstall.sh --remove-agent  — прибрати launchd-агента
 #
 # ID iPhone: змінна RADIO345_IOS_DEVICE або файл .local-ios/device-id.
-# Потрібно один раз: Apple ID у Xcode → Settings → Accounts, ios/Config/Signing.local.xcconfig,
+# Потрібно один раз: Apple ID у Xcode → Settings → Accounts, apps/ios/Config/Signing.local.xcconfig,
 # iPhone сполучений із Xcode (Window → Devices, «Connect via network») і Developer Mode увімкнено.
 set -euo pipefail
 
@@ -71,14 +71,14 @@ if [[ -z "$DEVICE" ]]; then
   log "Не задано iPhone: запишіть ID з 'tools/ios_reinstall.sh --devices' у .local-ios/device-id"
   exit 1
 fi
-if [[ ! -f "$ROOT/ios/Config/Signing.local.xcconfig" ]]; then
-  log "Немає ios/Config/Signing.local.xcconfig (DEVELOPMENT_TEAM і RADIO345_BUNDLE_ID)"
+if [[ ! -f "$ROOT/apps/ios/Config/Signing.local.xcconfig" ]]; then
+  log "Немає apps/ios/Config/Signing.local.xcconfig (DEVELOPMENT_TEAM і RADIO345_BUNDLE_ID)"
   exit 1
 fi
 
 log "Збираю Release для iPhone…"
 xcodebuild -quiet \
-  -project "$ROOT/ios/Radio345.xcodeproj" -scheme Radio345 -configuration Release \
+  -project "$ROOT/apps/ios/Radio345.xcodeproj" -scheme Radio345 -configuration Release \
   -destination "platform=iOS,id=$DEVICE" -derivedDataPath "$STATE/build" \
   -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
   build

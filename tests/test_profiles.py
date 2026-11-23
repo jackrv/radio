@@ -16,7 +16,7 @@ def test_manifest_is_current_and_safe(name):
         "Оновіть: .venv/bin/python -m tools.profiles --write"
     for path in profiles.files(name):
         assert (profiles.ROOT / path).is_file() or path.endswith(".files"), path
-        assert not re.search(r"(^|/)\.env($|\.)|\.local-|\.(db|wav|log|sqlite3)$|^tests/|^ios/", path), path
+        assert not re.search(r"(^|/)\.env($|\.)|\.local-|\.(db|wav|log|sqlite3)$|^tests/|^apps/ios/", path), path
 
 
 @pytest.mark.parametrize("name", profiles.names())

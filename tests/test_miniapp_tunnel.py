@@ -76,8 +76,8 @@ def test_ngrok_exit_and_silence_are_failures(tmp_path):
 
 
 def test_mismatch_only_warns_and_never_edits(tmp_path):
-    (tmp_path / "miniapp").mkdir()
-    page = tmp_path / "miniapp/index.html"
+    (tmp_path / "apps/miniapp").mkdir(parents=True)
+    page = tmp_path / "apps/miniapp/index.html"
     page.write_text('<meta name="radio345-api" content="https://old.example.dev">')
     before = page.read_bytes()
     stop, lines = threading.Event(), []

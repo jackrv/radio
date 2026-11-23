@@ -1,7 +1,7 @@
 # Файли для Raspberry Pi: git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt
 # Не редагуйте вручну: .venv/bin/python -m tools.pi_files --write (повноту перевіряє pytest).
 # Шляхи з «/» на початку: без нього шаблон no-cone збігається на будь-якій глибині
-# (.gitignore тягнув ios/.gitignore і claudeSearch/.gitignore).
+# (.gitignore тягнув apps/ios/.gitignore і claudeSearch/.gitignore).
 /.gitignore
 /config.py
 /core/__init__.py

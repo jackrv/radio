@@ -62,7 +62,7 @@ class AsrService:
             elif time.time() - ended > self.fresh_s or self.attempts.get(record_id):
                 self.worker._store_deferred(pcm)   # стара чи повторна: без подій
             else:
-                self.worker.process_segment(pcm)
+                self.worker._tracked(pcm)   # з відміткою для контролю зависання й серії помилок
                 if not self.recorder.store.exists(record_id):
                     raise OSError("Фразу не збережено в архів")
         except Exception:
@@ -111,6 +111,7 @@ def main():
 
     import config
     from core.cooldown import Cooldown
+    from core.recognition_health import RecognitionHealth
     from core.instance_lock import OWNER_LOCK, acquire_instance_lock
     from core.log_security import configure_logging
     from services.dictionary_loader import load_dictionaries
@@ -145,9 +146,11 @@ def main():
     else:
         log.warning("Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN у .env")
     callsigns, commands, watch, prompt = load_dictionaries(config.DB_PATH, log)
+    health = RecognitionHealth()
     worker = build_transcriber(
         config=config, segments=queue.Queue(), callsigns=callsigns, commands=commands, watch=watch,
-        prompt=prompt, telegram_service=telegram, cooldown=Cooldown(config.COOLDOWN_S), log=log, recorder=recorder)
+        prompt=prompt, telegram_service=telegram, cooldown=Cooldown(config.COOLDOWN_S), log=log, recorder=recorder,
+        health=health)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *a: stop.set())
     signal.signal(signal.SIGINT, lambda *a: stop.set())
@@ -155,6 +158,15 @@ def main():
     from services.node_bridge import NodeBridge
     from services.node_control import directory
     NodeBridge(config.DB_PATH, directory(config), config, log).start(stop)
+    from services.asr_alerts import Alerts
+    try:
+        offline_s = max(0.0, float(os.environ.get("RADIO_ASR_OFFLINE_ALERT_MIN", "0") or 0) * 60)
+    except ValueError:
+        offline_s = 0.0
+    alerts = Alerts(telegram.notify_admin_async if bot else (lambda text: None), log, health,
+                    directory(config) / "state.json", offline_alert_s=offline_s,
+                    offline_since=lambda: getattr(worker.recognizer, "down_since", None))
+    threading.Thread(target=alerts.run, args=(stop,), name="asr-alerts", daemon=True).start()
     from services.db_backup import start_backup_scheduler
     backup_stop = start_backup_scheduler(config.DB_PATH, config.BASE_DIR / ".local-backups", log=log)
     try:

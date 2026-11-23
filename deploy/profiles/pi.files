@@ -43,6 +43,7 @@
 /core/phrase_patterns.py
 /core/pipeline.py
 /core/queue_monitor.py
+/core/recognition_health.py
 /core/recording_trace.py
 /core/restart_policy.py
 /core/segment_timing.py
@@ -109,6 +110,7 @@
 /services/archive_inventory.py
 /services/archive_learning.py
 /services/archive_telegram_recall.py
+/services/asr_alerts.py
 /services/asr_protocol.py
 /services/asr_service.py
 /services/audio_devices.py

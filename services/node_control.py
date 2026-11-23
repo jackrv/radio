@@ -50,7 +50,7 @@ class NodeControl:
         self.path, self.state_path = Path(folder) / "control.json", Path(folder) / "state.json"
         self.listening_hold, self.clock, self.monotonic = listening_hold, clock, monotonic
         self._checked, self._data = float("-inf"), {}
-        self._state = "stopped"
+        self._state, self._gap = "stopped", None
 
     def _load(self):
         if self.monotonic() - self._checked >= 0.5:
@@ -90,8 +90,13 @@ class NodeControl:
     def get(self):
         return self._state
 
+    def record_gap(self, seconds):
+        """on_suspension: мікрофон був відкритий, а цикл зупинявся."""
+        self._gap = {"seconds": float(seconds), "at": self.clock()}
+
     def publish(self):
-        write_json(self.state_path, {"state": self._state, "at": self.clock()})
+        write_json(self.state_path, {"state": self._state, "at": self.clock(),
+                                     **({"gap": self._gap} if self._gap else {})})
 
     @contextmanager
     def heartbeat(self, interval=2.0, log=None):

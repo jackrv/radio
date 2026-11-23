@@ -26,6 +26,7 @@ class RemoteRecognizer:
         self.clock = clock
         self._blocked_until = float("-inf")
         self._down = False
+        self.down_since = None   # monotonic; None — вузол відповідав останнього разу
 
     extract_text = staticmethod(extract_text)
 
@@ -46,12 +47,14 @@ class RemoteRecognizer:
             self._blocked_until = self.clock() + self.COOLDOWN_S
             runtime.gauge("models.whisper", "unavailable")
             if not self._down:
+                self.down_since = time.monotonic()
                 self.log.warning("Вузол розшифровки недоступний (%s): фрази відкладаються", type(exc).__name__)
             self._down = True
             raise RecognizerUnavailable(str(exc)) from exc
         if self._down:
             self.log.info("Вузол розшифровки знову доступний")
         self._down = False
+        self.down_since = None
         runtime.gauge("models.whisper", "ready")
         return result
 

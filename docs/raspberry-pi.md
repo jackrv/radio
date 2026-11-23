@@ -132,3 +132,8 @@ sudo systemctl restart radio345-node   # якщо змінився deploy/radio3
 - gpiod v2 і номер чипа GPIO на Pi 5.
 - Скидання лінії PTT при падінні процесу.
 - PTT підключайте лише через оптопару чи транзистор, з увімкненим TOT рації.
+
+## Бекап баз на Mac
+
+`.venv/bin/python -m tools.pull_backup --host jackrv@radio345` на Mac: знімок `events.db` та індексу архіву,
+перевірка сум і цілісності, 14 останніх у `.local-backups/pi/`. Аудіо не копіюється. Автоматичного розкладу немає.

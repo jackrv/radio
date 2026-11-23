@@ -80,6 +80,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
         transcriber_stop=stop.set,
         transcriber_abandon=stop.set,
         **({} if control is None else {"pause_checker": control.request, "runtime_state": control,
+                                       "on_suspension": control.record_gap,
                                        "heartbeat_context": lambda: control.heartbeat(log=log)}),
     )
     return supervisor, stream

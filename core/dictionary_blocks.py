@@ -52,7 +52,9 @@ _GLUED_ZERO = ("на",)
 
 
 def split_glued_zero(text,callsigns,commands):
-    """«<команда>на 11» → «<команда> 0 11», лише якщо «0»+почуті цифри — точний код цієї команди.
+    """«<команда>на 11» → «<команда> 0 11», лише якщо «0»+почуті цифри — точний код цієї команди
+    або почуто рівно одну пару цифр, а трицифровий код на нуль у команди єдиний (погоджено
+    власником 23.11.2026); сам блок тоді відновлює правило опорної групи.
 
     Без цифр — «<команда> 0», лише коли код на нуль у команди єдиний.
     """
@@ -75,7 +77,9 @@ def split_glued_zero(text,callsigns,commands):
             # Без цифр — лише «<команда> 0», якщо код на нуль єдиний; решту дописує command_completion
             # з позначкою «почуто» (погоджено власником 23.11.2026).
             if len([code for code in allowed if code.startswith('0') and len(code)>1])!=1:continue
-        elif '0'+''.join(digits) not in allowed and '0'+digits[0] not in allowed:continue
+        elif ('0'+''.join(digits) not in allowed and '0'+digits[0] not in allowed
+              and not (len(digits)==1 and len(digits[0])==2
+                       and sum(len(code)==3 and code.startswith('0') for code in allowed)==1)):continue
         edits.append((token.start(),token.end(),name+' 0'))
         changes.append(dict(kind='glued_zero',name=name,heard=token.group(),expected=name+' 0'))
     for start,end,value in reversed(edits):text=text[:start]+value+text[end:]

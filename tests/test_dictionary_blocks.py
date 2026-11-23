@@ -214,5 +214,9 @@ def test_zero_glued_to_command_name_is_split_only_for_an_exact_code():
     assert tidy_text('буряна 11, прийом',cs,commands)=='БУРЯ 0 11, прийом'
     assert tidy_text('буряна 11, буряна 11',cs,commands)=='БУРЯ 0 11, БУРЯ 0 11'
     assert constrain_dictionary_text('буряна резонанс',cs,commands)[0]=='буря 0 резонанс'   # решту дописує completion
-    for raw in ('буряна 12','грімна 22','буряна 222','«буряна 11»','забуряна 11'):
+    assert tidy_text('буряна 12, буряна 12, прийом',cs,commands)=='БУРЯ 0 11, БУРЯ 0 11, прийом'
+    assert tidy_text('буряна 45',cs,commands)=='БУРЯ 0 11'   # єдиний код на нуль
+    two=command_dictionary(['буря 0 11','буря 0 22'])
+    assert constrain_dictionary_text('буряна 45',cs,two)[0]=='буряна 45'
+    for raw in ('буряна 5','буряна 13 13','буряна 120','грімна 12','грімна 22','буряна 222','«буряна 11»','забуряна 11'):
         assert constrain_dictionary_text(raw,cs,commands)[0]==raw,raw   # код не вигадується й не підбирається

@@ -23,6 +23,7 @@ ENTRY_MODULES = (
     "services.audio_devices",
     "services.ptt_key",
     "services.segment_spool",
+    "services.node_control",
     "core.supervisor",
     "core.notification_spectral",
     "core.notification_templates",

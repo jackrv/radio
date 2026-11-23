@@ -27,7 +27,8 @@ class SegmentSpool:
     def put(self, pcm, sample_rate):
         timing = getattr(pcm, "timing", None)
         ended = getattr(timing, "audio_end_unix_s", None) or time.time()
-        head = json.dumps({"sample_rate": sample_rate, "audio_end_unix_s": ended}).encode()
+        head = json.dumps({"sample_rate": sample_rate, "audio_end_unix_s": ended,
+                           "vad": getattr(pcm, "vad", None)}).encode()
         name = f"{int(ended * 1000):015d}-{uuid.uuid4().hex}"
         temp = self.root / (name + ".tmp")
         with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as out:
@@ -65,8 +66,10 @@ class SegmentSpool:
         pcm = raw[4 + size:]
         if not pcm or len(pcm) % 2:
             raise ValueError("Пошкоджений звук у черзі")
-        return Path(path).stem.split("-", 1)[1], TimedSegment(pcm, SegmentTiming(
-            enqueued_at=time.perf_counter(), enqueued_unix_s=time.time(), audio_end_unix_s=ended)), rate, ended
+        segment = TimedSegment(pcm, SegmentTiming(
+            enqueued_at=time.perf_counter(), enqueued_unix_s=time.time(), audio_end_unix_s=ended))
+        segment.vad = head.get("vad") if isinstance(head.get("vad"), dict) else None
+        return Path(path).stem.split("-", 1)[1], segment, rate, ended
 
     def quarantine(self, path):
         os.rename(path, Path(path).with_suffix(".bad"))

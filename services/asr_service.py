@@ -152,6 +152,9 @@ def main():
     signal.signal(signal.SIGTERM, lambda *a: stop.set())
     signal.signal(signal.SIGINT, lambda *a: stop.set())
     log.info("Розпізнавання працює", extra={"console": True})
+    from services.node_bridge import NodeBridge
+    from services.node_control import directory
+    NodeBridge(config.DB_PATH, directory(config), config, log).start(stop)
     from services.db_backup import start_backup_scheduler
     backup_stop = start_backup_scheduler(config.DB_PATH, config.BASE_DIR / ".local-backups", log=log)
     try:

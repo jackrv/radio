@@ -13,6 +13,7 @@ exclude_modules = ["core.recognition"]    # MLX: вибір робить RADIO_A
 RADIO_INPUT_DEVICE = "USB"
 RADIO_PTT = "none"
 RADIO_SPOOL = "1"
+RADIO_LISTENING_HOLD = "0"   # лінійний вхід: луни з динаміків немає
 RADIO345_PANEL_HOST = "tailscale"
 
 [required_env]

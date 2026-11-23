@@ -140,6 +140,8 @@
 /services/miniapp_correction_editor.py
 /services/model_exclusion.py
 /services/model_pause.py
+/services/node_bridge.py
+/services/node_control.py
 /services/noise_candidates.py
 /services/notification_eval.py
 /services/notification_samples.py

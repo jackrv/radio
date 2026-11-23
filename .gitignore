@@ -72,3 +72,4 @@ radio345.code-workspace
 /claudeSearch/code_graph.sqlite-*
 .local-segment-spool/
 .import/
+.local-node/

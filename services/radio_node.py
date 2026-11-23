@@ -19,7 +19,7 @@ import queue
 import threading
 
 
-def build_node(config, log, *, segment_sink=None, stream_starter=None, supervisor_cls=None):
+def build_node(config, log, *, segment_sink=None, stream_starter=None, supervisor_cls=None, control=None):
     """Збирає вузол; повертає (supervisor, stream) або (None, None), якщо потік не стартував."""
     from core.audio import apply_gain
     from core.bounded_queue import DropOldestQueue
@@ -79,6 +79,8 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
         input_muted=stream.input_muted,
         transcriber_stop=stop.set,
         transcriber_abandon=stop.set,
+        **({} if control is None else {"pause_checker": control.request, "runtime_state": control,
+                                       "heartbeat_context": lambda: control.heartbeat(log=log)}),
     )
     return supervisor, stream
 
@@ -113,7 +115,11 @@ def main():
         from services.segment_spool import SegmentSpool
         spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or config.BASE_DIR / ".local-segment-spool")
         sink = lambda item: spool.put(item, config.SR)
-    supervisor, stream = build_node(config, log, segment_sink=sink)
+    from services.node_control import NodeControl, directory
+    hold = os.environ.get("RADIO_LISTENING_HOLD", "1").strip().lower() not in ("0", "false", "no", "off")
+    control = NodeControl(directory(config), listening_hold=hold)
+    control.apply_startup(config)
+    supervisor, stream = build_node(config, log, segment_sink=sink, control=control)
     if supervisor is None:
         log.error("Радіовузол не запущено: потік недоступний (Tailscale? порт зайнятий?)",
                   extra={"console": True})

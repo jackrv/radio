@@ -9,7 +9,6 @@ import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler
-from pathlib import Path
 
 from services.asr_protocol import MAX_BODY, PORT, pack_result, unpack_request
 
@@ -165,13 +164,13 @@ def main():
     from core.instance_lock import acquire_instance_lock
     from core.recognition import WhisperRecognizer
     from services.model_exclusion import receiver_model_available
-    from services.model_pause import WORKER_LOCK, ModelPause
+    from services.model_pause import WORKER_LOCK, ModelPause, model_root
     from services.radio_stream import TailnetPeers, _QuietServer, client_allowed, tailscale_ipv4
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("radio.asr_worker")
     # Інший checkout — інші замки: для worktree вкажіть каталог основного проєкту.
-    root = Path(os.environ.get("RADIO_ASR_LOCK_ROOT", "").strip() or config.BASE_DIR)
+    root = model_root(config.BASE_DIR)
     host = os.environ.get("RADIO_ASR_HOST", "").strip() or tailscale_ipv4()
     if not host or host in ("0.0.0.0", "::"):
         raise SystemExit("Потрібна адреса Tailscale (або RADIO_ASR_HOST)")

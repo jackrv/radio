@@ -432,8 +432,8 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
     launcher = launcher or Launcher(ROOT)
     if capture is None:
         import config
-        from services.model_pause import ModelPause
-        pause = ModelPause(Path(config.BASE_DIR))
+        from services.model_pause import ModelPause, model_root
+        pause = ModelPause(model_root(config.BASE_DIR))
         # Модель тримає окремий вузол (r345) — просимо її в нього; інакше старий приймач у режимі «лише запис».
         capture = pause if pause.worker_running() else CaptureOnly(config.DB_PATH)
     if estimate is None:

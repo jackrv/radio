@@ -16,7 +16,8 @@ PROCESSES = {
     "node": ("server", ("services.radio_node", "services.segment_spool")),
     "asr": ("server", ("services.asr_service",)),
     "panel": ("server", ("api.local_dashboard",)),
-    "api": ("server", ("api.app",)),
+    "api": ("server", ("api.app", "api.local_server")),
+    "tunnel": ("server", ("services.miniapp_tunnel",)),
     "worker": ("worker", ("services.asr_worker",)),
     "lab": ("lab", ("tools.asr_lab", "tools.whisper_finetune", "tools.text_replay", "tools.analysis")),
 }

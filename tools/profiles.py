@@ -15,7 +15,7 @@ from tools import components
 ROOT = components.ROOT
 FOLDER = ROOT / "deploy" / "profiles"
 KEYS = {"description", "processes", "requirements", "bot", "extra", "extra_modules", "exclude_modules",
-        "full_checkout", "env", "required_env"}
+        "full_checkout", "manual", "env", "required_env"}
 
 
 def names():

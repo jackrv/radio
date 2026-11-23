@@ -270,3 +270,10 @@ def test_pause_is_confirmed_even_if_the_node_was_waiting(node):
     node.gate.tick()
     assert node.pause.ready()
     os.close(other)
+
+
+def test_pause_follows_the_lock_root_of_the_node(tmp_path, monkeypatch):
+    from services.model_pause import model_root
+    monkeypatch.setenv("RADIO_ASR_LOCK_ROOT", str(tmp_path))
+    assert radio345.lock_root() == tmp_path == model_root("/інше")
+    assert model_root("/інше", {}) == radio345.Path("/інше")

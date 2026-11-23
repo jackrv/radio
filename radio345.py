@@ -32,6 +32,7 @@ COMMANDS = {
     "asr": ("-m", "services.asr_service"),
     "api": ("-m", "api.local_server"),
     "panel": ("-m", "api.local_dashboard"),
+    "tunnel": ("-m", "services.miniapp_tunnel"),
 }   # лабораторія — не служба: запускається окремими командами
 MIN_PAUSE_S, MAX_PAUSE_S, STABLE_S = 2.0, 60.0, 60.0
 GRACE_S = 15.0   # скільки служба має на штатне завершення; далі — примусово
@@ -67,7 +68,8 @@ def selected(profile, only=()):
     unknown = set(only) - set(names)
     if unknown:
         raise SystemExit(f"Профіль не має процесів: {', '.join(sorted(unknown))}")
-    return [p for p in names if not only or p in only]
+    # manual (напр. публічний тунель) — лише коли назвали явно.
+    return [p for p in names if (p in only if only else p not in profile.get("manual", ()))]
 
 
 def missing_env(profile, env, names=()):
@@ -314,6 +316,11 @@ def restart(control, names, timeout=GRACE_S + 20):
     return 1
 
 
+def lock_root():
+    from services.model_pause import model_root
+    return model_root(ROOT, base_environment({}))
+
+
 def pause_model(minutes, root=ROOT, timeout=90.0):
     from services.model_pause import MAX_PAUSE_S, ModelPause
     pause = ModelPause(root)
@@ -366,9 +373,9 @@ def main(argv=None):
     sub.add_parser("resume-model", help="повернути модель вузлу")
     args = parser.parse_args(argv)
     if args.action == "pause-model":
-        return pause_model(args.minutes)
+        return pause_model(args.minutes, lock_root())
     if args.action == "resume-model":
-        return resume_model()
+        return resume_model(lock_root())
     control = Control()
     if args.action == "status":
         return show_status(control)

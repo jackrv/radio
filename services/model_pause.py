@@ -14,6 +14,11 @@ MAX_PAUSE_S = 4 * 60 * 60
 WORKER_LOCK = ".radio345-worker.lock"   # вузол тримає весь час життя, навіть коли модель віддано
 
 
+def model_root(default, env=None):
+    """Каталог замків моделі: інший checkout вказують через RADIO_ASR_LOCK_ROOT."""
+    return Path((os.environ if env is None else env).get("RADIO_ASR_LOCK_ROOT", "").strip() or default)
+
+
 class ModelPause:
     """Той самий інтерфейс, що CaptureOnly у черзі лабораторії: start/renew/ready/stop/restored."""
 

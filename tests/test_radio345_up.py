@@ -118,7 +118,7 @@ def test_environment_priority():
 def test_every_profile_process_has_a_command_with_existing_module(name):
     profile = radio345.load_profile(name)
     names = radio345.selected(profile)
-    assert set(names) == set(profile["processes"]) - {"lab"}
+    assert set(names) == set(profile["processes"]) - {"lab"} - set(profile.get("manual", ()))
     for process in names:
         assert radio345.COMMANDS[process][1] in components.modules()
 

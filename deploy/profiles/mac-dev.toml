@@ -1,6 +1,8 @@
 # Mac для розробки: увесь репозиторій; бот вимкнено, щоб не подвоїти бота Pi.
 description = "Mac: розробка й лабораторія"
-processes = ["node", "asr", "panel", "api", "worker", "lab"]
+processes = ["node", "asr", "panel", "api", "worker", "lab", "tunnel"]
+# Публічна адреса API відкривається лише явно: ./r345 up --only api tunnel
+manual = ["tunnel"]
 requirements = "requirements-dev.txt"
 bot = false
 full_checkout = true

@@ -2,3 +2,4 @@
 mlx-whisper==0.4.3
 mlx==0.32.4
 numpy==2.5.4
+python-dotenv==1.2.4

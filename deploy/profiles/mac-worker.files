@@ -13,13 +13,17 @@
 /core/whisper_result.py
 /deploy/profiles/mac-worker.files
 /deploy/profiles/mac-worker.toml
+/r345
+/radio345.py
 /requirements-worker.txt
 /services/__init__.py
 /services/asr_protocol.py
 /services/asr_worker.py
 /services/audio_devices.py
+/services/launcher_lifecycle.py
 /services/model_exclusion.py
 /services/private_files.py
+/services/process_guard.py
 /services/ptt_key.py
 /services/radio_stream.py
 /services/receiver_control.py

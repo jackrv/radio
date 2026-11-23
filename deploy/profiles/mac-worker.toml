@@ -3,7 +3,8 @@ description = "Mac: вузол Whisper"
 processes = ["worker"]
 requirements = "requirements-worker.txt"
 bot = false
-extra = ["deploy/profiles/mac-worker.toml", ".gitignore"]
+extra_modules = ["radio345"]
+extra = ["r345", "services/process_guard.py", "deploy/profiles/mac-worker.toml", ".gitignore"]
 
 [env]
 

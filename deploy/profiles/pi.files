@@ -97,6 +97,8 @@
 /miniapp/receiver-controls.js
 /miniapp/service-gate.js
 /miniapp/styles.css
+/r345
+/radio345.py
 /requirements-hub.txt
 /requirements-pi.txt
 /services/__init__.py
@@ -143,6 +145,7 @@
 /services/panel_jobs.py
 /services/panel_tasks.py
 /services/private_files.py
+/services/process_guard.py
 /services/ptt_key.py
 /services/radio_node.py
 /services/radio_stream.py

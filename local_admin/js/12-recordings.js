@@ -1247,6 +1247,15 @@
     const next = reviewCards[Math.max(0, Math.min(reviewCards.length - 1, index + delta))];
     activateReview(next);
   }
+  // ← / → — як у плеєрі: сусідній запис (і розмічений теж) одразу грає, незалежно від автопрогравання.
+  function playAdjacent(delta) {
+    const index = reviewCards.indexOf(activeReview), next = reviewCards[index + delta];
+    if (!next) { note(delta < 0 ? "Це перший запис у переліку." : $("recording-more").hidden ? "Це останній запис у переліку." : "Це останній завантажений запис — натисніть «Показати ще»."); return; }
+    activeReview?.audio.pause();
+    activateReview(next);
+    next.audio.currentTime = 0;
+    next.audio.play().catch(() => {});
+  }
   function advanceReview(controller) {
     controller.audio.pause();
     const start = reviewCards.indexOf(controller);
@@ -1282,6 +1291,11 @@
       if (["1", "4"].includes(event.key)) current.focusText();
     } else if (event.key === "j" || event.key === "о" || event.key === "ArrowDown") { event.preventDefault(); stepReview(1); }
     else if (event.key === "k" || event.key === "л" || event.key === "ArrowUp") { event.preventDefault(); stepReview(-1); }
+    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      if (event.defaultPrevented || event.shiftKey) return;
+      event.preventDefault();
+      if (!event.repeat) playAdjacent(event.key === "ArrowRight" ? 1 : -1);   // утримання не «пролітає» перелік
+    }
     else if (event.key === "r" || event.key === "к") { current.audio.currentTime = 0; current.audio.play().catch(() => {}); }
     else if (["]", "ї", "[", "х"].includes(event.key)) {
       const step = ["]", "ї"].includes(event.key) ? 1 : -1;

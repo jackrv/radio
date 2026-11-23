@@ -6,5 +6,10 @@ bot = false
 full_checkout = true
 
 [env]
+# Увесь ланцюжок на одному Mac: вузол Whisper лише на loopback.
+RADIO_SPOOL = "1"
+RADIO_PTT = "none"
+RADIO_ASR_HOST = "127.0.0.1"
+RADIO_ASR_URL = "http://127.0.0.1:8347"
 
 [required_env]

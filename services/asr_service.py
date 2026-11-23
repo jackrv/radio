@@ -111,7 +111,7 @@ def main():
 
     import config
     from core.cooldown import Cooldown
-    from core.instance_lock import acquire_instance_lock
+    from core.instance_lock import OWNER_LOCK, acquire_instance_lock
     from core.log_security import configure_logging
     from services.dictionary_loader import load_dictionaries
     from services.event_store import init_db
@@ -126,7 +126,8 @@ def main():
     log = logging.getLogger("radio")
     if not os.environ.get("RADIO_ASR_URL", "").strip():
         raise SystemExit("Не задано RADIO_ASR_URL")
-    lock = acquire_instance_lock(Path(config.BASE_DIR) / ".radio345.lock")
+    # Не замок моделі: на Mac її поруч тримає services.asr_worker.
+    lock = acquire_instance_lock(Path(config.BASE_DIR) / OWNER_LOCK)
     if lock is None:
         raise SystemExit("Інший приймач уже працює з цією базою")
     init_db(config.DB_PATH)

@@ -150,7 +150,7 @@ def _floors(conn):
 
 def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=None):
     """Відновлює events.db з копії, не повторюючи вже виданих ID подій."""
-    from core.instance_lock import acquire_instance_lock
+    from core.instance_lock import OWNER_LOCK, acquire_instance_lock
 
     db_path = Path(db_path).resolve()
     backup_path = Path(backup_path).resolve()
@@ -162,6 +162,10 @@ def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=No
     lock = acquire_instance_lock(lock_path or db_path.parent / ".radio345.lock")
     if lock is None:
         raise RuntimeError("Спочатку зупиніть приймач: відновлення під час роботи заборонено")
+    owner = acquire_instance_lock(db_path.parent / OWNER_LOCK)
+    if owner is None:
+        os.close(lock)
+        raise RuntimeError("Спочатку зупиніть службу розпізнавання: відновлення під час роботи заборонено")
     stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%S%fZ")
     folder = Path(backup_dir)
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -227,6 +231,7 @@ def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=No
         temporary.unlink(missing_ok=True)
         raise
     finally:
+        os.close(owner)
         os.close(lock)
     return {"restored_from": str(backup_path), "next_event_id": next_id,
             "previous_database": str(previous) if previous else None, "ids_jumped": jumped}

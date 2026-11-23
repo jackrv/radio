@@ -44,6 +44,7 @@ from services.dictionary_setup import ensure_dictionaries, interactive_console
 from services.user_notify_store import list_recipients
 from services.db_backup import start_backup_scheduler
 from services.model_exclusion import acquire_receiver_slot
+from core.instance_lock import OWNER_LOCK, acquire_instance_lock
 from core.recognition_health import RecognitionHealth
 
 import config
@@ -79,6 +80,7 @@ watch = None
 PROMPT = ""
 
 _instance_lock = None
+_owner_lock = None
 recognition_health = RecognitionHealth()
 recording_archive = None
 frames = DropOldestQueue(100)
@@ -172,6 +174,11 @@ def main():
         raise SystemExit(str(exc)) from None
     if _instance_lock is None:
         log.error("Інший приймач Radio 345 уже працює. Зупиніть його й запустіть знову.")
+        raise SystemExit(2)
+    global _owner_lock
+    _owner_lock = acquire_instance_lock(config.BASE_DIR / OWNER_LOCK)
+    if _owner_lock is None:
+        log.error("Службу розпізнавання (services.asr_service) уже запущено з цією базою. Зупиніть її.")
         raise SystemExit(2)
     diagnostics.configure(
         config.BASE_DIR / "diagnostics.json",

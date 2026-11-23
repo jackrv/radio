@@ -11,7 +11,8 @@
 
 Завантажено мультимовну [mlx-community/whisper-tiny](https://huggingface.co/mlx-community/whisper-tiny),
 ревізія `78c52ab98ca87f570bc57ad852e15ef7060f9f76`, ваги 74418182 байти.
-Модель у `.local-models/whisper-tiny`; каталог додано до `.gitignore`.
+Модель була в `.local-models/whisper-tiny` (видалено 23.11.2026 за рішенням власника; завантажити знову
+за ревізією вище); каталог додано до `.gitignore`.
 Нових Python-бібліотек не встановлювали. Робочу модель й пороги не змінювали;
 ваги не навчали.
 

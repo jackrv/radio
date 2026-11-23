@@ -53,7 +53,7 @@ malformed, SIGBUS/Bus error не дав збігів у жодному з нав
 відкривалися `mode=ro`, без стороннього open/close DB/WAL/SHM. На кожній парі
 копій `events.db` і `index.sqlite3` повний `PRAGMA integrity_check = ok`.
 Перша перевірка — 16:05, завершальна — 19:09. Робочі рядки не змінювали,
-WAL/SHM і `.radio345.lock` не видаляли. Snapshots у `.local-backups/`, технічні
+WAL/SHM і `.radio345.lock` не видаляли. Snapshots у `.local-backups/` (видалені 23.11.2026 за рішенням власника), технічні
 агрегати — `.local-experiments/sqlite-stability-2026-11-21/`; приватний вміст
 не потрібний для розуміння наведеного висновку й не публікується.
 

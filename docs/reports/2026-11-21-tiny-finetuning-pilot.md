@@ -102,6 +102,10 @@ noise/notification/room; train має лише 3 noise. Нову політик�
 
 ## Артефакти й відтворення
 
+> **23.11.2026 за рішенням власника видалено** `.local-training/tiny-pilot-20261121/` (датасет, ваги)
+> і `.local-models/whisper-tiny`. Лишилися метрики в цьому звіті та прогони `.local-experiments/…tiny…`.
+> Повтор потребує нового датасету й завантаження базової моделі; точне відтворення неможливе.
+
 Приватно: `.local-training/tiny-pilot-20261121/` — frozen dataset, metrics,
 comparison/provenance, керувальний скрипт; `pilot/best/` — найкращі ваги.
 Інференсний прогін збережено у звичайному `.local-experiments/…tiny-finetuned-pilot`.

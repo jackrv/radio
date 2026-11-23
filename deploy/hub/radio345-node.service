@@ -1,0 +1,22 @@
+# Ефір і PTT на Pi. Користувач і шлях підставляє встановлення (deploy/hub/install.sh).
+[Unit]
+Description=Radio 345 node (live stream + PTT)
+After=network-online.target tailscaled.service sound.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python -m services.radio_node
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+# Ефір важливіший за панель.
+CPUWeight=1000
+OOMScoreAdjust=-500
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

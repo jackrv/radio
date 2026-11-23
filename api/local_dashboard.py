@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.concurrency import run_in_threadpool
 import uvicorn
 
 import config
@@ -45,7 +46,7 @@ def panel_script():
             "(() => {\n" + parts + "})();\n")
 
 
-def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None, experiments_dir=None, suggestions=False):
+def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, samples_dir=None, bot_token="local-preview", backup_dir=None, recordings_dir=None, launcher_root=None, experiments_dir=None, suggestions=False, hosts=None, client_ok=None):
     if len(capability)<32:
         raise ValueError("Надто короткий локальний ключ")
     suggestion_worker = None
@@ -112,8 +113,10 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     recheck_after = re.compile(r"/api/(recordings/[^/]+/review|text-lists/[a-z_]+|dictionaries/[a-z_]+|learning/.+|daily-codes/.+)")
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
     backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
-    host = f"127.0.0.1:{port}"
-    origin = "http://"+host
+    # hosts/client_ok задає лише режим Tailscale; типово — тільки цей комп'ютер.
+    allowed_hosts = {f"{name}:{port}" for name in (hosts or ("127.0.0.1",))}
+    allowed_origins = {"http://"+value for value in allowed_hosts}
+    client_ok = client_ok or (lambda ip: ip in ("127.0.0.1", "::1"))
     cookie = "radio345_local_admin"
     session = session_value(capability)
 
@@ -123,9 +126,11 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     @app.middleware("http")
     async def local_only(request, call_next):
         started = time.perf_counter()
-        if request.headers.get("host") != host or request.client is None or request.client.host not in ("127.0.0.1","::1"):
+        if request.headers.get("host") not in allowed_hosts or request.client is None:
             return Response(status_code=403)
-        if request.method not in ("GET","HEAD") and request.headers.get("origin") != origin:
+        if not await run_in_threadpool(client_ok, request.client.host):
+            return Response(status_code=403)
+        if request.method not in ("GET","HEAD") and request.headers.get("origin") not in allowed_origins:
             return Response(status_code=403)
         public = request.url.path in ("/","/admin.js","/styles.css","/session")
         if not public and not matches(request.cookies.get(cookie,""),session):
@@ -245,6 +250,18 @@ def access_url(capability):
     return f"http://127.0.0.1:{PORT}/#{capability}"
 
 
+def tailnet_access():
+    """RADIO345_PANEL_HOST=tailscale: адреса, дозволені імена й перевірка «пристрій власника»."""
+    from services.radio_stream import TailnetPeers, _tailscale_status, client_allowed, tailscale_ipv4
+    address = tailscale_ipv4()
+    if not address:
+        raise SystemExit("Tailscale не активний: панель не запущено")
+    name = ((_tailscale_status().get("Self") or {}).get("DNSName") or "").rstrip(".").lower()
+    hosts = [address, *([name, name.split(".")[0]] if name else [])]
+    peers = TailnetPeers()
+    return hosts, lambda ip: client_allowed(ip) and peers.is_owner(ip)
+
+
 def port_busy(port=PORT):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.5)
@@ -272,8 +289,14 @@ def main(argv=None):
     load_dotenv(config.BASE_DIR/".env")
     if not Path(config.DB_PATH).is_file():
         raise SystemExit("Робочу базу не знайдено")
+    hosts = client_ok = None
+    if os.environ.get("RADIO345_PANEL_HOST", "").strip().lower() == "tailscale":
+        hosts, client_ok = tailnet_access()
     capability = load_capability(rotate=args.rotate_key)
     url = access_url(capability)
+    if hosts:
+        url = url.replace("127.0.0.1", hosts[-1], 1)
+        _write_private(ACCESS_DIR / "access-url.txt", url + "\n")
 
     if port_busy():
         # Панель уже працює (наприклад, її запустив start_radio345.py): лише відкриваємо.
@@ -290,8 +313,8 @@ def main(argv=None):
     print("Відкрити: .venv/bin/python -m api.local_dashboard --open")
     if args.open:
         open_when_ready(url)
-    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"),suggestions=True)
-    uvicorn.run(app,host="127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
+    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"),suggestions=True,hosts=hosts,client_ok=client_ok)
+    uvicorn.run(app,host=hosts[0] if hosts else "127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
     return 0
 
 

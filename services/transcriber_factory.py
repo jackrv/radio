@@ -1,7 +1,7 @@
+import os
 import sqlite3
 import time
 
-from core.recognition import WhisperRecognizer
 from core.correction import build_llm_corrector
 from core.pipeline import build_text_pipeline
 from core.event_processor import EventProcessor
@@ -14,6 +14,17 @@ from core.notification_spectral import (
 
 from services.event_store import save_event
 from services.word_rule_engine import apply_verified_word_rules
+
+
+def build_recognizer(config, prompt, log):
+    """RADIO_ASR_URL — модель на вузлі Mac; порожньо — локальна MLX (як було)."""
+    url = os.environ.get("RADIO_ASR_URL", "").strip()
+    common = {"language": config.LANGUAGE, "sample_rate": config.SR, "prompt": prompt, "log": log}
+    if url:
+        from services.remote_recognizer import RemoteRecognizer
+        return RemoteRecognizer(url, **common)
+    from core.recognition import WhisperRecognizer
+    return WhisperRecognizer(model_repo=config.MODEL_REPO, **common)
 
 
 def prompt_codes(db_path):
@@ -121,13 +132,7 @@ def build_transcriber(
         # Фрази зі списку «Підказка Whisper» + останній код доби + назви словників.
         return compose_prompt((*text_lists.whisper_prompt, *todays_code()), live_dictionaries.prompt)
 
-    recognizer = WhisperRecognizer(
-        model_repo=config.MODEL_REPO,
-        language=config.LANGUAGE,
-        sample_rate=config.SR,
-        prompt=current_prompt(),
-        log=log,
-    )
+    recognizer = build_recognizer(config, current_prompt(), log)
 
     log.info("Підказка Whisper: фраз зі списку — %d", len(text_lists.whisper_prompt))
 

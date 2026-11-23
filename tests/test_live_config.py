@@ -179,7 +179,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
     cooldown = Cooldown(3.0)
-    with patch("services.transcriber_factory.WhisperRecognizer") as whisper:
+    with patch("core.recognition.WhisperRecognizer") as whisper:
         recognizer = whisper.return_value
         worker = build_transcriber(config=config, segments=Mock(), callsigns=Callsigns.from_lines(["віра: 68"]),
                                    commands=empty, watch=empty, prompt="віра", telegram_service=Mock(),
@@ -245,7 +245,7 @@ def test_receiver_applies_whisper_prompt_list_without_restart(db_path, tmp_path)
                                 "SPECTRAL_NOTIFICATION_MODE": "off",
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
-    with patch("services.transcriber_factory.WhisperRecognizer") as whisper:
+    with patch("core.recognition.WhisperRecognizer") as whisper:
         worker = build_transcriber(config=config, segments=Mock(), callsigns=Callsigns.from_lines(["віра: 68"]),
                                    commands=empty, watch=empty, prompt="віра", telegram_service=Mock(),
                                    cooldown=Cooldown(3.0), log=Mock())

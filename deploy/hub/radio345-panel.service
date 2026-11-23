@@ -1,0 +1,23 @@
+# Адмінпанель на Pi: лише адреса Tailscale, порт 8766, пристрої власника й ключ. Не залежить від ефіру.
+[Unit]
+Description=Radio 345 admin panel
+After=network-online.target tailscaled.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+WorkingDirectory=@ROOT@
+Environment=RADIO345_PANEL_HOST=tailscale
+ExecStart=@ROOT@/.venv/bin/python -m api.local_dashboard
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+CPUWeight=50
+MemoryHigh=500M
+MemoryMax=800M
+OOMScoreAdjust=500
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+# Pi як дім системи: панель, БД, архів, розпізнавання через вузол Mac (без MLX).
+-r requirements-pi.txt
+rapidfuzz==3.14.6
+requests==2.34.2
+fastapi>=0.115,<1
+pydantic>=2,<3
+uvicorn>=0.30,<1

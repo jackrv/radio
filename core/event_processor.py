@@ -36,23 +36,18 @@ class EventProcessor:
         # Потік для iPhone (services/radio_stream.py): ті самі режими, що в Telegram.
         self.radio_stream = radio_stream
 
-    def process(self, text, pcm, raw_text=None):
+    def annotate(self, text):
+        """Аналіз тексту й відмітки в архівному записі; без подій, Telegram і потоку.
+
+        Спільне для живого ефіру й доробки накопиченого: інакше відкладені записи
+        лишаються без словникових блоків і ролей та не потрапляють до виду «Ефір».
+        """
         original = text
         analysis = analyze_text(text, self.callsigns, self.commands, self.watch, self.short_garbage, self.log)
         text = analysis.text
-        if raw_text is None and text != original:
-            raw_text = original
-        cs_found, cmd_found, watch_found = analysis.callsigns, analysis.commands, analysis.watch
-        to_found, from_found = analysis.recipient, analysis.sender
-
-        cs_str = fmt(cs_found)
-        cmd_str = fmt(cmd_found)
-        watch_str = fmt(watch_found)
-        to_str = fmt(to_found)
-        from_str = fmt(from_found)
 
         from core.recording_trace import note
-        note(predicted_recipient=to_str, predicted_sender=from_str, roles_parsed=True)
+        note(predicted_recipient=fmt(analysis.recipient), predicted_sender=fmt(analysis.sender), roles_parsed=True)
         if text != original:
             note(final_text=text)
 
@@ -65,6 +60,24 @@ class EventProcessor:
                 self.log.info("Відкинуто: лише позивний без номера, без команди й тексту: %s", text)
             else:
                 self.log.info("Відкинуто короткий хибний фрагмент: %s", text)
+        return analysis
+
+    def process(self, text, pcm, raw_text=None):
+        from core.recording_trace import note
+        original = text
+        analysis = self.annotate(text)
+        text = analysis.text
+        if raw_text is None and text != original:
+            raw_text = original
+        cs_found, cmd_found, watch_found = analysis.callsigns, analysis.commands, analysis.watch
+
+        cs_str = fmt(cs_found)
+        cmd_str = fmt(cmd_found)
+        watch_str = fmt(watch_found)
+        to_str = fmt(analysis.recipient)
+        from_str = fmt(analysis.sender)
+
+        if analysis.rejected:
             return
 
         event_id = None

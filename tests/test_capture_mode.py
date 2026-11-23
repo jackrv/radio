@@ -134,7 +134,7 @@ def test_deferred_phrase_is_recognised_without_events_into_the_same_record(monke
 
 
 def test_deferred_processing_updates_the_existing_record_without_events():
-    finished = []
+    finished, annotated = [], []
 
     class ReadyRecognizer(Recognizer):
         def transcribe(self, audio):
@@ -148,12 +148,14 @@ def test_deferred_processing_updates_the_existing_record_without_events():
     w = worker(
         recorder=SimpleNamespace(submit=lambda *args: pytest.fail("не створюємо другий запис")),
         deferred=SimpleNamespace(finish_deferred=lambda rid, trace: finished.append((rid, trace))),
-        event_processor=SimpleNamespace(process=lambda *args, **kwargs: pytest.fail("не створюємо подію")),
+        event_processor=SimpleNamespace(process=lambda *args, **kwargs: pytest.fail("не створюємо подію"),
+                                        annotate=annotated.append),
     )
     w.recognizer = ReadyRecognizer()
     w._dry = True
     w.process_segment(pcm(), deferred_id="b" * 32)
     assert finished[0][0] == "b" * 32
+    assert annotated == ["Клен 48"], "аналіз і ролі — як у живому ефірі"
     assert finished[0][1]["raw_text"] == "Клен 48"
     assert finished[0][1]["final_text"] == "Клен 48"
     assert finished[0][1]["status"] == "ready"

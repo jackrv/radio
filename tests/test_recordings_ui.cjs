@@ -75,6 +75,18 @@ test('archive renders current views and retains pagination', async () => {
   assert.match(ui.urls[0], /view=radio/);
 });
 
+test('rare speech and captured views stay in the list while they have records', async () => {
+  const ui = harness({items:[item], total:1, views:{radio:1, speech:2, captured:3, deferred:4}});
+  ui.$('recording-view').options = ['radio','speech','captured','deferred'].map(value =>
+    ({value, textContent:value, dataset:value === 'radio' ? {} : {rare:''}}));
+  await ui.load();
+  const hidden = () => Object.fromEntries(ui.$('recording-view').options.map(o => [o.value, o.hidden]));
+  assert.deepEqual(hidden(), {radio:false, speech:false, captured:false, deferred:true});
+  ui.set({items:[item], total:1, views:{radio:1, speech:0, captured:0, deferred:4}});
+  await ui.load();
+  assert.deepEqual(hidden(), {radio:false, speech:true, captured:true, deferred:true});
+});
+
 test('empty view renders a useful message without failing', async () => {
   const ui = harness({items:[],total:0,views:{radio:0}});
   await ui.load();

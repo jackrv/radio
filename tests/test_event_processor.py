@@ -327,3 +327,21 @@ def test_event_and_message_ids_are_noted_for_the_archive():
     finally:
         _trace.reset(token)
     assert trace["fix_id"] == "db:42"
+
+
+def test_annotate_notes_roles_and_text_without_event_telegram_or_stream():
+    from core import recording_trace
+    from core.callsigns import Callsigns, command_dictionary
+    processor, save_event, telegram, *_ = make_processor(
+        callsigns=Callsigns.from_lines(["клен 48"]), commands=command_dictionary(["грім 022"]))
+    trace = {}
+    token = recording_trace._trace.set(trace)
+    try:
+        analysis = processor.annotate("Клен 48, грімна 22, прийом")
+    finally:
+        recording_trace._trace.reset(token)
+    assert trace["roles_parsed"] is True and "клен 48" in trace["predicted_recipient"].lower()
+    assert trace["final_text"] == analysis.text and "ГРІМ 0 22" in analysis.text
+    save_event.assert_not_called()
+    telegram.notify.assert_not_called()
+    processor.fresh.assert_not_called()

@@ -493,14 +493,15 @@
       for (const person of page.editors || []) personOption(person.user_id, person.name, person.corrections);
       $("recording-view").value = chosen; }
     // Кількість записів у кожному виді — за обраний період. Список короткий: порожні й рідкісні види
-    // (тести, черга, відсіяне, правки людей) приховані, крім обраного — туди ведуть посилання з інших сторінок.
+    // (черга, відсіяне, правки людей) приховані, крім обраного — туди ведуть посилання з інших сторінок.
     { const chosen = $("recording-view").value;
       for (const option of $("recording-view").options) {
         option.dataset.title ||= option.textContent;
         const count = page.views?.[option.value];
         option.textContent = `${option.dataset.title}${typeof count === "number" ? ` · ${count}` : ""}`;
         const rare = option.dataset.rare !== undefined || option.value.startsWith("person:");
-        option.hidden = option.value !== chosen && (rare || count === 0);
+        const useful = ["speech", "captured"].includes(option.value) && count > 0;   // не порожні — видимі, хоч і рідкісні
+        option.hidden = option.value !== chosen && !useful && (rare || count === 0);
       }
       for (const group of $("recording-view").querySelectorAll?.("optgroup") || [])
         group.hidden = ![...group.children].some(option => !option.hidden); }

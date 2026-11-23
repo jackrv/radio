@@ -329,7 +329,13 @@ class Transcriber:
         runtime.asr_text_ready(fallback=fallback)
 
         if self._dry:
-            return   # доробка накопиченого: текст лише в архіві, без подій і Telegram
+            # Доробка накопиченого: текст і ролі лише в архіві, без подій і Telegram.
+            try:
+                self.event_processor.annotate(text)
+            except Exception:
+                runtime.count("asr.event_error")
+                self.log.exception("Помилка аналізу відкладеного запису; лишається текст без нього")
+            return
         try:
             with runtime.timed("asr.event_processing"):
                 if self.pause_gate is None:

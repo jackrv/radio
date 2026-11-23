@@ -1,0 +1,10 @@
+# Mac для розробки: увесь репозиторій; бот вимкнено, щоб не подвоїти бота Pi.
+description = "Mac: розробка й лабораторія"
+processes = ["node", "asr", "panel", "api", "worker", "lab"]
+requirements = "requirements-dev.txt"
+bot = false
+full_checkout = true
+
+[env]
+
+[required_env]

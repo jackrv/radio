@@ -6,6 +6,7 @@ Mac недоступний або фраза стара — вона йде в �
 """
 import logging
 import os
+import queue
 import signal
 import threading
 import time
@@ -144,7 +145,7 @@ def main():
         log.warning("Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN у .env")
     callsigns, commands, watch, prompt = load_dictionaries(config.DB_PATH, log)
     worker = build_transcriber(
-        config=config, segments=__import__("queue").Queue(), callsigns=callsigns, commands=commands, watch=watch,
+        config=config, segments=queue.Queue(), callsigns=callsigns, commands=commands, watch=watch,
         prompt=prompt, telegram_service=telegram, cooldown=Cooldown(config.COOLDOWN_S), log=log, recorder=recorder)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *a: stop.set())

@@ -50,6 +50,7 @@ def _imports(node, module, is_package):
 def graph(root=ROOT, eager_only=False):
     """(проєктні залежності, зовнішні пакети). eager_only — без імпортів усередині функцій."""
     known = modules(root)
+    tops = {m.split(".")[0] for m in known}
     inner = {m: set() for m in known}
     outer = {m: set() for m in known}
     for name, path in known.items():
@@ -64,7 +65,7 @@ def graph(root=ROOT, eager_only=False):
                 for target in _imports(node, name, path.name == "__init__.py"):
                     if target in known:
                         inner[name].add(target)
-                    elif target:
+                    elif target and target.split(".")[0] not in tops:
                         outer[name].add(target.split(".")[0])
         inner[name].discard(name)
     return inner, outer

@@ -313,7 +313,7 @@ def main(argv=None):
     print("Відкрити: .venv/bin/python -m api.local_dashboard --open")
     if args.open:
         open_when_ready(url)
-    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "local-preview"),suggestions=True,hosts=hosts,client_ok=client_ok)
+    app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or "local-preview",suggestions=True,hosts=hosts,client_ok=client_ok)
     uvicorn.run(app,host=hosts[0] if hosts else "127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
     return 0
 

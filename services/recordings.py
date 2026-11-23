@@ -194,8 +194,17 @@ class RecordingStore:
         finally:
             db.close()
 
-    def save(self, pcm, sr, data):
-        record_id = uuid.uuid4().hex
+    def exists(self, record_id):
+        with self.connect() as db:
+            return db.execute("SELECT 1 FROM recordings WHERE id=?", (record_id,)).fetchone() is not None
+
+    def save(self, pcm, sr, data, record_id=None):
+        """``record_id`` задає черга Pi: повторне збереження тієї самої фрази не створює дубля."""
+        if record_id is not None and self.exists(record_id):
+            return record_id
+        record_id = record_id or uuid.uuid4().hex
+        if (self.root / (record_id + ".wav")).exists():   # обрив до commit: рядка немає, файл лишився
+            (self.root / (record_id + ".wav")).unlink()
         target = self.root / (record_id + ".wav")
         data = json_values(dict(data, signal=signal_metrics(pcm, sr), sample_rate=sr))
         created = data.get("captured_at")

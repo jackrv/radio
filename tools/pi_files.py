@@ -22,6 +22,7 @@ ENTRY_MODULES = (
     "services.radio_stream",
     "services.audio_devices",
     "services.ptt_key",
+    "services.segment_spool",
     "core.supervisor",
     "core.notification_spectral",
     "core.notification_templates",

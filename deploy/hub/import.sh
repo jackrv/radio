@@ -6,7 +6,7 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 src="$root/.import"
 user=${SUDO_USER:?запускайте через sudo від звичайного користувача}
 [ -s "$src/events.db" ] && [ -s "$src/index.sqlite3" ] || { echo "Немає знімка в $src"; exit 1; }
-systemctl stop radio345-panel radio345-node
+systemctl stop radio345-panel radio345-node radio345-asr 2>/dev/null || true
 old="$root/.local-backups/before-import-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$old" "$root/.local-recordings"
 for f in events.db events.db-wal events.db-shm .local-recordings/index.sqlite3 .local-recordings/index.sqlite3-wal .local-recordings/index.sqlite3-shm; do

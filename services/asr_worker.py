@@ -89,7 +89,8 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("radio.asr_worker")
-    root = Path(config.BASE_DIR)
+    # Інший checkout — інші замки: для worktree вкажіть каталог основного проєкту.
+    root = Path(os.environ.get("RADIO_ASR_LOCK_ROOT", "").strip() or config.BASE_DIR)
     if not receiver_model_available(root):
         raise SystemExit("Лабораторія використовує модель")
     lock = acquire_instance_lock(root / ".radio345.lock")

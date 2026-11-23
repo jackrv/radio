@@ -68,3 +68,5 @@ radio345.code-workspace
 # Локальний індекс claudeSearch та службові файли SQLite
 /claudeSearch/code_graph.sqlite
 /claudeSearch/code_graph.sqlite-*
+.local-segment-spool/
+.import/

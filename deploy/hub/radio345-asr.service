@@ -1,0 +1,22 @@
+# Розпізнавання через вузол Mac: окремо від ефіру й панелі.
+[Unit]
+Description=Radio 345 recognition (Mac worker client)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python -m services.asr_service
+Restart=always
+RestartSec=10
+TimeoutStopSec=75
+CPUWeight=100
+MemoryHigh=700M
+MemoryMax=1G
+OOMScoreAdjust=300
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

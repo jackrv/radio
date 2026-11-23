@@ -14,6 +14,7 @@ radio.py на тому самому Mac: обидва захоплюють мі�
 """
 
 import logging
+import os
 import queue
 import threading
 
@@ -54,7 +55,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
                 continue
             if segment_sink is not None:
                 try:
-                    segment_sink(bytes(item))
+                    segment_sink(item)
                 except Exception:
                     log.exception("Радіовузол: помилка передачі сегмента на розпізнавання")
 
@@ -107,7 +108,12 @@ def main():
     load_dotenv(config.BASE_DIR / ".env")
     configure_logging("", starting_message="Радіовузол без розпізнавання; чекаємо аудіовхід (USB-карта).")
     log = logging.getLogger("radio.node")
-    supervisor, stream = build_node(config, log)
+    sink = None
+    if os.environ.get("RADIO_SPOOL", "").strip() in ("1", "true", "yes", "on"):
+        from services.segment_spool import SegmentSpool
+        spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or config.BASE_DIR / ".local-segment-spool")
+        sink = lambda item: spool.put(item, config.SR)
+    supervisor, stream = build_node(config, log, segment_sink=sink)
     if supervisor is None:
         log.error("Радіовузол не запущено: потік недоступний (Tailscale? порт зайнятий?)",
                   extra={"console": True})

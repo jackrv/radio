@@ -6,10 +6,10 @@ set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 user=${SUDO_USER:?запускайте через sudo від звичайного користувача}
 [ "$user" != root ] && [ -x "$root/.venv/bin/python" ] || { echo "Немає $root/.venv або користувача"; exit 1; }
-for unit in radio345-node radio345-panel; do
+for unit in radio345-node radio345-panel radio345-asr; do
     sed "s|@USER@|$user|g; s|@ROOT@|$root|g" "$root/deploy/hub/$unit.service" > "/etc/systemd/system/$unit.service"
 done
 systemctl daemon-reload
-systemctl enable radio345-node radio345-panel
-systemctl restart radio345-node radio345-panel
-systemctl --no-pager --lines=3 status radio345-node radio345-panel || true
+systemctl enable radio345-node radio345-panel radio345-asr
+systemctl restart radio345-node radio345-panel radio345-asr
+systemctl --no-pager --lines=3 status radio345-node radio345-panel radio345-asr || true

@@ -28,3 +28,4 @@
 /services/ptt_key.py
 /services/radio_node.py
 /services/radio_stream.py
+/services/segment_spool.py

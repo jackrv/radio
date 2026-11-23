@@ -60,7 +60,8 @@ Claude Code підвантажує їх сам за `paths`; інші агент
   Нове навчання/важкі прогони самостійно не запускати; optimizer resume відсутній.
   [Пілот і обмеження](docs/reports/2026-11-21-tiny-finetuning-pilot.md).
 - Не запускайте MLX ASR/навчання поруч із живою моделлю. CLI-прогін: штатно
-  `start_radio345.py --receiver-stop`, після завершення/помилки `--receiver-start`;
+  `start_radio345.py --receiver-stop`, після завершення/помилки `--receiver-start`
+  (під `r345` — `./r345 pause-model` і `./r345 resume-model`);
   використовуйте model slot і паузи між довгими тестами. Панельна черга керує цим сама.
 - Holdout не навчає правила/ваги; рецепт обирайте за validation, не відкритим test.
   Порівнюйте на однакових записах через tools.analysis compare.

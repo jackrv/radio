@@ -4,6 +4,7 @@
     ./r345 status | stop                           # стан; зупинити все
     ./r345 restart [panel …]                       # перезапустити всі або вибрані процеси
     ./r345 check                                   # що запуститься й чого бракує
+    ./r345 pause-model [--minutes 120]             # віддати модель вузла лабораторії; resume-model — повернути
 
 Кожен процес окремий: падіння одного не зупиняє інші, він перезапускається з паузою.
 Якщо зникне сам наглядач, process_guard зупинить служби. Замок спільний зі start_radio345.py,
@@ -197,6 +198,9 @@ class Control:
             os.close(fd)
             raise SystemExit("Radio 345 уже запущено (або ще завершується): ./r345 status") from None
         self.lock_fd = fd
+        # Залишки старого лаунчера не мають виглядати як чинний канал чи «зупинений приймач».
+        for stale in ("state.json", "control.fifo"):
+            (self.directory / stale).unlink(missing_ok=True)
         for old in self.directory.glob("r345-restart-*"):
             old.unlink(missing_ok=True)
 
@@ -310,6 +314,44 @@ def restart(control, names, timeout=GRACE_S + 20):
     return 1
 
 
+def pause_model(minutes, root=ROOT, timeout=90.0):
+    from services.model_pause import MAX_PAUSE_S, ModelPause
+    pause = ModelPause(root)
+    if not pause.worker_running():
+        print("Вузол розшифровки не запущено: модель у ньому не тримається")
+        return 3
+    if not 0 < minutes * 60 <= MAX_PAUSE_S - 1:
+        print(f"Строк — від 1 до {MAX_PAUSE_S // 60 - 1} хв")
+        return 2
+    pause.start(time.time() + minutes * 60)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pause.ready():
+            print(f"Модель вільна на {minutes} хв; фрази відкладаються. Повернути: ./r345 resume-model")
+            return 0
+        time.sleep(0.3)
+    pause.stop()
+    print("Вузол не підтвердив звільнення моделі; запит скасовано")
+    return 1
+
+
+def resume_model(root=ROOT, timeout=120.0):
+    from services.model_pause import ModelPause
+    pause = ModelPause(root)
+    pause.stop()
+    if not pause.worker_running():
+        print("Вузол розшифровки не запущено")
+        return 3
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pause.restored():
+            print("Модель повернуто, розпізнавання працює")
+            return 0
+        time.sleep(0.3)
+    print("Модель ще зайнята (лабораторія?): вузол забере її, щойно звільниться")
+    return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="r345", description="Radio 345: процеси цього пристрою")
     sub = parser.add_subparsers(dest="action", required=True)
@@ -320,7 +362,13 @@ def main(argv=None):
     sub.add_parser("status", help="стан процесів")
     sub.add_parser("stop", help="зупинити все")
     sub.add_parser("restart", help="перезапустити все або вибране").add_argument("names", nargs="*", metavar="ПРОЦЕС")
+    sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
+    sub.add_parser("resume-model", help="повернути модель вузлу")
     args = parser.parse_args(argv)
+    if args.action == "pause-model":
+        return pause_model(args.minutes)
+    if args.action == "resume-model":
+        return resume_model()
     control = Control()
     if args.action == "status":
         return show_status(control)

@@ -22,6 +22,7 @@
 /services/audio_devices.py
 /services/launcher_lifecycle.py
 /services/model_exclusion.py
+/services/model_pause.py
 /services/private_files.py
 /services/process_guard.py
 /services/ptt_key.py

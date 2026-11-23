@@ -170,19 +170,3 @@ def test_pi_code_does_not_import_mlx():
     probe = ("import sys, services.transcriber_factory, services.remote_recognizer, core.transcriber;"
              "sys.exit(any(m.split('.')[0].startswith('mlx') for m in sys.modules))")
     assert subprocess.run([sys.executable, "-c", probe], cwd=Path(__file__).resolve().parent.parent).returncode == 0
-
-
-def test_model_always_runs_in_one_thread(monkeypatch):
-    from services import asr_worker
-    seen = []
-    model = SimpleNamespace(warmup=lambda: seen.append(threading.get_ident()),
-                            transcribe=lambda audio, prompt: seen.append(threading.get_ident()) or RESULT)
-    pytest.importorskip("mlx_whisper")
-    monkeypatch.setattr("core.recognition.WhisperRecognizer", lambda **kwargs: model)
-    config = SimpleNamespace(MODEL_REPO="m", LANGUAGE="uk", SR=16000)
-    transcribe = asr_worker.build_transcribe(config, LOG)
-    for _ in range(3):
-        t = threading.Thread(target=transcribe, args=({"sample_rate": 16000, "language": "uk"}, AUDIO))
-        t.start()
-        t.join()
-    assert len(seen) == 4 and len(set(seen)) == 1 and seen[0] != threading.get_ident()

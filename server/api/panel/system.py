@@ -52,9 +52,9 @@ def register(app, ctx):
         device_state = devices.ThisPi(root)   # лише служби й звук самої Pi
 
     @app.get("/api/devices")
-    def device_list(admin=Depends(actor)):
+    def device_list(fresh: bool = False, admin=Depends(actor)):
         """З Mac — Mac і Pi; на Pi — лише вона: з Pi на Mac доступу немає."""
-        return device_state.read() if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
+        return device_state.read(fresh) if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
 
     from server.flow import Flow
     flow = Flow(root, host=device_state.host if on_mac else None)

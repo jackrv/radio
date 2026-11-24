@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 UNITS = ("node", "asr", "panel", "api", "tunnel")
 HOME_PROCESSES = ("asr",)      # хто веде базу й бота — той «дім»
 FRESH_S = 10.0
+WATCH_S = 1.0    # панель стежить за командою до кінця
 SSH_TIMEOUT_S = 12
 
 # Виконується стандартним python3 на Pi зі stdin; виводить один рядок JSON.
@@ -29,10 +30,10 @@ root = os.path.expanduser("~/" + sys.argv[1])
 out = {"processes": {}}
 for name in sys.argv[2].split(","):
     unit = "radio345-" + name
-    r = subprocess.run(["systemctl", "show", unit, "-p", "ActiveState,UnitFileState,NRestarts,ExecMainStatus"], capture_output=True, text=True).stdout
+    r = subprocess.run(["systemctl", "show", unit, "-p", "ActiveState,UnitFileState,NRestarts,ExecMainStatus,MainPID"], capture_output=True, text=True).stdout
     p = dict(l.split("=", 1) for l in r.splitlines() if "=" in l)
     out["processes"][name] = {"alive": p.get("ActiveState") == "active", "enabled": p.get("UnitFileState") == "enabled",
-                              "restarts": int(p.get("NRestarts") or 0),
+                              "restarts": int(p.get("NRestarts") or 0), "pid": int(p.get("MainPID") or 0) or None,
                               "blocked": p.get("ActiveState") != "active" and p.get("ExecMainStatus") == "75"}
 try:
     d = sqlite3.connect("file:%s?mode=ro" % place(root, "events.db"), uri=True, timeout=3)
@@ -107,7 +108,7 @@ def local(db_path, root=ROOT):
     from shared.r345_control import Control
     running = Control(place(root, ".radio345-launcher")).read()
     processes = {n: {"alive": bool(p.get("alive")), "enabled": p.get("wanted", True), "restarts": p.get("restarts", 0),
-                     "blocked": bool(p.get("blocked"))}
+                     "blocked": bool(p.get("blocked")), "pid": p.get("pid")}
                  for n, p in (running or {}).get("processes", {}).items()}
     with get_db(db_path) as db:
         events, last = db.execute("SELECT COUNT(*), MAX(CAST(strftime('%s', ts) AS INTEGER)) FROM radio_events").fetchone()
@@ -241,9 +242,9 @@ class ThisPi:
         except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
             return {"reachable": False, "error": "Не вдалося прочитати стан служб"}
 
-    def read(self):
+    def read(self, fresh=False):
         with self.lock:
-            if self._data is None or self.clock() - self._at >= FRESH_S:
+            if self._data is None or self.clock() - self._at >= (WATCH_S if fresh else FRESH_S):
                 found = {"mac": {"processes": {}}, "pi": self._state()}
                 marker = home_marker.read(self.root)
                 mode = mode_of(found, marker)
@@ -369,9 +370,9 @@ class Devices:
             raise Refused("Pi відхилила налаштування звуку")
         return data["settings"]
 
-    def read(self):
+    def read(self, fresh=False):
         with self.lock:
-            if self._data is None or self.clock() - self._at >= FRESH_S:
+            if self._data is None or self.clock() - self._at >= (WATCH_S if fresh else FRESH_S):
                 mac = local(self.db_path, self.root)
                 pi = self.fetch(self.host) if self.host else None
                 devices = {"mac": mac, "pi": pi}

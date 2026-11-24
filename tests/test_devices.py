@@ -70,13 +70,13 @@ def test_remote_script_reads_database_and_never_writes(tmp_path):
     db.close()
     (tmp_path / "bin").mkdir()
     fake = tmp_path / "bin" / "systemctl"
-    fake.write_text("#!/bin/sh\necho ActiveState=active; echo UnitFileState=enabled; echo NRestarts=2\n")
+    fake.write_text("#!/bin/sh\necho ActiveState=active; echo UnitFileState=enabled; echo NRestarts=2; echo MainPID=77\n")
     fake.chmod(0o755)
     before = {p.name: p.stat().st_mtime_ns for p in root.iterdir()}
     done = subprocess.run([sys.executable, "-", "hub", "asr"], input=d.REMOTE, capture_output=True, text=True,
                           env={"HOME": str(home), "PATH": f"{tmp_path}/bin:/usr/bin:/bin"})
     data = json.loads(done.stdout)
-    assert data["events"] == 1 and data["last_event"] and data["processes"]["asr"] == {"alive": True, "enabled": True, "restarts": 2, "blocked": False}
+    assert data["events"] == 1 and data["last_event"] and data["processes"]["asr"] == {"alive": True, "enabled": True, "restarts": 2, "pid": 77, "blocked": False}
     assert data["code"] == d.code_hash(root) and data["queue"] == 0
     assert before == {p.name: p.stat().st_mtime_ns for p in root.iterdir()}
 

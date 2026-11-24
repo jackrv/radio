@@ -46,3 +46,9 @@ test('level bar follows RMS, threshold and clipping',()=>{
  assert.match(l(.0107).now,/0\.0107 · -39 дБ/);assert.match(l(.01,.1,.0231).phrase,/0\.0231 ✓/);assert.match(l(.01,.1,.011).phrase,/тихо/);
  assert.equal(c.lv(null).tone,'off');assert.equal(c.lv({level:{}}).tone,'off');
 });
+test('service command is finished only by the observed state',()=>{
+ vm.runInContext(source.slice(source.indexOf('  function serviceDone('),source.indexOf('  async function runService('))+'\nglobalThis.sd=serviceDone;',c);
+ assert.equal(c.sd({alive:true,pid:5},'restart',5),null);assert.equal(c.sd({alive:false},'restart',5),null);assert.equal(c.sd({alive:true,pid:6},'restart',5),true);
+ assert.equal(c.sd({alive:true},'stop'),null);assert.equal(c.sd({alive:false},'stop'),true);
+ assert.equal(c.sd({alive:false,blocked:true},'start'),false);assert.equal(c.sd({alive:true,pid:1},'start'),true);assert.equal(c.sd(undefined,'start'),null);
+});

@@ -1733,6 +1733,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .service-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 30px; }
 .service-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
 .service-dot.on { background: var(--ok); }
+.service-dot.wait { background: var(--warn); }
 .service-buttons { display: flex; gap: 4px; min-width: 64px; justify-content: flex-end; }
 .icon-button { width: 28px; height: 28px; padding: 0; line-height: 1; }
 @media (max-width: 800px) { .device-grid { grid-template-columns: 1fr; } }

@@ -326,6 +326,55 @@ def test_table_aligns_columns_and_marks():
 def test_help_lists_every_command(words, capsys):
     assert radio345.main(words) == 0
     out = capsys.readouterr().out
-    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "move-data"):
+    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "update", "move-data"):
         assert command in out
     assert "usage:" not in out
+
+
+class Updater:
+    def __init__(self, *states, refuse=None):
+        self.states, self.refuse, self.started = list(states), refuse, 0
+
+    def start(self):
+        from server.pi_update import UpdateError
+        if self.refuse:
+            raise UpdateError(self.refuse)
+        self.started += 1
+
+    def read(self):
+        state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+        return {"active": state["phase"] in radio345.UPDATE_PHASES, **state}
+
+
+def run_update(monkeypatch, updater, code="old"):
+    from server import devices
+    monkeypatch.setattr(radio345.sys, "platform", "darwin")
+    monkeypatch.setattr(radio345.time, "sleep", lambda s: None)
+    monkeypatch.setattr(devices, "pi_host", lambda env: "pi@test")
+    monkeypatch.setattr(devices, "code_hash", lambda: "same")
+    monkeypatch.setattr(devices, "remote", lambda host: {"reachable": True, "code": code})
+    return radio345.update_pi(updater)
+
+
+def test_update_shows_phases_and_result(monkeypatch, capsys):
+    updater = Updater({"phase": "copying"}, {"phase": "checking"}, {"phase": "restarting"}, {"phase": "done", "units": ["api"]})
+    assert run_update(monkeypatch, updater) == 0
+    out = capsys.readouterr().out
+    assert all(text in out for text in radio345.UPDATE_PHASES.values()) and "install.sh --units" in out
+
+
+def test_update_failure_and_refusal_are_explained(monkeypatch, capsys):
+    assert run_update(monkeypatch, Updater({"phase": "failed", "error": "повернуто попередній код"})) == 1
+    assert run_update(monkeypatch, Updater({"phase": "idle"}, refuse="спершу commit і push")) == 1
+    out = capsys.readouterr().out
+    assert "повернуто" in out and "commit і push" in out
+
+
+def test_update_does_nothing_when_code_is_the_same(monkeypatch, capsys):
+    updater = Updater({"phase": "idle"})
+    assert run_update(monkeypatch, updater, code="same") == 0 and updater.started == 0
+
+
+def test_update_is_refused_on_pi(monkeypatch, capsys):
+    monkeypatch.setattr(radio345.sys, "platform", "linux")
+    assert radio345.update_pi() == 1 and "з Mac" in capsys.readouterr().out

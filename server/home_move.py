@@ -19,6 +19,7 @@ from pathlib import Path
 
 from server import devices
 from shared import home_marker
+from shared.busy import Busy, exclusive
 from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
 from shared.paths import REMOTE_PLACE, place
 
@@ -326,6 +327,17 @@ class HomeMove:
             self.thread.start()
 
     def run(self, target, emergency=False):
+        self._exclusive(lambda: self._run(target, emergency), {"target": target, "source": "pi" if target == "mac" else "mac"})
+
+    def _exclusive(self, work, fields):
+        try:
+            with exclusive(self.root):
+                work()
+        except Busy as exc:
+            self.current = {**fields, "running": []}
+            self._save(phase="failed", error=str(exc))
+
+    def _run(self, target, emergency=False):
         source = "pi" if target == "mac" else "mac"
         a, b = self.sides[source], self.sides[target]
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -380,7 +392,7 @@ class HomeMove:
                 raise MoveError("Немає перерваного перенесення")
             self.current = {k: v for k, v in data.items() if k not in ("active", "interrupted")}
             self._save(phase="rolling_back", error=data.get("error") or "Перенесення перервано")
-            self.thread = threading.Thread(target=self._rollback, name="home-move", daemon=True)
+            self.thread = threading.Thread(target=lambda: self._exclusive(self._rollback, {"source": data.get("source"), "target": data.get("target")}), name="home-move", daemon=True)
             self.thread.start()
 
     def _rollback(self):

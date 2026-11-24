@@ -1,4 +1,4 @@
-"""Оновлення коду Pi з панелі Mac: Pi бере з GitHub той самий коміт, що на Mac; лише файли профілю pi.
+"""Оновлення коду Pi з панелі Mac або ./r345 update: Pi бере з GitHub той самий коміт, що на Mac; лише файли профілю pi.
 Збій перевірки повертає попередній код.
 
 База, .env, архів і юніти systemd не зачіпаються (юніти — sudo sh deploy/hub/install.sh --units, якщо змінилися).
@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from server import devices
+from shared.busy import Busy, exclusive
 from shared.paths import REMOTE_PLACE
 
 FOLDER = "radio345-hub"
@@ -172,6 +173,13 @@ class PiUpdate:
             raise UpdateError("Незрозуміла відповідь Pi") from None
 
     def update(self, url, commit):
+        try:
+            with exclusive(self.root):
+                self._update(url, commit)
+        except Busy as exc:
+            self.state = {"phase": "failed", "error": str(exc)}
+
+    def _update(self, url, commit):
         try:
             self._remote("prepare", timeout=120)
             self._remote("fetch", url, commit)

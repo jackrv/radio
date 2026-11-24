@@ -9,11 +9,13 @@
 /radio345.py
 /server/__init__.py
 /server/devices.py
+/server/pi_update.py
 /shared/__init__.py
 /shared/analyzer.py
 /shared/asr_protocol.py
 /shared/audio_choice.py
 /shared/audio_devices.py
+/shared/busy.py
 /shared/callsigns.py
 /shared/conflict.py
 /shared/default_text_lists.py

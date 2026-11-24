@@ -191,3 +191,13 @@ def test_only_clean_pushed_commit_is_sent(tmp_path):
 def test_without_host_is_refused(tmp_path):
     with pytest.raises(u.UpdateError):
         u.PiUpdate(tmp_path, None).start()
+
+
+def test_update_and_move_exclude_each_other(tmp_path):
+    from shared.busy import exclusive
+    update, calls, _ = updater(tmp_path, {})
+    with exclusive(tmp_path):
+        update.update(*ARGS)
+    assert update.state["phase"] == "failed" and "Вже триває" in update.state["error"] and calls == []
+    update.update(*ARGS)
+    assert update.state["phase"] == "done"

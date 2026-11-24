@@ -124,6 +124,7 @@
 /shared/audio.py
 /shared/audio_choice.py
 /shared/audio_devices.py
+/shared/busy.py
 /shared/callsigns.py
 /shared/command_completion.py
 /shared/conflict.py

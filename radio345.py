@@ -393,6 +393,44 @@ def mac_rows(run):
     return rows
 
 
+UPDATE_PHASES = {"copying": "беру код із GitHub", "checking": "перевіряю на Pi", "restarting": "перезапускаю служби Pi"}
+
+
+def update_pi(updater=None):
+    """Код Pi = коміт Mac (з GitHub). Те саме, що кнопка «Оновити код Pi»."""
+    if sys.platform != "darwin":
+        print("Pi оновлюється з Mac: ./r345 update там або кнопка в панелі")
+        return 1
+    from server import devices, pi_update
+    host = devices.pi_host(base_environment({}))
+    updater = updater or pi_update.PiUpdate(ROOT, host)
+    state = devices.remote(host) if host else {}
+    if state.get("reachable") and state.get("code") == devices.code_hash():
+        print("На Pi вже той самий код")
+        return 0
+    try:
+        updater.start()
+    except pi_update.UpdateError as exc:
+        print(f"Не оновлено: {exc}")
+        return 1
+    shown = None
+    while True:
+        current = updater.read()
+        if current["phase"] in UPDATE_PHASES and current["phase"] != shown:
+            shown = current["phase"]
+            print(f"  {UPDATE_PHASES[shown]}…", flush=True)
+        if not current["active"]:
+            break
+        time.sleep(0.5)
+    if current["phase"] != "done":
+        print(f"Не оновлено: {current.get('error', 'невідома помилка')}")
+        return 1
+    print("Код Pi оновлено")
+    if current.get("units"):
+        print("На Pi один раз: sudo sh deploy/hub/install.sh --units")
+    return 0
+
+
 HELP = """Radio 345
 
 Щодня
@@ -403,6 +441,7 @@ HELP = """Radio 345
   ./r345 doctor             перевірити все: служби, база, Pi, підпис iPhone, копії
 
 Рідко
+  ./r345 update             оновити код Pi (той самий коміт, що на Mac, із GitHub)
   ./r345 check              що запуститься й чого бракує
   ./r345 pause-model        віддати модель лабораторії (--minutes 120); resume-model — повернути
   ./r345 move-data          перенести робочі дані в .local-data
@@ -428,6 +467,7 @@ def main(argv=None):
     sub.add_parser("restart", help="перезапустити все або вибране").add_argument("names", nargs="*", metavar="ПРОЦЕС")
     sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
     sub.add_parser("resume-model", help="повернути модель вузлу")
+    sub.add_parser("update", help="оновити код Pi з GitHub (лише з Mac)")
     sub.add_parser("doctor", help="усе одним поглядом: служби, база, Pi, підпис iPhone, копії")
     sub.add_parser("move-data", help="перенести робочі дані в .local-data (служби зупинено)")
     args = parser.parse_args(argv)
@@ -435,6 +475,8 @@ def main(argv=None):
         return pause_model(args.minutes, lock_root())
     if args.action == "resume-model":
         return resume_model(lock_root())
+    if args.action == "update":
+        return update_pi()
     if args.action == "doctor":
         return doctor()
     if args.action == "move-data":

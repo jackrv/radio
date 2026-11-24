@@ -301,3 +301,10 @@ def test_marker_is_validated(tmp_path):
     home_marker.write(tmp_path, "pi", 2)
     assert home_marker.foreign(tmp_path, "mac") == "pi" and home_marker.foreign(tmp_path, "pi") is None
     assert (place(tmp_path, home_marker.NAME)).stat().st_mode & 0o777 == 0o600
+
+
+def test_move_waits_for_nobody_and_changes_nothing_when_busy(world):
+    from shared.busy import exclusive
+    with exclusive(world.mac_root):
+        state = run(world, "pi")
+    assert state["phase"] == "failed" and "Вже триває" in state["error"] and world.mac.log == [] and world.pi.log == []

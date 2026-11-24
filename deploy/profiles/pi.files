@@ -141,7 +141,6 @@
 /shared/lab_notify.py
 /shared/lab_queue.py
 /shared/lab_results.py
-/shared/launcher_lifecycle.py
 /shared/llm_safety.py
 /shared/management/__init__.py
 /shared/management/common.py
@@ -161,6 +160,7 @@
 /shared/private_files.py
 /shared/process_guard.py
 /shared/ptt_key.py
+/shared/r345_control.py
 /shared/radio_stream.py
 /shared/receiver_control.py
 /shared/recording_trace.py

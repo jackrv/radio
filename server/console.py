@@ -252,7 +252,7 @@ class ConsoleDashboard(logging.Handler):
         label, _, right = self._status(data)
         rows = [f"Radio 345  {label.split(' ', 1)[-1].capitalize()}" + (f"  {right}" if right else "")]
         if self.problem:
-            return rows + [self.problem, "Докладно: launcher.log та radio.log"]
+            return rows + [self.problem, "Докладно: radio.log"]
         _, detail = self._state_info(data)
         if detail:
             return rows + [detail]
@@ -325,7 +325,7 @@ class ConsoleDashboard(logging.Handler):
         if self.problem:
             for line in self._wrap(self.problem, inner - 1)[:4]:
                 rows.append(pad([(line, "1;" + self.BAD)]))
-            rows.append(pad([("Докладно: launcher.log та radio.log", self.DIM)]))
+            rows.append(pad([("Докладно: radio.log", self.DIM)]))
         elif self._state_info(data)[1]:
             for line in self._wrap(self._state_info(data)[1], inner - 1)[:3]:
                 rows.append(pad([(line, self.BAD if tone == "bad" else self.TEXT)]))
@@ -359,7 +359,7 @@ class ConsoleDashboard(logging.Handler):
 
         rows.append([rule])
         rows.append(pad([("ПОДІЇ", "1;" + self.DIM)]))
-        footer_left, footer_right = "radio.log · launcher.log", "Ctrl+C — зупинити"
+        footer_left, footer_right = "radio.log", "Ctrl+C — зупинити"
         space = inner - self.width(footer_left) - self.width(footer_right)
         footer = pad([(footer_left, self.DIM)] + ([(" " * space, ""), (footer_right, self.DIM)] if space >= 2 else []))
 
@@ -467,8 +467,8 @@ def child_event(source, line, state=None):
         if any(word in lower for word in ("no such host", "name resolution")):
             return "ngrok: не вдалося визначити адресу сервера (DNS). Перевірте мережу.", logging.ERROR
         if any(word in lower for word in ("authtoken", "authentication", "err_ngrok_4018")):
-            return "ngrok: помилка авторизації. Перевірте налаштування ngrok; докладно в launcher.log.", logging.ERROR
-        return "ngrok: не вдалося встановити тунель. Причина та код помилки — у launcher.log.", logging.ERROR
+            return "ngrok: помилка авторизації. Перевірте налаштування ngrok; докладно в журналі.", logging.ERROR
+        return "ngrok: не вдалося встановити тунель. Причина та код помилки — у журналі.", logging.ERROR
     # Third-party progress bars, blank lines and traceback continuations are diagnostics.
     match = re.match(r"(?:INFO|WARNING|ERROR|CRITICAL):\s+(.+)", line.strip())
     if match and line.strip().startswith(("WARNING:", "ERROR:", "CRITICAL:")):

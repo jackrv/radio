@@ -40,7 +40,7 @@ def main():
             if args.backup is None:
                 parser.error("Для відновлення вкажіть --from .local-backups/<файл>.db")
             if api_running():
-                raise RuntimeError("Спочатку зупиніть start_radio345.py або API (порт 8765 зайнятий)")
+                raise RuntimeError("Спочатку зупиніть r345 або API (порт 8765 зайнятий)")
             result = restore_database(args.db, args.backup, args.backup_dir)
         elif args.action == "export":
             result = {"exported": export_dictionaries(args.db, args.file)}

@@ -7,7 +7,6 @@ from unittest.mock import Mock
 
 import pytest
 
-import start_radio345 as launcher
 from shared.dictionary_store import init_db
 from server.database_lifecycle import initialize_database
 from server.dictionary_setup import dictionary_status, ensure_dictionaries, has_active_admin
@@ -165,38 +164,3 @@ def test_active_admin_detection(tmp_path):
     with get_db(path) as db:
         db.execute("INSERT INTO telegram_users (user_id, role, enabled) VALUES (1, 'admin', 1)")
     assert has_active_admin(path) is True
-
-
-def test_launcher_stops_before_services_without_dictionaries(tmp_path, monkeypatch):
-    monkeypatch.setattr(launcher, "ROOT", tmp_path)
-    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "server/api").mkdir(parents=True)
-    for name in ["radio.py", "server/api/local_server.py", ".env"]:
-        (tmp_path / name).touch()
-    monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
-    monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")
-    monkeypatch.setattr(launcher, "interactive_console", lambda: False)
-    started = Mock()
-    monkeypatch.setattr(launcher, "ManagedProcess", started)
-    assert launcher.main() == 2
-    started.assert_not_called()
-    assert not (tmp_path / "events.db").exists()
-
-
-def test_launcher_prompt_has_prefix(tmp_path, monkeypatch):
-    monkeypatch.setattr(launcher, "ROOT", tmp_path)
-    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "server/api").mkdir(parents=True)
-    for name in ["radio.py", "server/api/local_server.py", ".env"]:
-        (tmp_path / name).touch()
-    write_sources(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
-    monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")
-    monkeypatch.setattr(launcher, "interactive_console", lambda: True)
-    prompts = []
-    monkeypatch.setattr("builtins.input", lambda text: prompts.append(text) or "n")
-    started = Mock()
-    monkeypatch.setattr(launcher, "ManagedProcess", started)
-    assert launcher.main() == 2
-    assert prompts == ["[launcher]   Імпортувати словники з dictionaries.txt у базу зараз? [Y/N]: "]
-    started.assert_not_called()

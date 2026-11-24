@@ -64,8 +64,7 @@
       <button data-group="system"><span>▤</span>Система</button>
     </nav>
     <div class="launcher-box">
-      <div class="launcher-line"><span class="small muted">Лаунчер: <b id="launcher-state">—</b></span>
-        <span class="launcher-icons"><button id="receiver-toggle" class="ghost icon" title="Зупинити лише приймач (панель, API й Mini App працюють далі)" aria-label="Зупинити лише приймач"><svg class="ico solid" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button></span></div>
+      <div class="launcher-line"><span class="small muted">Служби: <b id="launcher-state">—</b></span></div>
       <div class="pause-slider">
         <div class="pause-head">⏸ Пауза мікрофона</div>
         <div class="pause-bar"><input id="pause-range" type="range" min="0" max="60" step="any" value="0" aria-label="Пауза мікрофона, хвилин"><b id="pause-label" class="pause-value">—</b></div>
@@ -376,7 +375,7 @@
 
       <!-- Система: вкладки «Стан», «Діагностика», «Дані й копії», «Перевірки» (усі заповнює system()). -->
       <section data-panel="system" hidden>
-        <article class="panel"><h2>Керування службами</h2><p class="muted small">Повна зупинка також закриває доступ до цієї панелі. Пауза мікрофона й стан приймача доступні в боковому меню.</p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
+        <article class="panel"><h2>Керування службами</h2><p class="muted small" id="launcher-hint"></p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
         <article class="panel" id="audio-devices-panel">
           <div class="panel-head"><h2>Звукові пристрої</h2><button id="audio-devices-refresh" class="ghost small-button" type="button" title="Перечитати список, наприклад після підключення USB-карти">Оновити список</button></div>
           <p class="muted small">Пристрій зберігається за назвою, тож переживає перепідключення USB. Діє після перезапуску приймача; якщо вибраного пристрою немає, приймач чекає на нього й не перемикається на інший сам.</p>

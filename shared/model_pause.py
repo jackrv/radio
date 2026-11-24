@@ -20,7 +20,7 @@ def model_root(default, env=None):
 
 
 class ModelPause:
-    """Той самий інтерфейс, що CaptureOnly у черзі лабораторії: start/renew/ready/stop/restored."""
+    """Оренда моделі для черги лабораторії: start/renew/ready/stop/restored. Вузла немає — модель і так вільна."""
 
     def __init__(self, root):
         self.root = Path(root)
@@ -47,7 +47,7 @@ class ModelPause:
 
     # ---------- з боку лабораторії й r345 ----------
     def worker_running(self):
-        from shared.launcher_lifecycle import lock_held
+        from shared.instance_lock import lock_held
         return lock_held(self.root / WORKER_LOCK)
 
     def start(self, until):
@@ -64,7 +64,7 @@ class ModelPause:
         return self._read(self.state_path).get("state") if self.worker_running() else None
 
     def ready(self):
-        return self.requested() and self.state() == "paused"
+        return self.requested() and (not self.worker_running() or self.state() == "paused")
 
     def restored(self):
         return not self.requested() and self.state() in (None, "ready")

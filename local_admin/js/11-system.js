@@ -141,7 +141,7 @@
     audioState.settings = settings;
     for (const id of ["audio-input", "audio-output"]) $(id).dataset.saved = $(id).value;
     $("audio-devices-save").disabled = true;
-    const restart = el("button", "ghost small-button", "Перезапустити зараз"); restart.type = "button";
+    const restart = el("button", "ghost small-button", "Перезапустити зараз"); restart.type = "button"; restart.hidden = serviceMode !== "r345";
     restart.addEventListener("click", () => $("launcher-restart").click());
     const line = el("p", "small saved-text", "Збережено. Приймач візьме пристрої після перезапуску. ");
     line.append(restart);
@@ -152,14 +152,13 @@
     if (!backupTask) backupJob().resume();
     if (!data) await overview();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {};
-    let launcher = {};
-    try { launcher = await request("/api/launcher"); } catch (_) { /* панель без лаунчера */ }
+    await launcherState();
     const alive = value => value === false ? ["зупинено", "alert"] : value === true ? ["працює", "good"] : ["—", ""];
     const fresh = d.updated_at && now() - d.updated_at < 120;
     const [asr, asrTone] = fresh ? alive(g["workers.transcriber_alive"]) : ["немає свіжих даних", ""];
     const [tg, tgTone] = fresh ? alive(g["workers.telegram_alive"]) : ["немає свіжих даних", ""];
     $("workers").replaceChildren(kv([
-      ["Лаунчер", launcher.managed ? (LAUNCHER[launcher.state] || launcher.state) + (launcher.receiver_stopped ? " · приймач зупинено" : "") : "не керує панеллю", launcher.managed ? "good" : ""],
+      ["Службами керує", SERVICE_MODE[serviceMode] || serviceMode, serviceMode === "none" ? "" : "good"],
       ["Сесія приймача", d.started_at ? `з ${stamp(d.started_at)} · ${ago(now() - d.started_at)}` : "—"],
       ["Whisper", `${shortModel(data.models.whisper)} · ${g["models.whisper"] || "—"}`],
       ["Qwen", `${shortModel(data.models.qwen)} · ${g["models.qwen"] || "—"}`],

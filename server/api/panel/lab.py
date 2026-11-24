@@ -118,10 +118,12 @@ def register(app, ctx):
         import config
         if not config.RECORD_AUDIO:
             raise HTTPException(409, "Для режиму «лише запис» потрібно ввімкнути архів аудіо")
+        if not (ROOT / "lab").is_dir():
+            raise HTTPException(409, "Лабораторія працює лише на Mac")
         windows = validated_windows(windows, time.time())
         lab_queue.set_windows(root, windows)
         lab_queue.set_start_at(root, None if windows else start_at)
-        lab_queue.start(root, launcher_root=launcher_root or ROOT)
+        lab_queue.start(root)
 
     @app.post("/api/lab/queue/stop")
     def queue_stop(payload: QueueStop, admin=Depends(actor)):

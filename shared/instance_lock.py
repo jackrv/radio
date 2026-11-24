@@ -16,3 +16,19 @@ def acquire_instance_lock(path):
         os.close(fd)
         return None
     return fd
+
+
+def lock_held(path):
+    """Не створює, не видаляє і не перезаписує lock-файл."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except FileNotFoundError:
+        return False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        return False
+    finally:
+        os.close(fd)

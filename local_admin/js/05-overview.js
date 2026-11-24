@@ -50,8 +50,8 @@
   pauseRefresh();
   setInterval(paintPause, 1000);
   setInterval(pauseRefresh, 15000);
-  // Плашка стану вгорі — перемикач без зайвих питань: пауза ↔ приймання, зупинений приймач — запустити.
-  // Поки команда виконується, плашка показує дію («Запускаю…») і не реагує на повторні натискання;
+  // Плашка стану вгорі — перемикач без зайвих питань: пауза ↔ приймання.
+  // Поки команда виконується, плашка показує дію («Відновлюю…») і не реагує на повторні натискання;
   // знімається, щойно приймач прийшов у потрібний стан, або через ліміт часу.
   function pendPill(text, target, seconds) {
     pillPending = { text, target, until: Date.now() + seconds * 1000 };
@@ -65,12 +65,9 @@
     // Реакція одразу, ще до відповіді сервера.
     pendPill(state === "listening" ? "Ставлю на паузу…" : state === "paused" ? "Відновлюю…" : "Перевіряю…", null, 15);
     action(async () => { try {
-      const launcher = await request("/api/launcher").catch(() => ({}));
-      if (launcher.receiver_stopped || state === "stopped" || state === "offline") {
-        if (!launcher.receiver_stopped && state === "offline") { pillPending = null; await overview(); note("Приймач не працює, а лаунчер ним не керує — запустіть лаунчер."); return; }
-        pendPill("Запускаю…", "listening", 45);
-        await request("/api/launcher/receiver-start", "POST");
-        return;
+      if (state === "stopped" || state === "offline") {
+        pillPending = null; await overview();
+        note("Приймач не працює. Запустіть служби: ./r345 up (на Pi — systemctl)."); return;
       }
       await pauseRefresh();
       const resume = pauseState?.pause_requested;

@@ -9,7 +9,6 @@ from unittest.mock import Mock
 
 import pytest
 
-import start_radio345 as launcher
 from shared.dictionary_store import init_db
 from server.admin_setup import ensure_admin, fetch_private_chat, parse_private_chat
 from shared.sqlite_connection import get_db
@@ -139,19 +138,3 @@ def test_telegram_error_is_reported(db_path):
     assert ok is False
     ask.assert_not_called()
     assert any("Не вдалося" in line for line in messages)
-
-
-def test_launcher_stops_before_api_without_admin(tmp_path, monkeypatch):
-    monkeypatch.setattr(launcher, "ROOT", tmp_path)
-    monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "server/api").mkdir(parents=True)
-    for name in ["radio.py", "server/api/local_server.py", ".env"]:
-        (tmp_path / name).touch()
-    monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
-    monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")
-    monkeypatch.setattr(launcher, "ensure_dictionaries", lambda *args, **kwargs: True)
-    monkeypatch.setattr(launcher, "interactive_console", lambda: False)
-    started = Mock()
-    monkeypatch.setattr(launcher, "ManagedProcess", started)
-    assert launcher.main() == 2
-    started.assert_not_called()

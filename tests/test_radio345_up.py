@@ -208,7 +208,7 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
     """Справжній r345 у копії проєкту: стан, вибірковий перезапуск, зупинка, відмова другому запуску."""
     import shutil
     import subprocess
-    for item in ("radio345.py", "shared/process_guard.py", "shared/launcher_lifecycle.py"):
+    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/instance_lock.py", "shared/__init__.py"):
         target = tmp_path / item
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radio345.ROOT / item, target)
@@ -247,7 +247,7 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
         up.stdout.close()
 
 
-def test_old_launcher_lock_blocks_r345_and_is_not_stopped_by_it(tmp_path, capsys):
+def test_foreign_lock_blocks_r345_and_is_not_stopped_by_it(tmp_path, capsys):
     (tmp_path / "l").mkdir()
     old = acquire_instance_lock(tmp_path / "l" / "lock")
     control = radio345.Control(tmp_path / "l")
@@ -255,6 +255,6 @@ def test_old_launcher_lock_blocks_r345_and_is_not_stopped_by_it(tmp_path, capsys
         with pytest.raises(SystemExit, match="уже запущено"):
             control.acquire()
         assert control.read() is None and radio345.stop_all(control) == 3
-        assert "start_radio345.py" in capsys.readouterr().out
+        assert "не відповідає" in capsys.readouterr().out
     finally:
         os.close(old)

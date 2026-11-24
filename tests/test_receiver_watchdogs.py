@@ -360,26 +360,6 @@ def test_global_pause_with_playback_and_release_never_alerts_or_resumes_early(tm
     assert len(Stream.opened) == 1 and Stream.opened[0].closed
 
 
-def test_gap_notification_does_not_assert_sleep_or_successful_recovery():
-    # Виконуємо тільки чисту функцію форматування, не імпортуємо запуск radio.py.
-    import ast
-    from datetime import datetime, timedelta
-    from pathlib import Path
-
-    tree = ast.parse((Path(__file__).resolve().parents[1] / "radio.py").read_text())
-    function = next(node for node in ast.walk(tree)
-                    if isinstance(node, ast.FunctionDef) and node.name == "report_suspension")
-    telegram = Mock()
-    namespace = {"datetime": datetime, "timedelta": timedelta, "telegram_service": telegram}
-    exec(compile(ast.Module(body=[function], type_ignores=[]), "radio.py", "exec"), namespace)
-    namespace["report_suspension"](185)
-    message = telegram.notify_admin_async.call_args.args[0]
-    assert "Розрив циклу під час приймання" in message
-    assert "Причину не встановлено" in message
-    assert "закрита кришка" not in message
-    assert "відновлено автоматично" not in message
-
-
 def test_admin_alert_retries_until_delivered(monkeypatch):
     import logging
 

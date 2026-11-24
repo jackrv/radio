@@ -509,33 +509,32 @@ def test_learning_queue_shows_why_rules_wait_and_allows_approval(local):
     assert client.put("/api/learning/999/approval",json={"approved":True,"expected_version":"0"*64},headers=h).status_code==404
 
 
-def test_launcher_buttons_use_the_authenticated_control_channel(setup, tmp_path):
-    from shared.launcher_lifecycle import LauncherSession
+def test_service_buttons_work_only_under_r345(setup, tmp_path, monkeypatch):
+    from shared import r345_control
     _, path = setup
     root = tmp_path / "launcher"
-    root.mkdir()
+    folder = root / ".radio345-launcher"
+    folder.mkdir(parents=True)
     app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", diagnostics_path=tmp_path / "d.json",
                            recordings_dir=tmp_path / "recordings", launcher_root=root)
     h = {"Origin": ORIGIN}
+    monkeypatch.delenv("INVOCATION_ID", raising=False)
     with TestClient(app, base_url=ORIGIN, client=("127.0.0.1", 12345)) as client:
         assert client.post("/session", json={"token": KEY}, headers=h).status_code == 204
-        assert client.get("/api/launcher").json() == {"managed": False, "reachable": False, "state": "inactive", "receiver_stopped": False}
-        assert client.post("/api/launcher/restart", headers=h).status_code == 409, "панель без лаунчера"
+        assert client.get("/api/launcher").json() == {"mode": "none", "profile": None, "stopped": []}
+        assert client.post("/api/launcher/restart", headers=h).status_code == 409
         assert client.post("/api/launcher/kill", headers=h).status_code == 422
-        session = LauncherSession(root, ["api"]).__enter__()
-        try:
-            assert client.get("/api/launcher").json()["managed"] is True
-            assert client.post("/api/launcher/restart").status_code == 403, "без Origin панелі"
-            fifo = root / ".radio345-launcher/control.fifo"
-            reader = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
-            session.thread_stop.set(); session.thread.join(timeout=1)   # читаємо канал самі
-            try:
-                assert client.post("/api/launcher/restart", headers=h).json() == {"sent": "restart"}
-                assert os.read(reader, 1024) == f"restart {session.token}\n".encode()
-            finally:
-                os.close(reader)
-        finally:
-            session.__exit__(None, None, None)
+        monkeypatch.setenv("INVOCATION_ID", "x")
+        assert client.get("/api/launcher").json()["mode"] == "systemd"
+        running = {"pid": 1, "profile": "mac-dev", "processes": {"node": {"alive": True}, "panel": {"alive": False}}}
+        monkeypatch.setattr(r345_control.Control, "read", lambda self: running)
+        stopped = []
+        monkeypatch.setattr(r345_control.os, "kill", lambda pid, sig: stopped.append(pid))
+        assert client.get("/api/launcher").json() == {"mode": "r345", "profile": "mac-dev", "stopped": ["panel"]}
+        assert client.post("/api/launcher/restart").status_code == 403, "без Origin панелі"
+        assert client.post("/api/launcher/restart", headers=h).json() == {"sent": "restart"}
+        assert sorted(f.name for f in folder.glob("r345-restart-*")) == ["r345-restart-node", "r345-restart-panel"]
+        assert client.post("/api/launcher/stop", headers=h).json() == {"sent": "stop"} and stopped == [1]
 
 
 def test_attention_lists_what_waits_for_the_operator(local):

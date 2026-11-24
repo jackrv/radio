@@ -349,62 +349,19 @@ def progress(root, job):
     return {"done": done, "total": total}
 
 
-def start(root=None, python=None, launcher_root=None):
+def start(root=None, python=None):
     """Запустити виконавця окремим процесом (якщо ще не працює)."""
     with _locked(root) as state:
         if runner_active(state):
             return False
         state["runner"] = {**state["runner"], "stop": False}
     log = open(queue_dir(root) / "queue-runner.log", "a")
-    subprocess.Popen([python or sys.executable, "-m", "shared.lab_queue", "run", "--dir", str(queue_dir(root)),
-                      "--launcher-root", str(launcher_root or ROOT)],
+    subprocess.Popen([python or sys.executable, "-m", "shared.lab_queue", "run", "--dir", str(queue_dir(root))],
                      cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     return True
 
 
 # ---------- Виконавець ----------
-class Launcher:
-    """Стан приймача через лаунчер (той самий канал, що й кнопки панелі)."""
-    def __init__(self, root):
-        self.root = root
-
-    def receiver_stopped(self):
-        from shared.launcher_lifecycle import managed_status
-        return "radio" in managed_status(self.root).get("stopped_services", [])
-
-    def send(self, command):
-        from shared.launcher_lifecycle import send_command
-        return send_command(self.root, command)
-
-
-class CaptureOnly:
-    """Керування режимом запису лише з фрагментами через ту саму базу, що й приймач."""
-    def __init__(self, db_path):
-        self.db_path = db_path
-
-    def start(self, until):
-        from shared.receiver_control import set_capture_only
-        set_capture_only(self.db_path, until)
-
-    def renew(self, until):
-        from shared.receiver_control import set_capture_only
-        set_capture_only(self.db_path, until, reset_unloaded=False)
-
-    def ready(self):
-        from shared.receiver_control import capture_state
-        state = capture_state(self.db_path)
-        return state["active"] and state["unloaded"] is not None
-
-    def stop(self):
-        from shared.receiver_control import set_capture_only
-        set_capture_only(self.db_path, None)
-
-    def restored(self):
-        from shared.receiver_control import capture_state
-        state = capture_state(self.db_path)
-        return not state["active"] and state["unloaded"] is None
-
-
 def _set(root, **runner):
     with _locked(root) as state:
         state["runner"].update(runner)
@@ -422,20 +379,17 @@ def _run_dir_for(root, name, since):
     return max(candidates, key=lambda p: p.name).name if candidates else None
 
 
-def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S,
+def run(root=None, spawn=None, sleep=time.sleep, now=time.time, cooldown=COOLDOWN_S,
         estimate=None, capture=None, notify=None):
     """Виконує тести по черзі, доки є що виконувати або не попросили зупинитись.
 
     root — тека експериментів (черга); лабораторія запускається з кореня проєкту.
     """
     root = queue_dir(root)
-    launcher = launcher or Launcher(ROOT)
     if capture is None:
         import config
         from shared.model_pause import ModelPause, model_root
-        pause = ModelPause(model_root(config.BASE_DIR))
-        # Модель тримає окремий вузол (r345) — просимо її в нього; інакше старий приймач у режимі «лише запис».
-        capture = pause if pause.worker_running() else CaptureOnly(config.DB_PATH)
+        capture = ModelPause(model_root(config.BASE_DIR))   # модель віддає вузол Whisper (r345)
     if estimate is None:
         def estimate(preset):
             try:
@@ -469,14 +423,11 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             sleep(min(1, deadline - now()))
         restored = capture.restored()
         if not restored:
-            _set(root, capture_error="Приймач не підтвердив відновлення Whisper")
+            _set(root, capture_error="Вузол Whisper не підтвердив повернення моделі")
         return restored
 
     def start_capture(job):
         nonlocal capture_by_us, capture_until
-        if launcher.receiver_stopped():
-            _finish_job(root, job["id"], status="failed", error="Приймач вимкнений — режим «лише запис» недоступний")
-            return False
         _set(root, state="starting_capture")
         capture_until = now() + CAPTURE_LEASE_S
         capture.start(capture_until)
@@ -487,7 +438,7 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
                 return False
             sleep(min(1, deadline - now()))
         if not capture.ready():
-            _finish_job(root, job["id"], status="failed", error="Приймач не вивантажив Whisper — тест не запущено")
+            _finish_job(root, job["id"], status="failed", error="Вузол Whisper не віддав модель — тест не запущено")
             return False
         _set(root, state="capturing_audio")
         return True
@@ -591,9 +542,9 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
         if capture_by_us:
             try:
                 if not stop_capture():
-                    _set(root, capture_error="Приймач не підтвердив відновлення Whisper")
+                    _set(root, capture_error="Вузол Whisper не підтвердив повернення моделі")
             except Exception as exc:
-                _set(root, capture_error=f"Не вдалося вимкнути режим «лише запис»: {exc}")
+                _set(root, capture_error=f"Не вдалося повернути модель: {exc}")
         _set(root, pid=None, state="idle", current=None, until=None, stop=False, start_at=None, windows=None,
              finished=now())
 
@@ -603,7 +554,6 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     runner = sub.add_parser("run", help="виконати чергу (запускає панель)")
     runner.add_argument("--dir", default=None, help="тека експериментів (типово — .local-experiments)")
-    runner.add_argument("--launcher-root", default=str(ROOT))
     args = parser.parse_args(argv)
     if args.command == "run":
         root = queue_dir(args.dir)
@@ -614,8 +564,7 @@ def main(argv=None):
                 print("Виконавець черги вже працює")
                 return 1
             from shared import lab_notify
-            run(root, launcher=Launcher(Path(args.launcher_root)),
-                notify=lambda text: lab_notify.send(text, Path(args.launcher_root)))
+            run(root, notify=lambda text: lab_notify.send(text, ROOT))
     return 0
 
 

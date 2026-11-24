@@ -1,6 +1,6 @@
 """Первоначальная локальная настройка администратора.
 
-Те саме робить start_radio345.py, якщо в базі немає адміністратора.
+Потрібно один раз, якщо в базі немає адміністратора.
 """
 
 import os
@@ -20,7 +20,7 @@ def main():
     if not db_path.is_file():
         raise SystemExit(
             "Робочу SQLite не знайдено. Спочатку імпортуйте словники: "
-            "start_radio345.py або manage_database.py init"
+            "manage_database.py init"
         )
     if has_active_admin(db_path):
         print("Адміністратора вже зареєстровано.")

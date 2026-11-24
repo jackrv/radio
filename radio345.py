@@ -7,22 +7,20 @@
     ./r345 pause-model [--minutes 120]             # віддати модель вузла лабораторії; resume-model — повернути
 
 Кожен процес окремий: падіння одного не зупиняє інші, він перезапускається з паузою.
-Якщо зникне сам наглядач, process_guard зупинить служби. Замок спільний зі start_radio345.py,
-тож обидва лаунчери водночас не працюють. На Pi процеси веде systemd (deploy/hub).
+Якщо зникне сам наглядач, process_guard зупинить служби. На Pi процеси веде systemd (deploy/hub).
 """
 import argparse
-import fcntl
-import json
 import os
 import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import tomllib
 from pathlib import Path
+
+from shared.r345_control import Control
 
 ROOT = Path(__file__).resolve().parent
 PROFILES = ROOT / "deploy" / "profiles"
@@ -36,7 +34,6 @@ COMMANDS = {
 }   # лабораторія — не служба: запускається окремими командами
 MIN_PAUSE_S, MAX_PAUSE_S, STABLE_S = 2.0, 60.0, 60.0
 GRACE_S = 15.0   # скільки служба має на штатне завершення; далі — примусово
-CONTROL = ROOT / ".radio345-launcher"
 UNITS = ("radio345-node", "radio345-panel", "radio345-asr", "radio345-api", "radio345-tunnel")
 
 
@@ -179,79 +176,6 @@ def supervise(children, stop, interval=0.5, on_tick=lambda: None):
             child.finish(deadline)
 
 
-class Control:
-    """Замок, стан і запити в .radio345-launcher/ (права 0700)."""
-
-    def __init__(self, directory=None):
-        self.directory = Path(directory or CONTROL)
-        self.lock_path = self.directory / "lock"
-        self.state_path = self.directory / "r345.json"
-        self.lock_fd, self._last = None, None
-
-    def acquire(self):
-        if self.directory.is_symlink():
-            raise SystemExit("Каталог керування не може бути символічним посиланням")
-        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.directory, 0o700)
-        fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.close(fd)
-            raise SystemExit("Radio 345 уже запущено (або ще завершується): ./r345 status") from None
-        self.lock_fd = fd
-        # Залишки старого лаунчера не мають виглядати як чинний канал чи «зупинений приймач».
-        for stale in ("state.json", "control.fifo"):
-            (self.directory / stale).unlink(missing_ok=True)
-        for old in self.directory.glob("r345-restart-*"):
-            old.unlink(missing_ok=True)
-
-    def held(self):
-        from shared.launcher_lifecycle import lock_held
-        return lock_held(self.lock_path)
-
-    def save(self, profile, children):
-        data = {"pid": os.getpid(), "profile": profile, "processes": {c.name: c.state() for c in children}}
-        if data == self._last:
-            return
-        fd, temp = tempfile.mkstemp(dir=self.directory)
-        with os.fdopen(fd, "w") as out:
-            json.dump(data, out)
-        os.replace(temp, self.state_path)
-        self._last = data
-
-    def read(self):
-        """Стан живого r345 або None (не запущено чи працює старий лаунчер)."""
-        if not self.held():
-            return None
-        try:
-            data = json.loads(self.state_path.read_text())
-            pid = data["pid"]
-            command = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
-        except (OSError, ValueError, KeyError, TypeError):
-            return None
-        return data if type(pid) is int and "radio345 up" in command else None
-
-    def request_restart(self, names):
-        for name in names:
-            fd = os.open(self.directory / f"r345-restart-{name}", os.O_CREAT | os.O_WRONLY, 0o600)
-            os.close(fd)
-
-    def take_restarts(self, children):
-        for child in children:
-            path = self.directory / f"r345-restart-{child.name}"
-            if path.exists():
-                path.unlink(missing_ok=True)
-                child.output(child.name, "перезапуск за командою")
-                child.restart()
-
-    def release(self):
-        self.state_path.unlink(missing_ok=True)
-        if self.lock_fd is not None:
-            os.close(self.lock_fd)
-            self.lock_fd = None
-
-
 def systemd_units():
     """Стан служб systemd на Pi або {}, якщо їх там немає."""
     if not shutil.which("systemctl"):
@@ -269,7 +193,7 @@ def show_status(control):
         print(f"{unit} (systemd): {state}")
     data = control.read()
     if data is None:
-        print("Працює старий лаунчер start_radio345.py" if control.held() else "r345 не запущено")
+        print("r345 завершується" if control.held() else "r345 не запущено")
         return 3
     print(f"r345 працює: профіль {data['profile']}, PID {data['pid']}")
     for name, item in data["processes"].items():
@@ -280,9 +204,9 @@ def show_status(control):
 def stop_all(control, timeout=GRACE_S + 10):
     data = control.read()
     if data is None:
-        print("Працює старий лаунчер: зупиніть його start_radio345.py --stop" if control.held() else "r345 не запущено")
+        print("r345 не відповідає" if control.held() else "r345 не запущено")
         return 3 if control.held() else 0
-    os.kill(data["pid"], signal.SIGTERM)
+    control.request_stop()
     deadline = time.monotonic() + timeout
     while control.held():
         if time.monotonic() > deadline:

@@ -222,21 +222,25 @@ def register(app, ctx):
 
     @app.get("/api/launcher")
     def launcher_state(admin=Depends(actor)):
-        """Чи працює керований лаунчер (без токена керування)."""
-        from shared.launcher_lifecycle import managed_status
-        state = managed_status(launcher_root or ROOT)
-        return {"managed": state["managed"], "reachable": state["launcher_reachable"], "state": state["state"],
-                "receiver_stopped": "radio" in state.get("stopped_services", [])}
+        """Хто веде служби: r345 (є кнопки), systemd на Pi або ніхто."""
+        import os
+        from shared.r345_control import Control
+        running = Control((launcher_root or ROOT) / ".radio345-launcher").read()
+        if running:
+            return {"mode": "r345", "profile": running.get("profile"),
+                    "stopped": sorted(n for n, p in running.get("processes", {}).items() if not p.get("alive"))}
+        return {"mode": "systemd" if os.environ.get("INVOCATION_ID") else "none", "profile": None, "stopped": []}
 
     @app.post("/api/launcher/{command}")
-    def launcher_command(command: Literal["restart", "stop", "receiver-stop", "receiver-start"], admin=Depends(actor)):
-        """Команда лаунчеру через його захищений канал. Відповідь — одразу: панель
-        працює всередині лаунчера й зупиниться разом з усіма службами."""
-        from shared.launcher_lifecycle import send_command
-        try:
-            sent = send_command(launcher_root or ROOT, command)
-        except RuntimeError as exc:
-            raise HTTPException(409, str(exc)) from None
-        if not sent:
-            raise HTTPException(409, "Лаунчер не керує цим запуском: панель запущено окремо")
+    def launcher_command(command: Literal["restart", "stop"], admin=Depends(actor)):
+        """Відповідь — одразу: панель працює під r345 і зупиниться разом з усіма службами."""
+        from shared.r345_control import Control
+        control = Control((launcher_root or ROOT) / ".radio345-launcher")
+        running = control.read()
+        if running is None:
+            raise HTTPException(409, "Службами керує не r345")
+        if command == "stop":
+            control.request_stop()
+        else:
+            control.request_restart(list(running["processes"]))
         return {"sent": command}

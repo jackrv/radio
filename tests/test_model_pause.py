@@ -235,7 +235,7 @@ def test_lab_queue_uses_the_worker_when_it_is_running(node, monkeypatch):
     preset = next(iter(lab_queue.PRESETS))
     lab_queue.enqueue(queue, preset) if hasattr(lab_queue, "enqueue") else lab_queue.add(queue, preset)
     try:
-        lab_queue.run(queue, launcher=SimpleNamespace(receiver_stopped=lambda: False), spawn=lambda a, l: Process(),
+        lab_queue.run(queue, spawn=lambda a, l: Process(),
                       sleep=lambda s: time.sleep(min(s, 0.05)), estimate=lambda p: 60, cooldown=0)
         assert seen and seen[0] == ("paused", True)
         deadline = time.monotonic() + 5
@@ -247,19 +247,22 @@ def test_lab_queue_uses_the_worker_when_it_is_running(node, monkeypatch):
         thread.join(5)
 
 
-def test_r345_removes_stale_old_launcher_state(tmp_path):
-    from shared.launcher_lifecycle import managed_status
-    control = radio345.Control(tmp_path / ".radio345-launcher")
-    control.directory.mkdir()
-    (control.directory / "state.json").write_text('{"stopped_services": ["radio"]}')
-    control.acquire()
-    control.save("t", [])
-    try:
-        status = managed_status(tmp_path)
-        assert status["state"] == "r345" and status["stopped_services"] == [] and not status["launcher_reachable"]
-    finally:
-        control.release()
-    assert managed_status(tmp_path)["managed"] is False
+def test_lab_runs_without_worker_and_worker_started_later_waits(tmp_path):
+    pause = ModelPause(tmp_path)
+    pause.start(time.time() + 60)
+    assert pause.ready(), "вузла немає — модель вільна"
+    assert ModelPause(tmp_path).requested(), "вузол, запущений під час тесту, побачить запит"
+    pause.stop()
+    assert pause.restored()
+
+
+def test_stale_paused_state_is_not_trusted_after_worker_start(tmp_path, monkeypatch):
+    pause = ModelPause(tmp_path)
+    pause.report("paused")
+    monkeypatch.setattr(ModelPause, "worker_running", lambda self: True)
+    pause.report("waiting")   # перше, що робить вузол після замка
+    pause.start(time.time() + 60)
+    assert not pause.ready()
 
 
 def test_pause_is_confirmed_even_if_the_node_was_waiting(node):

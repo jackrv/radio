@@ -14,7 +14,6 @@
 /shared/diagnostic_history.py
 /shared/diagnostics.py
 /shared/instance_lock.py
-/shared/launcher_lifecycle.py
 /shared/model_exclusion.py
 /shared/model_pause.py
 /shared/notification_spectral.py
@@ -22,6 +21,7 @@
 /shared/private_files.py
 /shared/process_guard.py
 /shared/ptt_key.py
+/shared/r345_control.py
 /shared/radio_stream.py
 /shared/receiver_control.py
 /shared/recognition.py

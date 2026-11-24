@@ -299,7 +299,7 @@ def main(argv=None):
         _write_private(ACCESS_DIR / "access-url.txt", url + "\n")
 
     if port_busy():
-        # Панель уже працює (наприклад, її запустив start_radio345.py): лише відкриваємо.
+        # Панель уже працює (наприклад, її запустив r345): лише відкриваємо.
         if args.open:
             webbrowser.open(url)
             print(f"Локальну панель відкрито: http://127.0.0.1:{PORT}/")

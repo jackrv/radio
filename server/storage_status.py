@@ -84,7 +84,7 @@ def storage_status(db_path, store, history, backup_dir, *, now=None):
     manual = _files(p for p in Path(backup_dir).glob('*.db') if not AUTO_RE.fullmatch(p.name)) if not Path(backup_dir).is_symlink() else []
     return {'updated_at':now, 'disk':{'total_bytes':usage.total,'free_bytes':usage.free},
             'audio':audio_status(store,now),
-            'logs':[log_status(root/'radio.log'),log_status(root/'launcher.log')],
+            'logs':[log_status(root/'radio.log')],
             'diagnostics':{'count':len(diagnostic_files),'bytes':sum(i.st_size for _,i in diagnostic_files),
                            'retention_days':history.retention_days,'max_sessions':history.max_sessions,'max_bytes':history.max_bytes,
                            'next_age_expiry_at':min((i.st_mtime for _,i in diagnostic_files),default=now)+history.retention_days*86400 if diagnostic_files else None},

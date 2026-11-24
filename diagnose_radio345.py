@@ -131,12 +131,12 @@ def probe_network():
     """Only read-only endpoints; never getUpdates or send a test message."""
     import requests
     from dotenv import dotenv_values
-    from start_radio345 import read_expected_api_url
+    from server.miniapp_tunnel import page_api_url
 
     token = dotenv_values(ROOT / ".env").get("TELEGRAM_BOT_TOKEN", "")
     checks = {}
     targets = [("local_api", "http://127.0.0.1:8765/api/status", 401)]
-    public = read_expected_api_url()
+    public = page_api_url()
     if public:
         targets.append(("https_api", public + "/api/status", 401))
     if token:

@@ -415,7 +415,6 @@ iframe.phone-preview { max-width: 430px; height: 760px; margin: 10px auto 0; }
 /* Лаунчер: напис і три маленькі кнопки. */
 .launcher-line { display: flex; align-items: center; justify-content: space-between; gap: 6px; white-space: nowrap; }
 .launcher-line > span:first-child { overflow: hidden; text-overflow: ellipsis; }
-.launcher-icons { display: flex; gap: 4px; flex-shrink: 0; }
 button.icon { width: 28px; height: 26px; padding: 0; font-size: 13px; line-height: 1; border-radius: 7px; }
 /* Пауза: смуга-прогрес, час — усередині смуги. */
 .pause-slider { margin-top: 10px; }
@@ -437,7 +436,6 @@ button.icon { width: 28px; height: 26px; padding: 0; font-size: 13px; line-heigh
 button.icon .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; display: block; margin: auto; }
 button.icon .ico.solid { fill: currentColor; stroke: none; }
 #launcher-stop .ico { width: 19px; height: 19px; stroke-width: 2.4; }
-#receiver-toggle .ico { width: 17px; height: 17px; }
 
 /* Робочі акценти: головне — еталон і його збереження. */
 button:not(.ghost):not(.danger):not(.pill):not(.tab):not(.small-button) { box-shadow: none; }
@@ -1512,7 +1510,6 @@ main button.outline-button:hover { background: rgba(184, 239, 134, .22); filter:
   body.sidebar-collapsed .brand > div, body.sidebar-collapsed .brand-chevron, body.sidebar-collapsed .nav-label { opacity: 0; }
   body.sidebar-collapsed #nav button > b { display: none; }
   body.sidebar-collapsed .launcher-line > .small { display: none; }
-  body.sidebar-collapsed .launcher-icons { flex-wrap: wrap; }
   body.sidebar-collapsed .launcher-box > p { display: none; }
   body.sidebar-collapsed .pause-slider { display: none; }
 }

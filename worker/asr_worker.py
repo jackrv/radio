@@ -1,7 +1,7 @@
 """Вузол розшифровки на Mac: звук і підказка → результат Whisper. Без бази й Telegram.
 
 Запуск: ``.venv/bin/python -m worker.asr_worker``. Тримає замок приймача, тож не запуститься
-поруч із radio.py чи лабораторією (замки — у каталозі цього checkout).
+поруч із лабораторією (замки — у каталозі цього checkout).
 """
 import logging
 import os
@@ -184,6 +184,7 @@ def main():
     model = WhisperRecognizer(model_repo=config.MODEL_REPO, language=config.LANGUAGE,
                               sample_rate=config.SR, prompt="", log=log)
     gate = ModelGate(model, ModelPause(root), acquire, log)
+    gate.pause.report("waiting")   # стан минулого запуску не має видаватися за «модель віддано»
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *a: stop.set())

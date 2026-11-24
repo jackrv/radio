@@ -1,8 +1,10 @@
-"""Оновлення коду Pi з панелі Mac або ./r345 update: Pi бере з GitHub той самий коміт, що на Mac; лише файли профілю pi.
+"""Оновлення коду Pi з панелі Mac або ./r345 update: Mac шле по SSH свій коміт (push не потрібен); лише файли профілю pi.
 Збій перевірки повертає попередній код.
 
 База, .env, архів і юніти systemd не зачіпаються (юніти — sudo sh deploy/hub/install.sh --units, якщо змінилися).
 """
+import gzip
+import hashlib
 import json
 import re
 import shlex
@@ -17,9 +19,9 @@ from shared.paths import REMOTE_PLACE
 
 FOLDER = "radio345-hub"
 
-# Виконується на Pi стандартним python3. prepare: копія чинного коду; fetch: коміт із GitHub; finish: зайве, залежності, імпорт, юніти.
+# Виконується на Pi стандартним python3. prepare: копія чинного коду; unpack: присланий коміт; finish: зайве, залежності, імпорт, юніти.
 REMOTE = REMOTE_PLACE + r'''
-import hashlib, json, os, subprocess, sys, tarfile
+import hashlib, json, os, shutil, subprocess, sys, tarfile
 root = os.path.join(os.path.expanduser("~"), sys.argv[1])
 os.chdir(root)
 os.makedirs(".local-data", 0o700, exist_ok=True)
@@ -58,31 +60,30 @@ if step == "prepare":
     with open(backup + ".json", "w") as f:
         json.dump({"names": have, "requirements": digest("deploy/requirements/hub.txt")}, f)
     print(json.dumps({"ok": True}))
-elif step == "fetch":
-    url, commit = sys.argv[3], sys.argv[4]
-    cache, env = place(".", ".local-code.git"), dict(os.environ, GIT_TERMINAL_PROMPT="0")
-    def git(*args, **kw):
-        return subprocess.run(["git", "--git-dir", cache, *args], env=env, stdin=subprocess.DEVNULL, capture_output=True, **kw)
-    if not os.path.isdir(cache) and subprocess.run(["git", "init", "-q", "--bare", cache], capture_output=True).returncode:
-        sys.exit("git")
-    if git("fetch", "-q", "--depth", "1", url, commit).returncode:
-        sys.exit("fetch")
-    listing = git("show", commit + ":deploy/profiles/pi.files")
-    wanted = [l.strip().lstrip("/") for l in listing.stdout.decode().splitlines() if l.strip() and not l.startswith("#")]
-    if listing.returncode or not wanted or not all(safe(n) for n in wanted):
-        sys.exit("manifest")
-    archive = git("archive", "--format=tar", commit, "--", *wanted)
-    if archive.returncode:
-        sys.exit("manifest")
-    import io
-    with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
-        members = [m for m in tar.getmembers() if m.isfile() or m.isdir()]
-        if {m.name for m in members if m.isfile()} != set(wanted):
-            sys.exit("manifest")
-        try:
-            tar.extractall(".", members=members, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
-        except Exception:
-            restore(); sys.exit("extract")
+elif step == "unpack":
+    sent = os.path.join(".local-data", "code-update.tar.gz")
+    try:
+        if digest(sent) != sys.argv[3]:
+            sys.exit("checksum")
+        with tarfile.open(sent, "r:gz") as tar:
+            members = [m for m in tar.getmembers() if m.isfile() or m.isdir()]
+            manifest = [m for m in members if m.isfile() and m.name == "deploy/profiles/pi.files"]
+            if not manifest:
+                sys.exit("manifest")
+            lines = tar.extractfile(manifest[0]).read().decode().splitlines()
+            wanted = [l.strip().lstrip("/") for l in lines if l.strip() and not l.startswith("#")]
+            if not all(safe(n) for n in wanted) or not all(safe(m.name) for m in members) or {m.name for m in members if m.isfile()} != set(wanted):
+                sys.exit("manifest")
+            try:
+                tar.extractall(".", members=members, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+            except Exception:
+                restore(); sys.exit("extract")
+    except (OSError, EOFError, tarfile.TarError):
+        sys.exit("checksum")
+    finally:
+        if os.path.exists(sent):
+            os.unlink(sent)
+    shutil.rmtree(place(".", ".local-code.git"), ignore_errors=True)   # кеш колишнього завантаження з GitHub
     print(json.dumps({"ok": True}))
 elif step == "restore":
     restore()
@@ -117,8 +118,8 @@ else:
     print(json.dumps({"ok": True, "units": units}))
 '''
 ERRORS = {"pip": "Залежності не встановилися; повернуто попередній код", "import": "Новий код на Pi не завантажується; повернуто попередній",
-          "manifest": "Пошкоджений список файлів у коміті", "git": "На Pi не працює git",
-          "fetch": "Pi не отримала код із GitHub: перевірте інтернет", "extract": "Код не розпакувався; повернуто попередній"}
+          "manifest": "Пошкоджений список файлів у коміті", "checksum": "Код пошкоджено під час передавання; нічого не змінено",
+          "extract": "Код не розпакувався; повернуто попередній"}
 
 
 class UpdateError(Exception):
@@ -129,23 +130,46 @@ class PiUpdate:
     def __init__(self, root, host, run=subprocess.run, control=devices.control_pi, fetch=devices.remote, sleep=time.sleep):
         self.root, self.host, self.run, self.control, self.fetch, self.sleep = Path(root), host, run, control, fetch, sleep
         self.state, self.thread, self.guard = {"phase": "idle"}, None, threading.Lock()
+        self.unpushed = 0
 
     def read(self):
         return {**self.state, "active": self.thread is not None and self.thread.is_alive()}
 
     def source(self):
-        """(адреса GitHub, коміт) того, що на Mac; незапушене чи змінене — відмова."""
+        """Коміт Mac; змінене — відмова: інакше невідомо, який код на Pi. Скільки комітів ще не на GitHub — у read()."""
         def git(*args):
             done = self.run(["git", "-C", str(self.root), *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
             return done.stdout.strip() if done.returncode == 0 else None
-        url, commit = git("remote", "get-url", "origin") or "", git("rev-parse", "HEAD") or ""
-        if not re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+", url) or not re.fullmatch(r"[0-9a-f]{40}", commit):
-            raise UpdateError("Не вдалося визначити коміт і адресу GitHub")
+        commit = git("rev-parse", "HEAD") or ""
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise UpdateError("Не вдалося визначити коміт")
         if git("status", "--porcelain", "--untracked-files=normal") != "":
-            raise UpdateError("На Mac є незакомічені зміни: спершу commit і push")
-        if git("merge-base", "--is-ancestor", commit, "origin/main") is None:
-            raise UpdateError("Коміт Mac ще не на GitHub: спершу push")
-        return url, commit
+            raise UpdateError("На Mac є незакомічені зміни: спершу commit")
+        ahead = git("rev-list", "--count", f"origin/main..{commit}") or ""
+        self.unpushed = int(ahead) if ahead.isdigit() else 0
+        return commit
+
+    def archive(self, commit):
+        """Файли профілю pi з коміту — те, що поїде на Pi."""
+        def git(*args):
+            done = self.run(["git", "-C", str(self.root), *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=60)
+            if done.returncode:
+                raise UpdateError(ERRORS["manifest"])
+            return done.stdout
+        listing = git("show", f"{commit}:deploy/profiles/pi.files").decode().splitlines()
+        names = [n.strip().lstrip("/") for n in listing if n.strip() and not n.startswith("#")]
+        if not names:
+            raise UpdateError(ERRORS["manifest"])
+        return gzip.compress(git("archive", "--format=tar", commit, "--", *names), mtime=0)
+
+    def _send(self, data):
+        try:
+            done = self.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", self.host,
+                             f"umask 077; cat > {FOLDER}/.local-data/code-update.tar.gz"], input=data, capture_output=True, timeout=300)
+        except (OSError, subprocess.TimeoutExpired):
+            raise UpdateError("Pi не відповіла вчасно") from None
+        if done.returncode:
+            raise UpdateError("SSH до Pi недоступний" if done.returncode == 255 else "Код не передано на Pi; нічого не змінено")
 
     def start(self):
         with self.guard:
@@ -153,9 +177,9 @@ class PiUpdate:
                 raise UpdateError("Не налаштовано RADIO345_PI_SSH")
             if self.read()["active"]:
                 raise UpdateError("Оновлення вже триває")
-            url, commit = self.source()
-            self.state = {"phase": "copying"}
-            self.thread = threading.Thread(target=self.update, args=(url, commit), name="pi-update", daemon=True)
+            commit = self.source()
+            self.state = {"phase": "sending"}
+            self.thread = threading.Thread(target=self.update, args=(commit,), name="pi-update", daemon=True)
             self.thread.start()
 
     def _remote(self, step, *args, timeout=900):
@@ -172,17 +196,19 @@ class PiUpdate:
         except (ValueError, IndexError):
             raise UpdateError("Незрозуміла відповідь Pi") from None
 
-    def update(self, url, commit):
+    def update(self, commit):
         try:
             with exclusive(self.root):
-                self._update(url, commit)
+                self._update(commit)
         except Busy as exc:
             self.state = {"phase": "failed", "error": str(exc)}
 
-    def _update(self, url, commit):
+    def _update(self, commit):
         try:
+            data = self.archive(commit)
             self._remote("prepare", timeout=120)
-            self._remote("fetch", url, commit)
+            self._send(data)
+            self._remote("unpack", hashlib.sha256(data).hexdigest())
             self.state = {"phase": "checking"}
             result = self._remote("finish", commit)
             self.state = {"phase": "restarting"}
@@ -194,7 +220,7 @@ class PiUpdate:
             down = [n for n in alive if not state.get(n, {}).get("alive")]
             if down:
                 raise UpdateError("Код оновлено, але не піднялися: " + ", ".join(down))
-            self.state = {"phase": "done", "units": result.get("units") or [], "at": time.time()}
+            self.state = {"phase": "done", "units": result.get("units") or [], "unpushed": self.unpushed, "at": time.time()}
         except Exception as exc:
             text = str(exc) if isinstance(exc, (UpdateError, devices.Refused)) else f"Несподівана помилка: {type(exc).__name__}"
             self.state = {"phase": "failed", "error": text}

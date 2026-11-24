@@ -434,7 +434,7 @@ def service(switch):
     return 0
 
 
-UPDATE_PHASES = {"copying": "беру код із GitHub", "checking": "перевіряю", "restarting": "перезапускаю служби"}
+UPDATE_PHASES = {"copying": "беру код із GitHub", "sending": "передаю код на Pi", "checking": "перевіряю", "restarting": "перезапускаю служби"}
 
 
 def follow(updater, refused):
@@ -456,7 +456,7 @@ def follow(updater, refused):
 
 
 def update(target="all", mac=None, pi=None):
-    """Mac — з GitHub, потім Pi — той самий коміт."""
+    """Mac — з GitHub, потім Pi — той самий коміт, напряму з Mac."""
     if sys.platform != "darwin":
         print("Оновлення запускають з Mac: ./r345 update там або кнопка в панелі")
         return 1
@@ -483,7 +483,7 @@ def update_mac(updater=None):
 
 
 def update_pi(updater=None):
-    """Код Pi = коміт Mac (з GitHub). Те саме, що кнопка «Оновити код Pi»."""
+    """Код Pi = коміт Mac, напряму по SSH. Те саме, що кнопка «Оновити код Pi»."""
     from server import devices, pi_update
     host = devices.pi_host(base_environment({}))
     if not host:
@@ -503,6 +503,8 @@ def update_pi(updater=None):
     print("  оновлено")
     if current.get("units"):
         print("  на Pi один раз: sudo sh deploy/hub/install.sh --units")
+    if current.get("unpushed"):
+        print(f"  комітів ще не на GitHub: {current['unpushed']} (git push)")
     return 0
 
 
@@ -637,7 +639,7 @@ HELP = """Radio 345
   ./r345 home off           зупинити все на обох
 
 Рідко
-  ./r345 update [mac | pi]  оновити код із GitHub: Mac, потім Pi
+  ./r345 update [mac | pi]  Mac — з GitHub, Pi — напряму з Mac
   ./r345 check              що запуститься й чого бракує
   ./r345 pause-model        віддати модель лабораторії (--minutes 120); resume-model — повернути
   ./r345 service on | off   на Mac: працювати службою без вікна термінала (проєкт — не в ~/Documents)
@@ -665,7 +667,7 @@ def main(argv=None):
     sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
     sub.add_parser("resume-model", help="повернути модель вузлу")
     sub.add_parser("service", help="служба macOS замість вікна термінала").add_argument("switch", choices=("on", "off", "status"))
-    sub.add_parser("update", help="оновити код із GitHub: Mac, потім Pi").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
+    sub.add_parser("update", help="Mac — з GitHub, Pi — напряму з Mac").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
     where = sub.add_parser("home", help="де працює система: показати, перенести, вимкнути")
     where.add_argument("target", nargs="?", choices=("pi", "mac", "off", "rollback"))
     where.add_argument("--yes", action="store_true", help="без запитань")

@@ -34,7 +34,7 @@
 
 | Команда | Що робить |
 | --- | --- |
-| `./r345 update` | оновити код із GitHub: Mac, потім Pi; `update mac` / `update pi` — окремо. Те саме в панелі |
+| `./r345 update` | Mac — з GitHub, потім Pi — напряму з Mac; `update mac` / `update pi` — окремо. Для Pi потрібен лише commit, без push. Те саме в панелі |
 | `./r345 doctor` | усе одним поглядом: служби, база, Pi, підпис iPhone, копії |
 | `./r345 service on` / `off` / `status` | на Mac: служба замість вікна термінала; проєкт має лежати не в `~/Documents` |
 | `./r345 pause-model` / `resume-model` | віддати модель лабораторії / повернути |

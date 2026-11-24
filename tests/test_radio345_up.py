@@ -363,10 +363,10 @@ def run_update(monkeypatch, updater, code="old"):
 
 
 def test_update_shows_phases_and_result(monkeypatch, capsys):
-    updater = Updater({"phase": "copying"}, {"phase": "checking"}, {"phase": "restarting"}, {"phase": "done", "units": ["api"]})
+    updater = Updater({"phase": "copying"}, {"phase": "sending"}, {"phase": "checking"}, {"phase": "restarting"}, {"phase": "done", "units": ["api"], "unpushed": 2})
     assert run_update(monkeypatch, updater) == 0
     out = capsys.readouterr().out
-    assert all(text in out for text in radio345.UPDATE_PHASES.values()) and "install.sh --units" in out
+    assert all(text in out for text in radio345.UPDATE_PHASES.values()) and "install.sh --units" in out and "ще не на GitHub: 2" in out
 
 
 def test_update_failure_and_refusal_are_explained(monkeypatch, capsys):

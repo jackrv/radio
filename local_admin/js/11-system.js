@@ -257,7 +257,7 @@
     details.append(el("summary", "", "Звук"), body);
     return details;
   }
-  const UPDATE_PHASE = { copying: "беру з GitHub", checking: "перевіряю", restarting: "перезапускаю служби" };
+  const UPDATE_PHASE = { copying: "беру з GitHub", sending: "передаю на Pi", checking: "перевіряю", restarting: "перезапускаю служби" };
   let updateState = { phase: "idle" }, updateTimer = null;
   async function pollUpdate() {
     updateState = await request("/api/devices/pi/update");

@@ -1,4 +1,5 @@
 """Оновлення коду Pi: лише файли профілю, збій повертає попередній код, чужі файли не чіпає."""
+import hashlib
 import json
 import os
 import subprocess
@@ -80,8 +81,8 @@ def test_manifest_cannot_reach_private_or_outside_files(pi):
 
 
 @pytest.fixture
-def github(tmp_path):
-    """Локальний репозиторій замість GitHub: два коміти."""
+def mac(tmp_path):
+    """Репозиторій Mac: файли профілю й те, чого на Pi бути не має."""
     repo = tmp_path / "repo"
     repo.mkdir()
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
@@ -103,62 +104,89 @@ def github(tmp_path):
         git("add", "-A")
         git("commit", "-qm", "x")
         return git("rev-parse", "HEAD")
-    return SimpleNamespace(url=f"file://{repo}", commit=commit)
+    return SimpleNamespace(repo=repo, commit=commit)
 
 
 BASE = ["/deploy/profiles/pi.files", "/server/a.py", "/deploy/requirements/hub.txt"]
 
 
-def test_exact_commit_is_taken_not_the_newest(pi, github):
-    wanted = github.commit([*BASE, "/server/new.py"], a="wanted", new="n")
-    github.commit([*BASE, "/server/new.py"], a="newer", new="n")
+def deliver(pi, data, checksum=None):
+    (pi.root / ".local-data").mkdir(exist_ok=True)
+    (pi.root / ".local-data/code-update.tar.gz").write_bytes(data)
+    return pi.step("unpack", checksum or hashlib.sha256(data).hexdigest())
+
+
+def test_exact_commit_is_taken_not_the_newest(pi, mac):
+    wanted = mac.commit([*BASE, "/server/new.py"], a="wanted", new="n")
+    mac.commit([*BASE, "/server/new.py"], a="newer", new="n")
     pi.step("prepare")
-    assert pi.step("fetch", github.url, wanted).returncode == 0
+    (pi.root / ".local-data/code.git").mkdir()
+    assert deliver(pi, u.PiUpdate(mac.repo, "pi@test").archive(wanted)).returncode == 0
     assert pi.step("finish", wanted).returncode == 0
     assert (pi.root / "server/a.py").read_text() == "wanted" and (pi.root / "server/new.py").exists()
     assert not (pi.root / "private-lab.txt").exists() and not (pi.root / ".git").exists()
+    assert not (pi.root / ".local-data/code-update.tar.gz").exists() and not (pi.root / ".local-data/code.git").exists()
     assert (pi.root / ".local-data/commit").read_text() == wanted and (pi.root / ".env").read_text() == "SECRET=1"
 
 
-def test_unavailable_github_changes_nothing(pi, tmp_path):
+@pytest.mark.parametrize("damage", [lambda d: d[:-20], lambda d: b"x" + d[1:], lambda d: b""])
+def test_damaged_transfer_changes_nothing(pi, mac, damage):
+    data = u.PiUpdate(mac.repo, "pi@test").archive(mac.commit(BASE, a="new"))
     pi.step("prepare")
-    done = pi.step("fetch", f"file://{tmp_path}/none", "a" * 40)
-    assert done.returncode and done.stderr.strip() == "fetch" and (pi.root / "server/a.py").read_text() == "old"
+    done = deliver(pi, damage(data), hashlib.sha256(data).hexdigest())
+    assert done.stderr.strip() == "checksum" and (pi.root / "server/a.py").read_text() == "old"
+    assert deliver(pi, b"not a tar").stderr.strip() == "checksum"
 
 
-@pytest.mark.parametrize("extra", ["/../outside.txt", "/.env", "/server/missing.py"])
-def test_bad_manifest_in_commit_changes_nothing(pi, github, extra):
-    commit = github.commit([*BASE, extra], a="new")
+def test_missing_file_is_refused_on_mac(mac):
+    with pytest.raises(u.UpdateError, match="список"):
+        u.PiUpdate(mac.repo, "pi@test").archive(mac.commit([*BASE, "/server/missing.py"], a="new"))
+
+
+@pytest.mark.parametrize("listed,packed", [(["/.env"], [".env"]), (["/../outside.txt"], ["../outside.txt"]), (["/server/missing.py"], []), ([], ["server/extra.py"])])
+def test_bad_archive_changes_nothing(pi, listed, packed):
+    import io
+    import tarfile
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+        for name in [*BASE, *packed]:
+            body = "\n".join([*BASE, *listed]).encode() if name.endswith("pi.files") else b"new"
+            info = tarfile.TarInfo(name.lstrip("/"))
+            info.size = len(body)
+            tar.addfile(info, io.BytesIO(body))
     pi.step("prepare")
-    assert pi.step("fetch", github.url, commit).stderr.strip().splitlines()[-1] == "manifest"
+    assert deliver(pi, out.getvalue()).stderr.strip().splitlines()[-1] == "manifest"
     assert (pi.root / "server/a.py").read_text() == "old" and (pi.root / ".env").read_text() == "SECRET=1"
+    assert not (pi.root.parent / "outside.txt").exists()
 
 
 def updater(tmp_path, results, alive=("panel",), after=None):
     calls, restarted = [], []
 
     def run(command, **kwargs):
-        name = command[-1].split(u.FOLDER)[1].split()[0]
+        name = "send" if "cat >" in command[-1] else command[-1].split(u.FOLDER)[1].split()[0]
         calls.append(name)
         code, out, err = results.get(name, (0, '{"ok": true}', ""))
         return SimpleNamespace(returncode=code, stdout=out, stderr=err)
     states = [{"processes": {n: {"alive": True} for n in alive}}, after or {"processes": {n: {"alive": True} for n in alive}}]
     fetch = lambda host: states.pop(0) if len(states) > 1 else states[0]
-    return u.PiUpdate(tmp_path, "pi@test", run, lambda h, p, v: restarted.append((p, v)), fetch, lambda s: None), calls, restarted
+    update = u.PiUpdate(tmp_path, "pi@test", run, lambda h, p, v: restarted.append((p, v)), fetch, lambda s: None)
+    update.archive = lambda commit: b"code"
+    return update, calls, restarted
 
 
-ARGS = ("https://github.com/o/r.git", "a" * 40)
+ARGS = ("a" * 40,)
 
 
 def test_running_services_only_are_restarted(tmp_path):
     update, calls, restarted = updater(tmp_path, {}, alive=("panel", "asr"))
     update.update(*ARGS)
-    assert update.state["phase"] == "done" and calls == ["prepare", "fetch", "finish"]
+    assert update.state["phase"] == "done" and calls == ["prepare", "send", "unpack", "finish"]
     assert sorted(restarted) == [("asr", "restart"), ("panel", "restart")]
 
 
 @pytest.mark.parametrize("step,result,text", [
-    ("fetch", (1, "", "fetch\n"), "GitHub"), ("finish", (1, "", "import\n"), "повернуто"), ("finish", (255, "", ""), "SSH"),
+    ("send", (1, "", ""), "не передано"), ("unpack", (1, "", "checksum\n"), "нічого не змінено"), ("finish", (1, "", "import\n"), "повернуто"), ("finish", (255, "", ""), "SSH"),
     ("finish", (0, "x", ""), "Незрозуміла")])
 def test_failures_are_explained(tmp_path, step, result, text):
     update, _, restarted = updater(tmp_path, {step: result})
@@ -172,18 +200,16 @@ def test_service_that_did_not_return_is_reported(tmp_path):
     assert update.state["phase"] == "failed" and "panel" in update.state["error"]
 
 
-def source(tmp_path, url="https://github.com/o/r.git", status="", pushed=True):
+def source(tmp_path, head="a" * 40, status="", ahead="0"):
     def run(command, **kwargs):
-        verb = command[3]
-        out = {"remote": url, "rev-parse": "a" * 40, "status": status}.get(verb, "")
-        return SimpleNamespace(returncode=0 if verb != "merge-base" or pushed else 1, stdout=out)
+        return SimpleNamespace(returncode=0, stdout={"rev-parse": head, "status": status, "rev-list": ahead}[command[3]])
     return u.PiUpdate(tmp_path, "pi@test", run)
 
 
-def test_only_clean_pushed_commit_is_sent(tmp_path):
-    assert source(tmp_path).source() == ("https://github.com/o/r.git", "a" * 40)
-    for kwargs, text in (({"status": " M a.py"}, "незакомічені"), ({"pushed": False}, "push"),
-                         ({"url": "https://user:token@github.com/o/r.git"}, "визначити"), ({"url": "git@github.com:o/r"}, "визначити")):
+def test_only_clean_commit_is_sent_push_is_not_required(tmp_path):
+    update = source(tmp_path, ahead="3")
+    assert update.source() == "a" * 40 and update.unpushed == 3
+    for kwargs, text in (({"status": " M a.py"}, "незакомічені"), ({"head": "main"}, "визначити")):
         with pytest.raises(u.UpdateError, match=text):
             source(tmp_path, **kwargs).source()
 

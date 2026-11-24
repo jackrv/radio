@@ -1,6 +1,6 @@
 """Зв'язок ефіру з рештою через файли: вузол не відкриває базу.
 
-``control.json`` пише служба розпізнавання (власник бази): пауза, прослуховування, пристрої, VAD.
+``control.json`` пише служба розпізнавання (власник бази): пауза, прослуховування, VAD.
 ``state.json`` пише вузол: чи відкрито мікрофон. Немає файла чи він пошкоджений — ефір працює далі.
 """
 import json
@@ -13,7 +13,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 VAD_KEYS = {"VAD_LEVEL": (0, 3), "SILENCE_END_MS": (100, 5000), "MIN_SPEECH_MS": (50, 5000), "MAX_SEGMENT_S": (1, 60)}
-DEVICE_KEYS = ("RADIO_INPUT_DEVICE", "RADIO_OUTPUT_DEVICE")
 MAX_HOLD_S = 130.0
 STATES = ("listening", "paused", "stopped")
 
@@ -70,16 +69,12 @@ class NodeControl:
         return "listening" if self.listening_hold and now < hold <= now + MAX_HOLD_S else False
 
     def apply_startup(self, target):
-        """VAD і пристрої з панелі → config, з перевіркою меж; оточення все одно важливіше (configured)."""
+        """VAD з панелі → config, з перевіркою меж. Пристрої звуку — shared/audio_choice.py."""
         data = read_json(self.path) or {}
         for key, (low, high) in VAD_KEYS.items():
             value = data.get(key)
             if type(value) is int and low <= value <= high:
                 setattr(target, key, value)
-        for key in DEVICE_KEYS:
-            value = data.get(key)
-            if isinstance(value, str) and len(value) <= 200 and not any(ord(ch) < 32 for ch in value):
-                setattr(target, key, value.strip())
 
     # runtime_state для ApplicationSupervisor
     def set(self, state):

@@ -375,23 +375,12 @@
 
       <!-- Система: вкладки «Стан», «Діагностика», «Дані й копії», «Перевірки» (усі заповнює system()). -->
       <section data-panel="system" hidden>
-        <article class="panel"><h2>Керування службами</h2><p class="muted small" id="launcher-hint"></p><div class="toolbar system-controls"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></article>
-        <article class="panel" id="audio-devices-panel">
-          <div class="panel-head"><h2>Звукові пристрої</h2><button id="audio-devices-refresh" class="ghost small-button" type="button" title="Перечитати список, наприклад після підключення USB-карти">Оновити список</button></div>
-          <p class="muted small">Пристрій зберігається за назвою, тож переживає перепідключення USB. Діє після перезапуску приймача; якщо вибраного пристрою немає, приймач чекає на нього й не перемикається на інший сам.</p>
-          <div class="audio-devices">
-            <label>Вхід ефіру<select id="audio-input" aria-label="Вхід ефіру"></select></label>
-            <label>Вихід передачі (PTT)<select id="audio-output" aria-label="Вихід передачі"></select></label>
-            <button id="audio-devices-save" class="ghost" type="button" disabled>Зберегти</button>
-          </div>
-          <div id="audio-devices-result" role="status"></div>
-        </article>
-        <article class="panel" id="devices-panel" hidden>
+        <article class="panel" id="devices-panel">
           <div class="panel-head"><h2>Пристрої</h2><button id="devices-refresh" class="ghost small-button" type="button">Оновити</button></div>
-          <p id="devices-home" class="small" role="status"></p>
-          <div class="toolbar"><button id="move-pi" class="ghost" type="button" hidden>Перенести на Pi</button><button id="move-mac" class="ghost" type="button" hidden>Перенести на Mac</button><button id="move-rollback" class="ghost" type="button" hidden>Повернути, як було</button></div>
           <p id="move-state" class="small" role="status"></p>
-          <div class="sys-grid sys-grid-two"><div><h3>Mac</h3><div id="device-mac"></div></div><div><h3>Pi</h3><div id="device-pi"></div></div></div>
+          <button id="move-rollback" class="ghost" type="button" hidden>Повернути, як було</button>
+          <div class="device-grid"><div id="device-mac" class="device"></div><div id="device-pi" class="device"></div></div>
+          <details class="small device-all"><summary>Усі служби цього пристрою</summary><p class="muted small" id="launcher-hint"></p><div class="toolbar"><button id="launcher-restart" class="ghost" title="Перезапустити всі служби" aria-label="Перезапустити всі служби"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Перезапустити всі служби</button><button id="launcher-stop" class="ghost danger" title="Зупинити все, разом із цією панеллю" aria-label="Зупинити все"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>Зупинити всі служби</button></div></details>
         </article>
         <div class="sys-grid sys-grid-two">
           <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>

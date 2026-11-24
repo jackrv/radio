@@ -279,10 +279,6 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .sys-row { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 table.compact td, table.compact th { padding: 4px 8px; font-size: 12px; }
 @media (max-width: 1500px) { .sys-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.audio-devices { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 10px; }
-.audio-devices label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); flex: 1 1 260px; min-width: 0; }
-.audio-devices select { width: 100%; }
-#audio-devices-result p { margin: 8px 0 0; } #audio-devices-result button { margin-left: 6px; }
 .alert-text { color: var(--warn); } .saved-text { color: var(--ok); }
 .sys-grid.sys-grid-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 800px) { .sys-grid, .sys-grid.sys-grid-two { grid-template-columns: 1fr; } }
@@ -1725,3 +1721,24 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
   #nav .nav-label { display: none; }
   #nav button > b { position: absolute; top: -2px; right: -4px; transform: scale(.8); }
 }
+/* Пристрої */
+.device-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 12px 0; }
+.device { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface2); }
+.device.home { border-color: var(--lime2); box-shadow: var(--glow); }
+.device-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.device-head h3 { margin: 0; font-size: 18px; }
+.device p { margin: 0; }
+.device-line { font-weight: 600; }
+.device-move { margin-top: auto; align-self: stretch; }
+.service-list { display: grid; gap: 4px; margin: 8px 0; }
+.service-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 30px; }
+.service-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+.service-dot.on { background: var(--ok); }
+.service-buttons { display: flex; gap: 4px; min-width: 64px; justify-content: flex-end; }
+.icon-button { width: 28px; height: 28px; padding: 0; line-height: 1; }
+@media (max-width: 800px) { .device-grid { grid-template-columns: 1fr; } }
+.device-audio { display: grid; gap: 8px; margin: 8px 0; }
+.device-audio label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.device-audio select { width: 100%; }
+.device-audio button { justify-self: start; }
+.device-update { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

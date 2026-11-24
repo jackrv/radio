@@ -73,3 +73,6 @@ radio345.code-workspace
 .local-move/
 .import-move/
 .local-home.json
+.local-audio.json
+.local-code.git/
+.local-commit

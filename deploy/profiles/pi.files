@@ -83,7 +83,6 @@
 /server/home_move.py
 /server/log_security.py
 /server/management/__init__.py
-/server/management/audio_settings.py
 /server/management/dictionaries.py
 /server/management/overview.py
 /server/management/phrases.py
@@ -95,6 +94,7 @@
 /server/node_control.py
 /server/notification_samples.py
 /server/phrase_feed.py
+/server/pi_update.py
 /server/queue_monitor.py
 /server/radio_node.py
 /server/receiver_status.py
@@ -123,6 +123,7 @@
 /shared/archive_telegram_recall.py
 /shared/asr_protocol.py
 /shared/audio.py
+/shared/audio_choice.py
 /shared/audio_devices.py
 /shared/callsigns.py
 /shared/command_completion.py

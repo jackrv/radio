@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from typing import Literal
 
 import config
-from server.api.panel.models import HomeMoveStart, PauseUpdate
+from server.api.panel.models import AudioDevicesUpdate, HomeMoveStart, PauseUpdate
 from server.api.panel.common import backups_overview, read_diagnostics, diagnostics_view
 
 def register(app, ctx):
@@ -40,8 +40,9 @@ def register(app, ctx):
             raise HTTPException(422, str(exc)) from None
 
     import sys
+    from pathlib import Path
     from server import devices
-    device_state = devices.Devices(db_path, host=devices.pi_host()) if sys.platform == "darwin" else None
+    device_state = devices.Devices(db_path, Path(db_path).resolve().parent, host=devices.pi_host()) if sys.platform == "darwin" else None
 
     @app.get("/api/devices")
     def device_list(admin=Depends(actor)):
@@ -50,11 +51,31 @@ def register(app, ctx):
 
     mover = None
     if device_state is not None:
-        from pathlib import Path
         from server import home_move
         root = Path(db_path).resolve().parent
         mover = home_move.HomeMove(root, home_move.MacSide(root),
                                    home_move.PiSide(device_state.host, root) if device_state.host else None)
+
+    updater = None
+    if device_state is not None:
+        from server import pi_update
+        updater = pi_update.PiUpdate(root, device_state.host)
+
+    @app.get("/api/devices/pi/update")
+    def pi_update_state(admin=Depends(actor)):
+        return updater.read() if updater else {"phase": "idle", "active": False}
+
+    @app.post("/api/devices/pi/update", status_code=202)
+    def pi_update_start(admin=Depends(actor)):
+        if updater is None:
+            raise HTTPException(409, "Оновлення — лише з панелі на Mac")
+        if mover.read().get("active"):
+            raise HTTPException(409, "Триває перенесення")
+        try:
+            updater.start()
+        except pi_update.UpdateError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"started": True}
 
     def need_mover():
         if mover is None:
@@ -71,6 +92,8 @@ def register(app, ctx):
 
     @app.post("/api/home-move", status_code=202)
     def home_move_start(payload: HomeMoveStart, admin=Depends(actor)):
+        if updater is not None and updater.read()["active"]:
+            raise HTTPException(409, "Триває оновлення коду Pi")
         try:
             need_mover().start(payload.target, payload.accept_warnings)
         except home_move.MoveError as exc:
@@ -84,6 +107,27 @@ def register(app, ctx):
         except home_move.MoveError as exc:
             raise HTTPException(409, str(exc)) from None
         return {"started": True}
+
+    @app.get("/api/devices/{device}/audio")
+    def device_audio(device: Literal["mac", "pi"], admin=Depends(actor)):
+        if device_state is None:
+            raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
+        try:
+            return device_state.audio(device)
+        except devices.Refused as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @app.put("/api/devices/{device}/audio")
+    def device_audio_save(device: Literal["mac", "pi"], payload: AudioDevicesUpdate, admin=Depends(actor)):
+        from shared import audio_choice
+        if device_state is None:
+            raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
+        try:
+            return device_state.save_audio(device, payload.values.model_dump(), payload.expected_revision)
+        except (devices.Refused, audio_choice.Conflict) as exc:
+            raise HTTPException(409, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.post("/api/devices/{device}/{process}/{verb}")
     def device_action(device: Literal["mac", "pi"], process: Literal["node", "asr", "panel", "api", "tunnel", "worker"],

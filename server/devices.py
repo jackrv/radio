@@ -59,6 +59,11 @@ try:
         out["audio"] = any("capture" in l for l in f)
 except OSError:
     out["audio"] = False
+try:
+    with open(os.path.join(root, ".local-commit")) as f:
+        out["commit"] = f.read(40)
+except OSError:
+    out["commit"] = None
 out["disk_free"] = shutil.disk_usage(root).free
 try:
     with open("/sys/class/thermal/thermal_zone0/temp") as f:
@@ -83,6 +88,15 @@ def code_hash(root=ROOT):
     return digest.hexdigest()[:12]
 
 
+def commit(root=ROOT):
+    try:
+        done = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
 def local(db_path, root=ROOT):
     from shared.event_store import get_db
     from shared.model_pause import ModelPause, model_root
@@ -97,7 +111,7 @@ def local(db_path, root=ROOT):
     return {"reachable": True, "profile": (running or {}).get("profile"), "processes": processes,
             "model": ModelPause(model_root(root)).state(), "events": events, "last_event": last,
             "queue": sum(1 for _ in spool.glob("*.seg")) if spool.is_dir() else 0,
-            "code": code_hash(root), "disk_free": shutil.disk_usage(root).free}
+            "code": code_hash(root), "commit": commit(root), "disk_free": shutil.disk_usage(root).free}
 
 
 def pi_host(env=None):
@@ -161,6 +175,23 @@ def control_mac(process, verb, root=ROOT):
     control.request(verb, [process])
 
 
+def audio_pi(host, *args, folder="radio345-hub", run=subprocess.run):
+    """shared.audio_choice на Pi; аргументи екрановано."""
+    import shlex
+    command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "--", host,
+               f"cd {folder} && .venv/bin/python -m shared.audio_choice " + " ".join(shlex.quote(a) for a in args)]
+    try:
+        done = run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+        if done.returncode:
+            raise Refused("SSH до Pi недоступний" if done.returncode == 255 else "Pi не підтримує вибір звуку: оновіть її код")
+        data = json.loads(done.stdout.strip().splitlines()[-1])
+    except (OSError, subprocess.TimeoutExpired):
+        raise Refused("Pi не відповіла вчасно") from None
+    except (ValueError, IndexError):
+        raise Refused("Незрозуміла відповідь Pi") from None
+    return data
+
+
 def home_of(devices):
     """Де працює бот із базою: "mac", "pi", "both" (конфлікт), None — ніде; "unknown" — Pi не видно."""
     def runs(device):
@@ -199,6 +230,28 @@ class Devices:
             control_mac(process, verb, self.root)
         with self.lock:
             self._at = float("-inf")
+
+    def audio(self, device):
+        from shared import audio_choice
+        if device == "mac":
+            return audio_choice.listing(self.root)
+        if not self.host:
+            raise Refused("Не налаштовано RADIO345_PI_SSH")
+        return audio_pi(self.host, "read")
+
+    def save_audio(self, device, values, revision):
+        from shared import audio_choice
+        if device == "mac":
+            return audio_choice.write(self.root, values, revision)
+        if not self.host:
+            raise Refused("Не налаштовано RADIO345_PI_SSH")
+        values = {k: audio_choice.clean_name(values.get(k, "")) for k in audio_choice.KEYS}
+        data = audio_pi(self.host, "write", json.dumps({"values": values, "revision": revision}, ensure_ascii=False))
+        if "conflict" in data:
+            raise audio_choice.Conflict(data["conflict"])
+        if "settings" not in data:
+            raise Refused("Pi відхилила налаштування звуку")
+        return data["settings"]
 
     def read(self):
         with self.lock:

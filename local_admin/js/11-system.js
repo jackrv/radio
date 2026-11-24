@@ -97,146 +97,169 @@
   }
   $("attention-history")?.addEventListener?.("toggle", event => { if (event.target.open) action(attentionHistory); });
 
-  // ---------- Звукові пристрої: список з окремого процесу, вибір діє після перезапуску приймача ----------
-  let audioState = null;
-  async function audioDevices(force = false) {
-    if (audioState && !force) return;
-    const result = $("audio-devices-result"), save = $("audio-devices-save");
-    result.replaceChildren(el("p", "muted small", "Читаю список пристроїв…"));
-    audioState = await request("/api/audio-devices");
-    const {settings, devices, error} = audioState;
-    const fill = (select, key, list) => {
-      const chosen = settings.values[key] || "";
-      const system = (list || []).find(d => d.default);
-      const options = [["", `Системний за замовчуванням${system ? ` (${system.name})` : ""}`]];
-      for (const d of list || []) options.push([d.name, `${d.name} · ${d.channels} кан.`]);
-      if (chosen && !(list || []).some(d => d.name === chosen || d.name.toLowerCase().includes(chosen.toLowerCase())))
-        options.push([chosen, `${chosen} — зараз не знайдено`]);
-      select.replaceChildren(...options.map(([value, text]) => { const o = el("option", "", text); o.value = value; return o; }));
-      // Збережене може бути частиною назви: показуємо перший пристрій, що їй відповідає.
-      const match = (list || []).find(d => d.name === chosen) || (list || []).find(d => chosen && d.name.toLowerCase().includes(chosen.toLowerCase()));
-      select.value = chosen ? (match ? match.name : chosen) : "";
-      select.dataset.saved = select.value;
-      select.disabled = settings.env_override.includes(key);
-      select.title = select.disabled ? `Задано в .env (${key}) — .env має пріоритет над панеллю` : "";
-    };
-    fill($("audio-input"), "RADIO_INPUT_DEVICE", devices?.inputs);
-    fill($("audio-output"), "RADIO_OUTPUT_DEVICE", devices?.outputs);
-    save.disabled = true;
-    const notes = [];
-    if (error) notes.push(el("p", "small alert-text", `${error}. Збережений вибір показано без перевірки.`));
-    if (settings.env_override.length) notes.push(el("p", "muted small", `Задано в .env: ${settings.env_override.join(", ")} — ці поля змінюються лише там.`));
-    result.replaceChildren(...notes);
-  }
-  function audioDirty() {
-    const dirty = ["audio-input", "audio-output"].some(id => $(id).value !== $(id).dataset.saved);
-    $("audio-devices-save").disabled = !dirty;
-  }
-  $("audio-input")?.addEventListener?.("change", audioDirty);
-  $("audio-output")?.addEventListener?.("change", audioDirty);
-  $("audio-devices-refresh")?.addEventListener?.("click", () => action(() => audioDevices(true)));
-  $("audio-devices-save")?.addEventListener?.("click", () => action(async () => {
-    const settings = await request("/api/audio-devices", "PUT", {expected_revision: audioState.settings.revision,
-      values: {RADIO_INPUT_DEVICE: $("audio-input").value, RADIO_OUTPUT_DEVICE: $("audio-output").value}});
-    audioState.settings = settings;
-    for (const id of ["audio-input", "audio-output"]) $(id).dataset.saved = $(id).value;
-    $("audio-devices-save").disabled = true;
-    const restart = el("button", "ghost small-button", "Перезапустити зараз"); restart.type = "button"; restart.hidden = serviceMode !== "r345";
-    restart.addEventListener("click", () => $("launcher-restart").click());
-    const line = el("p", "small saved-text", "Збережено. Приймач візьме пристрої після перезапуску. ");
-    line.append(restart);
-    $("audio-devices-result").replaceChildren(line);
-  }));
-
   // ---------- Пристрої: Mac і Pi ----------
   const PROCESS_NAMES = { node: "Ефір", asr: "Розпізнавання й бот", panel: "Панель", api: "API Mini App", tunnel: "Тунель Mini App", worker: "Whisper" };
-  const HOME_TEXT = { mac: "База й бот працюють на Mac.", pi: "База й бот працюють на Pi.", both: "Бот працює і на Mac, і на Pi: зупиніть один, інакше дані розійдуться.", unknown: "Pi не видно: невідомо, чи працює там бот." };
   const CONTROLLED = { mac: ["worker", "node", "asr", "api", "tunnel"], pi: ["node", "asr", "panel", "api", "tunnel"] };
   const VERB_TEXT = { start: "Запустити", stop: "Зупинити", restart: "Перезапустити" };
-  function deviceButtons(name, process, alive) {
-    const box = el("span", "toolbar");
-    for (const verb of alive ? ["restart", "stop"] : ["start"]) {
-      const b = el("button", "ghost small-button", VERB_TEXT[verb]); b.type = "button";
-      b.addEventListener("click", () => action(async () => {
-        const title = PROCESS_NAMES[process], where = name === "pi" ? "Pi" : "Mac";
-        const open = process === "tunnel" && verb === "start" ? " Відкриється публічна адреса API Mini App." : "";
-        if (!confirm(`${VERB_TEXT[verb]}: ${title} на ${where}?${open}`)) return;
-        b.disabled = true;
-        await request(`/api/devices/${name}/${process}/${verb}`, "POST");
-        note(`${title} на ${where}: команду надіслано.`);
-        setTimeout(devices, 3000);
-      }));
-      box.append(b);
-    }
-    return box;
-  }
-  function deviceCard(name, box, device, extra) {
-    if (!device) { box.replaceChildren(el("p", "muted small", "Не налаштовано: RADIO345_PI_SSH у .env на Mac.")); return; }
-    if (!device.reachable) { box.replaceChildren(el("p", "alert small", device.error || "Недоступно")); return; }
-    const rows = Object.entries(device.processes).map(([name, p]) => [PROCESS_NAMES[name] || name,
-      (p.alive ? "працює" : p.blocked ? "зупинено: зайнято на іншому пристрої" : "зупинено") + (p.restarts ? ` · перезапусків ${num(p.restarts)}` : ""), p.alive ? "good" : ""]);
-    if (!rows.length) rows.push(["Служби", "не запущено", ""]);
-    rows.push(["Подій у базі", device.events == null ? "—" : num(device.events)],
-      ["Остання подія", device.last_event ? ago(now() - device.last_event) : "—"], ["Фраз у черзі", num(device.queue)],
-      ["Вільно на диску", storageSize(device.disk_free)], ...extra);
-    const table = kv(rows);
-    if (name === "pi" || serviceMode === "r345") for (const process of CONTROLLED[name]) {
-      const p = device.processes[process];
-      if (p) table.append(el("span", "", PROCESS_NAMES[process]), deviceButtons(name, process, p.alive));
-    }
-    box.replaceChildren(table);
-  }
-  // ---------- Перенесення дому ----------
+  const VERB_ICON = { start: "▶", stop: "■", restart: "↻" };
+  const HOME_CORE = ["asr", "api", "node"];   // без них дім працює не повністю
   const MOVE_PHASE = { checking: "перевіряю", stopping: "зупиняю служби", copying: "копіюю базу", installing: "записую базу",
     starting: "запускаю служби", rolling_back: "повертаю, як було" };
   const deviceTitle = name => name === "pi" ? "Pi" : "Mac";
   let moveTimer = null;
-  async function moveState(home) {
-    const m = await request("/api/home-move");
-    const line = $("move-state");
-    $("move-rollback").hidden = !m.interrupted;
-    if (home !== undefined) {
-      $("move-pi").hidden = m.active || m.interrupted || home !== "mac";
-      $("move-mac").hidden = m.active || m.interrupted || home === "mac" || home === "both";
+
+  function serviceRow(name, process, p) {
+    const row = el("div", "service-row"), buttons = el("span", "service-buttons");
+    const state = p.alive ? "працює" : p.blocked ? "зайнято на іншому пристрої" : "зупинено";
+    if (CONTROLLED[name].includes(process) && (name === "pi" || serviceMode === "r345")) for (const verb of p.alive ? ["restart", "stop"] : ["start"]) {
+      const b = el("button", "ghost icon-button", VERB_ICON[verb]); b.type = "button";
+      b.title = VERB_TEXT[verb]; b.setAttribute("aria-label", `${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}`);
+      b.addEventListener("click", () => action(async () => {
+        const open = process === "tunnel" && verb === "start" ? " Відкриється публічна адреса API Mini App." : "";
+        if (!confirm(`${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}?${open}`)) return;
+        b.disabled = true;
+        await request(`/api/devices/${name}/${process}/${verb}`, "POST");
+        note(`${PROCESS_NAMES[process]} на ${deviceTitle(name)}: команду надіслано.`);
+        setTimeout(devices, 3000);
+      }));
+      buttons.append(b);
     }
+    row.append(el("span", p.alive ? "service-dot on" : "service-dot", ""), el("span", "", PROCESS_NAMES[process] || process), el("span", "muted small", state), buttons);
+    return row;
+  }
+  // Звук належить машині: свій список і свій вибір, база його не переносить.
+  const audioBoxes = {};
+  function audioSection(name, processes) {
+    if (audioBoxes[name]) { audioBoxes[name].alive = !!processes.node?.alive; return audioBoxes[name].details; }
+    const details = el("details", "small"), body = el("div", "device-audio"), state = { details, alive: !!processes.node?.alive };
+    audioBoxes[name] = state;
+    const load = async () => {
+      body.replaceChildren(el("p", "muted small", "Читаю пристрої…"));
+      let data;
+      try { data = await request(`/api/devices/${name}/audio`); }
+      catch (error) { body.replaceChildren(el("p", "alert small", error.message)); return; }
+      const { settings, devices: found, error } = data, selects = {};
+      const save = el("button", "ghost small-button", "Зберегти"), result = el("p", "muted small", ""); save.type = "button"; save.disabled = true;
+      const field = (key, title, list) => {
+        const label = el("label", "", settings.env_override.includes(key) ? `${title} · задано в .env` : title), select = el("select"), chosen = settings.values[key] || "";
+        const system = (list || []).find(x => x.default), options = [["", `Системний${system ? ` (${system.name})` : ""}`]];
+        for (const x of list || []) options.push([x.name, x.name]);
+        const match = (list || []).find(x => x.name === chosen) || (list || []).find(x => chosen && x.name.toLowerCase().includes(chosen.toLowerCase()));
+        if (chosen && !match) options.push([chosen, `${chosen} — не знайдено`]);
+        for (const [value, text] of options) { const o = el("option", "", text); o.value = value; select.append(o); }
+        select.value = chosen ? (match ? match.name : chosen) : ""; select.dataset.saved = select.value;
+        select.disabled = settings.env_override.includes(key);
+        select.addEventListener("change", () => { save.disabled = !Object.values(selects).some(s => s.value !== s.dataset.saved); });
+        selects[key] = select; label.append(select); return label;
+      };
+      const input = field("RADIO_INPUT_DEVICE", "Вхід ефіру", found?.inputs), output = field("RADIO_OUTPUT_DEVICE", "Вихід передачі", found?.outputs);
+      save.addEventListener("click", () => action(async () => {
+        const saved = await request(`/api/devices/${name}/audio`, "PUT", { expected_revision: settings.revision,
+          values: Object.fromEntries(Object.entries(selects).map(([k, s]) => [k, s.value])) });
+        settings.revision = saved.revision; save.disabled = true;
+        for (const s of Object.values(selects)) s.dataset.saved = s.value;
+        result.textContent = "Збережено. ";
+        if (state.alive && (name === "pi" || serviceMode === "r345")) {
+          const b = el("button", "ghost small-button", "Перезапустити ефір"); b.type = "button";
+          b.addEventListener("click", () => action(async () => { await request(`/api/devices/${name}/node/restart`, "POST"); result.textContent = "Ефір перезапускається."; }));
+          result.append(b);
+        } else result.textContent += "Діятиме з наступного запуску ефіру.";
+      }));
+      const notes = [];
+      if (error) notes.push(el("p", "alert small", error));
+      else if (!(found?.inputs || []).length) notes.push(el("p", "alert small", "Звукових входів немає: ефір тут не запрацює."));
+      body.replaceChildren(...notes, input, output, save, result);
+    };
+    details.addEventListener("toggle", () => { if (details.open) load(); });
+    details.append(el("summary", "", "Звук"), body);
+    return details;
+  }
+  const UPDATE_PHASE = { copying: "беру з GitHub", checking: "перевіряю", restarting: "перезапускаю служби" };
+  let updateState = { phase: "idle" }, updateTimer = null;
+  async function pollUpdate() {
+    updateState = await request("/api/devices/pi/update");
+    clearTimeout(updateTimer);
+    if (updateState.active) updateTimer = setTimeout(() => devices().catch(() => {}), 2000);
+  }
+  function codeUpdate(moving, d) {
+    const box = el("div", "device-update");
+    if (updateState.active) { box.append(el("p", "small", `Оновлення коду: ${UPDATE_PHASE[updateState.phase] || "…"}`)); return box; }
+    box.append(el("p", "alert small", `Код на Pi інший${d.pi.commit ? `: ${d.pi.commit.slice(0, 7)}` : ""}, на Mac ${(d.mac.commit || "—").slice(0, 7)}.`));
+    const b = el("button", "ghost small-button", "Оновити код Pi"); b.type = "button"; b.disabled = moving;
+    b.addEventListener("click", () => action(async () => {
+      if (!confirm("Pi візьме з GitHub код, що на Mac. Запущені служби Pi перезапустяться; база й налаштування не зміняться.")) return;
+      await request("/api/devices/pi/update", "POST"); await devices();
+    }));
+    box.append(b);
+    return box;
+  }
+  function deviceCard(name, box, d, moving) {
+    const device = d[name], home = d.home === name || d.home === "both";
+    box.classList.toggle("home", home);
+    const head = el("div", "device-head"); head.append(el("h3", "", deviceTitle(name)));
+    const parts = [head];
+    if (!device) { head.append(el("span", "pill off", "не налаштовано")); box.replaceChildren(head, el("p", "muted small", "Додайте RADIO345_PI_SSH у .env на Mac.")); return; }
+    if (!device.reachable) head.append(el("span", "pill bad", "недоступна"));
+    else if (home) { const missing = HOME_CORE.some(n => device.processes[n] && !device.processes[n].alive); head.append(el("span", missing ? "pill warn" : "pill ok", d.home === "both" ? "працює на двох!" : "працює тут")); }
+    else head.append(el("span", "pill off", "запасний"));
+    if (!device.reachable) parts.push(el("p", "muted small", device.error || ""));
+    else {
+      const on = Object.values(device.processes).filter(p => p.alive).length;
+      parts.push(el("p", "device-line", `Служб працює: ${on} з ${Object.keys(device.processes).length}`),
+        el("p", "muted small", `Подій ${device.events == null ? "—" : num(device.events)} · остання ${device.last_event ? ago(now() - device.last_event) : "—"}${device.queue ? ` · у черзі ${num(device.queue)}` : ""}`));
+      if (name === "pi" && d.code_matches === false) parts.push(codeUpdate(moving, d));
+      const list = el("div", "service-list");
+      for (const [process, p] of Object.entries(device.processes)) list.append(serviceRow(name, process, p));
+      const facts = [`вільно ${storageSize(device.disk_free)}`, device.temp_c == null ? "" : `${fix(device.temp_c, 1)} °C`, device.model ? `модель: ${device.model}` : ""].filter(Boolean).join(" · ");
+      parts.push(list, el("p", "muted small", facts), audioSection(name, device.processes));
+    }
+    if (name === "pi" && updateState.phase === "failed") parts.push(el("p", "alert small", updateState.error));
+    if (name === "pi" && updateState.phase === "done" && updateState.units?.length)
+      parts.push(el("p", "alert small", "Змінилися файли служб: на Pi один раз sudo sh deploy/hub/install.sh --units"));
+    // «Перенести сюди» — лише на пристрої, який зараз не дім. Недоступна Pi не може прийняти дім, але Mac може забрати.
+    if (d.configured && !home && d.home !== "both" && device.reachable && !moving && !updateState.active) {
+      const b = el("button", "", "Перенести сюди"); b.type = "button"; b.className = "device-move";
+      b.addEventListener("click", () => action(() => moveHome(name)));
+      parts.push(b);
+    }
+    box.replaceChildren(...parts);
+  }
+  async function moveState() {
+    const m = await request("/api/home-move"), line = $("move-state");
+    $("move-rollback").hidden = !m.interrupted;
     const route = m.target ? `${deviceTitle(m.source)} → ${deviceTitle(m.target)}` : "";
     line.textContent = m.active ? `Перенесення ${route}: ${MOVE_PHASE[m.phase] || m.phase}…`
       : m.interrupted ? `Перенесення ${route} перервано на кроці «${MOVE_PHASE[m.phase] || m.phase}».`
-      : m.phase === "done" ? `Останнє перенесення ${route}: виконано ${stamp(m.at)}.`
-      : m.phase === "rolled_back" ? `Перенесення ${route} не вдалося, усе повернуто: ${m.error}`
-      : m.phase === "failed" ? `Перенесення ${route} не вдалося, перевірте пристрої: ${m.error}` : "";
+      : m.phase === "rolled_back" ? `Перенесення ${route} не вдалося, усе повернуто. ${m.error}`
+      : m.phase === "failed" ? `Перенесення ${route} не вдалося, перевірте пристрої. ${m.error}` : "";
+    line.hidden = !line.textContent;
     line.classList.toggle("alert", m.interrupted || ["failed", "rolled_back"].includes(m.phase));
     clearTimeout(moveTimer);
-    if (m.active) { $("move-pi").hidden = $("move-mac").hidden = true; moveTimer = setTimeout(() => moveState().then(() => devices()).catch(() => {}), 2000); }
+    if (m.active) moveTimer = setTimeout(() => devices().catch(() => {}), 2000);
+    return !!m.active || !!m.interrupted;
   }
   async function moveHome(target) {
     const check = await request(`/api/home-move/check?target=${target}`);
     if (check.problems.length) { note(check.problems.join(" ")); return; }
-    const lines = [`Перенести базу, бота, Mini App та ефір на ${deviceTitle(target)}? Кілька хвилин вони не працюватимуть.`, ...check.warnings.map(w => `• ${w}`)];
-    if (!confirm(lines.join("\n"))) return;
+    if (!confirm([`Перенести все на ${deviceTitle(target)}? Бот, Mini App та ефір кілька хвилин не працюватимуть.`, ...check.warnings.map(w => `• ${w}`)].join("\n"))) return;
     await request("/api/home-move", "POST", { target, accept_warnings: true });
     note("Перенесення почалося.");
-    await moveState();
+    await devices();
   }
-  $("move-pi")?.addEventListener?.("click", () => action(() => moveHome("pi")));
-  $("move-mac")?.addEventListener?.("click", () => action(() => moveHome("mac")));
-  $("move-rollback")?.addEventListener?.("click", () => action(async () => {
-    if (!confirm("Повернути дім туди, звідки його переносили?")) return;
-    await request("/api/home-move/rollback", "POST"); await moveState();
-  }));
   async function devices() {
     let d;
     try { d = await request("/api/devices"); } catch (_) { return; }
-    if (!d.mac) { $("devices-panel").hidden = true; return; }
-    $("devices-panel").hidden = false;
-    $("devices-home").textContent = HOME_TEXT[d.home] || "База й бот ніде не працюють.";
-    $("devices-home").classList.toggle("alert", d.home === "both" || d.home === "unknown");
-    moveState(d.configured ? d.home : "both").catch(() => {});
-    deviceCard("mac", $("device-mac"), d.mac, d.mac.model ? [["Модель Whisper", d.mac.model]] : []);
-    deviceCard("pi", $("device-pi"), d.pi, d.pi?.reachable ? [["Температура", d.pi.temp_c == null ? "—" : `${fix(d.pi.temp_c, 1)} °C`],
-      ["Код", d.code_matches ? "як на Mac" : "відрізняється від Mac", d.code_matches ? "good" : "alert"]] : []);
+    if (!d.mac) { $("device-mac").replaceChildren(el("p", "muted small", "Керування пристроями — у панелі на Mac.")); return; }
+    const moving = await moveState().catch(() => false);
+    if (d.configured) await pollUpdate().catch(() => {});
+    deviceCard("mac", $("device-mac"), d, moving);
+    deviceCard("pi", $("device-pi"), d, moving);
   }
   $("devices-refresh")?.addEventListener?.("click", () => action(devices));
+  $("move-rollback")?.addEventListener?.("click", () => action(async () => {
+    if (!confirm("Повернути все туди, звідки переносили?")) return;
+    await request("/api/home-move/rollback", "POST"); await devices();
+  }));
 
   async function system() {
     if (!backupTask) backupJob().resume();
@@ -304,10 +327,6 @@
     // (наприклад, браузер уже має новий інтерфейс, а служба панелі ще не перезапущена).
     await attentionSettings().catch(error => {
       $("attention-kinds")?.replaceChildren?.(el("p", "alert-text small", `Не вдалося завантажити: ${error.message}`)); });
-    await audioDevices().catch(error => {
-      $("audio-devices-result")?.replaceChildren?.(el("p", "alert-text small", error.status === 404
-        ? "Служба панелі ще не знає вибору пристроїв — перезапустіть її через лаунчер."
-        : `Не вдалося прочитати пристрої: ${error.message}`)); });
   }
   // ---------- Історія сесій ----------
   let selectedHistory = null;

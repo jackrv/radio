@@ -1,0 +1,192 @@
+"""Оновлення коду Pi: лише файли профілю, збій повертає попередній код, чужі файли не чіпає."""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from server import devices, pi_update as u
+
+
+@pytest.fixture
+def pi(tmp_path):
+    root = tmp_path / u.FOLDER
+    for path, text in (("deploy/profiles/pi.files", "# x\n/deploy/profiles/pi.files\n/server/a.py\n/server/old.py\n/requirements-hub.txt\n"),
+                       ("server/a.py", "old"), ("server/old.py", "old"), ("requirements-hub.txt", "x"), (".env", "SECRET=1"),
+                       ("events.db", "db"), ("notes.txt", "чуже")):
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(text)
+    venv = root / ".venv" / "bin"
+    venv.mkdir(parents=True)
+
+    def python(code):
+        (venv / "python").write_text(f"#!/bin/sh\nexit {code}\n")
+        (venv / "python").chmod(0o755)
+    python(0)
+    (venv / "pip").write_text("#!/bin/sh\ntouch pip-called\n")
+    (venv / "pip").chmod(0o755)
+
+    def step(name, *args):
+        return subprocess.run([sys.executable, "-I", "-", u.FOLDER, name, *(args or (("c" * 40,) if name == "finish" else ()))], input=u.REMOTE, capture_output=True, text=True,
+                              env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin", "USER": "pi"})
+
+    def deliver():
+        (root / "deploy/profiles/pi.files").write_text("/deploy/profiles/pi.files\n/server/a.py\n/server/new.py\n/requirements-hub.txt\n")
+        (root / "server/a.py").write_text("new")
+        (root / "server/new.py").write_text("new")
+    return SimpleNamespace(root=root, step=step, deliver=deliver, python=python)
+
+
+def test_update_replaces_code_and_removes_only_dropped_files(pi):
+    assert pi.step("prepare").returncode == 0
+    pi.deliver()
+    done = pi.step("finish")
+    assert done.returncode == 0 and json.loads(done.stdout)["units"] == [], done.stderr
+    assert (pi.root / "server/a.py").read_text() == "new" and not (pi.root / "server/old.py").exists()
+    assert (pi.root / ".local-commit").read_text() == "c" * 40
+    for name in (".env", "events.db", "notes.txt"):
+        assert (pi.root / name).exists()
+    assert not (pi.root / "pip-called").exists(), "залежності не змінилися"
+
+
+def test_broken_code_is_rolled_back(pi):
+    pi.step("prepare")
+    pi.deliver()
+    pi.python(1)
+    done = pi.step("finish")
+    assert done.returncode and done.stderr.strip().splitlines()[-1] == "import"
+    assert (pi.root / "server/a.py").read_text() == "old" and (pi.root / "server/old.py").exists()
+    assert not (pi.root / "server/new.py").exists() and (pi.root / ".env").read_text() == "SECRET=1"
+
+
+def test_changed_requirements_are_installed(pi):
+    pi.step("prepare")
+    pi.deliver()
+    (pi.root / "requirements-hub.txt").write_text("y")
+    assert pi.step("finish").returncode == 0 and (pi.root / "pip-called").exists()
+
+
+def test_manifest_cannot_reach_private_or_outside_files(pi):
+    outside = pi.root.parent / "outside.txt"
+    outside.write_text("x")
+    (pi.root / "deploy/profiles/pi.files").write_text("/deploy/profiles/pi.files\n/.env\n/../outside.txt\n/.local-recordings/a\n/server/a.py\n/requirements-hub.txt\n")
+    pi.step("prepare")
+    pi.deliver()
+    pi.step("finish")
+    assert outside.exists() and (pi.root / ".env").exists()
+
+
+@pytest.fixture
+def github(tmp_path):
+    """Локальний репозиторій замість GitHub: два коміти."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+           "GIT_CONFIG_GLOBAL": "/dev/null"}
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), *args], env=env, capture_output=True, text=True, check=True).stdout.strip()
+    git("init", "-q")
+
+    def commit(manifest, **files):
+        (repo / "deploy/profiles").mkdir(parents=True, exist_ok=True)
+        (repo / "server").mkdir(exist_ok=True)
+        (repo / "deploy/profiles/pi.files").write_text("\n".join(manifest) + "\n")
+        (repo / "requirements-hub.txt").write_text("x")
+        (repo / "private-lab.txt").write_text("не для Pi")
+        for name, text in files.items():
+            (repo / f"server/{name}.py").write_text(text)
+        git("add", "-A")
+        git("commit", "-qm", "x")
+        return git("rev-parse", "HEAD")
+    return SimpleNamespace(url=f"file://{repo}", commit=commit)
+
+
+BASE = ["/deploy/profiles/pi.files", "/server/a.py", "/requirements-hub.txt"]
+
+
+def test_exact_commit_is_taken_not_the_newest(pi, github):
+    wanted = github.commit([*BASE, "/server/new.py"], a="wanted", new="n")
+    github.commit([*BASE, "/server/new.py"], a="newer", new="n")
+    pi.step("prepare")
+    assert pi.step("fetch", github.url, wanted).returncode == 0
+    assert pi.step("finish", wanted).returncode == 0
+    assert (pi.root / "server/a.py").read_text() == "wanted" and (pi.root / "server/new.py").exists()
+    assert not (pi.root / "private-lab.txt").exists() and not (pi.root / ".git").exists()
+    assert (pi.root / ".local-commit").read_text() == wanted and (pi.root / ".env").read_text() == "SECRET=1"
+
+
+def test_unavailable_github_changes_nothing(pi, tmp_path):
+    pi.step("prepare")
+    done = pi.step("fetch", f"file://{tmp_path}/none", "a" * 40)
+    assert done.returncode and done.stderr.strip() == "fetch" and (pi.root / "server/a.py").read_text() == "old"
+
+
+@pytest.mark.parametrize("extra", ["/../outside.txt", "/.env", "/server/missing.py"])
+def test_bad_manifest_in_commit_changes_nothing(pi, github, extra):
+    commit = github.commit([*BASE, extra], a="new")
+    pi.step("prepare")
+    assert pi.step("fetch", github.url, commit).stderr.strip().splitlines()[-1] == "manifest"
+    assert (pi.root / "server/a.py").read_text() == "old" and (pi.root / ".env").read_text() == "SECRET=1"
+
+
+def updater(tmp_path, results, alive=("panel",), after=None):
+    calls, restarted = [], []
+
+    def run(command, **kwargs):
+        name = command[-1].split(u.FOLDER)[1].split()[0]
+        calls.append(name)
+        code, out, err = results.get(name, (0, '{"ok": true}', ""))
+        return SimpleNamespace(returncode=code, stdout=out, stderr=err)
+    states = [{"processes": {n: {"alive": True} for n in alive}}, after or {"processes": {n: {"alive": True} for n in alive}}]
+    fetch = lambda host: states.pop(0) if len(states) > 1 else states[0]
+    return u.PiUpdate(tmp_path, "pi@test", run, lambda h, p, v: restarted.append((p, v)), fetch, lambda s: None), calls, restarted
+
+
+ARGS = ("https://github.com/o/r.git", "a" * 40)
+
+
+def test_running_services_only_are_restarted(tmp_path):
+    update, calls, restarted = updater(tmp_path, {}, alive=("panel", "asr"))
+    update.update(*ARGS)
+    assert update.state["phase"] == "done" and calls == ["prepare", "fetch", "finish"]
+    assert sorted(restarted) == [("asr", "restart"), ("panel", "restart")]
+
+
+@pytest.mark.parametrize("step,result,text", [
+    ("fetch", (1, "", "fetch\n"), "GitHub"), ("finish", (1, "", "import\n"), "повернуто"), ("finish", (255, "", ""), "SSH"),
+    ("finish", (0, "x", ""), "Незрозуміла")])
+def test_failures_are_explained(tmp_path, step, result, text):
+    update, _, restarted = updater(tmp_path, {step: result})
+    update.update(*ARGS)
+    assert update.state["phase"] == "failed" and text in update.state["error"] and restarted == []
+
+
+def test_service_that_did_not_return_is_reported(tmp_path):
+    update, _, _ = updater(tmp_path, {}, after={"processes": {"panel": {"alive": False}}})
+    update.update(*ARGS)
+    assert update.state["phase"] == "failed" and "panel" in update.state["error"]
+
+
+def source(tmp_path, url="https://github.com/o/r.git", status="", pushed=True):
+    def run(command, **kwargs):
+        verb = command[3]
+        out = {"remote": url, "rev-parse": "a" * 40, "status": status}.get(verb, "")
+        return SimpleNamespace(returncode=0 if verb != "merge-base" or pushed else 1, stdout=out)
+    return u.PiUpdate(tmp_path, "pi@test", run)
+
+
+def test_only_clean_pushed_commit_is_sent(tmp_path):
+    assert source(tmp_path).source() == ("https://github.com/o/r.git", "a" * 40)
+    for kwargs, text in (({"status": " M a.py"}, "незакомічені"), ({"pushed": False}, "push"),
+                         ({"url": "https://user:token@github.com/o/r.git"}, "визначити"), ({"url": "git@github.com:o/r"}, "визначити")):
+        with pytest.raises(u.UpdateError, match=text):
+            source(tmp_path, **kwargs).source()
+
+
+def test_without_host_is_refused(tmp_path):
+    with pytest.raises(u.UpdateError):
+        u.PiUpdate(tmp_path, None).start()

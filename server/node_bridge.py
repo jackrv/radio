@@ -5,7 +5,7 @@ import threading
 import time
 import uuid
 
-from server.node_control import DEVICE_KEYS, STATES, VAD_KEYS, read_json, write_json
+from server.node_control import STATES, VAD_KEYS, read_json, write_json
 from shared.receiver_control import ensure_hold_table, ensure_table
 from server.receiver_status import init_receiver_db, record_heartbeat
 from shared.sqlite_connection import get_db
@@ -29,11 +29,9 @@ class NodeBridge:
         return {"pause_until": float(pause[0]) if pause else 0.0, "hold_until": float(hold[0]) if hold else 0.0}
 
     def _startup(self):
-        from server.management.audio_settings import read_audio_settings
         from server.management.settings import read_settings
         vad = read_settings(self.db_path)["values"]
-        devices = read_audio_settings(self.db_path)["values"]
-        return {**{k: vad[k] for k in VAD_KEYS}, **{k: devices[k] for k in DEVICE_KEYS}}
+        return {k: vad[k] for k in VAD_KEYS}
 
     def step(self):
         now = time.monotonic()

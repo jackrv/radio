@@ -89,12 +89,11 @@ def test_panel_settings_reach_the_node_at_start(link):
     with get_db(link.db) as db:
         db.execute("CREATE TABLE recognition_settings (id INTEGER PRIMARY KEY, values_json TEXT, revision INTEGER)")
         db.execute("INSERT INTO recognition_settings VALUES (1, ?, 1)", (json.dumps({"VAD_LEVEL": 1, "SILENCE_END_MS": 750}),))
-        db.execute("CREATE TABLE audio_device_settings (id INTEGER PRIMARY KEY, values_json TEXT, revision INTEGER)")
-        db.execute("INSERT INTO audio_device_settings VALUES (1, ?, 1)", (json.dumps({"RADIO_INPUT_DEVICE": "USB вхід"}),))
     link.bridge.step()
     target = SimpleNamespace(VAD_LEVEL=2, SILENCE_END_MS=600)
     link.node.apply_startup(target)
-    assert (target.VAD_LEVEL, target.SILENCE_END_MS, target.RADIO_INPUT_DEVICE) == (1, 750, "USB вхід")
+    assert (target.VAD_LEVEL, target.SILENCE_END_MS) == (1, 750)
+    assert not hasattr(target, "RADIO_INPUT_DEVICE"), "звук належить машині, а не базі"
 
 
 def test_startup_rejects_out_of_range_values(link):

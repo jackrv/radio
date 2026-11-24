@@ -121,6 +121,8 @@ def main():
     hold = os.environ.get("RADIO_LISTENING_HOLD", "1").strip().lower() not in ("0", "false", "no", "off")
     control = NodeControl(directory(config), listening_hold=hold)
     control.apply_startup(config)
+    from shared import audio_choice
+    audio_choice.apply(config.BASE_DIR, config)
     supervisor, stream = build_node(config, log, segment_sink=sink, control=control)
     if supervisor is None:
         log.error("Радіовузол не запущено: потік недоступний (Tailscale? порт зайнятий?)",

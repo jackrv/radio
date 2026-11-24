@@ -14,7 +14,7 @@ from server.receiver_status import read_receiver_status
 from shared.sqlite_connection import get_db
 from shared.user_store import PERMISSIONS
 from shared.telegram_sync import sync_status
-from server.api.panel.models import AudioDevicesUpdate, SuggestionDismiss, SuggestionMute, SuggestionRestore
+from server.api.panel.models import SuggestionDismiss, SuggestionMute, SuggestionRestore
 from server.api.panel.common import ROOT, spectral_settings, events_by_hour, users_overview, backups_overview, read_diagnostics
 
 def register(app, ctx):
@@ -188,35 +188,6 @@ def register(app, ctx):
         """Перевірити всі списки зараз (зокрема шаблони фраз на еталонах), не чекаючи фонової перевірки."""
         try:
             return start_task(ctx, "suggestions", deep=True)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
-
-    @app.get("/api/audio-devices")
-    def audio_devices(admin=Depends(actor)):
-        """Звукові пристрої Mac і вибір приймача. Список — в окремому процесі: свіжий після
-        перепідключення USB і без ініціалізації PortAudio в процесі панелі."""
-        import json, subprocess, sys
-        from server.management.audio_settings import read_audio_settings
-        result = {"settings": read_audio_settings(db_path), "devices": None, "error": None}
-        try:
-            run = subprocess.run([sys.executable, "-m", "shared.audio_devices", "--json"], cwd=ROOT,
-                                 capture_output=True, text=True, timeout=15)
-            if run.returncode == 0:
-                result["devices"] = json.loads(run.stdout)
-            else:
-                result["error"] = "Не вдалося отримати список звукових пристроїв"
-        except (OSError, subprocess.TimeoutExpired, ValueError):
-            result["error"] = "Не вдалося отримати список звукових пристроїв"
-        return result
-
-    @app.put("/api/audio-devices")
-    def audio_devices_save(payload: AudioDevicesUpdate, admin=Depends(actor)):
-        from server.management.audio_settings import write_audio_settings
-        from shared.management.common import ManagementConflict
-        try:
-            return write_audio_settings(db_path, admin, payload.values.model_dump(), payload.expected_revision)
-        except ManagementConflict as exc:
-            raise HTTPException(409, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 

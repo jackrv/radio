@@ -1076,3 +1076,19 @@ def test_audio_choice_belongs_to_the_machine(local, monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
     data = client.get(url).json()
     assert data["devices"] is None and data["error"] and data["settings"]["revision"] == 1
+
+
+def test_settings_form_saves_everything_it_shows(local):
+    """Форма шле всі значення разом: і числа, і так/ні, і текстовий режим."""
+    client, path, _ = local
+    h = {"Origin": ORIGIN}
+    current = client.get("/api/runtime-settings").json()
+    assert {type(v) for v in current["values"].values()} >= {str, bool, int, float}
+    saved = client.put("/api/runtime-settings", headers=h, json={"values": {**current["values"], "LIVE_MIN_RMS": 0.025},
+                                                                "expected_revision": current["revision"]})
+    assert saved.status_code == 200, saved.text
+    values = client.get("/api/runtime-settings").json()["values"]
+    assert values == {**current["values"], "LIVE_MIN_RMS": 0.025}
+    assert {k: type(v) for k, v in values.items()} == {k: type(v) for k, v in current["values"].items()}
+    bad = client.put("/api/runtime-settings", headers=h, json={"values": {"MIN_RMS": "0.03"}, "expected_revision": current["revision"] + 1})
+    assert bad.status_code == 422

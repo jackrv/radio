@@ -60,7 +60,7 @@ class ListeningHold(BaseModel):
 
 
 class RuntimeSettingsUpdate(BaseModel):
-    values: dict[str, bool | int | float]
+    values: dict[str, bool | int | float | str]   # межі й типи — shared.runtime_settings.validate
     expected_revision: int = Field(ge=0)
 
 

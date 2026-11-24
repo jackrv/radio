@@ -1125,7 +1125,7 @@
       if (limits.type === "bool") { input.type = "checkbox"; input.checked = value; label.prepend(input); }
       else {
         input.type = "number"; input.value = value; input.required = true;
-        input.min = limits.min; input.max = limits.max; input.step = limits.type === "int" ? "1" : "0.01";
+        input.min = limits.min; input.max = limits.max; input.step = limits.type === "int" ? "1" : limits.max <= 1 ? "0.001" : "0.01";
         label.append(input);
       }
     }

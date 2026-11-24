@@ -59,7 +59,7 @@ def test_home_elsewhere_goes_over_ssh_or_nowhere(tmp_path, monkeypatch):
     def popen(command, **kwargs):
         calls.append(command)
         raise OSError
-    assert f.Flow(tmp_path, popen=popen).read() == {"home": None, "data": None, "age_s": None}
+    assert f.Flow(tmp_path, popen=popen).read() == {"home": None, "data": None, "seq": 0, "age_s": None}
     assert calls == []
     flow = f.Flow(tmp_path, host="user@example", popen=popen)
     assert flow.read()["home"] == "pi" and calls[0][0] == "ssh"
@@ -109,3 +109,30 @@ def test_last_passed_phrase_survives_later_quiet_ones():
     for threshold in (0.0, 0.0062, 0.009, 0.03, 0.05):
         want = [n for n, v in enumerate(sizes) if v / 32768 >= threshold][-1]
         assert [r for r in louder if r[0] >= threshold][-1][1] == now[0] - want
+
+
+def test_reader_waits_for_the_next_snapshot_and_shows_each_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(f, "PROBE", "import time\nfor n in range(40):\n print('{\"n\": %d}' % n, flush=True); time.sleep(.1)\n")
+    flow = f.Flow(tmp_path)
+    try:
+        wait(lambda: flow.read()["data"])
+        got, seq = [], flow.read()["seq"]
+        for _ in range(8):
+            data = flow.read(seq)
+            assert data["seq"] > seq and data["age_s"] < 0.5
+            seq = data["seq"]
+            got.append(data["data"]["n"])
+        assert got == sorted(set(got)) and got[-1] - got[0] == 7, got
+    finally:
+        with flow.lock:
+            flow._stop()
+
+
+def test_reader_does_not_hang_without_snapshots(tmp_path, monkeypatch):
+    monkeypatch.setattr(f, "WAIT_S", 0.1)
+    monkeypatch.setattr(f, "PROBE", "import time; time.sleep(5)")
+    flow = f.Flow(tmp_path)
+    started = time.monotonic()
+    assert flow.read(0)["data"] is None and time.monotonic() - started < 2
+    with flow.lock:
+        flow._stop()

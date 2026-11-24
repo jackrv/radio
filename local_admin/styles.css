@@ -1763,7 +1763,7 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
 .flow-node.busy rect { stroke-width: 3; filter: drop-shadow(0 0 7px rgba(184, 239, 134, .5)); }
 .flow-level-now { font-weight: 600; font-variant-numeric: tabular-nums; }
 .flow-level-track { fill: var(--surface2); stroke: var(--border); }
-.flow #flow-level-bar { fill: var(--off); transition: width .4s ease-out, fill .3s; }
+.flow #flow-level-bar { fill: var(--off); transition: width .25s linear, fill .3s; }
 .flow-level.above #flow-level-bar { fill: var(--lime); }
 .flow-level.clip #flow-level-bar { fill: var(--bad); }
 #flow-level-mark { stroke: var(--warn); stroke-width: 2; }

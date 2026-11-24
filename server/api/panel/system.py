@@ -60,8 +60,8 @@ def register(app, ctx):
     flow = Flow(root, host=device_state.host if on_mac else None)
 
     @app.get("/api/flow")
-    def flow_state(admin=Depends(actor)):
-        return flow.read()
+    def flow_state(after: int | None = None, admin=Depends(actor)):
+        return flow.read(after)
 
     mover = None
     if on_mac:

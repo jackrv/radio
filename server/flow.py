@@ -1,4 +1,4 @@
-"""Жива схема панелі: рух даних у «домі» раз на секунду. Лише лічильники й прапорці — без текстів і звуку.
+"""Жива схема панелі: рух даних у «домі» кілька разів на секунду. Лише лічильники й прапорці — без текстів і звуку.
 
 Окремий процес (python3 на цій машині або через SSH на Pi) друкує рядки JSON, доки схему дивляться.
 """
@@ -14,6 +14,7 @@ from shared.paths import REMOTE_PLACE
 
 IDLE_S = 15.0      # схему закрили — знімки припиняються
 RETRY_S = 5.0
+WAIT_S = 1.5
 PORT = 8346        # config.RADIO_STREAM_PORT
 
 PROBE = REMOTE_PLACE + r'''
@@ -39,7 +40,8 @@ def scalar(sql):
         return None
 
 ip, checked = address(), time.monotonic()
-for _ in range(1800):
+slow = {}
+for tick in range(7200):
     out = {"node": None}
     try:
         with open(os.path.join(place(root, ".local-node"), "state.json")) as f:
@@ -60,12 +62,15 @@ for _ in range(1800):
     except OSError:
         names = []
     out["queue"], out["segment"] = len(names), names[-1] if names else None
-    out["event"] = scalar("SELECT MAX(id) FROM radio_events")
+    if tick % 4 == 0:   # база — раз на секунду
+        slow["event"] = scalar("SELECT MAX(id) FROM radio_events")
+        slow["sent"] = scalar("SELECT MAX(rowid) FROM telegram_deliveries")
     try:
-        out["min_rms"] = json.loads(scalar("SELECT values_json FROM runtime_settings WHERE id = 1") or "{}").get("MIN_RMS")
+        if tick % 4 == 0:
+            slow["min_rms"] = json.loads(scalar("SELECT values_json FROM runtime_settings WHERE id = 1") or "{}").get("MIN_RMS")
     except ValueError:
-        out["min_rms"] = None
-    out["sent"] = scalar("SELECT MAX(rowid) FROM telegram_deliveries")
+        slow["min_rms"] = None
+    out.update(slow)
     if ip is None and time.monotonic() - checked > 15:
         ip, checked = address(), time.monotonic()
     try:
@@ -83,14 +88,15 @@ for _ in range(1800):
     except (OSError, ValueError, TypeError):
         pass
     print(json.dumps(out), flush=True)
-    time.sleep(1)
+    time.sleep(0.25)
 '''
 
 
 class Flow:
     def __init__(self, root, host=None, folder="radio345-hub", popen=subprocess.Popen, clock=time.monotonic):
         self.root, self.host, self.folder, self.popen, self.clock = root, host, folder, popen, clock
-        self.lock = threading.Lock()
+        self.lock = threading.Condition()
+        self._seq = 0      # номер знімка: панель чекає на новий, а не питає за власним годинником
         self._process, self._target = None, None
         self._data, self._at = None, float("-inf")
         self._asked, self._started = float("-inf"), float("-inf")
@@ -106,8 +112,8 @@ class Flow:
         return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ServerAliveInterval=5",
                 "-o", "ServerAliveCountMax=2", "--", self.host, f"python3 -I - '~/{self.folder}' {PORT}"]
 
-    def read(self):
-        """Останній знімок, не чекаючи пристрою; age_s — скільки йому секунд."""
+    def read(self, after=None):
+        """Останній знімок; age_s — скільки йому секунд. after — номер показаного: чекати новішого до WAIT_S."""
         target, now = self.target(), self.clock()
         with self.lock:
             self._asked = now
@@ -116,7 +122,10 @@ class Flow:
                 self._target, self._data, self._started = target, None, float("-inf")
             if target and self._process is None and now - self._started >= RETRY_S:
                 self._start(target, now)
-            return {"home": target, "data": self._data, "age_s": None if self._data is None else now - self._at}
+            if after is not None and target and after == self._seq:
+                self.lock.wait_for(lambda: self._seq != after, WAIT_S)
+            return {"home": target, "data": self._data, "seq": self._seq,
+                    "age_s": None if self._data is None else self.clock() - self._at}
 
     def _start(self, target, now):
         self._started = now
@@ -145,6 +154,8 @@ class Flow:
                     if data.get("min_rms") is None:
                         data["min_rms"] = config.MIN_RMS   # у базі лише змінене в панелі
                     self._data, self._at = data, self.clock()
+                    self._seq += 1
+                    self.lock.notify_all()
                     if self._at - self._asked > IDLE_S:
                         break
         except (OSError, ValueError):

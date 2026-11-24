@@ -2,7 +2,7 @@
   const FLOW_PULSE_MS = 4000;   // разова подія (фраза, сповіщення) світиться стільки
   const FLOW_NODES = ["radio", "node", "asr", "db", "whisper", "telegram", "panel", "iphone"];
   const flowUntil = {};
-  let flowTimer = null, flowBusy = false, flowLast = null, flowHome = null, flowDevices = null, flowDevicesAt = 0;
+  let flowTimer = null, flowBusy = false, flowLast = null, flowSeq = null, flowShown = null, flowShownAt = 0, flowHome = null, flowDevices = null, flowDevicesAt = 0;
 
   // Чиста функція: знімки → стан вузлів [тон, підпис] і зв’язків (true — дані йдуть).
   function flowModel(flow, devicesState, until, at) {
@@ -96,21 +96,25 @@
     clearTimeout(flowTimer);
     if (flowBusy) return;
     flowBusy = true;
-    let flow = null;
+    let flow = null, waited = false;
     try {
       // Стан служб повільний (Pi через SSH) — не затримує рух даних.
       if (Date.now() - flowDevicesAt > 10000) {
         flowDevicesAt = Date.now();
         request("/api/devices").then(d => { flowDevices = d; }, () => { flowDevices = null; });
       }
-      flow = await request("/api/flow");
+      flow = await request(`/api/flow${flowSeq === null ? "" : `?after=${flowSeq}`}`);
+      waited = flow.seq !== flowSeq;   // новий знімок: наступний питаємо одразу, сервер сам дочекається
+      flowSeq = flow.seq; flowShown = flow; flowShownAt = Date.now();
       if (flow.home !== flowHome) { flowHome = flow.home; flowLast = null; }
       if (flow.data) {
         for (const key of flowChanges(flowLast, flow.data)) flowUntil[key] = Date.now() + FLOW_PULSE_MS;
         flowLast = flow.data;
       }
-    } catch (_) { /* без відповіді схема гасне; про зв’язок каже шапка */ }
+    } catch (_) {   // поодинокий збій не гасить схему: знімок старіє сам
+      if (flowShown) flow = { ...flowShown, age_s: (flowShown.age_s ?? 0) + (Date.now() - flowShownAt) / 1000 };
+    }
     finally { flowBusy = false; }
     flowRender(flow);
-    if (view === "flow") flowTimer = setTimeout(flowView, document.visibilityState === "visible" ? 1000 : 5000);
+    if (view === "flow") flowTimer = setTimeout(flowView, document.visibilityState === "visible" ? (waited ? 50 : 1000) : 5000);
   }

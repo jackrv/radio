@@ -50,12 +50,14 @@
     const db = v => 20 * Math.log10(Math.max(v, 1e-5)), part = v => Math.min(1, Math.max(0, (db(v) + 60) / 50));
     if (typeof rms !== "number") return { tone: "off", now: "рівня немає", phrase: "", passed: "", part: 0, mark: 0 };
     const over = typeof min === "number" && rms >= min;
+    // Один рядок, коли остання фраза сама пройшла поріг; інакше — вона й остання, що пройшла.
+    const last = level.phrase_rms, known = typeof last === "number", line = (value, age) => `${value.toFixed(4)} · ${ago(age)}`;
     const passed = typeof min === "number" ? (level.louder || []).findLast(p => p[0] >= min) : null;
-    return { passed: passed ? `✓ ${passed[0].toFixed(4)} · ${ago(passed[1])} тому` : "ще не проходила",
-      tone: level.peak >= 0.985 ? "clip" : over ? "above" : "", part: part(rms), mark: typeof min === "number" ? part(min) : 0,
+    const quiet = known && typeof min === "number" && last < min;
+    return { tone: level.peak >= 0.985 ? "clip" : over ? "above" : "", part: part(rms), mark: typeof min === "number" ? part(min) : 0,
       now: `RMS ${rms.toFixed(4)} · ${Math.round(db(rms))} дБ`,
-      phrase: typeof level.phrase_rms !== "number" ? (typeof min === "number" ? `поріг ${min}` : "")
-        : `фраза ${level.phrase_rms.toFixed(4)}${typeof min !== "number" ? "" : level.phrase_rms >= min ? " ✓" : " тихо"}` };
+      phrase: quiet ? `тихо ${line(last, level.phrase_age_s)}` : "",
+      passed: passed ? `✓ ${line(...passed)}` : typeof min === "number" ? `поріг ${min}` : known ? line(last, level.phrase_age_s) : "" };
   }
   // Що змінилося між двома знімками. Перший знімок — лише точка відліку.
   function flowChanges(before, after) {

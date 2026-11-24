@@ -90,6 +90,11 @@ def missing_env(profile, env, names=()):
     return sorted(k for k in profile.get("required_env", {}) if not env.get(k, "").strip())
 
 
+def blocked_text():
+    home = home_marker.foreign(ROOT)
+    return f"дім на {'Pi' if home == 'pi' else 'Mac'}" if home else "зайнято на іншому пристрої"
+
+
 class Child:
     def __init__(self, name, command, env, output, clock=time.monotonic, lease=None, wanted=True):
         self.name, self.command, self.env, self.output, self.clock, self.lease = name, command, env, output, clock, lease
@@ -109,7 +114,7 @@ class Child:
             self._reap()
             if code == conflict.EXIT:
                 self.blocked, self.process = True, None
-                self.output(self.name, f"зайнято на іншому пристрої; повторів не буде: ./r345 restart {self.name}")
+                self.output(self.name, f"{blocked_text()}; повторів не буде: ./r345 restart {self.name}")
                 return
             if now - self.started >= STABLE_S:
                 self.pause = MIN_PAUSE_S
@@ -242,7 +247,7 @@ def table(rows):
 def service_rows(processes):
     for name, item in processes.items():
         wanted = item.get("wanted", True)
-        text = ("працює" if item["alive"] else "зайнято на іншому пристрої" if item.get("blocked") else "не працює" if wanted else "зупинено")
+        text = ("працює" if item["alive"] else blocked_text() if item.get("blocked") else "не працює" if wanted else "зупинено")
         yield (True if item["alive"] else False if wanted else None, name, text,
                f"перезапусків {item['restarts']}" if item["restarts"] else "")
 

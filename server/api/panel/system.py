@@ -136,6 +136,21 @@ def register(app, ctx):
             raise HTTPException(409, str(exc)) from None
         return {"started": True}
 
+    @app.post("/api/devices-mode/{mode}")
+    def device_mode(mode: Literal["mac", "pi", "off"], admin=Depends(actor)):
+        """Режим роботи: увімкнути потрібні служби, зупинити зайві. Зміна дому — /api/home-move."""
+        if device_state is None:
+            raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
+        move = mover.read()
+        if move.get("active") or move.get("interrupted"):
+            raise HTTPException(409, "Перенесення не завершено")
+        from shared.busy import Busy, exclusive
+        try:
+            with exclusive(root):
+                return {"note": device_state.apply_mode(mode)}
+        except (Busy, devices.Refused) as exc:
+            raise HTTPException(409, str(exc)) from None
+
     @app.get("/api/devices/{device}/audio")
     def device_audio(device: Literal["mac", "pi"], admin=Depends(actor)):
         if device_state is None:

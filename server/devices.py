@@ -12,6 +12,7 @@ import threading
 import time
 from pathlib import Path
 
+from shared import home_marker
 from shared.paths import REMOTE_PLACE, place
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -205,6 +206,24 @@ def home_of(devices):
     return "both" if both else "mac" if mac else "pi" if pi is not None and runs(pi) else None
 
 
+# Режим роботи → які служби потрібні. Тунель (публічна адреса) вмикають окремо, панель не чіпаємо.
+MODES = {"pi": {"mac": ("worker",), "pi": ("api", "asr", "node")},
+         "mac": {"mac": ("worker", "api", "asr", "node"), "pi": ()},
+         "off": {"mac": (), "pi": ()}}
+MODE_STOP = ("node", "asr", "tunnel", "api", "worker")   # ефір — першим, модель — останньою
+
+
+def mode_of(devices, marker):
+    """Поточний режим: "off" — ефір, бот і API ніде не працюють; інакше дім за позначкою, без неї — де бот."""
+    def core(device):
+        return any((device.get("processes") or {}).get(n, {}).get("alive") for n in ("node", "asr", "api"))
+    pi = devices.get("pi")
+    home = marker["home"] if marker else home_of(devices)
+    if not core(devices["mac"]) and (pi is None or pi.get("reachable") and not core(pi)):
+        return "off"
+    return home if home in ("mac", "pi") else None
+
+
 class Devices:
     """Кеш на FRESH_S: відкрита вкладка не має постійно ходити на Pi."""
 
@@ -232,6 +251,42 @@ class Devices:
             control_mac(process, verb, self.root)
         with self.lock:
             self._at = float("-inf")
+
+    def apply_mode(self, mode, control_pi=control_pi, control_mac=control_mac):
+        """Увімкнути потрібні служби режиму й зупинити зайві. Дім не переносить. Повертає зауваження або None."""
+        with self.lock:
+            self._at = float("-inf")
+        state = self.read()
+        mac, pi = state["mac"], state["pi"]
+        if mode != "off":
+            home = state["marker"] or state["home"] or ("mac" if pi is None else None)
+            if home != mode:
+                raise Refused("Дім на іншому пристрої: спершу перенесіть його" if home else "Не видно, де дім: увімкніть бота на потрібному пристрої")
+        seen = pi is not None and pi.get("reachable")
+        if mode == "pi" and not seen:
+            raise Refused("Pi недоступна")
+
+        def control(device, process, verb):
+            if device == "pi":
+                control_pi(self.host, process, verb)
+            else:
+                control_mac(process, verb, self.root)
+        sides = {"mac": mac.get("processes") or {}, **({"pi": pi["processes"]} if seen else {})}
+        try:
+            for device, processes in sides.items():   # спершу зупинити зайве: двох ботів не буде
+                for process in MODE_STOP:
+                    item = processes.get(process)
+                    if item and process not in MODES[mode][device] and not (process == "tunnel" and device == mode):
+                        if item.get("alive") or item.get("enabled"):
+                            control(device, process, "stop")
+            for device in sides:
+                for process in MODES[mode][device]:
+                    if not sides[device].get(process, {}).get("alive"):
+                        control(device, process, "start")
+        finally:
+            with self.lock:
+                self._at = float("-inf")
+        return "Pi недоступна: її служби не змінено" if pi is not None and not seen else None
 
     def audio(self, device):
         from shared import audio_choice
@@ -262,7 +317,10 @@ class Devices:
                 pi = self.fetch(self.host) if self.host else None
                 devices = {"mac": mac, "pi": pi}
                 current = pi.get("code") if pi else None
-                self._data = {**devices, "configured": bool(self.host), "home": home_of(devices),
+                marker = home_marker.read(self.root)
+                mode = mode_of(devices, marker)
+                self._data = {**devices, "marker": marker and marker["home"], "mode": mode,
+                              "needed": MODES.get(mode), "configured": bool(self.host), "home": home_of(devices),
                               "code_matches": None if current is None else current == mac["code"], "at": time.time()}
                 self._at = self.clock()
             return self._data

@@ -167,3 +167,44 @@ def test_mac_panel_cannot_stop_itself_and_needs_r345(tmp_path):
         d.control_mac("panel", "stop", tmp_path)
     with pytest.raises(d.Refused, match="не r345"):
         d.control_mac("asr", "stop", tmp_path)
+
+
+@pytest.mark.parametrize("mode,marker,mac,pi,expected", [
+    ("pi", "pi", {"node", "tunnel"}, {"tunnel"},
+     ["mac node stop", "mac tunnel stop", "mac worker start", "pi api start", "pi asr start", "pi node start"]),
+    ("mac", "mac", {"worker", "tunnel"}, {"node"}, ["pi node stop", "mac api start", "mac asr start", "mac node start"]),
+    ("off", "pi", {"worker"}, {"node", "asr", "panel"}, ["mac worker stop", "pi node stop", "pi asr stop"])])
+def test_mode_starts_needed_and_stops_extra(monkeypatch, tmp_path, mode, marker, mac, pi, expected):
+    names = ("node", "asr", "api", "tunnel", "worker", "panel")
+    state, calls = mode_state(monkeypatch, tmp_path, marker,
+                              {n: {"alive": n in mac} for n in names}, {n: {"alive": n in pi} for n in names if n != "worker"})
+    assert state.apply_mode(mode, *recorder(calls)) is None
+    assert calls == expected
+
+
+def test_mode_never_moves_home_and_reports_lost_pi(monkeypatch, tmp_path):
+    state, calls = mode_state(monkeypatch, tmp_path, "mac", {"worker": {"alive": True}}, None)
+    with pytest.raises(d.Refused, match="перенесіть"):
+        state.apply_mode("pi", *recorder(calls))
+    assert calls == []
+    assert "Pi недоступна" in state.apply_mode("off", *recorder(calls)) and calls == ["mac worker stop"]
+
+
+def test_current_mode():
+    off, on = {"reachable": True, "processes": {}}, {"reachable": True, "processes": {"node": {"alive": True}}}
+    home = {"home": "mac", "epoch": 1}
+    assert d.mode_of({"mac": off, "pi": off}, home) == "off"
+    assert d.mode_of({"mac": off, "pi": on}, home) == "mac"
+    assert d.mode_of({"mac": off, "pi": {"reachable": False}}, home) == "mac"
+
+
+def mode_state(monkeypatch, tmp_path, marker, mac, pi):
+    from shared import home_marker
+    home_marker.write(tmp_path, marker, 1)
+    monkeypatch.setattr(d, "local", lambda db, root: {"reachable": True, "code": "c", "processes": mac})
+    remote = {"reachable": False} if pi is None else {"reachable": True, "processes": pi}
+    return d.Devices(tmp_path / "e.db", tmp_path, host="u@pi", fetch=lambda host: remote), []
+
+
+def recorder(calls):
+    return (lambda host, p, verb: calls.append(f"pi {p} {verb}"), lambda p, verb, root: calls.append(f"mac {p} {verb}"))

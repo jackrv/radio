@@ -1729,7 +1729,6 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .device-head h3 { margin: 0; font-size: 18px; }
 .device p { margin: 0; }
 .device-line { font-weight: 600; }
-.device-move { margin-top: auto; align-self: stretch; }
 .service-list { display: grid; gap: 4px; margin: 8px 0; }
 .service-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 30px; }
 .service-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }

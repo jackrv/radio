@@ -182,7 +182,7 @@ def test_pi_lost_after_install_is_reported_and_mac_resumes(world):
 
 
 @pytest.mark.parametrize("setup,text", [
-    (lambda w: w.pi.alive.add("asr"), "вже працюють"), (lambda w: w.mac.alive.discard("asr"), "немає чого"),
+    (lambda w: w.pi.alive.add("asr"), "вже працюють"), (lambda w: w.mac.alive.discard("asr"), "незрозуміло"),
     (lambda w: setattr(w.pi, "up", False), "SSH"), (lambda w: home_marker.write(w.mac_root, "pi", 3), "Позначка")])
 def test_checks_refuse_before_any_change(world, setup, text):
     setup(world)
@@ -308,3 +308,19 @@ def test_move_waits_for_nobody_and_changes_nothing_when_busy(world):
     with exclusive(world.mac_root):
         state = run(world, "pi")
     assert state["phase"] == "failed" and "Вже триває" in state["error"] and world.mac.log == [] and world.pi.log == []
+
+
+def test_stopped_home_moves_by_marker_and_starts_model(world):
+    home_marker.write(world.mac_root, "mac", 2)
+    world.mac.alive = {"panel"}
+    original = world.mac.state
+
+    def state():
+        data = original()
+        data["processes"]["worker"] = {"alive": "worker" in world.mac.alive}
+        return {**data, "queue": 3}
+    world.mac.state = state
+    result = world.move.check("pi")
+    assert not result["problems"] and any("3 нерозпізнаних" in w for w in result["warnings"])
+    assert run(world, "pi")["phase"] == "done"
+    assert value(world.pi_root) == ["mac"] and {"asr", "api", "node"} <= world.pi.alive and "worker" in world.mac.alive

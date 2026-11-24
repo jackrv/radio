@@ -289,9 +289,13 @@ class HomeMove:
         elif not states[source].get("reachable"):
             problems.append(states[source].get("error") or "Джерело недоступне")
         else:
-            if "asr" not in alive[source]:
-                problems.append("На джерелі не працюють бот і база: немає чого переносити")
             marker = home_marker.read(self.root)
+            if "asr" not in alive[source]:
+                # Зупинений дім теж можна перенести, якщо позначка каже, чия база справжня.
+                if not marker:
+                    problems.append("На джерелі не працює бот, а позначки дому немає: незрозуміло, чия база справжня")
+                elif states[source].get("queue"):
+                    warnings.append(f"У черзі {states[source]['queue']} нерозпізнаних фраз: вони не переїдуть. Щоб доробити їх, спершу увімкніть бота там")
             if marker and marker["home"] != source:
                 problems.append(f"Позначка каже, що дім уже на {'Pi' if marker['home'] == 'pi' else 'Mac'}")
         need = sum(p.stat().st_size for p in (live_path(self.root, n) for n in FILES) if p.exists()) * 3
@@ -376,6 +380,9 @@ class HomeMove:
             self._save(phase="starting")
             audio = b.state().get("audio") is not False
             # Ефір — завжди, якщо цілі є чим слухати: на Pi без карти він не працював, та на Mac має повернутися.
+            worker = (self.sides["mac"].state().get("processes") or {}).get("worker")
+            if worker and not worker.get("alive"):   # модель — на Mac, де б не був дім
+                self.sides["mac"].control("worker", "start")
             wanted = [p for p in START_ORDER if (p in running or p in ("asr", "api", "node")) and (p != "node" or audio)]
             self._start(b, wanted)
             self._save(phase="done")

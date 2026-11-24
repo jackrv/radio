@@ -108,9 +108,43 @@
   const deviceTitle = name => name === "pi" ? "Pi" : "Mac";
   let moveTimer = null;
 
-  function serviceRow(name, process, p) {
+  const MODE_NAMES = { pi: "Працює Pi", mac: "Усе на Mac", off: "Вимкнено" };
+  const MODE_HINTS = { pi: "Ефір, бот і база — на Pi, Mac лише розпізнає (Whisper).", mac: "Усе працює на Mac, Pi відпочиває.",
+    off: "Ефір, бот і розпізнавання зупинено на обох. Панель працює." };
+  function serviceNeed(name, process, p, d) {
+    if (process === "panel") return p.alive ? "працює" : "зупинено";
+    const home = d.marker || d.home;
+    if (p.blocked && !p.alive) return ["asr", "api"].includes(process) && home && home !== name ? `дім на ${deviceTitle(home)}` : "зайнято на іншому пристрої";
+    if (process === "tunnel") return p.alive ? "працює" : d.mode === name ? "за потреби" : "не потрібно";
+    if (!d.needed) return p.alive ? "працює" : "зупинено";
+    const needed = d.needed[name].includes(process);
+    return p.alive ? needed ? "працює" : "працює, зайве" : needed ? "зупинено, потрібно" : "не потрібно";
+  }
+  let modeBusy = false;
+  function modeBar(d, moving) {
+    const box = $("device-modes"), hint = el("p", "muted small", MODE_HINTS[d.mode] || "Виберіть, де має працювати система."), bar = el("div", "toolbar");
+    for (const mode of d.configured ? ["pi", "mac", "off"] : ["mac", "off"]) {
+      const b = el("button", d.mode === mode ? "" : "ghost", MODE_NAMES[mode]); b.type = "button";
+      b.disabled = modeBusy || moving || updateState.active;
+      b.setAttribute("aria-pressed", String(d.mode === mode)); b.title = MODE_HINTS[mode];
+      const run = async () => {
+        const home = d.marker || d.home;
+        if (mode !== "off" && d.configured && home && home !== mode) return moveHome(mode);   // база має переїхати
+        modeBusy = true; moveAsk = null; modeBar(d, moving);
+        try {
+          const result = await request(`/api/devices-mode/${mode}`, "POST");
+          note(result.note || `${MODE_NAMES[mode]}: служби перемикаються.`);
+        } finally { modeBusy = false; await devices(); }
+        setTimeout(() => devices().catch(() => {}), 12000);
+      };
+      if (mode === "off") armed(b, "Зупинити все?", run); else b.addEventListener("click", () => action(run));
+      bar.append(b);
+    }
+    box.replaceChildren(bar, hint);
+  }
+  function serviceRow(name, process, p, d) {
     const row = el("div", "service-row"), buttons = el("span", "service-buttons");
-    const state = p.alive ? "працює" : p.blocked ? "зайнято на іншому пристрої" : "зупинено";
+    const state = serviceNeed(name, process, p, d);
     if (CONTROLLED[name].includes(process) && (name === "pi" || serviceMode === "r345")) for (const verb of p.alive ? ["restart", "stop"] : ["start"]) {
       const b = el("button", "ghost icon-button", VERB_ICON[verb]); b.type = "button";
       b.title = VERB_TEXT[verb]; b.setAttribute("aria-label", `${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}`);
@@ -215,13 +249,13 @@
     return el("p", "muted small", `Копії баз Pi на Mac: ${num(b.count)} з ${num(b.keep)} · ${storageSize(b.bytes)}${b.age_h == null ? "" : ` · остання ${num(Math.round(b.age_h))} год тому`}`);
   }
   function deviceCard(name, box, d, moving) {
-    const device = d[name], home = d.home === name || d.home === "both";
+    const device = d[name], home = d.home === name || d.home === "both" || !d.home && d.marker === name;
     box.classList.toggle("home", home);
     const head = el("div", "device-head"); head.append(el("h3", "", deviceTitle(name)));
     const parts = [head];
     if (!device) { head.append(el("span", "pill off", "не налаштовано")); box.replaceChildren(head, el("p", "muted small", "Додайте RADIO345_PI_SSH у .env на Mac.")); return; }
     if (!device.reachable) head.append(el("span", "pill bad", "недоступна"));
-    else if (home) { const missing = HOME_CORE.some(n => device.processes[n] && !device.processes[n].alive); head.append(el("span", missing ? "pill warn" : "pill ok", d.home === "both" ? "працює на двох!" : "працює тут")); }
+    else if (home) { const missing = HOME_CORE.some(n => device.processes[n] && !device.processes[n].alive); head.append(el("span", missing ? "pill warn" : "pill ok", d.home === "both" ? "працює на двох!" : d.home ? "працює тут" : "дім, зупинено")); }
     else head.append(el("span", "pill off", "запасний"));
     if (!device.reachable) parts.push(el("p", "muted small", device.error || ""));
     else {
@@ -231,7 +265,7 @@
       if (name === "mac") parts.push(...macCode());
       if (name === "pi" && d.code_matches === false) parts.push(codeUpdate(moving, d));
       const list = el("div", "service-list");
-      for (const [process, p] of Object.entries(device.processes)) list.append(serviceRow(name, process, p));
+      for (const [process, p] of Object.entries(device.processes)) list.append(serviceRow(name, process, p, d));
       const facts = [`вільно ${storageSize(device.disk_free)}`, device.temp_c == null ? "" : `${fix(device.temp_c, 1)} °C`, device.model ? `модель: ${device.model}` : ""].filter(Boolean).join(" · ");
       parts.push(list, el("p", "muted small", facts), audioSection(name, device.processes));
     }
@@ -239,15 +273,8 @@
     if (name === "pi" && updateState.phase === "failed") parts.push(el("p", "alert small", updateState.error));
     if (name === "pi" && updateState.phase === "done" && updateState.units?.length)
       parts.push(el("p", "alert small", "Змінилися файли служб: на Pi один раз sudo sh deploy/hub/install.sh --units"));
-    // «Перенести сюди» — лише на пристрої, який зараз не дім. Недоступна Pi не може прийняти дім, але Mac може забрати.
-    if (d.configured && !home && d.home !== "both" && device.reachable && !moving && !updateState.active) {
-      if (moveAsk?.target === name) parts.push(moveQuestion(name));
-      else {
-        const b = el("button", "", "Перенести сюди"); b.type = "button"; b.className = "device-move";
-        b.addEventListener("click", () => action(() => moveHome(name)));
-        parts.push(b);
-      }
-    }
+    // Питання про перенесення (його ставить вибір режиму). Недоступна Pi не може прийняти дім, але Mac може забрати.
+    if (d.configured && !home && device.reachable && !moving && !updateState.active && moveAsk?.target === name) parts.push(moveQuestion(name));
     box.replaceChildren(...parts);
   }
   async function moveState() {
@@ -294,6 +321,7 @@
     macUpdate = await request("/api/devices/mac/update").catch(() => macUpdate);
     if (macUpdate.active) { clearTimeout(updateTimer); updateTimer = setTimeout(() => devices().catch(() => {}), 2000); }
     if (d.configured) { await pollUpdate().catch(() => {}); piBackups = await request("/api/pi-backups").catch(() => null); }
+    modeBar(d, moving);
     deviceCard("mac", $("device-mac"), d, moving);
     deviceCard("pi", $("device-pi"), d, moving);
   }

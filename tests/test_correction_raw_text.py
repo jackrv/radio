@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from core.event_processor import EventProcessor
+from server.event_processor import EventProcessor
 from shared.miniapp_correction_editor import load_edit_draft
 from shared.event_store import (
     init_db,

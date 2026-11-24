@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services import phrase_feed as f
+from server import phrase_feed as f
 from shared import radio_stream as rs
 
 LOG = logging.getLogger("test")
@@ -109,7 +109,7 @@ def test_no_asr_service_means_empty_list(tmp_path):
 
 
 def test_event_processor_accepts_outbox(tmp_path):
-    from core.event_processor import EventProcessor
+    from server.event_processor import EventProcessor
     box = outbox(tmp_path)
     processor = SimpleNamespace(radio_stream=box, fresh=lambda key: True, log=LOG)
     EventProcessor._publish_stream(processor, lambda mode: mode == "watch", "Тест", "", "", "синтетична", PCM)
@@ -120,7 +120,7 @@ def test_event_processor_accepts_outbox(tmp_path):
 
 
 def test_outbox_failure_does_not_stop_recognition(tmp_path, monkeypatch):
-    from services.asr_service import phrase_outbox
+    from server.asr_service import phrase_outbox
     monkeypatch.setenv("RADIO_NODE_DIR", str(tmp_path))
     monkeypatch.setenv("RADIO_STREAM_MODE", "невідомий")
     cfg = SimpleNamespace(BASE_DIR=tmp_path, RADIO_STREAM_MODE="watch", SR=16000)

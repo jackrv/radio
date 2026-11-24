@@ -8,9 +8,9 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from core.event_processor import EventProcessor
+from server.event_processor import EventProcessor
 from shared.sqlite_connection import get_db
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.user_notify_store import (
     DEFAULT_USER_MODE, allowed_modes, apply_telegram_user_mode, list_recipients,
     load_user_mode, save_user_mode,

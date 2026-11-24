@@ -13,7 +13,7 @@ import config as project_config
 import shared.text_lists as text_lists
 from shared.callsigns import Callsigns, configure_aliases
 from shared.analyzer import looks_like_garbage
-from core.cooldown import Cooldown
+from server.cooldown import Cooldown
 from shared.dictionary_store import init_db as init_dictionary_db
 from shared.dictionary_loader import LiveDictionaries
 from shared.event_store import init_db as init_event_db
@@ -171,7 +171,7 @@ def loud():
 
 
 def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_path):
-    from services.transcriber_factory import build_transcriber
+    from server.transcriber_factory import build_transcriber
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
                                 "RECORDINGS_DIR": tmp_path / "recordings",
@@ -218,7 +218,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
 
 def test_local_panel_edits_runtime_settings(db_path, tmp_path):
     from shared.user_store import init_users_db, bootstrap_admin
-    from api.local_dashboard import create_dashboard
+    from server.api.local_dashboard import create_dashboard
     init_users_db(db_path)
     bootstrap_admin(db_path, 1001)
     app = create_dashboard(db_path, KEY, samples_dir=tmp_path / "s", diagnostics_path=tmp_path / "d.json",
@@ -237,7 +237,7 @@ def test_local_panel_edits_runtime_settings(db_path, tmp_path):
 
 
 def test_receiver_applies_whisper_prompt_list_without_restart(db_path, tmp_path):
-    from services.transcriber_factory import build_transcriber
+    from server.transcriber_factory import build_transcriber
     from shared.text_lists import read_lists, write_list
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,

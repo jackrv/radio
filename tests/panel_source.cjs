@@ -1,4 +1,4 @@
-// Скрипт локальної панелі так, як його віддає сервер (api/local_dashboard.py → panel_script).
+// Скрипт локальної панелі так, як його віддає сервер (server/api/local_dashboard.py → panel_script).
 const fs = require('node:fs');
 const path = require('node:path');
 const dir = path.join(__dirname, '../local_admin/js');

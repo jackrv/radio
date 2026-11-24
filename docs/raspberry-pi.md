@@ -4,7 +4,7 @@
 
 Pi поруч із рацією знімає звук, віддає потоки на iPhone і передає з iPhone в ефір із ключем PTT.
 Розпізнавання тут немає: «Відібрані» порожні, а сегменти поки відкидаються (див. [ідеї](ideas.md)).
-Код: [services/radio_node.py](../services/radio_node.py).
+Код: [server/radio_node.py](../server/radio_node.py).
 
 ## Що потрапляє на Pi
 
@@ -87,7 +87,7 @@ RADIO_PTT=gpio:17
 
 Зразки сигналів (за бажанням) — з Mac: `scp .local-notification-sounds/*.wav <користувач>@radio345:radio345/.local-notification-sounds/`.
 
-Пробний запуск вручну (Ctrl+C — вихід): `.venv/bin/python -m services.radio_node`.
+Пробний запуск вручну (Ctrl+C — вихід): `.venv/bin/python -m server.radio_node`.
 Без USB-карти вхід не відкриється (у Pi 5 немає мікрофонного входу), але потік і доступ з iPhone
 вже можна перевірити.
 

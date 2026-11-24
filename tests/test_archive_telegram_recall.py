@@ -8,7 +8,7 @@ import pytest
 from shared import archive_telegram_recall as recall
 from shared.event_store import init_db
 from shared.recordings import RecordingStore
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.telegram_recall import MAX_ATTEMPTS, process_deletions, state
 from shared.telegram_sync import remember_delivery
 from tests.test_local_dashboard import local, ORIGIN  # noqa: F401
@@ -161,7 +161,7 @@ def test_telegram_refusal_is_not_reported_as_successful_deletion(tmp_path):
 def test_expired_mem_text_and_list_cleanup_do_not_erase_pending_recall(tmp_path):
     from shared.telegram_phrase_store import register_phrase
     from shared.telegram_sync import sync_corrections
-    from services.management.phrases import list_phrases
+    from server.management.phrases import list_phrases
     fix = 'mem:' + 'b' * 32
     path, store, rid = make_archive(tmp_path, fix)
     register_phrase(path, 'b' * 32, 'синтетичний шелест')

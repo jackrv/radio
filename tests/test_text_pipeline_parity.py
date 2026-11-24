@@ -7,8 +7,8 @@ import pytest
 
 from shared.callsigns import Callsigns, command_dictionary
 from shared.diagnostics import RuntimeDiagnostics
-from core.event_processor import EventProcessor
-from core.transcriber import Transcriber
+from server.event_processor import EventProcessor
+from server.transcriber import Transcriber
 from lab.asr_lab import Lab
 
 
@@ -25,8 +25,8 @@ def event_processor(dicts):
 
 
 def worker(raw, dicts, processor, metrics, monkeypatch):
-    monkeypatch.setattr('core.transcriber.runtime', metrics)
-    monkeypatch.setattr('core.event_processor.runtime', metrics)
+    monkeypatch.setattr('server.transcriber.runtime', metrics)
+    monkeypatch.setattr('server.event_processor.runtime', metrics)
     recognizer = Mock()
     recognizer.transcribe.return_value = {'segments':[{'text':raw, 'avg_logprob':0}]}
     recognizer.extract_text.return_value = raw

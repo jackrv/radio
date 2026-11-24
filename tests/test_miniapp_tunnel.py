@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import radio345
-from services import miniapp_tunnel as t
+from server import miniapp_tunnel as t
 from tools import profiles
 
 URL = "https://radio.example-tunnel.dev"

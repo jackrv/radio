@@ -43,7 +43,7 @@ def service(name, root, port, hung=False):
     event(root, name + ".stopping")
     server.close()
     if database is not None:
-        from services.telegram import TelegramService
+        from server.telegram import TelegramService
 
         sent = []
         telegram = TelegramService("test", 16000, ":memory:", __import__("logging").getLogger("fixture"))

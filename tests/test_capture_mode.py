@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from core.transcriber import Transcriber
+from server.transcriber import Transcriber
 from shared.receiver_control import capture_state, mark_capture_unloaded, set_capture_only
 from shared.recordings import RecordingStore
 

@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from core.log_security import RedactingFormatter
+from server.log_security import RedactingFormatter
 
 
 TOKEN = "123456:FAKE_SECRET_TOKEN"

@@ -28,11 +28,11 @@ ROOT = Path(__file__).resolve().parent
 PROFILES = ROOT / "deploy" / "profiles"
 COMMANDS = {
     "worker": ("-m", "worker.asr_worker"),
-    "node": ("-m", "services.radio_node"),
-    "asr": ("-m", "services.asr_service"),
-    "api": ("-m", "api.local_server"),
-    "panel": ("-m", "api.local_dashboard"),
-    "tunnel": ("-m", "services.miniapp_tunnel"),
+    "node": ("-m", "server.radio_node"),
+    "asr": ("-m", "server.asr_service"),
+    "api": ("-m", "server.api.local_server"),
+    "panel": ("-m", "server.api.local_dashboard"),
+    "tunnel": ("-m", "server.miniapp_tunnel"),
 }   # лабораторія — не служба: запускається окремими командами
 MIN_PAUSE_S, MAX_PAUSE_S, STABLE_S = 2.0, 60.0, 60.0
 GRACE_S = 15.0   # скільки служба має на штатне завершення; далі — примусово

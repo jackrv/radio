@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 
 
 def make_service(tmp_path):

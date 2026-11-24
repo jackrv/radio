@@ -1,9 +1,9 @@
 import sqlite3
 from unittest.mock import Mock
 
-import core.transcriber as transcriber_module
-from core.event_processor import EventProcessor
-from core.transcriber import Transcriber
+import server.transcriber as transcriber_module
+from server.event_processor import EventProcessor
+from server.transcriber import Transcriber
 from shared.event_store import init_db, save_event
 
 

@@ -12,7 +12,7 @@ import requests
 
 def test_command_header_and_event_do_not_choose_nearest_number_without_group_anchor():
     from shared.callsigns import Callsigns, command_dictionary
-    from core.event_processor import EventProcessor
+    from server.event_processor import EventProcessor
     bot, save = Mock(), Mock(return_value=1)
     processor = EventProcessor(callsigns=Callsigns.from_lines([]), commands=command_dictionary(['грім 022']),
         watch=Callsigns.from_lines([]), short_garbage=set(), save_event=save, telegram_service=bot,
@@ -64,11 +64,11 @@ def test_exhausted_deletion_can_be_retried(tmp_path):
 
 @pytest.mark.parametrize('payload', [{'ok': False}, [], None])
 def test_own_delete_does_not_claim_success(payload):
-    from services.telegram_updates import UpdatesMixin
+    from server.telegram_updates import UpdatesMixin
     bot = UpdatesMixin(); bot.db_path = 'unused.db'
     bot._request = Mock(return_value=Mock(status_code=200, json=lambda: payload))
     bot._answer_callback = Mock()
-    with patch('services.telegram_updates.forget_delivery') as forget:
+    with patch('server.telegram_updates.forget_delivery') as forget:
         bot._delete_own_copy({'id': 'synthetic'}, 11, {'message_id': 5})
         assert not forget.called
         assert bot._answer_callback.call_args.args[1] == 'Помилка'
@@ -76,7 +76,7 @@ def test_own_delete_does_not_claim_success(payload):
 
 def test_files_private_and_transcript_stays_in_console_only(tmp_path):
     from shared.sqlite_connection import get_db
-    from core.log_security import TechnicalFileFormatter, RedactingFormatter, PrivateRotatingFileHandler
+    from server.log_security import TechnicalFileFormatter, RedactingFormatter, PrivateRotatingFileHandler
     path = tmp_path / 'events.db'
     old = os.umask(0o022)
     try:
@@ -92,7 +92,7 @@ def test_files_private_and_transcript_stays_in_console_only(tmp_path):
         assert 'SYNTHETIC_TRANSCRIPT' not in log.read_text()
         assert log.stat().st_mode & 0o777 == 0o600
         assert 'SYNTHETIC_TRANSCRIPT' in RedactingFormatter('%(message)s', None, '').format(record)
-        from core.console import ConsoleDashboard
+        from server.console import ConsoleDashboard
         stream=io.StringIO();console=ConsoleDashboard(stream=stream)
         console.setFormatter(RedactingFormatter('%(message)s',None,''));console.emit(record)
         assert 'SYNTHETIC_TRANSCRIPT' in stream.getvalue()

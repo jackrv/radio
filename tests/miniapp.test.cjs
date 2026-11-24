@@ -223,7 +223,7 @@ async function correctionFixture(autoClose, hasAudio = false, check = () => ({ i
     Radio345: { request: async (url, method, body) => {
       if (url.startsWith("/api/phrases/audio")) return new Blob(["OggSfake"]);
       if (url === "/api/corrections/check") {
-        // CORS сервера (api/app.py) дозволяє лише GET і PUT: інакше браузер заблокує запит.
+        // CORS сервера (server/api/app.py) дозволяє лише GET і PUT: інакше браузер заблокує запит.
         assert.ok(["GET", "PUT"].includes(method), `метод ${method} заборонено CORS`);
         checks.push(body.text); return check(body.text);
       }

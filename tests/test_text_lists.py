@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 import shared.callsigns as callsign_module
 import shared.text_lists as text_lists
 from shared.callsigns import Callsigns, configure_aliases
-from core.transcriber import Transcriber
+from server.transcriber import Transcriber
 from shared.dictionary_store import init_db as init_dictionary_db
 from shared.text_lists import LiveTextLists, read_lists, write_list, TextListConflict
 
@@ -186,7 +186,7 @@ def test_editor_correction_uses_current_callsign_aliases(db_path):
 def test_local_panel_reads_and_saves_lists(tmp_path):
     from shared.event_store import init_db
     from shared.user_store import init_users_db, bootstrap_admin
-    from api.local_dashboard import create_dashboard
+    from server.api.local_dashboard import create_dashboard
     path = tmp_path / "panel.db"
     init_db(path); init_dictionary_db(path); init_users_db(path); bootstrap_admin(path, 1001)
     app = create_dashboard(path, KEY, samples_dir=tmp_path / "s", diagnostics_path=tmp_path / "d.json", recordings_dir=tmp_path / "r")

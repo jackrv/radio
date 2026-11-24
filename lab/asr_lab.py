@@ -526,7 +526,7 @@ class Lab:
             elif blacklist_key(raw) in {blacklist_key(v) for v in self.blacklist}:
                 text, stage = "", "blacklist"
             else:
-                # Перелік назв словника з підказки — як у приймачі (core/transcriber.py).
+                # Перелік назв словника з підказки — як у приймачі (server/transcriber.py).
                 cleaned, echo = strip_dictionary_echo(raw, self.dictionaries)
                 if echo:
                     result["dictionary_echo"] = True

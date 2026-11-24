@@ -8,7 +8,7 @@ import pytest
 import config as project_config
 from shared.callsigns import Callsigns, command_dictionary
 from shared import daily_codes
-from services.transcriber_factory import build_transcriber
+from server.transcriber_factory import build_transcriber
 
 config = None
 
@@ -37,11 +37,11 @@ def make_dependencies():
     }
 
 
-@patch("services.transcriber_factory.Transcriber")
+@patch("server.transcriber_factory.Transcriber")
 @patch("shared.recognition.WhisperRecognizer")
-@patch("services.transcriber_factory.EventProcessor")
-@patch("services.transcriber_factory.build_text_pipeline")
-@patch("services.transcriber_factory.build_llm_corrector")
+@patch("server.transcriber_factory.EventProcessor")
+@patch("server.transcriber_factory.build_text_pipeline")
+@patch("server.transcriber_factory.build_llm_corrector")
 def test_build_transcriber(
     mock_llm,
     mock_pipeline,
@@ -102,8 +102,8 @@ def test_factory_does_not_start_models():
 
     with (
         patch("shared.recognition.WhisperRecognizer") as whisper,
-        patch("services.transcriber_factory.build_llm_corrector") as llm,
-        patch("services.transcriber_factory.Transcriber") as worker,
+        patch("server.transcriber_factory.build_llm_corrector") as llm,
+        patch("server.transcriber_factory.Transcriber") as worker,
     ):
         build_transcriber(**deps)
 
@@ -122,11 +122,11 @@ def test_recognition_formatter_uses_confirmed_codes_for_the_recording_day():
     daily_codes.write(config.DB_PATH, daily_codes.local_day(), "61 70")
 
     with (
-        patch("services.transcriber_factory.Transcriber") as transcriber,
+        patch("server.transcriber_factory.Transcriber") as transcriber,
         patch("shared.recognition.WhisperRecognizer"),
-        patch("services.transcriber_factory.EventProcessor"),
-        patch("services.transcriber_factory.build_text_pipeline"),
-        patch("services.transcriber_factory.build_llm_corrector"),
+        patch("server.transcriber_factory.EventProcessor"),
+        patch("server.transcriber_factory.build_text_pipeline"),
+        patch("server.transcriber_factory.build_llm_corrector"),
     ):
         worker = build_transcriber(**deps)
 
@@ -145,11 +145,11 @@ def test_receiver_loads_number_evidence_and_refreshes_it_without_model_calls(mon
     deps=make_dependencies()
     deps.update(callsigns=Callsigns.from_lines(['клен: 600 609']),
                 commands=command_dictionary([]),watch=Callsigns.from_lines([]))
-    with (patch('services.transcriber_factory.Transcriber') as transcriber,
+    with (patch('server.transcriber_factory.Transcriber') as transcriber,
           patch('shared.recognition.WhisperRecognizer') as whisper,
-          patch('services.transcriber_factory.EventProcessor') as processor,
-          patch('services.transcriber_factory.build_text_pipeline'),
-          patch('services.transcriber_factory.build_llm_corrector')):
+          patch('server.transcriber_factory.EventProcessor') as processor,
+          patch('server.transcriber_factory.build_text_pipeline'),
+          patch('server.transcriber_factory.build_llm_corrector')):
         worker=build_transcriber(**deps)
     cs=processor.call_args.kwargs['callsigns']
     commands=processor.call_args.kwargs['commands']

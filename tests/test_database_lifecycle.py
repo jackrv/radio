@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from shared.dictionary_store import import_dictionaries
-from services.database_lifecycle import initialize_database, reset_database, export_dictionaries
+from server.database_lifecycle import initialize_database, reset_database, export_dictionaries
 from shared.event_store import save_event
 from shared.sqlite_connection import get_db
 from shared.user_store import bootstrap_admin
@@ -118,7 +118,7 @@ def test_export_never_overwrites_operator_files(setup):
 
 def test_active_receiver_blocks_reset(setup, tmp_path):
     db, _ = setup
-    from services.receiver_status import init_receiver_db, record_heartbeat
+    from server.receiver_status import init_receiver_db, record_heartbeat
     init_receiver_db(db)
     record_heartbeat(db, "test", state="listening")
     with pytest.raises(RuntimeError):
@@ -156,7 +156,7 @@ def test_import_uses_mini_app_rules(tmp_path, line):
 
 
 def test_imported_dictionary_saves_unchanged_in_mini_app(setup):
-    from services.management.dictionaries import read_dictionary, write_dictionary
+    from server.management.dictionaries import read_dictionary, write_dictionary
 
     db, _ = setup
     for kind in ("callsigns", "commands", "telegram"):
@@ -165,7 +165,7 @@ def test_imported_dictionary_saves_unchanged_in_mini_app(setup):
 
 
 def test_import_and_api_share_entry_limit(tmp_path):
-    from services.management.dictionaries import MAX_DICTIONARY_ENTRIES
+    from server.management.dictionaries import MAX_DICTIONARY_ENTRIES
 
     source = tmp_path / "dictionaries.txt"
     rows = "\n".join(f"Віра: {n}" for n in range(1, MAX_DICTIONARY_ENTRIES + 2))

@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.queue_monitor import QueueDropMonitor
+from server.queue_monitor import QueueDropMonitor
 
 
 class FakeQueue:

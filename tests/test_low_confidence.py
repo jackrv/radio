@@ -7,7 +7,7 @@ import numpy as np
 import config
 from shared.callsigns import Callsigns, command_dictionary
 from shared.analyzer import is_low_confidence_short
-from core.transcriber import Transcriber
+from server.transcriber import Transcriber
 
 CALLSIGNS = Callsigns.from_lines(["дуб: 42", "клен"])
 COMMANDS = command_dictionary(["грім", "злива 4242"])

@@ -2,8 +2,8 @@ import requests
 import queue
 from unittest.mock import Mock
 
-from core.pause_gate import PauseGate
-from core.supervisor import ApplicationSupervisor
+from server.pause_gate import PauseGate
+from server.supervisor import ApplicationSupervisor
 
 
 def test_microphone_recovers_after_open_failure(monkeypatch):
@@ -13,7 +13,7 @@ def test_microphone_recovers_after_open_failure(monkeypatch):
     requests = iter([False, True, False, False, False])
 
     monkeypatch.setattr(
-        "core.supervisor.time.monotonic",
+        "server.supervisor.time.monotonic",
         lambda: clock[0],
     )
 
@@ -21,7 +21,7 @@ def test_microphone_recovers_after_open_failure(monkeypatch):
         clock[0] += 5.0
 
     monkeypatch.setattr(
-        "core.supervisor.time.sleep",
+        "server.supervisor.time.sleep",
         fake_sleep,
     )
 

@@ -278,7 +278,7 @@ def test_legacy_import_does_not_archive_unrelated_private_fields(tmp_path):
 
 def test_periodic_diagnostics_still_flush_when_heartbeat_database_write_fails(tmp_path):
     import sqlite3
-    from services import receiver_status
+    from server import receiver_status
 
     flushed = threading.Event()
     calls = []

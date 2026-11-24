@@ -23,14 +23,14 @@ def test_entry_modules_exist(module):
 
 def test_node_has_no_database_bot_or_model():
     node = CLOSURES["node"]
-    assert not {m for m in node if "telegram" in m or m.startswith("api")}
+    assert not {m for m in node if "telegram" in m or m.startswith("server.api")}
     assert "shared.sqlite_connection" not in node
     assert not {m for m in node if OUTER[m] & (set(c.MLX) | {"sqlite3", "fastapi", "requests"})}
 
 
 def test_worker_has_no_bot_api_or_dictionaries():
     worker = CLOSURES["worker"]
-    assert not {m for m in worker if "telegram" in m or "dictionary" in m or top(m) in ("api", "tools")}
+    assert not {m for m in worker if "telegram" in m or "dictionary" in m or m.startswith("server.api") or top(m) == "tools"}
 
 
 @pytest.mark.parametrize("name", ["panel", "api"])
@@ -55,19 +55,24 @@ def test_shared_does_not_import_server_worker_lab_or_legacy():
     assert {(m, x) for m, x in edges() if LAYOUT[m] == "shared" and LAYOUT[x] != "shared"} <= set()
 
 
+def test_every_process_module_lives_in_its_folder():
+    for name, (folder, entries) in c.PROCESSES.items():
+        assert {top(m) for m in entries} <= {folder, "shared"}, name
+
+
 def test_new_processes_do_not_need_legacy_modules():
     live = {m for ms in CLOSURES.values() for m in ms}
     assert not {m for m in live if LAYOUT[m] == "legacy" and not c.modules()[m].name == "__init__.py"}
 
 
 def test_relative_and_lazy_imports_are_seen(tmp_path):
-    pkg = tmp_path / "core"
+    pkg = tmp_path / "shared"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
-    (pkg / "a.py").write_text("from . import b\ndef f():\n    import core.d\n")
+    (pkg / "a.py").write_text("from . import b\ndef f():\n    import shared.d\n")
     (pkg / "b.py").write_text("from .d import x\n")
     (pkg / "d.py").write_text("")
     inner, _ = c.graph(tmp_path)
     eager, _ = c.graph(tmp_path, eager_only=True)
-    assert inner["core.a"] >= {"core.b", "core.d"} and "core.d" not in eager["core.a"]
-    assert "core.d" in inner["core.b"]
+    assert inner["shared.a"] >= {"shared.b", "shared.d"} and "shared.d" not in eager["shared.a"]
+    assert "shared.d" in inner["shared.b"]

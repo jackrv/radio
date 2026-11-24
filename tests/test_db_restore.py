@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from shared.instance_lock import acquire_instance_lock
-from services.database_lifecycle import RESTORE_SAFE_JUMP, restore_database
+from server.database_lifecycle import RESTORE_SAFE_JUMP, restore_database
 from shared.db_backup import create_backup
 from shared.event_store import init_db, save_event
 from shared.telegram_offset_store import load_telegram_offset, save_telegram_offset

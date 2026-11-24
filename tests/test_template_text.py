@@ -3,7 +3,7 @@
 from unittest.mock import Mock
 
 from shared.callsigns import Callsigns, command_dictionary
-from core.event_processor import EventProcessor
+from server.event_processor import EventProcessor
 from shared.template_text import template_text
 
 CALLSIGNS = Callsigns.from_lines(["береза: 31 56", "клен: 15", "вишня"])

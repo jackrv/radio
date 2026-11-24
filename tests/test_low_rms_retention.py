@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from shared.recordings import RecordingStore, RecordingArchive
-from services.storage_status import audio_status
+from server.storage_status import audio_status
 
 NOW=1_800_000_000
 

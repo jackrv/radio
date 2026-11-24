@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 
 from shared.diagnostics import runtime
-from core.pause_gate import PauseGate
-from core.supervisor import ApplicationSupervisor
-from core.transcriber import Transcriber
+from server.pause_gate import PauseGate
+from server.supervisor import ApplicationSupervisor
+from server.transcriber import Transcriber
 from shared.vad import VADSegmenter
 
 
@@ -86,7 +86,7 @@ def counter(name):
 
 def test_silent_stream_is_reopened(monkeypatch):
     clock = [100.0]
-    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("server.supervisor.time.monotonic", lambda: clock[0])
 
     def tick():
         clock[0] += 4.0  # кожна порожня спроба — 4 с без кадрів
@@ -105,7 +105,7 @@ def test_silent_stream_is_reopened(monkeypatch):
 
 def test_steady_frames_never_trigger_watchdog(monkeypatch):
     clock = [100.0]
-    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("server.supervisor.time.monotonic", lambda: clock[0])
 
     def tick():
         clock[0] += 5.0
@@ -208,7 +208,7 @@ def test_gap_while_microphone_is_intentionally_closed_never_alerts(
     monkeypatch, reason, resume, jump_clock,
 ):
     wall, mono, requested = [1000.0], [100.0], [reason]
-    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: mono[0])
+    monkeypatch.setattr("server.supervisor.time.monotonic", lambda: mono[0])
     sleeps = []
     segments = queue.Queue()
     segments.put(b"completed phrase before pause")
@@ -224,7 +224,7 @@ def test_gap_while_microphone_is_intentionally_closed_never_alerts(
         if resume:
             requested[0] = False  # строк паузи/hold сплив під час розриву
 
-    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    monkeypatch.setattr("server.supervisor.time.sleep", sleep)
     before = counter("receiver.suspensions")
     state_before = counter(f"receiver.loop_gaps.{reason}")
     alerts, log, gate = Mock(), Mock(), PauseGate()
@@ -261,7 +261,7 @@ def test_real_gap_after_resuming_is_not_suppressed_by_the_previous_pause(monkeyp
         wall[0] += 180
         requested[0] = False
 
-    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    monkeypatch.setattr("server.supervisor.time.sleep", sleep)
     alerts = Mock()
     pause_before, active_before = counter("receiver.loop_gaps.pause"), counter("receiver.suspensions")
     Stream.opened = []
@@ -280,7 +280,7 @@ def test_new_pause_request_does_not_hide_a_gap_that_started_while_stream_was_ope
         wall[0] += 180
         requested[0] = "pause"  # намір новий; під час розриву мікрофон ще був відкритий
 
-    monkeypatch.setattr("core.supervisor.time.sleep", Mock(side_effect=KeyboardInterrupt))
+    monkeypatch.setattr("server.supervisor.time.sleep", Mock(side_effect=KeyboardInterrupt))
     alerts = Mock()
     supervisor(Frames([b"frame"], frame), Mock(), pause_checker=lambda: requested[0],
                wall_clock=lambda: wall[0], on_suspension=alerts).run()
@@ -289,7 +289,7 @@ def test_new_pause_request_does_not_hide_a_gap_that_started_while_stream_was_ope
 
 def test_unavailable_microphone_is_not_mislabelled_as_an_intentional_pause(monkeypatch):
     wall, mono, sleeps = [1000.0], [100.0], []
-    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: mono[0])
+    monkeypatch.setattr("server.supervisor.time.monotonic", lambda: mono[0])
 
     def sleep(_):
         if sleeps:
@@ -298,7 +298,7 @@ def test_unavailable_microphone_is_not_mislabelled_as_an_intentional_pause(monke
         wall[0] += 180
         mono[0] += 180
 
-    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    monkeypatch.setattr("server.supervisor.time.sleep", sleep)
     alerts, log = Mock(), Mock()
     factory = Mock(side_effect=RuntimeError("synthetic device error"))
     before = counter("receiver.loop_gaps.unavailable")
@@ -313,7 +313,7 @@ def test_unavailable_microphone_is_not_mislabelled_as_an_intentional_pause(monke
 
 def test_long_intentional_pause_with_a_responsive_loop_is_not_a_loop_gap(monkeypatch):
     clock, sleeps = [1000.0], []
-    monkeypatch.setattr("core.supervisor.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("server.supervisor.time.monotonic", lambda: clock[0])
 
     def sleep(seconds):
         clock[0] += seconds
@@ -321,7 +321,7 @@ def test_long_intentional_pause_with_a_responsive_loop_is_not_a_loop_gap(monkeyp
         if len(sleeps) >= 450:
             raise KeyboardInterrupt
 
-    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    monkeypatch.setattr("server.supervisor.time.sleep", sleep)
     before = counter("receiver.loop_gaps")
     alerts = Mock()
     supervisor(Frames([]), Mock(), pause_checker=lambda: "pause",
@@ -353,7 +353,7 @@ def test_global_pause_with_playback_and_release_never_alerts_or_resumes_early(tm
         else:
             raise AssertionError("приймач не відновився")
 
-    monkeypatch.setattr("core.supervisor.time.sleep", sleep)
+    monkeypatch.setattr("server.supervisor.time.sleep", sleep)
     supervisor(Frames([b"frame"]), Mock(), pause_checker=lambda: reception_request(db_path, now=wall[0]),
                wall_clock=lambda: wall[0], on_suspension=alerts).run()
     alerts.assert_not_called()
@@ -383,7 +383,7 @@ def test_gap_notification_does_not_assert_sleep_or_successful_recovery():
 def test_admin_alert_retries_until_delivered(monkeypatch):
     import logging
 
-    from services.telegram import TelegramService
+    from server.telegram import TelegramService
 
     monkeypatch.setattr("time.sleep", Mock())
     service = TelegramService(
@@ -405,7 +405,7 @@ def test_admin_alert_retries_until_delivered(monkeypatch):
 
 # ---------- Прогрес розпізнавання ----------
 
-from core.recognition_health import RecognitionHealth
+from server.recognition_health import RecognitionHealth
 
 
 def test_stuck_segment_is_detected():

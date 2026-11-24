@@ -1,6 +1,6 @@
-"""Карта компонентів: процеси, їхні вхідні модулі й межі імпортів (крок 1, файли не переносяться).
+"""Карта компонентів: процеси, їхні вхідні модулі й межі імпортів каталогів.
 
-    .venv/bin/python -m tools.components          # процеси, розміри, майбутні каталоги
+    .venv/bin/python -m tools.components          # процеси, розміри, каталоги
     .venv/bin/python -m tools.components --list shared
 
 Статичний аналіз AST; динамічні імпорти не видно. Межі перевіряє tests/test_components.py.
@@ -13,22 +13,23 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Процес → (майбутній каталог, вхідні модулі).
 PROCESSES = {
-    "node": ("server", ("services.radio_node", "services.segment_spool", "services.node_control", "services.phrase_feed")),
-    "asr": ("server", ("services.asr_service",)),
-    "panel": ("server", ("api.local_dashboard",)),
-    "api": ("server", ("api.app", "api.local_server")),
-    "tunnel": ("server", ("services.miniapp_tunnel",)),
+    "node": ("server", ("server.radio_node", "server.segment_spool", "server.node_control", "server.phrase_feed")),
+    "asr": ("server", ("server.asr_service",)),
+    "panel": ("server", ("server.api.local_dashboard",)),
+    "api": ("server", ("server.api.app", "server.api.local_server")),
+    "tunnel": ("server", ("server.miniapp_tunnel",)),
     "worker": ("worker", ("worker.asr_worker",)),
     "lab": ("lab", ("lab.asr_lab", "lab.whisper_finetune", "lab.text_replay", "lab.analysis")),
 }
 # Не входять до жодного нового процесу: нинішній моноліт Mac, обслуговування, разові інструменти.
 LEGACY_ENTRIES = ("radio", "radio345", "start_radio345", "manage_database", "diagnose_radio345")
+FOLDERS = ("shared", "server", "worker", "lab")
 MLX = ("mlx", "mlx_whisper", "mlx_lm")
 
 
 def modules(root=ROOT):
     result = {}
-    for top in ("core", "services", "api", "tools", "shared", "server", "worker", "lab"):
+    for top in ("shared", "server", "worker", "lab", "tools"):
         for path in sorted((root / top).rglob("*.py")):
             if "__pycache__" not in path.parts:
                 result[".".join(path.relative_to(root).with_suffix("").parts).removesuffix(".__init__")] = path
@@ -86,16 +87,8 @@ def process_closures(inner):
 
 
 def layout(inner):
-    """Майбутній каталог модуля: спільне для ≥2 каталогів — shared; недосяжне — legacy."""
-    by_dir = {}
-    for name, (folder, _) in PROCESSES.items():
-        by_dir.setdefault(folder, set()).update(closure(PROCESSES[name][1], inner))
-    entries = {m: folder for folder, ms in PROCESSES.values() for m in ms}
-    result = {}
-    for module in inner:
-        owners = sorted(folder for folder, ms in by_dir.items() if module in ms)
-        result[module] = entries.get(module) or ("legacy" if not owners else owners[0] if len(owners) == 1 else "shared")
-    return result
+    """Каталог модуля; решта — legacy: моноліт Mac, обслуговування, разові інструменти. config.py — спільний."""
+    return {m: "shared" if m == "config" else m.split(".")[0] if m.split(".")[0] in FOLDERS else "legacy" for m in inner}
 
 
 def main(argv=None):

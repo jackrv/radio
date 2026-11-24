@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from shared.miniapp_correction_editor import load_edit_draft, save_edit_draft
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.event_store import init_db
 from shared.sqlite_connection import get_db
 

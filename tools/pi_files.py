@@ -1,6 +1,6 @@
 """Список файлів для Raspberry Pi (git sparse-checkout) і перевірка його повноти.
 
-Код радіовузла обчислюється з імпортів ``services.radio_node`` в окремому процесі
+Код радіовузла обчислюється з імпортів ``server.radio_node`` в окремому процесі
 (включно з імпортами всередині функцій — вони перелічені в ENTRY_MODULES).
 Решта потрібних файлів — у EXTRA_FILES.
 
@@ -18,20 +18,20 @@ MANIFEST = ROOT / "deploy" / "pi-files.txt"
 
 # Модулі, які вузол імпортує (частину — всередині функцій, тому статичного імпорту замало).
 ENTRY_MODULES = (
-    "services.radio_node",
+    "server.radio_node",
     "shared.radio_stream",
     "shared.audio_devices",
     "shared.ptt_key",
-    "services.segment_spool",
-    "services.phrase_feed",
-    "services.node_control",
-    "core.supervisor",
+    "server.segment_spool",
+    "server.phrase_feed",
+    "server.node_control",
+    "server.supervisor",
     "shared.notification_spectral",
     "shared.notification_templates",
-    "core.log_security",
+    "server.log_security",
     "shared.audio",
-    "core.segment_timing",
-    "core.bounded_queue",
+    "server.segment_timing",
+    "server.bounded_queue",
     "shared.diagnostics",
     "config",
 )

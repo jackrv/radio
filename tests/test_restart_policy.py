@@ -1,6 +1,6 @@
 import pytest
 
-from core.restart_policy import RestartPolicy
+from server.restart_policy import RestartPolicy
 
 
 def make_policy():

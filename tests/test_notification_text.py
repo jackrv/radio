@@ -6,10 +6,10 @@ from unittest.mock import Mock
 
 from shared.callsigns import Callsigns, command_dictionary
 from shared.analyzer import canonical_text, fmt_spoken, spoken_number
-from core.event_processor import EventProcessor
+from server.event_processor import EventProcessor
 from shared.event_store import save_event
 from shared.miniapp_correction_editor import save_edit_draft
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.telegram_outbox import build_caption
 from shared.telegram_sync import remember_delivery, sync_corrections
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура)

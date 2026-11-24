@@ -55,7 +55,7 @@ def test_start_refuses_unspecified_host_and_disabled(tmp_path, monkeypatch):
 
 def make_processor(stream, select=lambda _: []):
     from shared.callsigns import Callsigns, command_dictionary
-    from core.event_processor import EventProcessor
+    from server.event_processor import EventProcessor
     return EventProcessor(
         callsigns=Callsigns.from_lines([]), commands=command_dictionary(["грім 022"]),
         watch=Callsigns.from_lines([]), short_garbage=set(), save_event=Mock(return_value=1),
@@ -121,7 +121,7 @@ def test_http_stream_events_and_clip_on_loopback():
 
 
 def test_supervisor_feeds_live_speech_with_preroll_and_isolates_errors():
-    from core.supervisor import ApplicationSupervisor
+    from server.supervisor import ApplicationSupervisor
     sent = []
     sup = ApplicationSupervisor.__new__(ApplicationSupervisor)
     sup.on_live_audio = lambda pcm, phase: sent.append((pcm, phase))
@@ -328,7 +328,7 @@ def test_transmit_websocket_plays_pcm_and_mutes_receiver_input():
 def test_transmit_disabled_by_default_and_supervisor_drops_muted_input():
     stream = rs.RadioStream(sample_rate=SR, host="127.0.0.1", port=0)
     assert stream.transmit_enabled is False and stream.input_muted() is False
-    from core.supervisor import ApplicationSupervisor
+    from server.supervisor import ApplicationSupervisor
     sup = ApplicationSupervisor.__new__(ApplicationSupervisor)
     sup.input_muted = Mock(side_effect=RuntimeError("synthetic"))
     assert sup._input_is_muted() is False

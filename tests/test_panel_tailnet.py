@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from api import local_dashboard
+from server.api import local_dashboard
 from shared.event_store import init_db
 
 HOSTS = ["100.64.0.9", "pi.example.ts.net", "pi"]

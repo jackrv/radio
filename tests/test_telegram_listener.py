@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 
 
 def test_offset_survives_listener_restart(monkeypatch):

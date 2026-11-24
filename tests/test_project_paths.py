@@ -5,9 +5,9 @@ from unittest.mock import Mock
 import numpy as np
 
 import config
-import core.audio_debug as audio_debug
-import core.log_security as log_security
-import services.transcriber_factory as factory
+import server.audio_debug as audio_debug
+import server.log_security as log_security
+import server.transcriber_factory as factory
 
 
 def test_project_paths_independent_of_cwd(tmp_path, monkeypatch):

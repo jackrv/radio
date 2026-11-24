@@ -6,12 +6,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from core.segment_timing import SegmentTiming, TimedSegment
-from core.transcriber import Transcriber
+from server.segment_timing import SegmentTiming, TimedSegment
+from server.transcriber import Transcriber
 from shared.whisper_result import RecognizerUnavailable
-from services.asr_service import AsrService, NullTelegram, SpoolRecorder
+from server.asr_service import AsrService, NullTelegram, SpoolRecorder
 from shared.recordings import RecordingStore
-from services.segment_spool import SegmentSpool
+from server.segment_spool import SegmentSpool
 
 LOG = logging.getLogger("test")
 
@@ -134,7 +134,7 @@ def test_telegram_is_never_used():
 
 
 def test_bot_listener_is_restarted_after_it_dies():
-    from services.asr_service import Bot
+    from server.asr_service import Bot
     started = []
     service = SimpleNamespace(start_maintenance=lambda: None, callback_listener=lambda: started.append(1))
     bot = Bot(service, LOG)

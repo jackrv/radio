@@ -9,7 +9,7 @@ StartLimitIntervalSec=0
 User=@USER@
 WorkingDirectory=@ROOT@
 Environment=RADIO345_PANEL_HOST=tailscale
-ExecStart=@ROOT@/.venv/bin/python -m api.local_dashboard
+ExecStart=@ROOT@/.venv/bin/python -m server.api.local_dashboard
 Restart=always
 RestartSec=10
 TimeoutStopSec=15

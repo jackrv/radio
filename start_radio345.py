@@ -21,8 +21,8 @@ import json
 import logging
 import atexit
 import config
-from core.console import ConsoleDashboard, child_event
-from core.log_security import RedactingFormatter, archive_log_name
+from server.console import ConsoleDashboard, child_event
+from server.log_security import RedactingFormatter, archive_log_name
 import os
 from pathlib import Path
 import re
@@ -37,8 +37,8 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 from shared.project_python import select_python
-from services.admin_setup import ensure_admin
-from services.dictionary_setup import ensure_dictionaries, interactive_console
+from server.admin_setup import ensure_admin
+from server.dictionary_setup import ensure_dictionaries, interactive_console
 from shared.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_restart, request_stop, send_command
 
 ROOT = Path(__file__).resolve().parent
@@ -54,7 +54,7 @@ _launcher_log.propagate = False
 
 def start_console():
     global _console
-    from core.log_security import PrivateRotatingFileHandler, TechnicalFileFormatter
+    from server.log_security import PrivateRotatingFileHandler, TechnicalFileFormatter
     from shared.private_files import protect_existing
     handler = PrivateRotatingFileHandler(ROOT / "launcher.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
     handler.namer = archive_log_name
@@ -66,7 +66,7 @@ def start_console():
     _launcher_log.setLevel(logging.INFO)
     def snapshot():
         return json.loads((ROOT / "diagnostics.json").read_text(encoding="utf-8"))
-    from services.receiver_status import read_console_heartbeat
+    from server.receiver_status import read_console_heartbeat
     _console = ConsoleDashboard(provider=snapshot, receiver_provider=lambda: read_console_heartbeat(config.DB_PATH))
     _console.receiver_requested_at = None
     _console.start()
@@ -551,7 +551,7 @@ def should_start_admin(args):
 
 def run_services(args, session):
 
-    if not (ROOT / "radio.py").is_file() or not (ROOT / "api/local_server.py").is_file():
+    if not (ROOT / "radio.py").is_file() or not (ROOT / "server/api/local_server.py").is_file():
         output("Помилка: покладіть start_radio345.py у корінь репозиторію поруч із radio.py")
         return 2
     if not (ROOT / ".env").is_file():
@@ -573,7 +573,7 @@ def run_services(args, session):
         db_path,
         launcher_setting("TELEGRAM_BOT_TOKEN"),
         launcher_setting("TELEGRAM_CHAT_ID"),
-        f"{py} -m api.bootstrap_admin",
+        f"{py} -m server.api.bootstrap_admin",
         interactive=interactive_console(),
         ask=lambda prompt: input(f"[launcher] {prompt}"),
         out=output,
@@ -605,7 +605,7 @@ def run_services(args, session):
     processes: list[ManagedProcess] = []
     failure = None
     try:
-        api = ManagedProcess("api", [py, "-u", "-m", "api.local_server"], session=session)
+        api = ManagedProcess("api", [py, "-u", "-m", "server.api.local_server"], session=session)
         processes.append(api)
         wait_for_api(api)
 
@@ -660,10 +660,10 @@ def run_services(args, session):
             output("Локальний перегляд Mini App: http://127.0.0.1:8080")
 
         if start_admin:
-            admin = ManagedProcess("admin", [py,"-u","-m","api.local_dashboard"], session=session)
+            admin = ManagedProcess("admin", [py,"-u","-m","server.api.local_dashboard"], session=session)
             processes.append(admin)
             _console.set_admin_url("http://127.0.0.1:8766")
-            output("Локальна панель: http://127.0.0.1:8766  (відкрити: .venv/bin/python -m api.local_dashboard --open)")
+            output("Локальна панель: http://127.0.0.1:8766  (відкрити: .venv/bin/python -m server.api.local_dashboard --open)")
         _console.expect_receiver()
         radio = ManagedProcess("radio", [py, "-u", str(ROOT / "radio.py")], session=session)
         processes.append(radio)
@@ -688,7 +688,7 @@ def run_services(args, session):
                 if exit_code is not None and item.name == "admin":
                     # Падіння панелі не повинно зупиняти приймання ефіру.
                     output(f"⚠️ Локальна панель завершилась (код {exit_code}); приймач працює далі. "
-                           "Запустити знову: .venv/bin/python -m api.local_dashboard --open")
+                           "Запустити знову: .venv/bin/python -m server.api.local_dashboard --open")
                     processes.remove(item)
                     _console.set_admin_url(None)
                     break

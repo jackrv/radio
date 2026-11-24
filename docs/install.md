@@ -89,7 +89,7 @@ cp dictionaries.example.txt dictionaries.txt
 
 Якщо в базі немає користувачів, лаунчер перевіряє чат із `TELEGRAM_CHAT_ID`
 (`getChat`), показує ім’я й ID і питає «Зареєструвати його адміністратором? [Y/N]».
-Без підтвердження API не запускається. Окремо: `.venv/bin/python -m api.bootstrap_admin`.
+Без підтвердження API не запускається. Окремо: `.venv/bin/python -m server.api.bootstrap_admin`.
 
 Далі права визначає лише база: нові люди приходять через `/start` у боті
 ([Telegram](telegram.md#доступ-через-start)), ролі змінюються в панелі.

@@ -3,8 +3,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from core.pause_gate import PauseGate
-from core.transcriber import Transcriber
+from server.pause_gate import PauseGate
+from server.transcriber import Transcriber
 
 
 def make_worker(gate):

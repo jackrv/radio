@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from core.console import ConsoleDashboard
-from core.log_security import RedactingFormatter
+from server.console import ConsoleDashboard
+from server.log_security import RedactingFormatter
 
 
 def test_console_filters_noise_and_keeps_traceback_in_file_only():
@@ -71,14 +71,14 @@ def test_alternate_screen_is_restored_once():
 
 
 def test_child_progress_is_not_a_warning():
-    from core.console import child_event
+    from server.console import child_event
     for line in ("\n", "Fetching 9 files: 0%| | 0/9", "Fetching 4 files: 100%|████| 4/4", "Traceback (most recent call last):"):
         assert child_event("radio", line) is None
     assert child_event("api", "ERROR: service unavailable") == ("api: service unavailable", logging.ERROR)
 
 
 def test_managed_events_keep_severity_and_one_message(monkeypatch):
-    from core.console import child_event
+    from server.console import child_event
     monkeypatch.setenv("RADIO345_MANAGED_CONSOLE", "1")
     stream = io.StringIO()
     console = ConsoleDashboard(stream=stream)
@@ -175,7 +175,7 @@ def test_unchanged_rows_are_not_repainted():
 
 
 def test_ngrok_timeout_dns_auth_are_user_events_and_ignore_background_updates():
-    from core.console import child_event
+    from server.console import child_event
     event = child_event('ngrok', 'lvl=eror msg="failed to reconnect session" err="dial tcp connect.ngrok-agent.com:443: i/o timeout"')
     assert event[1] == logging.ERROR
     assert 'час підключення' in event[0] and 'VPN' in event[0]
@@ -331,7 +331,7 @@ def test_statistics_remain_fresh_at_29_seconds_without_heartbeat(monkeypatch):
 
 
 def test_ngrok_drop_and_recovery_are_not_reported_as_failed_tunnel():
-    from core.console import NGROK_DROPPED, NGROK_RESTORED, child_event
+    from server.console import NGROK_DROPPED, NGROK_RESTORED, child_event
     state = {}
     drop = [
         'lvl=eror msg="heartbeat timeout, terminating session" obj=tunnels.session',
@@ -348,7 +348,7 @@ def test_ngrok_drop_and_recovery_are_not_reported_as_failed_tunnel():
 
 
 def test_ngrok_normal_start_has_no_recovery_message():
-    from core.console import child_event
+    from server.console import child_event
     state = {}
     assert child_event("ngrok", 'lvl=info msg="client session established" obj=tunnels.session', state) is None
 

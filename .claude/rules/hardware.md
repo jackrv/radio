@@ -4,7 +4,7 @@ paths:
   - "deploy/**"
   - "tools/pi_files.py"
   - "tools/ios_*"
-  - "services/radio_node.py"
+  - "server/radio_node.py"
   - "shared/radio_stream.py"
   - "shared/ptt_key.py"
   - "requirements-pi.txt"

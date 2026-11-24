@@ -2,7 +2,7 @@ import queue
 import pytest
 from unittest.mock import Mock
 
-from core.supervisor import ApplicationSupervisor
+from server.supervisor import ApplicationSupervisor
 
 
 class FakeStream:
@@ -163,7 +163,7 @@ def test_monitor_checks_when_audio_queue_empty():
         ]
     )
 
-    with patch("core.supervisor.QueueDropMonitor") as monitor_class:
+    with patch("server.supervisor.QueueDropMonitor") as monitor_class:
         supervisor.run()
 
     monitor_class.assert_called_once_with(
@@ -189,7 +189,7 @@ def test_monitor_checks_after_audio_frame():
         ]
     )
 
-    with patch("core.supervisor.QueueDropMonitor") as monitor_class:
+    with patch("server.supervisor.QueueDropMonitor") as monitor_class:
         supervisor.run()
 
     monitor_class.return_value.check.assert_called_once_with()
@@ -266,7 +266,7 @@ def test_detects_dead_telegram_thread_once():
 
 
 def test_transcriber_restarts_after_delay(monkeypatch):
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -325,7 +325,7 @@ def test_transcriber_restarts_after_delay(monkeypatch):
 
 def test_whisper_restart_limit(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -409,7 +409,7 @@ def test_whisper_restart_limit(monkeypatch):
 
 def test_whisper_restart_start_failure(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -492,7 +492,7 @@ def test_whisper_restart_start_failure(monkeypatch):
 
 def test_whisper_restart_counter_resets_after_30_minutes(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -558,7 +558,7 @@ def test_whisper_restart_counter_resets_after_30_minutes(monkeypatch):
 
 def test_telegram_restarts_after_delay(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -627,7 +627,7 @@ def test_telegram_restarts_after_delay(monkeypatch):
 
 def test_telegram_restart_limit(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -726,7 +726,7 @@ def test_telegram_restart_limit(monkeypatch):
 
 def test_telegram_restart_start_failure(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 
@@ -825,7 +825,7 @@ def test_telegram_restart_start_failure(monkeypatch):
 
 def test_telegram_restart_counter_resets_after_30_minutes(monkeypatch):
     from unittest.mock import patch
-    import core.restart_policy as restart_module
+    import server.restart_policy as restart_module
 
     FakeThread.instances = []
 

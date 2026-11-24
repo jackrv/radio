@@ -142,7 +142,7 @@ test('assembled panel script is valid JavaScript and matches what the server sen
   const python = path.join(__dirname, '../.venv/bin/python');
   if (!fs.existsSync(python)) return;   // CI-завдання JavaScript без Python-оточення: лише синтаксис
   const { execFileSync } = require('node:child_process');
-  const served = execFileSync(python, ['-c', 'from api.local_dashboard import panel_script; import sys; sys.stdout.write(panel_script())'],
+  const served = execFileSync(python, ['-c', 'from server.api.local_dashboard import panel_script; import sys; sys.stdout.write(panel_script())'],
     { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
   assert.equal(served, source);
 });

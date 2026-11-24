@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 [Service]
 User=@USER@
 WorkingDirectory=@ROOT@
-ExecStart=@ROOT@/.venv/bin/python -m services.miniapp_tunnel
+ExecStart=@ROOT@/.venv/bin/python -m server.miniapp_tunnel
 # Домен може бути зайнятий тунелем Mac: не частіше разу на 30 с.
 Restart=always
 RestartSec=30

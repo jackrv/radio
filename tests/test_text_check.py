@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from server.api.app import create_app
 from shared.callsigns import Callsigns, command_dictionary
 from shared.dictionary_store import init_db as init_dictionary_db
 from shared.event_store import init_db as init_event_db

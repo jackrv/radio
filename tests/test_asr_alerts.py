@@ -3,9 +3,9 @@ import logging
 
 import pytest
 
-from core.recognition_health import RecognitionHealth
-from services.asr_alerts import NODE_DOWN_S, Alerts
-from services.node_control import NodeControl
+from server.recognition_health import RecognitionHealth
+from server.asr_alerts import NODE_DOWN_S, Alerts
+from server.node_control import NodeControl
 
 LOG = logging.getLogger("test")
 

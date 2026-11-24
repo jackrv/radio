@@ -100,7 +100,7 @@ def test_operator_decision_is_retained_and_can_be_restored_individually(tmp_path
 
 
 def test_activity_records_allowed_details_without_arbitrary_payload():
-    from services.user_activity import panel_details
+    from server.user_activity import panel_details
     result=panel_details({'token':'DO_NOT_STORE','entries':[{'raw_line':'DO_NOT_STORE','enabled':True}],
                           'values':{'VAD_LEVEL':2,'token':'DO_NOT_STORE'}})
     assert result=={'rows':1,'enabled_rows':1,'values':{'VAD_LEVEL':2}}

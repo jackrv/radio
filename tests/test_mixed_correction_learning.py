@@ -14,7 +14,7 @@ from shared.event_store import save_event
 from shared.miniapp_correction_editor import save_edit_draft, decide_learning
 from shared.management.common import ManagementConflict
 from shared.management.learning import approve_rule, learning_queue
-from services.management.overview import overview as management_overview
+from server.management.overview import overview as management_overview
 from shared.telegram_phrase_store import register_phrase
 from shared.word_store import init_word_db, load_active_word_rules
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура)

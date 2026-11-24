@@ -7,7 +7,7 @@ import requests
 
 from shared.event_store import save_event
 from shared.miniapp_correction_editor import save_edit_draft, load_edit_draft
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.telegram_media_store import deletion_intent, deletion_result
 from shared.telegram_phrase_store import register_phrase
 from shared.telegram_sync import remember_delivery, sync_corrections, clipped

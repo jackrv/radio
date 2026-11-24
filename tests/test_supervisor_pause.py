@@ -1,8 +1,8 @@
 import queue
 from unittest.mock import Mock, patch
 
-from core.supervisor import ApplicationSupervisor
-from core.pause_gate import PauseGate
+from server.supervisor import ApplicationSupervisor
+from server.pause_gate import PauseGate
 
 
 def test_stream_closes_and_reopens_on_pause():
@@ -77,7 +77,7 @@ def test_stream_closes_and_reopens_on_pause():
         runtime_state=state,
     )
 
-    with patch("core.supervisor.time.sleep"):
+    with patch("server.supervisor.time.sleep"):
         supervisor.run()
 
     assert len(streams) == 2

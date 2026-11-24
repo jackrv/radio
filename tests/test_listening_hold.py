@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.pause_gate import PauseGate
-from core.supervisor import ApplicationSupervisor
+from server.pause_gate import PauseGate
+from server.supervisor import ApplicationSupervisor
 from shared.receiver_control import reception_request, set_listening_hold, set_pause_minutes
 
 
@@ -108,7 +108,7 @@ def run_supervisor(checks, segments):
         sample_rate=16000, frame_ms=30, frame_len=480, vad_level=2, preroll_ms=500, silence_end_ms=400,
         min_speech_ms=500, max_segment_s=20, log=log, stream_factory=Stream, segmenter_factory=Segmenter,
         thread_factory=Thread, pause_checker=lambda: next(checks), pause_gate=gate, runtime_state=state)
-    with patch("core.supervisor.time.sleep"):
+    with patch("server.supervisor.time.sleep"):
         supervisor.run()
     return streams, states, gate_calls, log
 

@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from core.event_processor import EventProcessor
+from server.event_processor import EventProcessor
 
 
 class FakeDictionary:
@@ -239,8 +239,8 @@ def test_telegram_error_does_not_affect_sqlite():
 
 
 def test_sqlite_failure_allows_immediate_retry(monkeypatch):
-    from core.cooldown import Cooldown
-    import core.cooldown as cooldown_module
+    from server.cooldown import Cooldown
+    import server.cooldown as cooldown_module
 
     # Фиксируем время: между попытками не прошло ни секунды.
     monkeypatch.setattr(

@@ -561,7 +561,7 @@ class RadioStream:
         return clip_id
 
     def reset_history(self, session):
-        """Нумерація належить іншому джерелу (services/phrase_feed.py)."""
+        """Нумерація належить іншому джерелу (server/phrase_feed.py)."""
         with self._history_lock:
             self._history.clear()
             self.session = session

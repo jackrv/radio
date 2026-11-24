@@ -9,7 +9,7 @@ from pathlib import Path
 import sqlite3
 
 import config
-from services.database_lifecycle import (
+from server.database_lifecycle import (
     initialize_database, export_dictionaries, reset_database, restore_database,
 )
 

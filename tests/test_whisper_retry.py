@@ -41,7 +41,7 @@ def test_no_retry_when_text_exists_flag_is_off_or_result_is_not_a_loop():
 def test_prompt_takes_only_the_latest_code_of_the_current_day(tmp_path):
     from shared import daily_codes
     from shared.dictionary_store import init_db
-    from services.transcriber_factory import prompt_codes
+    from server.transcriber_factory import prompt_codes
     path = tmp_path / "events.db"
     init_db(path)
     assert prompt_codes(path) == ()

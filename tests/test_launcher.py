@@ -48,8 +48,8 @@ def mocked_services(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
     # Робоча база береться з config.DB_PATH — у тестах лише тимчасова.
     monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "api").mkdir()
-    for name in ["radio.py", "api/local_server.py", ".env", "events.db"]:
+    (tmp_path / "server/api").mkdir(parents=True)
+    for name in ["radio.py", "server/api/local_server.py", ".env", "events.db"]:
         (tmp_path / name).touch()
     monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
     monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")
@@ -209,7 +209,7 @@ def test_crashed_local_admin_never_stops_reception(mocked_services,monkeypatch):
 
 def test_startup_failure_survives_terminal_screen_close(mocked_services, monkeypatch):
     import io
-    from core.console import ConsoleDashboard
+    from server.console import ConsoleDashboard
     class Terminal(io.StringIO):
         def isatty(self):
             return True

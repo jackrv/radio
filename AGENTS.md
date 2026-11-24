@@ -71,7 +71,7 @@ Claude Code підвантажує їх сам за `paths`; інші агент
 - Readonly аналіз без зупинки: `.venv/bin/python -m lab.analysis summary`;
   errors/conditions/callsigns/records/checks/runs/compare/queue — [довідка](docs/lab.md).
   Архів: RecordingStore(config.RECORDINGS_DIR); API аналізу: shared/error_analysis.py.
-- Текстові зміни: tools/text_replay; ASR: tools/asr_lab. Реальний UI-сценарій:
+- Текстові зміни: lab/text_replay; ASR: lab/asr_lab. Реальний UI-сценарій:
   `node tools/check_panel_ui.cjs`; перевірка парсера не замінює API check → save → read.
 - Тести: `.venv/bin/python -m pytest -q`, `node --test tests/*.cjs`, `git diff --check`.
   Обирайте перевірки за зміною; явно зазначайте недоступні MLX/PortAudio/браузерні прогони.

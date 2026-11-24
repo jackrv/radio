@@ -2,7 +2,7 @@ import threading
 
 import pytest
 
-from core.bounded_queue import DropOldestQueue
+from server.bounded_queue import DropOldestQueue
 
 
 def test_normal_queue():

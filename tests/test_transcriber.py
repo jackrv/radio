@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from core.transcriber import Transcriber
+from server.transcriber import Transcriber
 
 
 def make_transcriber(text="Вишня 700", blacklist=()):

@@ -7,14 +7,14 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from server.api.app import create_app
 from shared.dictionary_store import init_db
 from shared.event_store import init_db as init_events, save_event
 from shared.management.common import ManagementConflict
-from services.management.dictionaries import read_dictionary, write_dictionary
-from services.management.phrases import list_phrases
-from services.management.settings import apply_startup_settings, read_settings, write_settings
-from services.management.users import list_users, write_user
+from server.management.dictionaries import read_dictionary, write_dictionary
+from server.management.phrases import list_phrases
+from server.management.settings import apply_startup_settings, read_settings, write_settings
+from server.management.users import list_users, write_user
 from shared.telegram_phrase_store import register_phrase
 from shared.user_store import init_users_db, bootstrap_admin, create_user
 from shared.word_store import save_word_feedback, load_active_word_rules
@@ -44,7 +44,7 @@ WRITE = {"Origin": PANEL_ORIGIN}
 @pytest.fixture
 def panel(setup, tmp_path):
     """Локальна панель над тією самою базою: керування переїхало сюди з Mini App."""
-    from api.local_dashboard import create_dashboard
+    from server.api.local_dashboard import create_dashboard
     _, path = setup
     app = create_dashboard(path, PANEL_KEY, samples_dir=tmp_path / "samples",
                            diagnostics_path=tmp_path / "diagnostics.json", recordings_dir=tmp_path / "recordings")
@@ -114,7 +114,7 @@ def test_command_groups_pass_editor_check_and_save_without_losing_spaces(panel, 
 
 @pytest.mark.parametrize('line', ['злива 12345 12345', 'злива 42-43', 'злива *', 'злива 42 *'])
 def test_spaced_command_validation_does_not_accept_ranges_wildcards_or_overlong_codes(line):
-    from services.management.dictionaries import validate_dictionary
+    from server.management.dictionaries import validate_dictionary
     with pytest.raises(ValueError):
         validate_dictionary([{'raw_line':line,'enabled':True}], 'commands')
 
@@ -301,7 +301,7 @@ def test_non_admin_cannot_save_settings(setup):
 
 def test_management_sqlite_error_is_503(setup):
     client, _ = setup
-    with patch("api.management.list_phrases", side_effect=sqlite3.OperationalError("private details")):
+    with patch("server.api.management.list_phrases", side_effect=sqlite3.OperationalError("private details")):
         response = client.get("/api/phrases", headers=auth_header(1001))
     assert response.status_code == 503
     assert "private details" not in response.text
@@ -316,7 +316,7 @@ def test_new_routes_reject_disabled_user(setup):
 
 def test_overview_reports_actual_counts(setup):
     _, db = setup
-    from services.management.overview import overview
+    from server.management.overview import overview
     save_event("", "", "", "", "Віра 68", db)
     data = overview(db)
     assert data["events"] == 1

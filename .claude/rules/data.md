@@ -1,15 +1,15 @@
 ---
 paths:
   - "shared/recordings.py"
-  - "services/archive_*.py"
-  - "services/telegram*.py"
+  - "shared/archive_*.py"
+  - "s*/telegram*.py"
   - "shared/event_store.py"
-  - "services/receiver_*.py"
-  - "services/storage_status.py"
+  - "s*/receiver_*.py"
+  - "server/storage_status.py"
   - "shared/recording_trace.py"
   - "shared/diagnostics.py"
   - "shared/audio.py"
-  - "api/**"
+  - "server/api/**"
 ---
 
 # Поведінка даних: архів, Telegram, стан прийому

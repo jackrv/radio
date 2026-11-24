@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.telegram_retry import listener_retry_delay
 
 
@@ -103,7 +103,7 @@ def test_listener_survives_sqlite_error_when_saving_offset():
     delays = []
     with (
         patch("requests.get", side_effect=[update, update, KeyboardInterrupt()]),
-        patch("services.telegram_updates.save_telegram_offset", side_effect=save),
+        patch("server.telegram_updates.save_telegram_offset", side_effect=save),
         patch("time.sleep", side_effect=delays.append),
     ):
         with pytest.raises(KeyboardInterrupt):

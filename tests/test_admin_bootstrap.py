@@ -11,7 +11,7 @@ import pytest
 
 import start_radio345 as launcher
 from shared.dictionary_store import init_db
-from services.admin_setup import ensure_admin, fetch_private_chat, parse_private_chat
+from server.admin_setup import ensure_admin, fetch_private_chat, parse_private_chat
 from shared.sqlite_connection import get_db
 from shared.user_store import init_users_db
 
@@ -74,7 +74,7 @@ def run(db_path, *, answer="y", interactive=True, fetch=None):
     messages = []
     ask = Mock(return_value=answer)
     ok = ensure_admin(
-        db_path, "token", "12345", "python -m api.bootstrap_admin",
+        db_path, "token", "12345", "python -m server.api.bootstrap_admin",
         interactive=interactive, ask=ask, out=messages.append,
         fetch=fetch or (lambda token, chat_id: dict(CHAT)),
     )
@@ -118,7 +118,7 @@ def test_non_interactive_console_only_explains(db_path):
     ok, ask, messages = run(db_path, interactive=False)
     assert ok is False
     ask.assert_not_called()
-    assert any("api.bootstrap_admin" in line for line in messages)
+    assert any("server.api.bootstrap_admin" in line for line in messages)
 
 
 def test_other_users_block_automatic_bootstrap(db_path):
@@ -144,8 +144,8 @@ def test_telegram_error_is_reported(db_path):
 def test_launcher_stops_before_api_without_admin(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
     monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "api").mkdir()
-    for name in ["radio.py", "api/local_server.py", ".env"]:
+    (tmp_path / "server/api").mkdir(parents=True)
+    for name in ["radio.py", "server/api/local_server.py", ".env"]:
         (tmp_path / name).touch()
     monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
     monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")

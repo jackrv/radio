@@ -13,24 +13,24 @@ import sqlite3
 import time
 import threading
 from datetime import datetime, timedelta
-from core.log_security import configure_logging
+from server.log_security import configure_logging
 from shared.diagnostics import runtime as diagnostics
 import shutil
 
-from services.transcriber_factory import build_transcriber
+from server.transcriber_factory import build_transcriber
 
 from shared.audio import apply_gain
-from core.segment_timing import capture_frame
-from core.supervisor import ApplicationSupervisor
-from core.pause_gate import PauseGate
-from core.cooldown import Cooldown
-from core.bounded_queue import DropOldestQueue
-from services.receiver_status import (
+from server.segment_timing import capture_frame
+from server.supervisor import ApplicationSupervisor
+from server.pause_gate import PauseGate
+from server.cooldown import Cooldown
+from server.bounded_queue import DropOldestQueue
+from server.receiver_status import (
     receiver_heartbeat,
     ReceiverRuntimeState,
 )
 from shared.receiver_control import reception_request
-from services.management.settings import apply_startup_settings
+from server.management.settings import apply_startup_settings
 from dotenv import load_dotenv
 
 
@@ -38,14 +38,14 @@ from dotenv import load_dotenv
 
 from shared.event_store import init_db as init_event_db
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.dictionary_loader import load_dictionaries as load_sqlite_dictionaries
-from services.dictionary_setup import ensure_dictionaries, interactive_console
+from server.dictionary_setup import ensure_dictionaries, interactive_console
 from shared.user_notify_store import list_recipients
 from shared.db_backup import start_backup_scheduler
 from shared.model_exclusion import acquire_receiver_slot
 from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
-from core.recognition_health import RecognitionHealth
+from server.recognition_health import RecognitionHealth
 
 import config
 
@@ -178,7 +178,7 @@ def main():
     global _owner_lock
     _owner_lock = acquire_instance_lock(config.BASE_DIR / OWNER_LOCK)
     if _owner_lock is None:
-        log.error("Службу розпізнавання (services.asr_service) уже запущено з цією базою. Зупиніть її.")
+        log.error("Службу розпізнавання (server.asr_service) уже запущено з цією базою. Зупиніть її.")
         raise SystemExit(2)
     diagnostics.configure(
         config.BASE_DIR / "diagnostics.json",
@@ -188,7 +188,7 @@ def main():
     )
     init_event_db(DB_PATH)
     apply_startup_settings(DB_PATH, config)
-    from services.management.audio_settings import apply_audio_settings
+    from server.management.audio_settings import apply_audio_settings
     apply_audio_settings(DB_PATH, config)   # звукові пристрої з панелі
     global recording_archive
     if config.RECORD_AUDIO:
@@ -212,7 +212,7 @@ def main():
     else:
         log.warning(
             "Немає активних користувачів: сповіщення не надсилаються. "
-            "Зареєструйте адміністратора: python -m api.bootstrap_admin"
+            "Зареєструйте адміністратора: python -m server.api.bootstrap_admin"
         )
 
     last_pause_check = float("-inf")

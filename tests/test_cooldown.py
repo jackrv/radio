@@ -1,4 +1,4 @@
-from core.cooldown import Cooldown
+from server.cooldown import Cooldown
 
 
 def test_first_call_is_fresh():
@@ -22,7 +22,7 @@ def test_different_keys_are_independent():
 
 
 def test_expired_cooldown_allows_call(monkeypatch):
-    import core.cooldown as module
+    import server.cooldown as module
 
     now = [100.0]
     monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
@@ -37,7 +37,7 @@ def test_expired_cooldown_allows_call(monkeypatch):
 
 
 def test_rollback_allows_immediate_retry(monkeypatch):
-    import core.cooldown as module
+    import server.cooldown as module
 
     monkeypatch.setattr(
         module.time, "monotonic", lambda: 100.0

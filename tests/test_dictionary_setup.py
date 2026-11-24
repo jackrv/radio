@@ -9,8 +9,8 @@ import pytest
 
 import start_radio345 as launcher
 from shared.dictionary_store import init_db
-from services.database_lifecycle import initialize_database
-from services.dictionary_setup import dictionary_status, ensure_dictionaries, has_active_admin
+from server.database_lifecycle import initialize_database
+from server.dictionary_setup import dictionary_status, ensure_dictionaries, has_active_admin
 from shared.sqlite_connection import get_db
 from shared.user_store import init_users_db
 
@@ -170,8 +170,8 @@ def test_active_admin_detection(tmp_path):
 def test_launcher_stops_before_services_without_dictionaries(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
     monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "api").mkdir()
-    for name in ["radio.py", "api/local_server.py", ".env"]:
+    (tmp_path / "server/api").mkdir(parents=True)
+    for name in ["radio.py", "server/api/local_server.py", ".env"]:
         (tmp_path / name).touch()
     monkeypatch.setattr(sys, "argv", ["start_radio345.py"])
     monkeypatch.setattr(launcher, "launcher_setting", lambda *args: "")
@@ -186,8 +186,8 @@ def test_launcher_stops_before_services_without_dictionaries(tmp_path, monkeypat
 def test_launcher_prompt_has_prefix(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
     monkeypatch.setattr(launcher.config, "DB_PATH", str(tmp_path / "events.db"))
-    (tmp_path / "api").mkdir()
-    for name in ["radio.py", "api/local_server.py", ".env"]:
+    (tmp_path / "server/api").mkdir(parents=True)
+    for name in ["radio.py", "server/api/local_server.py", ".env"]:
         (tmp_path / name).touch()
     write_sources(tmp_path)
     monkeypatch.setattr(sys, "argv", ["start_radio345.py"])

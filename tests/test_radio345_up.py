@@ -145,7 +145,7 @@ def test_model_and_owner_locks_are_independent(tmp_path):
 
 
 def test_restore_is_refused_while_recognition_service_runs(tmp_path):
-    from services.database_lifecycle import restore_database
+    from server.database_lifecycle import restore_database
     from shared.event_store import init_db
     init_db(tmp_path / "events.db")
     init_db(tmp_path / "copy.db")
@@ -212,10 +212,10 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
         target = tmp_path / item
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radio345.ROOT / item, target)
-    (tmp_path / "services").mkdir(exist_ok=True)
-    (tmp_path / "services/__init__.py").touch()
+    (tmp_path / "server").mkdir(exist_ok=True)
+    (tmp_path / "server/__init__.py").touch()
     for name in ("radio_node", "asr_service"):
-        (tmp_path / f"services/{name}.py").write_text("import time\ntime.sleep(300)\n")
+        (tmp_path / f"server/{name}.py").write_text("import time\ntime.sleep(300)\n")
     (tmp_path / "deploy/profiles").mkdir(parents=True)
     (tmp_path / "deploy/profiles/t.toml").write_text('description="t"\nprocesses=["node","asr"]\nbot=false\n[env]\n')
     (tmp_path / ".env").write_text("RADIO345_PROFILE=t\n")

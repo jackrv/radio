@@ -15,7 +15,7 @@ from shared.whisper_result import RecognizerUnavailable
 from shared import lab_queue
 from worker.asr_worker import ModelGate, Paused, build_transcribe, handler_for
 from shared.model_pause import MAX_PAUSE_S, WORKER_LOCK, ModelPause
-from services.remote_recognizer import RemoteRecognizer
+from server.remote_recognizer import RemoteRecognizer
 
 LOG = logging.getLogger("test")
 AUDIO = np.zeros(1600, dtype=np.float32)

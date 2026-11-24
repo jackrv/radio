@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from shared.diagnostic_history import DiagnosticsHistory
 from shared.recordings import RecordingStore
-from services.storage_status import audio_status, log_status, storage_status
+from server.storage_status import audio_status, log_status, storage_status
 
 
 def seed(tmp_path, limit=100):

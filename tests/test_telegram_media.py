@@ -6,11 +6,11 @@ import pytest
 import requests
 
 from shared.event_store import save_event
-from services.management.phrases import list_phrases
+from server.management.phrases import list_phrases
 from shared.telegram_media_store import (
     remember_voice, is_hidden, audio_file_id, deletion_intent, deletion_result,
 )
-from services.telegram_audio import download_voice, AudioUnavailable, MAX_AUDIO_BYTES
+from server.telegram_audio import download_voice, AudioUnavailable, MAX_AUDIO_BYTES
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
 from tests.test_mem_editor_persistence import service
@@ -103,7 +103,7 @@ def test_uncertain_delete_is_hidden_until_retried(setup):
 def test_sqlite_failure_prevents_remote_deletion(setup):
     _, db = setup
     fix_id, message = phrase(db)
-    with patch("services.telegram_updates.deletion_intent", side_effect=sqlite3.OperationalError("test")):
+    with patch("server.telegram_updates.deletion_intent", side_effect=sqlite3.OperationalError("test")):
         with patch("requests.post") as post:
             with pytest.raises(sqlite3.Error):
                 service(db).handle_update({"callback_query": {"id": "delete", "from": {"id": 1001}, "data": "del:" + fix_id, "message": message}})
@@ -129,7 +129,7 @@ def test_audio_requires_auth_and_does_not_expose_telegram_ids(setup):
     client, db = setup
     fix_id, _ = phrase(db)
     assert client.get("/api/phrases/audio", params={"fix_id": fix_id}).status_code == 401
-    with patch("api.management.download_voice", return_value=b"OggSfake") as download:
+    with patch("server.api.management.download_voice", return_value=b"OggSfake") as download:
         result = client.get("/api/phrases/audio", params={"fix_id": fix_id}, headers=auth_header(3003))
     assert result.status_code == 200
     assert result.content == b"OggSfake"
@@ -142,7 +142,7 @@ def test_audio_requires_auth_and_does_not_expose_telegram_ids(setup):
 def test_audio_upstream_error_returns_generic_502(setup):
     client, db = setup
     fix_id, _ = phrase(db)
-    with patch("api.management.download_voice", side_effect=AudioUnavailable):
+    with patch("server.api.management.download_voice", side_effect=AudioUnavailable):
         result = client.get("/api/phrases/audio", params={"fix_id": fix_id}, headers=auth_header(1001))
     assert result.status_code == 502
     assert "voice-test-id" not in result.text
@@ -152,7 +152,7 @@ def test_audio_upstream_error_returns_generic_502(setup):
 def test_download_rejects_unsafe_metadata(path, size):
     response = Mock()
     response.json.return_value = {"ok": True, "result": {"file_path": path, "file_size": size}}
-    with patch("services.telegram_audio.requests.get", return_value=response) as get:
+    with patch("server.telegram_audio.requests.get", return_value=response) as get:
         with pytest.raises(AudioUnavailable):
             download_voice("test-token", "file")
     assert get.call_count == 1
@@ -167,7 +167,7 @@ def test_audio_download_validates_bytes_and_limits_size(data, ok):
     manager = Mock()
     manager.__enter__ = Mock(return_value=remote)
     manager.__exit__ = Mock(return_value=False)
-    with patch("services.telegram_audio.requests.get", side_effect=[meta, manager]):
+    with patch("server.telegram_audio.requests.get", side_effect=[meta, manager]):
         if ok:
             assert download_voice("test-token", "file") == data
         else:

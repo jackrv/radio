@@ -127,7 +127,7 @@ def test_host_and_root_cannot_become_options_or_shell():
 
 
 def test_restored_copy_passes_project_restore(tmp_path):
-    from services.database_lifecycle import restore_database
+    from server.database_lifecycle import restore_database
     from shared.event_store import init_db
     root = tmp_path / "hub"
     root.mkdir()

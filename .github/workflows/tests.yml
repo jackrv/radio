@@ -63,7 +63,7 @@ jobs:
           node-version: "22"
 
       - name: Syntax check
-        # Скрипт панелі збирається з local_admin/js/*.js (як його віддає api/local_dashboard.py).
+        # Скрипт панелі збирається з local_admin/js/*.js (як його віддає server/api/local_dashboard.py).
         run: |
           for file in apps/miniapp/*.js; do node --check "$file"; done
           node -e "new (require('vm').Script)(require('./tests/panel_source.cjs'))"

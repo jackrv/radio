@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from server.api.app import create_app
 from shared.event_store import init_db as init_event_db
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.telegram_phrase_store import (
     RETENTION_SECONDS, load_phrase, register_phrase,
 )

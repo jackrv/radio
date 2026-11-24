@@ -2,7 +2,7 @@ import signal
 
 import pytest
 
-from core.supervisor import ignore_repeated_sigint
+from server.supervisor import ignore_repeated_sigint
 
 
 def test_sigint_handler_is_restored():

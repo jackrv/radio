@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 [Service]
 User=@USER@
 WorkingDirectory=@ROOT@
-ExecStart=@ROOT@/.venv/bin/python -m api.local_server
+ExecStart=@ROOT@/.venv/bin/python -m server.api.local_server
 Restart=always
 RestartSec=10
 TimeoutStopSec=15

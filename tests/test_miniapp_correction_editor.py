@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from server.api.app import create_app
 from shared.dictionary_store import init_db as init_dictionary_db
 from shared.event_store import init_db as init_event_db, save_event
 from shared.user_store import init_users_db, bootstrap_admin, create_user
@@ -132,7 +132,7 @@ def test_editor_requires_telegram_auth(client_and_db):
 def test_bot_keyboard_opens_web_editor():
     import json
     from unittest.mock import Mock
-    from services.telegram import TelegramService
+    from server.telegram import TelegramService
 
     service = TelegramService(
         bot_token="test",

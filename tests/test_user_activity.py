@@ -4,7 +4,7 @@ import sqlite3
 
 from fastapi.testclient import TestClient
 
-from services import user_activity
+from server import user_activity
 from tests.test_mem_editor_persistence import new_phrase, setup  # noqa: F401  (фікстура)
 from tests.test_web_api import auth_header
 
@@ -47,7 +47,7 @@ def test_miniapp_correction_and_mode_are_recorded_with_user(setup):  # noqa: F81
 
 
 def test_panel_activity_page(tmp_path):
-    from api.local_dashboard import create_dashboard
+    from server.api.local_dashboard import create_dashboard
     from tests.test_local_dashboard import KEY, ORIGIN
     from shared.event_store import init_db
     from shared.user_store import init_users_db, bootstrap_admin, create_user
@@ -65,7 +65,7 @@ def test_panel_activity_page(tmp_path):
 
 
 def test_archive_filter_by_editor(tmp_path):
-    from api.local_dashboard import create_dashboard
+    from server.api.local_dashboard import create_dashboard
     from tests.test_local_dashboard import KEY, ORIGIN, pcm, segment
     from shared.event_store import init_db
     from shared.recordings import RecordingStore

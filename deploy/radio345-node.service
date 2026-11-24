@@ -8,7 +8,7 @@ Wants=network-online.target
 [Service]
 User=pi
 WorkingDirectory=/home/pi/radio345
-ExecStart=/home/pi/radio345/.venv/bin/python -m services.radio_node
+ExecStart=/home/pi/radio345/.venv/bin/python -m server.radio_node
 Restart=always
 RestartSec=5
 # Процес відпускає ключ PTT при виході (atexit + systemd SIGTERM); KillMode лише основному процесу.

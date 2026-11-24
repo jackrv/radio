@@ -2,11 +2,11 @@
 paths:
   - "local_admin/**"
   - "apps/miniapp/**"
-  - "api/panel/**"
+  - "server/api/panel/**"
   - "shared/mention_selection.py"
-  - "services/miniapp_*.py"
+  - "s*/miniapp_*.py"
   - "shared/suggestions.py"
-  - "api/local_dashboard.py"
+  - "server/api/local_dashboard.py"
 ---
 
 # UI панелі, редактора й Mini App

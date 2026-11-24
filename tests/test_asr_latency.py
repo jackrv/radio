@@ -8,12 +8,12 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from core.bounded_queue import DropOldestQueue
+from server.bounded_queue import DropOldestQueue
 from shared.diagnostics import RuntimeDiagnostics
-from core.pause_gate import PauseGate
+from server.pause_gate import PauseGate
 from shared.pipeline import build_text_pipeline
-from core.segment_timing import CapturedFrame, SegmentTiming, TimedSegment, capture_frame
-from core.transcriber import Transcriber
+from server.segment_timing import CapturedFrame, SegmentTiming, TimedSegment, capture_frame
+from server.transcriber import Transcriber
 
 
 class Clock:
@@ -41,9 +41,9 @@ def timed_pcm():
 def worker(monkeypatch, *, qwen=True, gate=None):
     clock = Clock()
     metrics = RuntimeDiagnostics(clock=clock.now, wall_clock=lambda: 1000 + clock.value)
-    monkeypatch.setattr("core.transcriber.runtime", metrics)
+    monkeypatch.setattr("server.transcriber.runtime", metrics)
     monkeypatch.setattr("shared.pipeline.runtime", metrics)
-    monkeypatch.setattr("core.transcriber.looks_like_garbage", lambda *_: False)
+    monkeypatch.setattr("server.transcriber.looks_like_garbage", lambda *_: False)
 
     def whisper(_):
         clock.advance(1.5)
@@ -260,8 +260,8 @@ def test_parallel_measurements_do_not_mix_qwen_and_whisper_stages():
 
 
 def test_capture_timestamp_uses_adc_end_and_falls_back_safely(monkeypatch):
-    monkeypatch.setattr("core.segment_timing.time.perf_counter", lambda: 100)
-    monkeypatch.setattr("core.segment_timing.time.time", lambda: 1000)
+    monkeypatch.setattr("server.segment_timing.time.perf_counter", lambda: 100)
+    monkeypatch.setattr("server.segment_timing.time.time", lambda: 1000)
     frame = capture_frame(b"S", 480, 16000, SimpleNamespace(currentTime=40, inputBufferAdcTime=39.95))
     assert frame == b"S" and isinstance(frame, bytes)
     assert frame.capture_source == "portaudio"
@@ -278,7 +278,7 @@ def test_supervisor_transports_speech_end_without_changing_pcm_or_generation(mon
     from tests.test_vad import make_segmenter
 
     metrics = RuntimeDiagnostics()
-    monkeypatch.setattr("core.supervisor.runtime", metrics)
+    monkeypatch.setattr("server.supervisor.runtime", metrics)
     frames = [CapturedFrame(value, captured_at=end, captured_unix_s=1000 + end, source="portaudio")
               for value, end in ((b"S", 10), (b"X", 10.03), (b"X", 10.06))]
     supervisor, segments, _ = make_supervisor(queue.Queue())

@@ -8,7 +8,7 @@
   GARBAGE_*, LOW_CONFIDENCE_*, MIN_RMS, WHISPER_RETRY_WITHOUT_PROMPT,
   WHISPER_PROMPT_DAILY_CODE, SPECTRAL_NOTIFICATION_* (shared/runtime_settings.py).
 - Після перезапуску приймача («Розпізнавання»): USE_LLM, VAD_LEVEL, SILENCE_END_MS,
-  MIN_SPEECH_MS, MAX_SEGMENT_S (services/management/settings.py).
+  MIN_SPEECH_MS, MAX_SEGMENT_S (server/management/settings.py).
 - Решта — лише тут, діє після перезапуску. Секрети й адреси — у .env.
 """
 from pathlib import Path

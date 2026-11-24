@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 import pytest
 
-from services.miniapp_auth import (
+from server.miniapp_auth import (
     TelegramAuthError,
     verify_init_data,
 )

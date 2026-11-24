@@ -74,7 +74,7 @@ cp dictionaries.example.txt dictionaries.txt      # ваші позивні й �
 | `start_radio345.py --restart` | перезапустити служби |
 | `start_radio345.py --receiver-stop` / `--receiver-start` | лише приймач (панель і Mini App працюють) |
 | `start_radio345.py --stop` | зупинити все |
-| `python -m api.local_dashboard --open` | відкрити панель (127.0.0.1:8766) |
+| `python -m server.api.local_dashboard --open` | відкрити панель (127.0.0.1:8766) |
 | `diagnose_radio345.py --verify-backup --network` | перевірка без зупинки |
 
 ## 📖 Документація
@@ -101,14 +101,17 @@ radio.py, config.py       приймач і базові параметри
 start_radio345.py         лаунчер служб
 manage_database.py        імпорт, експорт, скидання й відновлення бази
 diagnose_radio345.py      перевірка без зупинки приймача
-core/                     ядро без бази: аудіо, VAD, Whisper, позивні, аналіз тексту, шаблони, фільтр сигналів
-services/                 SQLite і все, що з нею працює: словники, списки, навчання, Telegram, архів, підказки
-services/management/      керування з панелі й Mini App: словники, навчання, користувачі, налаштування
-api/                      FastAPI для Mini App; local_dashboard.py — вхід і безпека панелі
-api/panel/                ендпоінти панелі за розділами (огляд, архів, розпізнавання, сигнали, люди, система)
+r345, radio345.py         запуск процесів за профілем пристрою (deploy/profiles)
+shared/                   спільне: аудіо, VAD, розбір тексту, словники, архів, SQLite
+server/                   ефір, розпізнавання з ботом, панель, API
+worker/                   вузол Whisper
+lab/                      лабораторія: asr_lab, text_replay, analysis, навчання
+server/management/        керування з панелі й Mini App: словники, навчання, користувачі, налаштування
+server/api/               FastAPI для Mini App; local_dashboard.py — вхід і безпека панелі
+server/api/panel/         ендпоінти панелі за розділами (огляд, архів, розпізнавання, сигнали, люди, система)
 local_admin/              сторінка панелі; js/ — скрипт за розділами (сервер склеює їх в один /admin.js)
 apps/miniapp/             Mini App (HTML/CSS/JS без збирання, GitHub Pages)
-tools/                    лабораторія: asr_lab, text_replay
+tools/                    обслуговування: профілі, бекап Pi, перевірки
 tests/                    pytest і node-тести на тимчасових даних
 docs/                     вікі
 ```

@@ -131,7 +131,7 @@ def test_transmit_presses_key_around_audio_and_releases_on_error():
 
 
 def test_radio_node_wires_stream_and_forwards_segments():
-    from services import radio_node
+    from server import radio_node
     captured = {}
 
     class FakeSupervisor:

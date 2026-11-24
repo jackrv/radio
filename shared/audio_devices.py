@@ -8,7 +8,7 @@
 
 Список пристроїв: `.venv/bin/python -m shared.audio_devices` (або `--json`).
 Вибір у панелі («Система» → «Стан») зберігається в SQLite й діє після
-перезапуску приймача (services/management/audio_settings.py).
+перезапуску приймача (server/management/audio_settings.py).
 """
 
 import os

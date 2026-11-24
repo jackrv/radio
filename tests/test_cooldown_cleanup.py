@@ -1,5 +1,5 @@
-import core.cooldown as module
-from core.cooldown import Cooldown
+import server.cooldown as module
+from server.cooldown import Cooldown
 
 
 def test_first_call_at_monotonic_zero(monkeypatch):

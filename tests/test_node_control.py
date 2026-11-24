@@ -9,13 +9,13 @@ import numpy as np
 import pytest
 
 import config as real_config
-from core.segment_timing import SegmentTiming, TimedSegment
+from server.segment_timing import SegmentTiming, TimedSegment
 from shared.event_store import init_db
-from services.node_bridge import NodeBridge
-from services.node_control import NodeControl
+from server.node_bridge import NodeBridge
+from server.node_control import NodeControl
 from shared.receiver_control import set_listening_hold, set_pause_minutes
-from services.receiver_status import init_receiver_db, read_receiver_status
-from services.segment_spool import SegmentSpool
+from server.receiver_status import init_receiver_db, read_receiver_status
+from server.segment_spool import SegmentSpool
 
 LOG = logging.getLogger("test")
 
@@ -179,8 +179,8 @@ def factory(name, log=None):
     return open_stream
 devices.input_stream_factory = factory
 import config
-from services import radio_node
-from services.node_control import NodeControl
+from server import radio_node
+from server.node_control import NodeControl
 stream = SimpleNamespace(live_audio=None, input_muted=None, set_signal_matcher=lambda *a: None, stop=lambda: None)
 control = NodeControl({folder!r})
 supervisor, _ = radio_node.build_node(config, logging.getLogger("t"), stream_starter=lambda *a, **k: stream, control=control)

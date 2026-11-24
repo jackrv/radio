@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 [Service]
 User=@USER@
 WorkingDirectory=@ROOT@
-ExecStart=@ROOT@/.venv/bin/python -m services.asr_service
+ExecStart=@ROOT@/.venv/bin/python -m server.asr_service
 Restart=always
 RestartSec=10
 TimeoutStopSec=75

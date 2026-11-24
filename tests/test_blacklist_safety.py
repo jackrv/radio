@@ -2,8 +2,8 @@ from unittest.mock import Mock
 
 import pytest
 
-import core.transcriber as transcriber_module
-from core.transcriber import Transcriber
+import server.transcriber as transcriber_module
+from server.transcriber import Transcriber
 from shared.default_text_lists import enabled
 
 BLACKLIST = enabled("blacklist")

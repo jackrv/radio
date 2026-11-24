@@ -8,7 +8,7 @@ from shared.dictionary_store import init_db
 from shared.event_store import init_db as init_events
 from shared.user_store import init_users_db,bootstrap_admin
 from shared.recordings import RecordingStore
-from api.local_dashboard import create_dashboard
+from server.api.local_dashboard import create_dashboard
 root=Path(sys.argv[1]);db=root/'events.db'
 init_db(db);init_events(db);init_users_db(db);bootstrap_admin(db,1001)
 with sqlite3.connect(db) as connection:

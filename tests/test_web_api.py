@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from server.api.app import create_app
 from shared.user_store import (
     bootstrap_admin,
     create_user,
@@ -201,7 +201,7 @@ def test_public_docs_disabled(setup_api):
 
 
 def test_api_reads_fresh_receiver_heartbeat(setup_api):
-    from services.receiver_status import (
+    from server.receiver_status import (
         init_receiver_db,
         record_heartbeat,
     )

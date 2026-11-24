@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.supervisor import ignore_repeated_sigint
+from server.supervisor import ignore_repeated_sigint
 from tests.test_supervisor import FakeThread, make_supervisor
 
 

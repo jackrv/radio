@@ -7,7 +7,7 @@ import pytest
 
 from shared.diagnostics import RuntimeDiagnostics
 from shared.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher
-from core.transcriber import Transcriber
+from server.transcriber import Transcriber
 from shared import notification_eval
 from tests.audio_helpers import SR, pcm, phone_sound, segment, voice_like
 from tests.test_local_dashboard import wav
@@ -97,7 +97,7 @@ def test_shadow_mode_scores_but_never_drops(matcher):
     diagnostics = RuntimeDiagnostics()
     worker, recognizer = make_worker("shadow", matcher)
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("core.transcriber.runtime", diagnostics)
+        patch.setattr("server.transcriber.runtime", diagnostics)
         worker.process_segment(pcm(segment()))
     recognizer.transcribe.assert_called_once()
     snapshot = diagnostics.snapshot()
@@ -114,7 +114,7 @@ def test_active_mode_drops_only_candidates(matcher):
     diagnostics = RuntimeDiagnostics()
     worker, recognizer = make_worker("active", matcher)
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("core.transcriber.runtime", diagnostics)
+        patch.setattr("server.transcriber.runtime", diagnostics)
         worker.process_segment(pcm(segment()))
         recognizer.transcribe.assert_not_called()
         worker.process_segment(pcm(np.concatenate((np.zeros(4000), voice_like(1.5) * 0.2, np.zeros(8000)))))
@@ -146,7 +146,7 @@ def archive_with(tmp_path, clips):
 
 
 def test_evaluation_uses_archive_labels_excludes_self_and_recommends_safe_threshold(tmp_path):
-    from services.notification_samples import add_sample
+    from server.notification_samples import add_sample
     samples = tmp_path / "samples"
     add_sample(samples, wav(phone_sound()), confirmed_isolated=True)
     rng = np.random.default_rng(9)
@@ -171,7 +171,7 @@ def test_evaluation_uses_archive_labels_excludes_self_and_recommends_safe_thresh
 
 
 def test_evaluation_skips_long_records_and_reads_archive_only(tmp_path):
-    from services.notification_samples import add_sample
+    from server.notification_samples import add_sample
     samples = tmp_path / "samples"
     add_sample(samples, wav(phone_sound()), confirmed_isolated=True)
     store, ids = archive_with(tmp_path, [(voice_like(11) * 0.2, "speech"), (segment(), "notification")])
@@ -187,7 +187,7 @@ def test_evaluation_skips_long_records_and_reads_archive_only(tmp_path):
 
 
 def test_room_noise_counts_as_harmless_to_drop(tmp_path):
-    from services.notification_samples import add_sample
+    from server.notification_samples import add_sample
     samples = tmp_path / "samples"
     add_sample(samples, wav(phone_sound()), confirmed_isolated=True)
     store, ids = archive_with(tmp_path, [(segment(), "notification"), (segment(np.zeros(4000)), "room")])

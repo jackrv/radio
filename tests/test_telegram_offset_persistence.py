@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.telegram import TelegramService
-import services.telegram_updates as telegram_updates
+from server.telegram import TelegramService
+import server.telegram_updates as telegram_updates
 from shared.telegram_offset_store import (
     load_telegram_offset,
     save_telegram_offset,

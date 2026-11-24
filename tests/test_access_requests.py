@@ -8,11 +8,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.access_requests import (
+from server.access_requests import (
     MAX_PENDING_REQUESTS, REQUEST_RETRY_SECONDS, register_request, request_token, resolve_request,
 )
 from shared.sqlite_connection import get_db
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.user_store import bootstrap_admin, init_users_db
 
 ADMIN = 1001

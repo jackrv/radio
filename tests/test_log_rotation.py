@@ -1,6 +1,6 @@
 import logging
 
-import core.log_security as security
+import server.log_security as security
 
 
 def test_archive_names():

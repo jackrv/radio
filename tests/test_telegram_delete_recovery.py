@@ -11,8 +11,8 @@ import requests
 
 from shared.diagnostics import RuntimeDiagnostics
 from shared import telegram_common
-from services import telegram_updates
-from services.telegram import TelegramService
+from server import telegram_updates
+from server.telegram import TelegramService
 from shared.telegram_media_store import audio_file_id, is_hidden
 from tests.test_miniapp_management import setup
 from tests.test_telegram_media import phrase

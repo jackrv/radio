@@ -5,9 +5,9 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from server.api.app import create_app
 from shared.management.common import ManagementConflict
-from services.management.users import list_users, write_user
+from server.management.users import list_users, write_user
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
 from tests.test_web_auth import signed_data, TOKEN

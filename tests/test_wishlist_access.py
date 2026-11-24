@@ -6,8 +6,8 @@ import pytest
 from shared.event_store import save_event
 from shared.miniapp_correction_editor import save_edit_draft
 from shared.management.common import ManagementConflict
-from services.management.overview import overview
-from services.management.users import list_users, write_user
+from server.management.overview import overview
+from server.management.users import list_users, write_user
 from shared.user_notify_store import load_user_mode, save_user_mode
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header

@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 [Service]
 User=@USER@
 WorkingDirectory=@ROOT@
-ExecStart=@ROOT@/.venv/bin/python -m services.radio_node
+ExecStart=@ROOT@/.venv/bin/python -m server.radio_node
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM

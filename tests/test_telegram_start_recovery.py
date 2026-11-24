@@ -8,8 +8,8 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from services.access_requests import register_request, request_token, resolve_request
-from services.telegram import TelegramService
+from server.access_requests import register_request, request_token, resolve_request
+from server.telegram import TelegramService
 from shared.telegram_maintenance import ensure_table
 from shared.user_notify_store import load_user_mode, save_user_mode
 from tests.test_miniapp_management import setup

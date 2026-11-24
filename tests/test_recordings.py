@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from shared.recordings import RecordingStore, RecordingArchive, scores
-from api.local_dashboard import create_dashboard
+from server.api.local_dashboard import create_dashboard
 from tests.test_miniapp_management import setup
 
 
@@ -396,7 +396,7 @@ def test_summary_skips_unused_number_checks_and_reads_day_boundary_once(tmp_path
 
 
 def test_audio_supports_byte_ranges_for_seeking():
-    from api.panel.recordings import ranged_audio
+    from server.api.panel.recordings import ranged_audio
     data = bytes(range(100))
     full = ranged_audio(data, None)
     assert full.status_code == 200 and full.body == data and full.headers['accept-ranges'] == 'bytes'

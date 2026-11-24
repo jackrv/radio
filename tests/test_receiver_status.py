@@ -1,5 +1,5 @@
 
-from services.receiver_status import (
+from server.receiver_status import (
     init_receiver_db,
     record_heartbeat,
     mark_stopped,
@@ -62,7 +62,7 @@ def test_future_timestamp_is_not_trusted(tmp_path):
 
 
 def test_console_heartbeat_is_read_only(tmp_path):
-    from services.receiver_status import read_console_heartbeat, init_receiver_db, record_heartbeat
+    from server.receiver_status import read_console_heartbeat, init_receiver_db, record_heartbeat
     path=tmp_path/'receiver.db'
     assert read_console_heartbeat(path) is None
     assert not path.exists()

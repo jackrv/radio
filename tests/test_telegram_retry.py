@@ -2,7 +2,7 @@ import logging
 
 import requests
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from shared.telegram_retry import retry_delay
 from tests.test_telegram_outbox import RECIPIENTS
 

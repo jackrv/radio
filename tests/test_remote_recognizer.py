@@ -11,12 +11,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from core.transcriber import Transcriber
+from server.transcriber import Transcriber
 from shared.whisper_result import RecognizerUnavailable
 from shared.asr_protocol import pack_request, unpack_request
 from worker.asr_worker import handler_for
 from shared.recordings import RecordingStore
-from services.remote_recognizer import RemoteModelError, RemoteRecognizer
+from server.remote_recognizer import RemoteModelError, RemoteRecognizer
 
 LOG = logging.getLogger("test")
 AUDIO = np.linspace(-0.5, 0.5, 1600, dtype=np.float32)
@@ -167,6 +167,6 @@ def test_phrase_is_deferred_while_mac_is_down_then_recognised_once(tmp_path):
 
 
 def test_pi_code_does_not_import_mlx():
-    probe = ("import sys, services.transcriber_factory, services.remote_recognizer, core.transcriber;"
+    probe = ("import sys, server.transcriber_factory, server.remote_recognizer, server.transcriber;"
              "sys.exit(any(m.split('.')[0].startswith('mlx') for m in sys.modules))")
     assert subprocess.run([sys.executable, "-c", probe], cwd=Path(__file__).resolve().parent.parent).returncode == 0

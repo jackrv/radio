@@ -80,7 +80,7 @@ def test_store_by_day_and_event_day(tmp_path):
 
 
 def test_panel_codes_and_hint_by_record_day(tmp_path):
-    from api.local_dashboard import create_dashboard
+    from server.api.local_dashboard import create_dashboard
     from tests.test_local_dashboard import KEY, ORIGIN
     from shared.event_store import init_db
     from shared.user_store import init_users_db, bootstrap_admin

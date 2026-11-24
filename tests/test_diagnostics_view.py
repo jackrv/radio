@@ -1,4 +1,4 @@
-from api.panel.common import diagnostics_view
+from server.api.panel.common import diagnostics_view
 
 
 def test_dictionary_revision_fingerprint_is_kept_but_free_text_is_not():

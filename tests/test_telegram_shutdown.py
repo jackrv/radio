@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 from tests.test_telegram_outbox import RECIPIENTS
 
 

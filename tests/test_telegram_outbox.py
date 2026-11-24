@@ -3,7 +3,7 @@ import threading
 import time
 from unittest.mock import Mock
 
-from services.telegram import TelegramService
+from server.telegram import TelegramService
 
 RECIPIENTS = [{"chat_id": 1001, "role": "admin", "mode": "all"}]
 

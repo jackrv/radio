@@ -7,9 +7,9 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 import pytest
 
-from api.local_dashboard import create_dashboard
-from services.management.users import list_users
-from services.notification_samples import add_sample, delete_sample, list_samples
+from server.api.local_dashboard import create_dashboard
+from server.management.users import list_users
+from server.notification_samples import add_sample, delete_sample, list_samples
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
 from tests.audio_helpers import segment, pcm
@@ -179,7 +179,7 @@ def test_manual_backup_from_dashboard(setup,tmp_path):
 
 def test_events_by_hour_buckets(tmp_path):
     import sqlite3
-    from api.panel.common import events_by_hour
+    from server.api.panel.common import events_by_hour
     from shared.event_store import init_db
     db=tmp_path/"e.db"; init_db(db)
     now=1_800_001_800  # 30 хв після початку години
@@ -815,7 +815,7 @@ def test_archive_card_deletes_a_sent_phrase_for_every_recipient(local):
 
 
 def test_saved_panel_changes_are_journaled_but_checks_are_not(local):
-    from services import user_activity
+    from server import user_activity
     client, path, _ = local
     h = {"Origin": ORIGIN}
     lists = client.get("/api/text-lists").json()
@@ -1013,7 +1013,7 @@ def test_lab_plan_is_computed_without_starting_or_mutating_the_queue(local):
 def test_sample_file_work_does_not_block_other_http_requests(local, monkeypatch):
     import threading
     from concurrent.futures import ThreadPoolExecutor
-    from api.panel import signals
+    from server.api.panel import signals
     client, _, _ = local
     entered, release = threading.Event(), threading.Event()
     def slow_sample(*args, **kwargs):
@@ -1035,7 +1035,7 @@ def test_sample_file_work_does_not_block_other_http_requests(local, monkeypatch)
 def test_audio_devices_are_listed_saved_by_name_and_applied_at_startup(local, monkeypatch):
     import json, subprocess
     from types import SimpleNamespace
-    from services.management.audio_settings import apply_audio_settings
+    from server.management.audio_settings import apply_audio_settings
     client, path, _ = local
     listing = {"inputs": [{"name": "Synthetic USB Codec", "channels": 1, "default": False},
                           {"name": "Synthetic Mic", "channels": 1, "default": True}],

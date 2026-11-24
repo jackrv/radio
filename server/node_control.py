@@ -71,6 +71,11 @@ class NodeControl:
         # Утримання для луни мікрофона; лінійному входу Pi воно не потрібне (RADIO_LISTENING_HOLD=0).
         return "listening" if self.listening_hold and now < hold <= now + MAX_HOLD_S else False
 
+    def live_min_rms(self):
+        """Поріг «Наживо» з панелі, без перезапуску; 0 — вимкнено."""
+        value = self._load().get("LIVE_MIN_RMS")
+        return float(value) if type(value) in (int, float) and 0 <= value <= 0.2 else 0.0
+
     def apply_startup(self, target):
         """VAD з панелі → config, з перевіркою меж. Пристрої звуку — shared/audio_choice.py."""
         data = read_json(self.path) or {}

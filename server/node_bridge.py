@@ -32,7 +32,8 @@ class NodeBridge:
     def _startup(self):
         from server.management.settings import read_settings
         vad = read_settings(self.db_path)["values"]
-        return {k: vad[k] for k in VAD_KEYS}
+        from shared.runtime_settings import read_runtime_settings
+        return {**{k: vad[k] for k in VAD_KEYS}, "LIVE_MIN_RMS": read_runtime_settings(self.db_path)["values"]["LIVE_MIN_RMS"]}
 
     def step(self):
         now = time.monotonic()

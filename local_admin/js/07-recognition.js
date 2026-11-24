@@ -1065,6 +1065,7 @@
     GARBAGE_EXTRA_WORDS: "Запас слів понад цю норму",
     LOW_CONFIDENCE_MAX_WORDS: "Коротка невпевнена фраза: до N слів (0 — вимкнено)",
     LOW_CONFIDENCE_LOGPROB: "…і впевненість Whisper нижча за (avg_logprob)",
+    LIVE_MIN_RMS: "«Наживо»: мовчати, доки рівень нижчий за (RMS, 0 — вимкнено)",
     MIN_RMS: "Мінімальна гучність сегмента (RMS)",
     WHISPER_RETRY_WITHOUT_PROMPT: "Другий шанс: зациклився з підказкою — ще раз без неї",
     WHISPER_PROMPT_DAILY_CODE: "Останній код доби в підказці Whisper",
@@ -1077,6 +1078,7 @@
   const RUNTIME_GROUPS = [
     ["Сповіщення", ["COOLDOWN_S", "LOG_CALLSIGNS_ONLY"]],
     ["Whisper", ["WHISPER_RETRY_WITHOUT_PROMPT", "WHISPER_PROMPT_DAILY_CODE", "MIN_RMS"]],
+    ["Прослуховування на iPhone", ["LIVE_MIN_RMS"]],
     ["Відсів сміття й невпевнених фраз", ["GARBAGE_MIN_WORDS", "GARBAGE_MIN_UNIQUE_RATIO", "GARBAGE_MAX_WORDS_PER_S", "GARBAGE_EXTRA_WORDS",
                                           "LOW_CONFIDENCE_MAX_WORDS", "LOW_CONFIDENCE_LOGPROB"]],
     ["Фільтр сигналів сповіщень", ["SPECTRAL_NOTIFICATION_MODE", "SPECTRAL_NOTIFICATION_THRESHOLD", "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S",

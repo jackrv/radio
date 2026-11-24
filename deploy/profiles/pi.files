@@ -83,6 +83,7 @@
 /server/flow.py
 /server/home_move.py
 /server/level_meter.py
+/server/live_gate.py
 /server/log_security.py
 /server/mac_update.py
 /server/management/__init__.py

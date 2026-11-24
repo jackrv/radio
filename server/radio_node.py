@@ -51,6 +51,11 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
         frames.put(frame)
         meter.add(frame)
 
+    live_audio = stream.live_audio
+    if control is not None:
+        from server.live_gate import LiveGate
+        live_audio = LiveGate(stream.live_audio, control.live_min_rms, config.SR)
+
     def consume_segments():
         """Замість Whisper: передати сегмент далі (або відкинути, поки приймача тексту немає)."""
         while not stop.is_set():
@@ -81,7 +86,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
         max_segment_s=config.MAX_SEGMENT_S,
         log=log,
         stream_factory=input_stream_factory(configured("RADIO_INPUT_DEVICE", config), log),
-        on_live_audio=stream.live_audio,
+        on_live_audio=live_audio,
         input_muted=stream.input_muted,
         transcriber_stop=stop.set,
         transcriber_abandon=stop.set,

@@ -106,6 +106,7 @@ GAIN = 1.0
 # коди «17.11» діють з 16.11 20:00 до 17.11 20:00.
 DAILY_CODES_CHANGE_HOUR = 20
 MIN_RMS = 0.02
+LIVE_MIN_RMS = 0.0   # «Наживо» на iPhone: тихіше не передавати (server/live_gate.py); 0 — вимкнено
 NORMALIZE = True
 DEBUG_RMS = False
 

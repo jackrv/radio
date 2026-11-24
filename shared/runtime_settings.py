@@ -27,6 +27,7 @@ FIELDS = {
     "LOW_CONFIDENCE_MAX_WORDS": (int, 0, 10),
     "LOW_CONFIDENCE_LOGPROB": (float, -5.0, 0.0),
     "MIN_RMS": (float, 0.0, 0.2),
+    "LIVE_MIN_RMS": (float, 0.0, 0.2),
     "WHISPER_RETRY_WITHOUT_PROMPT": (bool, None, None),
     "WHISPER_PROMPT_DAILY_CODE": (bool, None, None),
     "SPECTRAL_NOTIFICATION_MODE": (str, ("off", "shadow", "active"), None),

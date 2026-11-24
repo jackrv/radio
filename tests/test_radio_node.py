@@ -181,3 +181,63 @@ def test_busy_card_hidden_by_portaudio_is_listed(tmp_path):
     free = {"inputs": [], "outputs": []}
     ad.add_busy(free, tmp_path)
     assert free["inputs"] == []
+
+
+def _gate(limit):
+    import numpy as np
+    from server.live_gate import LiveGate
+    out = []
+    gate = LiveGate(lambda pcm, phase: out.append((len(pcm) // 2, phase)), lambda: limit[0], 16000)
+    frame = lambda value, n=480: np.full(n, int(value * 32768), np.int16).tobytes()
+    return gate, out, frame
+
+
+def test_live_gate_drops_quiet_and_keeps_loud_with_its_beginning():
+    gate, out, frame = _gate([0.03])
+    gate(frame(0.01, 8480), "start")
+    for _ in range(40):
+        gate(frame(0.01), "frame")
+    gate(frame(0.01), "end")
+    assert out == []
+    gate(frame(0.005, 8000) + frame(0.1), "start")
+    for _ in range(9):
+        gate(frame(0.1), "frame")
+    gate(frame(0.005), "end")
+    assert out[0] == (8480, "start") or out[0][1] == "start" and out[0][0] >= 8480, "початок не зрізано"
+    assert [p for _, p in out].count("start") == 1 and out[-1] == (480, "end")
+    assert sum(n for n, _ in out) == 8480 + 10 * 480
+
+
+def test_live_gate_opens_late_without_a_long_backlog():
+    gate, out, frame = _gate([0.03])
+    gate(frame(0.01, 8480), "start")
+    for _ in range(200):
+        gate(frame(0.01), "frame")
+    while not out:
+        gate(frame(0.1), "frame")
+    assert out[0][1] == "start" and out[0][0] <= 16000 * 0.8 + 480
+
+
+def test_live_gate_off_is_transparent_and_threshold_is_live():
+    limit = [0.0]
+    gate, out, frame = _gate(limit)
+    gate(frame(0.001), "start")
+    gate(frame(0.001), "frame")
+    gate(frame(0.001), "end")
+    assert out == [(480, "start"), (480, "frame"), (480, "end")]
+    limit[0] = 0.03
+    gate(frame(0.001), "start")
+    assert len(out) == 3
+    limit[0] = 0.0
+    gate(frame(0.001), "frame")
+    assert out[3] == (960, "start")
+
+
+def test_live_threshold_reaches_the_node(tmp_path):
+    from server.node_control import NodeControl, write_json
+    control = NodeControl(tmp_path)
+    assert control.live_min_rms() == 0.0
+    for value, want in ((0.03, 0.03), (5, 0.0), ("x", 0.0), (True, 0.0)):
+        write_json(control.path, {"LIVE_MIN_RMS": value})
+        control._checked = float("-inf")
+        assert control.live_min_rms() == want

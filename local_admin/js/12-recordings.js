@@ -10,11 +10,23 @@
     notification: "Фільтр сигналів визнав звуком сповіщення — до Whisper не дійшло",
     dictionary_echo: "Whisper переписав перелік назв із підказки — відкинуто", low_confidence: "Коротка фраза з низькою впевненістю — відкинуто",
   };
+  // navigator.clipboard є лише на https і localhost; панель Pi — http-адреса Tailscale.
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(value); return; } catch (_) { /* далі — звичайне копіювання */ }
+    }
+    const area = document.createElement("textarea"), focused = document.activeElement;
+    area.value = value; area.readOnly = true; area.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+    document.body.append(area); area.select();
+    const copied = document.execCommand("copy");
+    area.remove(); focused?.focus?.({ preventScroll: true });
+    if (!copied) throw new Error("copy");
+  }
   function copyChip(text, value, what) {
     const chip = el("button", "rec-copy", text); chip.type = "button"; chip.title = `${what}: клік — скопіювати`;
     chip.addEventListener?.("click", event => {
       event.stopPropagation?.();
-      navigator.clipboard?.writeText(value).then(() => note(`${what} скопійовано: ${value}`), () => note(value));
+      copyText(value).then(() => note(`${what} скопійовано: ${value}`), () => note(`Не скопіювалося. ${what}: ${value}`));
     });
     return chip;
   }

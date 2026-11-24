@@ -37,7 +37,7 @@ COMMANDS = {
 MIN_PAUSE_S, MAX_PAUSE_S, STABLE_S = 2.0, 60.0, 60.0
 GRACE_S = 15.0   # скільки служба має на штатне завершення; далі — примусово
 CONTROL = ROOT / ".radio345-launcher"
-UNITS = ("radio345-node", "radio345-panel", "radio345-asr")
+UNITS = ("radio345-node", "radio345-panel", "radio345-asr", "radio345-api", "radio345-tunnel")
 
 
 def load_profile(name):

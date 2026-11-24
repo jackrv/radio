@@ -5,6 +5,7 @@
 /api/app.py
 /api/bootstrap_admin.py
 /api/local_dashboard.py
+/api/local_server.py
 /api/management.py
 /api/panel/__init__.py
 /api/panel/common.py
@@ -72,9 +73,11 @@
 /core/word_rule_validation.py
 /deploy/hub/import.sh
 /deploy/hub/install.sh
+/deploy/hub/radio345-api.service
 /deploy/hub/radio345-asr.service
 /deploy/hub/radio345-node.service
 /deploy/hub/radio345-panel.service
+/deploy/hub/radio345-tunnel.service
 /deploy/profiles/pi.files
 /deploy/profiles/pi.toml
 /dictionaries.example.txt
@@ -140,6 +143,7 @@
 /services/mention_selection.py
 /services/miniapp_auth.py
 /services/miniapp_correction_editor.py
+/services/miniapp_tunnel.py
 /services/model_exclusion.py
 /services/model_pause.py
 /services/node_bridge.py

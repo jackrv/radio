@@ -6,6 +6,9 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 src="$root/.import"
 user=${SUDO_USER:?запускайте через sudo від звичайного користувача}
 [ -s "$src/events.db" ] && [ -s "$src/index.sqlite3" ] || { echo "Немає знімка в $src"; exit 1; }
+api=$(systemctl is-active radio345-api 2>/dev/null || true)
+systemctl stop radio345-tunnel 2>/dev/null || true
+systemctl stop radio345-api 2>/dev/null || true
 systemctl stop radio345-panel radio345-node radio345-asr 2>/dev/null || true
 old="$root/.local-backups/before-import-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$old" "$root/.local-recordings"
@@ -24,4 +27,5 @@ sudo -u "$user" "$root/.venv/bin/python" -c "import sqlite3,sys
 for p in sys.argv[1:]:
     d=sqlite3.connect(p); print(p.rsplit('/',1)[1], d.execute('PRAGMA integrity_check').fetchone()[0]); d.close()" "$root/events.db" "$root/.local-recordings/index.sqlite3"
 systemctl start radio345-node radio345-panel
+if [ "$api" = active ]; then systemctl start radio345-api radio345-tunnel; fi
 echo "Готово. Старі файли: $old"

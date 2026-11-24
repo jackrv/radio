@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 API_PORT = 8765
 INSPECT_PORT = 4040
 START_S = 20.0
+BUSY = "ERR_NGROK_334"   # домен уже відкритий іншим пристроєм
 
 
 def valid_https_endpoint(url):
@@ -91,6 +92,8 @@ def run(desired, executable, stop, say, *, reachable=api_reachable, urls=public_
 
     def pump():
         for line in process.stdout:
+            if BUSY in line:
+                say("Домен ngrok уже відкрито на іншому пристрої: зупиніть тунель там")
             if important(line):
                 say("ngrok: " + line.strip()[:300])
 

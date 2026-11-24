@@ -1,6 +1,8 @@
-# Raspberry Pi: ефір, розпізнавання через Mac, бот, панель. Секрети — лише в .env пристрою.
+# Raspberry Pi: ефір, розпізнавання через Mac, бот, панель, API Mini App. Секрети — лише в .env пристрою.
 description = "Pi: дім системи"
-processes = ["node", "asr", "panel"]
+processes = ["node", "asr", "panel", "api", "tunnel"]
+# Публічна адреса — лише явно: sudo sh deploy/hub/install.sh --miniapp
+manual = ["api", "tunnel"]
 requirements = "requirements-hub.txt"
 bot = true
 # Запускаються за іменем: фонові завдання панелі, створення бази й адміністратора.

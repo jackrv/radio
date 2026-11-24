@@ -133,6 +133,18 @@ sudo systemctl restart radio345-node   # якщо змінився deploy/radio3
 - Скидання лінії PTT при падінні процесу.
 - PTT підключайте лише через оптопару чи транзистор, з увімкненим TOT рації.
 
+## Mini App на Pi
+
+API слухає лише `127.0.0.1:8765`; назовні його відкриває ngrok на домені з `RADIO345_NGROK_URL`. Панель і ефір не публікуються.
+Домен той самий, що на Mac, тож сторінка й бот не змінюються, але **одночасно тунель працює лише на одному пристрої**:
+спершу зупиніть лаунчер чи `r345` із тунелем на Mac.
+
+1. Установити ngrok (Linux arm64, [ngrok.com/download](https://ngrok.com/download)), під звичайним користувачем `ngrok config add-authtoken …`.
+2. Додати в `.env` на Pi `RADIO345_NGROK_URL=https://…`.
+3. `sudo sh deploy/hub/install.sh --miniapp`; закрити — `sudo sh deploy/hub/install.sh --no-miniapp`.
+
+Без `--miniapp` служби API й тунелю не встановлюються. Mini App показує базу **цього** пристрою: бази Mac і Pi не синхронізуються.
+
 ## Бекап баз на Mac
 
 `.venv/bin/python -m tools.pull_backup --host jackrv@radio345` на Mac: знімок `events.db` та індексу архіву,

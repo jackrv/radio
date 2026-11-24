@@ -1,0 +1,22 @@
+# API Mini App: лише 127.0.0.1:8765; назовні — через radio345-tunnel. Вмикається явно (install.sh --miniapp).
+[Unit]
+Description=Radio 345 Mini App API
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python -m api.local_server
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+CPUWeight=50
+MemoryHigh=300M
+MemoryMax=500M
+OOMScoreAdjust=500
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

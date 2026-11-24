@@ -1,0 +1,23 @@
+# Публічна HTTPS-адреса API Mini App (ngrok). Панель і ефір назовні не відкриває.
+[Unit]
+Description=Radio 345 Mini App tunnel (ngrok)
+After=network-online.target radio345-api.service
+Wants=network-online.target radio345-api.service
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python -m services.miniapp_tunnel
+# Домен може бути зайнятий тунелем Mac: не частіше разу на 30 с.
+Restart=always
+RestartSec=30
+TimeoutStopSec=20
+CPUWeight=50
+MemoryHigh=200M
+MemoryMax=300M
+OOMScoreAdjust=600
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

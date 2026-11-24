@@ -147,7 +147,6 @@
 /shared/management/learning.py
 /shared/mention_selection.py
 /shared/miniapp_correction_editor.py
-/shared/model_exclusion.py
 /shared/model_pause.py
 /shared/noise_candidates.py
 /shared/notification_eval.py

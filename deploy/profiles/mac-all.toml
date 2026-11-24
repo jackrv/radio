@@ -1,0 +1,16 @@
+# Усе на одному Mac, з ботом і Mini App. Перед запуском на Pi: install.sh --no-miniapp і stop radio345-asr.
+description = "Mac: уся система"
+processes = ["node", "asr", "panel", "api", "worker", "tunnel"]
+# Публічна адреса — лише явно: ./r345 up --only worker node asr panel api tunnel
+manual = ["tunnel"]
+requirements = "requirements-dev.txt"
+bot = true
+full_checkout = true
+
+[env]
+RADIO_SPOOL = "1"
+RADIO_PTT = "none"
+RADIO_ASR_HOST = "127.0.0.1"
+RADIO_ASR_URL = "http://127.0.0.1:8347"
+
+[required_env]

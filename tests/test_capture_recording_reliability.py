@@ -89,16 +89,6 @@ def test_capture_summary_and_view_keep_processed_and_legacy_records_visible(tmp_
     assert store.listing(view='deferred')['total'] == 1
 
 
-def test_model_state_ack_is_retried_without_unloading_twice():
-    report = Mock(side_effect=[sqlite3.OperationalError('database is locked'), None])
-    w = worker(on_unloaded=report)
-    assert w._set_unloaded(True) is False
-    assert w._set_unloaded(True) is False  # повтор обмежений паузою
-    w._model_report_retry_at = 0
-    assert w._set_unloaded(True) is True
-    assert w.recognizer.unloads == 1 and report.call_count == 2
-
-
 def test_failed_deferred_result_write_stays_pending_for_retry():
     store = Mock()
     store.next_deferred.return_value = ('a'*32, pcm())

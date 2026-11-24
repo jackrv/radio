@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from shared.diagnostics import runtime
-from server.pause_gate import PauseGate
 from server.supervisor import ApplicationSupervisor
 from server.transcriber import Transcriber
 from shared.vad import VADSegmenter
@@ -227,10 +226,10 @@ def test_gap_while_microphone_is_intentionally_closed_never_alerts(
     monkeypatch.setattr("server.supervisor.time.sleep", sleep)
     before = counter("receiver.suspensions")
     state_before = counter(f"receiver.loop_gaps.{reason}")
-    alerts, log, gate = Mock(), Mock(), PauseGate()
+    alerts, log = Mock(), Mock()
     Stream.opened = []
     sup = supervisor(Frames([b"frame"]), log, pause_checker=lambda: requested[0],
-                     pause_gate=gate, wall_clock=lambda: wall[0], on_suspension=alerts)
+                     wall_clock=lambda: wall[0], on_suspension=alerts)
     sup.segments = segments
     sup.run()
 

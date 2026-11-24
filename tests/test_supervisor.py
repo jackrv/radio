@@ -55,8 +55,6 @@ def test_shutdown_waits_for_transcriber_before_invalidating_pause_generation():
     supervisor.thread_factory=threading.Thread
     supervisor.transcriber_stop=stop.set
     supervisor.frames.get=get_frame
-    supervisor.pause_gate=Mock()
-    supervisor.pause_gate.set_paused.side_effect=lambda paused: not paused or completed.is_set() or pytest.fail('пауза випередила завершення ASR')
     supervisor.run()
     assert completed.is_set()
 

@@ -120,35 +120,6 @@ def test_model_slot_blocks_competing_receivers_and_labs(tmp_path):
     assert receiver_model_available(tmp_path)
 
 
-def test_receiver_start_invalidates_old_unloaded_acknowledgement(tmp_path):
-    import time
-    from shared.model_exclusion import acquire_receiver_slot,lab_model_slot
-    from shared.receiver_control import set_capture_only,mark_capture_unloaded,capture_state
-    path=tmp_path/'events.db'
-    set_capture_only(path,time.time()+3600)
-    mark_capture_unloaded(path,True)
-    fd=acquire_receiver_slot(tmp_path,path)
-    try:
-        assert capture_state(path)['unloaded'] is None
-        with pytest.raises(RuntimeError):
-            with lab_model_slot(path):pass
-        mark_capture_unloaded(path,True)
-        with lab_model_slot(path):pass
-    finally:os.close(fd)
-
-
-def test_asr_stop_drains_queue_and_does_not_start_deferred_work():
-    from tests.test_transcriber import make_transcriber
-    worker,*_=make_transcriber()
-    worker.segments=queue.Queue();worker.segments.put(b'first');worker.segments.put(b'second')
-    worker._capture_active=lambda:False;worker._set_unloaded=lambda _:True
-    processed=[];worker._tracked=lambda pcm,**_:processed.append(pcm)
-    worker._process_one_deferred=lambda:pytest.fail('зупинка не запускає нової відкладеної роботи')
-    worker.stop_event.set()
-    worker.run()
-    assert processed==[b'first',b'second']
-
-
 def test_abandoned_inflight_asr_has_no_late_event_or_archive_submission():
     from tests.test_transcriber import make_transcriber,make_pcm
     from unittest.mock import Mock

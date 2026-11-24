@@ -130,7 +130,6 @@ def set_pause_minutes(
 # Окремо від паузи оператора: інша мета, власний короткий термін і без версії.
 # Термін завжди обмежений, тож закрита вкладка не залишить приймач вимкненим.
 MAX_LISTENING_HOLD_S = 120.0
-MAX_CAPTURE_ONLY_S = 4 * 60 * 60
 
 
 def ensure_hold_table(db):
@@ -164,51 +163,3 @@ def reception_request(db_path, *, now=None):
             return "pause"
         row = db.execute("SELECT hold_until FROM receiver_listening_hold WHERE id = 1").fetchone()
     return "listening" if row and float(row[0]) > now else None
-
-
-# ---------- Режим «лише запис» (на час тестів лабораторії) ----------
-# Приймач слухає й пише фрази в архів зі звуком, але Whisper вивантажено (звільнено пам'ять для лабораторії).
-# Після режиму накопичене розпізнається в архів без подій і Telegram. until — запобіжник: режим сам
-# закінчується, навіть якщо черга тестів упала й не вимкнула його.
-def ensure_capture_table(db):
-    db.execute("""
-        CREATE TABLE IF NOT EXISTS receiver_capture (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            until REAL NOT NULL,
-            unloaded REAL
-        )
-    """)
-
-
-def set_capture_only(db_path, until, *, now=None, reset_unloaded=True):
-    """until — unix-час кінця режиму; None — вимкнути, не втрачаючи ознаку вивантаження."""
-    now = time.time() if now is None else float(now)
-    with get_db(db_path) as db:
-        ensure_capture_table(db)
-        if until is None:
-            db.execute("UPDATE receiver_capture SET until=? WHERE id=1", (now,))
-        else:
-            if type(until) not in (int, float) or not math.isfinite(until) or not now < until <= now + MAX_CAPTURE_ONLY_S:
-                raise ValueError(f"Режим «лише запис» має завершитися в межах {MAX_CAPTURE_ONLY_S:g} с")
-            db.execute("INSERT INTO receiver_capture(id, until, unloaded) VALUES (1, ?, NULL) "
-                       "ON CONFLICT(id) DO UPDATE SET until=excluded.until" +
-                       (", unloaded=NULL" if reset_unloaded else ""), (float(until),))
-
-
-def capture_state(db_path, *, now=None):
-    """{"active": bool, "until": …, "unloaded": час вивантаження Whisper або None}."""
-    now = time.time() if now is None else now
-    with get_db(db_path) as db:
-        ensure_capture_table(db)
-        row = db.execute("SELECT until, unloaded FROM receiver_capture WHERE id=1").fetchone()
-    if row is None:
-        return {"active": False, "until": None, "unloaded": None}
-    return {"active": row[0] > now, "until": row[0], "unloaded": row[1]}
-
-
-def mark_capture_unloaded(db_path, unloaded, *, now=None):
-    """Приймач повідомляє, що Whisper вивантажено (пам'ять вільна) чи знову потрібен."""
-    with get_db(db_path) as db:
-        ensure_capture_table(db)
-        db.execute("UPDATE receiver_capture SET unloaded=? WHERE id=1",
-                   ((time.time() if now is None else now) if unloaded else None,))

@@ -2,7 +2,6 @@ import queue
 from unittest.mock import Mock, patch
 
 from server.supervisor import ApplicationSupervisor
-from server.pause_gate import PauseGate
 
 
 def test_stream_closes_and_reopens_on_pause():
@@ -73,7 +72,6 @@ def test_stream_closes_and_reopens_on_pause():
         segmenter_factory=Segmenter,
         thread_factory=FakeThread,
         pause_checker=lambda: next(checks),
-        pause_gate=PauseGate(),
         runtime_state=state,
     )
 

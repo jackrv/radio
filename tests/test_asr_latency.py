@@ -10,7 +10,6 @@ import pytest
 
 from server.bounded_queue import DropOldestQueue
 from shared.diagnostics import RuntimeDiagnostics
-from server.pause_gate import PauseGate
 from shared.pipeline import build_text_pipeline
 from server.segment_timing import CapturedFrame, SegmentTiming, TimedSegment, capture_frame
 from server.transcriber import Transcriber
@@ -38,7 +37,7 @@ def timed_pcm():
     ))
 
 
-def worker(monkeypatch, *, qwen=True, gate=None):
+def worker(monkeypatch, *, qwen=True):
     clock = Clock()
     metrics = RuntimeDiagnostics(clock=clock.now, wall_clock=lambda: 1000 + clock.value)
     monkeypatch.setattr("server.transcriber.runtime", metrics)
@@ -72,7 +71,7 @@ def worker(monkeypatch, *, qwen=True, gate=None):
     transcriber = Transcriber(
         segments=queue.Queue(), recognizer=recognizer, process_text=pipeline,
         event_processor=processor, sample_rate=16000, min_rms=0.02,
-        normalize_audio=True, debug_rms=False, blacklist=(), log=Mock(), pause_gate=gate,
+        normalize_audio=True, debug_rms=False, blacklist=(), log=Mock(),
     )
     return transcriber, metrics, clock
 
@@ -138,56 +137,6 @@ def test_whisper_error_and_low_rms_do_not_bias_ready_latency(monkeypatch):
     transcriber.process_segment(bytes(32000))
     assert record(metrics)["status"] == "low_rms"
     assert metrics.snapshot()["asr_latency"]["ready"] == {}
-
-
-@pytest.mark.parametrize("stage", ["whisper", "qwen"])
-def test_paused_inflight_segment_never_gets_ready_latency(monkeypatch, stage):
-    gate = PauseGate()
-    transcriber, metrics, clock = worker(monkeypatch, gate=gate)
-    generation = gate.tag()
-    if stage == "whisper":
-        transcriber.recognizer.transcribe.side_effect = lambda _: gate.set_paused(True)
-    else:
-        def pause(_):
-            with metrics.timed("asr.qwen"):
-                clock.advance(1)
-                gate.set_paused(True)
-            return "private"
-        transcriber.process_text = pause
-    transcriber.process_segment(timed_pcm(), generation=generation)
-    assert record(metrics)["status"] == "stale"
-    assert "total_latency_s" not in record(metrics)
-    assert metrics.snapshot()["asr_latency"]["ready"] == {}
-    transcriber.event_processor.process.assert_not_called()
-
-
-@pytest.mark.parametrize("gated", [False, True])
-def test_legacy_queue_shapes_still_work_without_fabricated_end_times(monkeypatch, gated):
-    gate = PauseGate() if gated else None
-    transcriber, metrics, _ = worker(monkeypatch, gate=gate)
-    transcriber.segments = Mock()
-    item = (gate.tag(), pcm()) if gated else pcm()
-    transcriber.segments.get.side_effect = [item, KeyboardInterrupt()]
-    with pytest.raises(KeyboardInterrupt):
-        transcriber.run()
-    row = record(metrics)
-    assert row["status"] == "ready" and row["capture_source"] == "legacy"
-    assert "total_latency_s" not in row and "queue_wait_s" not in row
-    assert metrics.snapshot()["counters"]["asr.timing_missing"] == 1
-
-
-def test_stale_timed_queue_item_is_recorded_but_never_recognized(monkeypatch):
-    gate = PauseGate()
-    transcriber, metrics, _ = worker(monkeypatch, gate=gate)
-    old = gate.tag()
-    gate.set_paused(True)
-    gate.set_paused(False)
-    transcriber.segments = Mock()
-    transcriber.segments.get.side_effect = [(old, timed_pcm()), KeyboardInterrupt()]
-    with pytest.raises(KeyboardInterrupt):
-        transcriber.run()
-    assert record(metrics)["status"] == "stale"
-    transcriber.recognizer.transcribe.assert_not_called()
 
 
 def test_queue_peak_and_drops_survive_an_empty_snapshot():
@@ -272,8 +221,7 @@ def test_capture_timestamp_uses_adc_end_and_falls_back_safely(monkeypatch):
         assert fallback.capture_source == "callback" and fallback.captured_at == 100
 
 
-@pytest.mark.parametrize("gated", [False, True])
-def test_supervisor_transports_speech_end_without_changing_pcm_or_generation(monkeypatch, gated):
+def test_supervisor_transports_speech_end_without_changing_pcm(monkeypatch):
     from tests.test_supervisor import make_supervisor
     from tests.test_vad import make_segmenter
 
@@ -284,15 +232,8 @@ def test_supervisor_transports_speech_end_without_changing_pcm_or_generation(mon
     supervisor, segments, _ = make_supervisor(queue.Queue())
     supervisor.frames.get = Mock(side_effect=frames + [KeyboardInterrupt()])
     supervisor.segmenter_factory = lambda **_: make_segmenter()
-    if gated:
-        supervisor.pause_gate = PauseGate()
-        expected_generation = supervisor.pause_gate.tag()
     supervisor.run()
     item = segments.get_nowait()
-    if gated:
-        generation, item = item
-        assert generation == expected_generation
-        assert supervisor.pause_gate.tag() is None, "штатна зупинка залишає приймач на паузі"
     assert isinstance(item, bytes) and item == b"SXX"
     assert item.timing.speech_end_at == 10
     assert item.timing.audio_end_at == 10.06

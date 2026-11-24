@@ -49,10 +49,8 @@ def build_transcriber(
     telegram_service,
     cooldown,
     log,
-    pause_gate=None,
     health=None,
     recorder=None,
-    stop_event=None,
     abandon_event=None,
     radio_stream=None,
 ):
@@ -154,7 +152,6 @@ def build_transcriber(
         max_outside_s=config.SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S, max_extra=config.SPECTRAL_NOTIFICATION_MAX_EXTRA)
 
     worker = Transcriber(
-        stop_event=stop_event,
         abandon_event=abandon_event,
         segments=segments,
         recognizer=recognizer,
@@ -167,7 +164,6 @@ def build_transcriber(
         blacklist=(),
         text_lists=text_lists,
         log=log,
-        pause_gate=pause_gate,
         health=health,
         recorder=recorder,
         spectral_matcher=spectral_matcher,
@@ -239,13 +235,6 @@ def build_transcriber(
     worker.refreshers = (live_dictionaries.refresh, live_settings.refresh, update_prompt, refresh_number_rules)
     worker.live_dictionaries = live_dictionaries
     worker.live_settings = live_settings
-    # Режим «лише запис» (на час тестів лабораторії): прапорець у SQLite, накопичене — в архіві.
     if recorder is not None:
-        from shared.receiver_control import capture_state, mark_capture_unloaded
-        from pathlib import Path
-        from shared.model_exclusion import receiver_model_available
-        worker.capture_only = lambda: (capture_state(config.DB_PATH)["active"]
-                                      or not receiver_model_available(Path(config.DB_PATH).resolve().parent))
-        worker.on_unloaded = lambda unloaded: mark_capture_unloaded(config.DB_PATH, unloaded)
         worker.deferred = recorder.store
     return worker

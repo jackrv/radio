@@ -1,4 +1,4 @@
-"""Профілі пристроїв: повний набір файлів, без секретів, бот лише в одному профілі."""
+"""Профілі пристроїв: повний набір файлів, без секретів, бот лише в домашніх профілях."""
 import re
 import subprocess
 import sys
@@ -26,8 +26,9 @@ def test_profile_is_valid(name):
     assert not {k for k in {**data["env"], **data["required_env"]} if "TOKEN" in k or "SECRET" in k}
 
 
-def test_only_one_profile_runs_the_bot():
-    assert [n for n in profiles.names() if profiles.load(n)["bot"]] == ["pi"]
+def test_bot_runs_only_in_home_profiles():
+    """Бот — лише там, де живе система: на Pi або, замість неї, на одному Mac."""
+    assert [n for n in profiles.names() if profiles.load(n)["bot"]] == ["mac-all", "pi"]
 
 
 @pytest.mark.parametrize("name", SPARSE)

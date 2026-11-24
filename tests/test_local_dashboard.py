@@ -900,7 +900,7 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
         state = client.get("/api/lab/queue").json()
         assert {p["key"] for p in state["presets"]} >= {"base", "dictionary-blocks"} and "args" not in state["presets"][0]
         assert state["capture"] == {
-            "active": False, "until": None, "unloaded": None, "pending_records": 0,
+            "pending_records": 0,
             "archive": {"saved": 0, "pending": 0, "processed": 0, "last_recorded_at": None, "audio_seconds": 0},
             "write_errors": 0, "capture_write_errors": 0,
         }

@@ -73,7 +73,6 @@ class ApplicationSupervisor:
         thread_factory=None,
         heartbeat_context=None,
         pause_checker=None,
-        pause_gate=None,
         runtime_state=None,
         stall_timeout_s=10.0,
         suspend_threshold_s=60.0,
@@ -118,7 +117,6 @@ class ApplicationSupervisor:
         self.thread_factory = thread_factory or threading.Thread
         self.heartbeat_context = heartbeat_context or nullcontext
         self.pause_checker = pause_checker
-        self.pause_gate = pause_gate
         self.runtime_state = runtime_state
         # Відкритий потік без кадрів довше цього часу вважається зависшим.
         self.stall_timeout_s = stall_timeout_s
@@ -250,8 +248,6 @@ class ApplicationSupervisor:
                 round(self.stall_timeout_s),
             )
             audio_stack.close()
-            if self.pause_gate is not None:
-                self.pause_gate.set_paused(True)
             if self.runtime_state is not None:
                 self.runtime_state.set("stopped")
             paused = True
@@ -267,8 +263,6 @@ class ApplicationSupervisor:
             if paused is should_pause:
                 if should_pause and listening_hold and not hold:
                     # Під час прослуховування оператор поставив паузу: повне призупинення.
-                    if self.pause_gate is not None:
-                        self.pause_gate.set_paused(True)
                     clear_queue(self.frames)
                     clear_queue(self.segments)
                     listening_hold = False
@@ -286,8 +280,6 @@ class ApplicationSupervisor:
                 return
 
             if should_pause:
-                if self.pause_gate is not None:
-                    self.pause_gate.set_paused(True)
 
                 # Сначала закрываем аудиопоток,
                 # затем удаляем накопившиеся данные.
@@ -332,9 +324,6 @@ class ApplicationSupervisor:
                     paused = True
                     retry_at = time.monotonic() + 5.0
 
-                    if self.pause_gate is not None:
-                        self.pause_gate.set_paused(True)
-
                     if self.runtime_state is not None:
                         self.runtime_state.set("stopped")
 
@@ -346,9 +335,6 @@ class ApplicationSupervisor:
 
                 retry_at = 0.0
                 last_frame_at = time.monotonic()
-
-                if self.pause_gate is not None:
-                    self.pause_gate.set_paused(False)
 
                 if self.runtime_state is not None:
                     self.runtime_state.set("listening")
@@ -540,18 +526,9 @@ class ApplicationSupervisor:
                         self._feed_live(frame, was_speech, segmenter)
 
                     if segment is not None:
-                        if self.pause_gate is None:
-                            self.segments.put(stamp_segment(segment, frame, segmenter))
-                            runtime.count("asr.enqueued")
-                            runtime.observe_asr_queue(self.segments)
-                        else:
-                            generation = self.pause_gate.tag()
-                            if generation is not None:
-                                self.segments.put(
-                                    (generation, stamp_segment(segment, frame, segmenter))
-                                )
-                                runtime.count("asr.enqueued")
-                                runtime.observe_asr_queue(self.segments)
+                        self.segments.put(stamp_segment(segment, frame, segmenter))
+                        runtime.count("asr.enqueued")
+                        runtime.observe_asr_queue(self.segments)
 
                     monitor.check()
 
@@ -575,8 +552,6 @@ class ApplicationSupervisor:
                         self.log.warning("Час завершення ASR вичерпано; незавершених сегментів: %d", unfinished)
                     else:
                         runtime.count("asr.shutdown_drained")
-                if self.pause_gate is not None:
-                    self.pause_gate.set_paused(True)
 
                 audio_stack.close()
 

@@ -2,7 +2,6 @@ import requests
 import queue
 from unittest.mock import Mock
 
-from server.pause_gate import PauseGate
 from server.supervisor import ApplicationSupervisor
 
 
@@ -74,7 +73,6 @@ def test_microphone_recovers_after_open_failure(monkeypatch):
     runtime = Mock()
     runtime.set.side_effect = states.append
     log = Mock()
-    gate = PauseGate()
 
     supervisor = ApplicationSupervisor(
         frames=FakeFrames(),
@@ -95,7 +93,6 @@ def test_microphone_recovers_after_open_failure(monkeypatch):
         segmenter_factory=FakeSegmenter,
         thread_factory=FakeThread,
         pause_checker=lambda: next(requests),
-        pause_gate=gate,
         runtime_state=runtime,
     )
 
@@ -118,4 +115,3 @@ def test_microphone_recovers_after_open_failure(monkeypatch):
     ]
 
     log.exception.assert_called_once()
-    assert gate.is_current(gate.tag()) is False

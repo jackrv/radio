@@ -4,7 +4,9 @@
 
 ## Mac: `r345`
 
-Профіль — `--profile` або `RADIO345_PROFILE` у `.env`: `mac-worker` (Whisper для Pi), `mac-dev` (усе на Mac, без бота), `pi`.
+Профіль — `--profile` або `RADIO345_PROFILE` у `.env`: `mac-worker` (Whisper для Pi), `mac-dev` (усе на Mac, без бота),
+`mac-all` (усе на Mac з ботом і Mini App, замість Pi), `pi`. Перед `mac-all` на Pi: `sudo sh deploy/hub/install.sh --no-miniapp` і
+`sudo systemctl disable --now radio345-asr`.
 
 | Команда | Дія |
 | --- | --- |

@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from server.pause_gate import PauseGate
 from server.supervisor import ApplicationSupervisor
 from shared.receiver_control import reception_request, set_listening_hold, set_pause_minutes
 
@@ -97,36 +96,30 @@ def run_supervisor(checks, segments):
         def get_nowait(self):
             raise queue.Empty
 
-    gate = PauseGate()
-    gate_calls = []
-    original = gate.set_paused
-    gate.set_paused = lambda value: (gate_calls.append(value), original(value))
     state = Mock()
     state.set.side_effect = states.append
     supervisor = ApplicationSupervisor(
         frames=Frames(), segments=segments, on_audio=Mock(), transcriber=Mock(), telegram_listener=None,
         sample_rate=16000, frame_ms=30, frame_len=480, vad_level=2, preroll_ms=500, silence_end_ms=400,
         min_speech_ms=500, max_segment_s=20, log=log, stream_factory=Stream, segmenter_factory=Segmenter,
-        thread_factory=Thread, pause_checker=lambda: next(checks), pause_gate=gate, runtime_state=state)
+        thread_factory=Thread, pause_checker=lambda: next(checks), runtime_state=state)
     with patch("server.supervisor.time.sleep"):
         supervisor.run()
-    return streams, states, gate_calls, log
+    return streams, states, log
 
 
 def test_listening_hold_closes_microphone_but_keeps_recorded_phrases():
     segments = queue.Queue()
     segments.put(b"phrase recorded before playback")
-    streams, states, gate_calls, log = run_supervisor(iter([False, False, "listening", "listening", False]), segments)
+    streams, states, log = run_supervisor(iter([False, False, "listening", "listening", False]), segments)
     assert len(streams) == 2, "мікрофон закрито й знову відкрито"
     assert states[:3] == ["listening", "paused", "listening"]
     assert segments.qsize() == 1, "записана до прослуховування фраза не відкидається"
-    assert True not in gate_calls[:-1], "обробка вже записаних фраз не переривається"
     assert any("прослуховування" in str(call) for call in log.info.call_args_list)
 
 
 def test_operator_pause_during_hold_becomes_full_pause():
     segments = queue.Queue()
     segments.put(b"phrase")
-    streams, states, gate_calls, _ = run_supervisor(iter([False, False, "listening", "pause", False]), segments)
+    streams, states, _ = run_supervisor(iter([False, False, "listening", "pause", False]), segments)
     assert segments.qsize() == 0, "звичайна пауза, як і раніше, очищає чергу"
-    assert gate_calls[0] is False and True in gate_calls

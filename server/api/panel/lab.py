@@ -58,8 +58,7 @@ def register(app, ctx):
     def state():
         data = lab_queue.read(root)
         records = labelled_records()
-        from shared.receiver_control import capture_state
-        capture = capture_state(ctx.db_path)
+        capture = {}
         capture["pending_records"] = ctx.recordings.count_status("deferred")
         capture["archive"] = ctx.recordings.capture_summary()
         from server.api.panel.common import read_diagnostics

@@ -14,12 +14,8 @@
   <div class="access-card">
     <h1>Потрібен вхід у панель</h1>
     <p id="access-reason" class="access-reason"></p>
-    <ol class="access-steps">
-      <li>У терміналі в теці проєкту: <code>.venv/bin/python -m api.local_dashboard --open</code> — відкриє панель із ключем у браузері за замовчуванням.</li>
-      <li>Щоб увійти саме в цьому браузері — відкрийте посилання з файла <code>.radio345-local-admin/access-url.txt</code> (у теці проєкту). У ньому ключ: нікому його не пересилайте.</li>
-      <li>Якщо після входу знову бачите цей екран — браузер не зберігає cookie для 127.0.0.1 (приватне вікно чи блокування cookie).</li>
-    </ol>
-    <p class="muted small">Панель працює лише на цьому Mac за адресою http://127.0.0.1:8766; вхід діє 30 днів.</p>
+    <ol id="access-steps" class="access-steps"></ol>
+    <p id="access-where" class="muted small"></p>
     <button id="access-retry" type="button">Спробувати ще раз</button>
   </div>
 </section>

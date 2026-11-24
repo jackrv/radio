@@ -59,6 +59,20 @@
   window.addEventListener("online", refreshNow);
 
   // ---------- Вхід ----------
+  // Де ця панель, видно з адреси: 127.0.0.1 — Mac, інакше — Pi через Tailscale. Текст із `…` — команда.
+  function accessHelp(host, origin) {
+    const local = host === "127.0.0.1" || host === "localhost";
+    const name = /^[\d.]+$/.test(host) ? "radio345" : host.split(".")[0];   // за IP чи повним іменем — та сама Pi
+    return local ? {
+      steps: ["На Mac у теці проєкту: `.venv/bin/python -m server.api.local_dashboard --open` — відкриє панель із ключем у браузері за замовчуванням.",
+        "Щоб увійти саме в цьому браузері — `./r345 link` там само: скопіює посилання, вставте його в адресний рядок."],
+      where: `Панель на цьому Mac: ${origin}; вхід діє 30 днів.`,
+    } : {
+      steps: [`На Mac у теці проєкту: \`./r345 link\` — скопіює посилання \`http://${name}:8766/#ключ\``,
+        "Вставте його в адресний рядок цього браузера (саме http://, не https). На iPhone вставляйте так само: буфер Apple спільний."],
+      where: `Панель на Pi: http://${name}:8766/; лише ваші пристрої в Tailscale, вхід діє 30 днів.`,
+    };
+  }
   // Без входу — окремий екран із причиною й способами входу, а не порожній макет.
   function showAccessProblem(error, hadToken) {
     const denied = error?.status === 401 || error?.status === 403;
@@ -66,10 +80,21 @@
       ? `Панель не змогла отримати дані (${error?.message || "немає відповіді"}). Можливо, служби саме перезапускаються — спробуйте за хвилину.`
       : hadToken ? "Посилання з ключем не підійшло: ключ змінено (--rotate-key) або посилання застаріле. Візьміть нове — способи нижче."
       : "Цей браузер ще не входив у панель. Вхід зберігається в самому браузері, тож у новому браузері чи приватному вікні його немає.";
+    const help = accessHelp(location.hostname, location.origin);
+    const steps = [...help.steps, "У посиланні ключ: нікому його не пересилайте.",
+      "Якщо після входу знову бачите цей екран — браузер не зберігає cookie для цієї адреси (приватне вікно чи блокування cookie)."];
+    $("access-steps").replaceChildren(...steps.map(text => {
+      const item = el("li");
+      text.split("`").forEach((part, n) => item.append(n % 2 ? el("code", "", part) : part));
+      return item;
+    }));
+    $("access-where").textContent = help.where;
     document.querySelector(".app").hidden = true;
     $("access-screen").hidden = false;
   }
   $("access-retry").addEventListener("click", () => location.reload());
+  // Посилання з ключем, відкрите в тій самій вкладці, міняє лише #… — сторінка сама не перезавантажиться.
+  window.addEventListener("hashchange", () => { if (!$("access-screen").hidden && location.hash.length > 1) location.reload(); });
   const token = location.hash.slice(1);
   action(async () => {
     history.replaceState({ view: "overview" }, "", location.pathname + location.search);

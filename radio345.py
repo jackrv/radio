@@ -14,6 +14,7 @@
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import sqlite3
@@ -25,6 +26,7 @@ import tomllib
 from pathlib import Path
 
 from shared import conflict, home_marker
+from shared.paths import place
 from shared.r345_control import Control
 
 ROOT = Path(__file__).resolve().parent
@@ -414,6 +416,36 @@ def mac_rows(run):
     return rows
 
 
+def link(run=subprocess.run):
+    """Посилання з ключем панелі дому → буфер обміну; ключ не друкується."""
+    remote = sys.platform == "darwin" and home_marker.foreign(ROOT) == "pi"
+    if remote:
+        from server import devices
+        host = devices.pi_host(base_environment({}))
+        if not host:
+            print("Не налаштовано RADIO345_PI_SSH")
+            return 1
+        url = capture(run, ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "--", host,
+                            "cat radio345-hub/.local-data/panel-key/access-url.txt"]).strip()
+    else:
+        try:
+            url = (place(ROOT, ".radio345-local-admin") / "access-url.txt").read_text(encoding="utf-8").strip()
+        except OSError:
+            url = ""
+    if not re.fullmatch(r"http://[\w.-]+:\d+/#[\w-]+", url):
+        print("Pi не відповіла або панель там ще не запускали" if remote else "Панель тут ще не запускали")
+        return 1
+    if not shutil.which("pbcopy"):
+        print(url)
+        return 0
+    if run(["pbcopy"], input=url, text=True, timeout=10).returncode:
+        print("Не вдалося скопіювати в буфер")
+        return 1
+    print(f"Скопійовано посилання з ключем: {url.split('#')[0]}")
+    print("Вставте в адресний рядок браузера (на iPhone — через спільний буфер Apple). Нікому не пересилайте.")
+    return 0
+
+
 def service(switch):
     if sys.platform != "darwin":
         print("На Pi служби веде systemd: sudo sh deploy/hub/install.sh")
@@ -632,6 +664,7 @@ HELP = """Radio 345
   ./r345 status             що працює
   ./r345 restart [служба]   перезапустити: worker, node, asr, api, panel, tunnel
   ./r345 doctor             перевірити все: служби, база, Pi, підпис iPhone, копії
+  ./r345 link               посилання з ключем панелі дому — у буфер (для браузера й телефона)
 
 Де працює система (з Mac)
   ./r345 home               показати, де дім
@@ -668,6 +701,7 @@ def main(argv=None):
     sub.add_parser("resume-model", help="повернути модель вузлу")
     sub.add_parser("service", help="служба macOS замість вікна термінала").add_argument("switch", choices=("on", "off", "status"))
     sub.add_parser("update", help="Mac — з GitHub, Pi — напряму з Mac").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
+    sub.add_parser("link", help="посилання з ключем панелі дому — у буфер обміну")
     where = sub.add_parser("home", help="де працює система: показати, перенести, вимкнути")
     where.add_argument("target", nargs="?", choices=("pi", "mac", "off", "rollback"))
     where.add_argument("--yes", action="store_true", help="без запитань")
@@ -682,6 +716,8 @@ def main(argv=None):
         return service(args.switch)
     if args.action == "update":
         return update(args.target)
+    if args.action == "link":
+        return link()
     if args.action == "home":
         return home(args.target, args.yes)
     if args.action == "doctor":

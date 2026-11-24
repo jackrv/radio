@@ -14,6 +14,7 @@
 | `./r345 up` | уся система; якщо дім на Pi — лише Whisper |
 | `Ctrl+C` або `./r345 stop` | зупинити все |
 | `./r345 status` | що працює |
+| `./r345 link` | посилання з ключем панелі дому (Pi чи Mac) — у буфер обміну; ключ не друкується |
 | `./r345 restart panel` | перезапустити одну службу (або `asr`, `node`, `api`, `tunnel`, `worker`) |
 | `.venv/bin/python -m server.api.local_dashboard --open` | відкрити панель |
 

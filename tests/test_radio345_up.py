@@ -332,7 +332,7 @@ def test_table_aligns_columns_and_marks():
 def test_help_lists_every_command(words, capsys):
     assert radio345.main(words) == 0
     out = capsys.readouterr().out
-    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "update", "service", "move-data"):
+    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "update", "service", "move-data", "link", "home"):
         assert command in out
     assert "usage:" not in out
 
@@ -467,3 +467,22 @@ def test_doctor_reads_data_from_home(monkeypatch, capsys):
     assert "База Pi" not in out
     code, out = doctor(monkeypatch, capsys, up, home="pi", rows="не список рядків")
     assert code == 1 and "Дані Pi" in out
+
+
+@pytest.mark.parametrize("answer,code", [("http://radio345:8766/#" + "k" * 43, 0), ("", 1), ("Permission denied", 1)])
+def test_link_copies_pi_key_without_printing_it(monkeypatch, capsys, answer, code):
+    from types import SimpleNamespace
+    from server import devices
+    monkeypatch.setattr(radio345.sys, "platform", "darwin")
+    monkeypatch.setattr(radio345.home_marker, "foreign", lambda root: "pi")
+    monkeypatch.setattr(radio345.shutil, "which", lambda name: name)
+    monkeypatch.setattr(devices, "pi_host", lambda env: "u@pi")
+    copied = []
+
+    def run(command, **kwargs):
+        if command[0] == "pbcopy":
+            copied.append(kwargs["input"])
+        return SimpleNamespace(stdout=answer + "\n", returncode=0)
+    assert radio345.link(run) == code
+    out = capsys.readouterr().out
+    assert "kkk" not in out and copied == ([answer] if code == 0 else [])

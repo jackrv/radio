@@ -46,7 +46,7 @@ Mini App чи локальній панелі, і система вчиться 
 ## 🚀 Старт
 
 [Встановлення](docs/install.md), потім `./r345 up --profile mac-worker` на Mac; на Pi — [служби](docs/raspberry-pi.md).
-Панель на Mac: `.venv/bin/python -m server.api.local_dashboard --open`.
+Панель на Mac: `.venv/bin/python -m server.api.local_dashboard --open`. Панель Pi (`http://radio345:8766/`): `./r345 link` копіює посилання з ключем.
 
 ## 📖 Документація
 

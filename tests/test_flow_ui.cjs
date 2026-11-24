@@ -56,3 +56,9 @@ test('service command is finished only by the observed state',()=>{
  assert.equal(c.sd({alive:true},'stop'),null);assert.equal(c.sd({alive:false},'stop'),true);
  assert.equal(c.sd({alive:false,blocked:true},'start'),false);assert.equal(c.sd({alive:true,pid:1},'start'),true);assert.equal(c.sd(undefined,'start'),null);
 });
+test('login help names the right device and command',()=>{
+ vm.runInContext(source.slice(source.indexOf('  function accessHelp('),source.indexOf('  // Без входу — окремий екран'))+'\nglobalThis.ah=accessHelp;',c);
+ const pi=c.ah('radio345','http://radio345:8766'),mac=c.ah('127.0.0.1','http://127.0.0.1:8766');
+ for(const h of ['radio345','100.64.0.9','radio345.example.ts.net']) assert.match(c.ah(h,'x').steps[0]+c.ah(h,'x').where,/r345 link.*http:\/\/radio345:8766\/#ключ.*http:\/\/radio345:8766\//);
+ assert.match(pi.where,/на Pi/);assert.match(mac.where,/Mac/);assert.match(mac.steps.join(),/server\.api\.local_dashboard --open/);assert.match(mac.steps.join(),/r345 link/);
+});

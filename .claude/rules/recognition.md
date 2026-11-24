@@ -18,7 +18,6 @@ paths:
   - "server/transcriber.py"
   - "server/event_processor.py"
   - "config.py"
-  - "radio.py"
   - "shared/suggestions.py"
   - "shared/word_*.py"
   - "shared/archive_learning.py"

@@ -14,4 +14,4 @@
 node --test tests/miniapp.test.cjs
 ```
 
-Ролі, правки, синхронізація копій і видалення: [Telegram і Mini App](../docs/telegram.md).
+Ролі, правки, синхронізація копій і видалення: [Telegram і Mini App](../../docs/telegram.md).

@@ -542,21 +542,29 @@ class RadioStream:
         """``wants(mode)`` — той самий предикат, що для режимів Telegram."""
         return bool(wants(self.mode))
 
-    def publish(self, pcm, caption):
+    def publish(self, pcm, caption, *, clip_id=None, at=None, play=True):
         if self._stop.is_set():
             return None
         pcm = bytes(pcm)
-        clip_id = next(self._ids)
+        if clip_id is None:
+            clip_id = next(self._ids)
         with self._history_lock:
             self._history.append({
                 "id": clip_id,
-                "at": time.time(),
+                "at": time.time() if at is None else at,
                 "caption": caption,
                 "duration_s": round(len(pcm) / 2 / self.sample_rate, 1),
                 "pcm": pcm,
             })
-        self.mixer.add(pcm)
+        if play:
+            self.mixer.add(pcm)
         return clip_id
+
+    def reset_history(self, session):
+        """Нумерація належить іншому джерелу (services/phrase_feed.py)."""
+        with self._history_lock:
+            self._history.clear()
+            self.session = session
 
     def live_audio(self, pcm, phase="frame"):
         """Кадри мовлення з VAD у реальному часі; викликається з потоку захоплення.

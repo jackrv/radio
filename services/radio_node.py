@@ -3,7 +3,7 @@
 Те, що переїде на Raspberry Pi 5 поруч із рацією: не потрібні Mac, Whisper,
 база подій і Telegram. Працюють «Наживо», «Наживо без сигналів» (фільтр сигналів —
 numpy), передача з iPhone на вихід звуку з ключем PTT і напівдуплекс.
-Канал «Відібрані» потребує тексту, тому тут порожній.
+«Відібрані» й тексти приходять файлами від services.asr_service (phrase_feed); без неї канал порожній.
 
 Розпізнавання підключається через ``segment_sink`` (готовий VAD-сегмент PCM16):
 зараз сегменти відкидаються; далі — надсилання на Mac (черга з підтвердженням)
@@ -117,6 +117,7 @@ def main():
         spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or config.BASE_DIR / ".local-segment-spool")
         sink = lambda item: spool.put(item, config.SR)
     from services.node_control import NodeControl, directory
+    from services.phrase_feed import PhraseInbox, feed_dir
     hold = os.environ.get("RADIO_LISTENING_HOLD", "1").strip().lower() not in ("0", "false", "no", "off")
     control = NodeControl(directory(config), listening_hold=hold)
     control.apply_startup(config)
@@ -125,10 +126,14 @@ def main():
         log.error("Радіовузол не запущено: потік недоступний (Tailscale? порт зайнятий?)",
                   extra={"console": True})
         raise SystemExit(1)
+    texts_stop = threading.Event()
+    texts = PhraseInbox(feed_dir(directory(config)), stream, log).start(texts_stop)
     log.info("Радіовузол працює без розпізнавання (Ctrl+C — вихід)", extra={"console": True})
     try:
         supervisor.run()
     finally:
+        texts_stop.set()
+        texts.join(2)
         stream.stop()
 
 

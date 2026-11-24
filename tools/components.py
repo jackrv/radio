@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Процес → (майбутній каталог, вхідні модулі).
 PROCESSES = {
-    "node": ("server", ("services.radio_node", "services.segment_spool", "services.node_control")),
+    "node": ("server", ("services.radio_node", "services.segment_spool", "services.node_control", "services.phrase_feed")),
     "asr": ("server", ("services.asr_service",)),
     "panel": ("server", ("api.local_dashboard",)),
     "api": ("server", ("api.app", "api.local_server")),

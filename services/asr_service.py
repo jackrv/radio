@@ -147,16 +147,17 @@ def main():
         log.warning("Telegram вимкнено: не задано TELEGRAM_BOT_TOKEN у .env")
     callsigns, commands, watch, prompt = load_dictionaries(config.DB_PATH, log)
     health = RecognitionHealth()
+    from services.node_control import directory
+    outbox = phrase_outbox(config, recorder, log)
     worker = build_transcriber(
         config=config, segments=queue.Queue(), callsigns=callsigns, commands=commands, watch=watch,
         prompt=prompt, telegram_service=telegram, cooldown=Cooldown(config.COOLDOWN_S), log=log, recorder=recorder,
-        health=health)
+        health=health, radio_stream=outbox)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *a: stop.set())
     signal.signal(signal.SIGINT, lambda *a: stop.set())
     log.info("Розпізнавання працює", extra={"console": True})
     from services.node_bridge import NodeBridge
-    from services.node_control import directory
     NodeBridge(config.DB_PATH, directory(config), config, log).start(stop)
     from services.asr_alerts import Alerts
     try:
@@ -176,6 +177,19 @@ def main():
         if bot:
             telegram.shutdown(timeout=10.0)
         os.close(lock)
+
+
+def phrase_outbox(config, recorder, log):
+    """Тексти для телефону; збій тут не зупиняє розпізнавання."""
+    from services.node_control import directory
+    from services.phrase_feed import PhraseOutbox, feed_dir
+    mode = os.environ.get("RADIO_STREAM_MODE", "").strip() or config.RADIO_STREAM_MODE
+    try:
+        return PhraseOutbox(feed_dir(directory(config)), mode=mode, sample_rate=config.SR,
+                            current=lambda: (recorder.record_id, recorder.captured_at))
+    except (OSError, ValueError):
+        log.exception("Тексти для телефону вимкнено")
+        return None
 
 
 def spool_dir(config):

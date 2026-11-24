@@ -149,6 +149,7 @@
 /services/notification_samples.py
 /services/panel_jobs.py
 /services/panel_tasks.py
+/services/phrase_feed.py
 /services/private_files.py
 /services/process_guard.py
 /services/ptt_key.py

@@ -25,6 +25,7 @@
 /services/__init__.py
 /services/audio_devices.py
 /services/node_control.py
+/services/phrase_feed.py
 /services/private_files.py
 /services/ptt_key.py
 /services/radio_node.py

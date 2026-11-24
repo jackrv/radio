@@ -214,10 +214,10 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
         shutil.copy(radio345.ROOT / item, target)
     (tmp_path / "server").mkdir(exist_ok=True)
     (tmp_path / "server/__init__.py").touch()
-    for name in ("radio_node", "asr_service"):
+    for name in ("radio_node", "asr_service", "miniapp_tunnel"):
         (tmp_path / f"server/{name}.py").write_text("import time\ntime.sleep(300)\n")
     (tmp_path / "deploy/profiles").mkdir(parents=True)
-    (tmp_path / "deploy/profiles/t.toml").write_text('description="t"\nprocesses=["node","asr"]\nbot=false\n[env]\n')
+    (tmp_path / "deploy/profiles/t.toml").write_text('description="t"\nprocesses=["node","asr","tunnel"]\nmanual=["tunnel"]\nbot=false\n[env]\n')
     (tmp_path / ".env").write_text("RADIO345_PROFILE=t\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("RADIO")}
 
@@ -239,6 +239,16 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
         after = control.read()["processes"]
         assert after["asr"]["pid"] != before["asr"]["pid"] and after["node"]["pid"] == before["node"]["pid"]
         assert r345("restart", "panel").returncode == 2
+        assert not after["tunnel"]["alive"] and after["tunnel"]["wanted"] is False, "manual сам не стартує"
+        control.request("stop", ["asr"])
+        assert wait(lambda: not control.read()["processes"]["asr"]["alive"], 20)
+        time.sleep(3)
+        assert not control.read()["processes"]["asr"]["alive"] and r345("status").returncode == 0, "зупинене навмисно не піднімається"
+        control.request("start", ["asr", "tunnel"])
+        assert wait(lambda: all(control.read()["processes"][n]["alive"] for n in ("asr", "tunnel")), 20)
+        assert control.read()["processes"]["node"]["pid"] == before["node"]["pid"]
+        control.request("stop", ["tunnel"])
+        assert wait(lambda: not control.read()["processes"]["tunnel"]["alive"], 20)
         assert r345("stop").returncode == 0
         assert up.wait(10) == 0 and r345("status").returncode == 3
     finally:

@@ -14,6 +14,7 @@
 /apps/miniapp/service-gate.js
 /apps/miniapp/styles.css
 /config.py
+/deploy/hub/control.sh
 /deploy/hub/import.sh
 /deploy/hub/install.sh
 /deploy/hub/radio345-api.service

@@ -99,3 +99,71 @@ def test_without_host_pi_is_not_contacted(monkeypatch, tmp_path):
     monkeypatch.setattr(d, "local", lambda db, root: device(asr=True))
     state = d.Devices("x", tmp_path, None, lambda host: pytest.fail("звернення до Pi"))
     assert state.read()["pi"] is None and state.read()["configured"] is False
+
+
+def ssh(code=0, stderr=""):
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        return SimpleNamespace(returncode=code, stdout="", stderr=stderr)
+    run.seen = seen
+    return run
+
+
+@pytest.mark.parametrize("verb,args", [("start", "enable --now"), ("stop", "disable --now"), ("restart", "restart")])
+def test_pi_commands_are_exact_and_allowed_by_the_rule(verb, args):
+    run = ssh()
+    d.control_pi("pi@test", "asr", verb, run=run)
+    assert run.seen[0][-1] == f"sudo -n /usr/bin/systemctl {args} radio345-asr"
+    script = (d.ROOT / "deploy/hub/control.sh").read_text(encoding="utf-8")
+    assert "for name in " + " ".join(d.PI_CONTROLLED) in script
+    assert f'"{args}"' in script or args in script
+    assert "*" not in script.split("for name in")[1].split("done >")[0]
+
+
+@pytest.mark.parametrize("process,verb", [("ssh", "stop"), ("asr", "mask"), ("asr; rm", "stop"), ("worker", "stop")])
+def test_pi_refuses_unknown_actions_without_ssh(process, verb):
+    run = ssh()
+    with pytest.raises(d.Refused):
+        d.control_pi("pi@test", process, verb, run=run)
+    assert run.seen == []
+
+
+@pytest.mark.parametrize("code,err,text", [(255, "", "SSH"), (1, "sudo: a password is required", "control.sh"), (1, "x", "не виконала")])
+def test_pi_failures_are_explained(code, err, text):
+    with pytest.raises(d.Refused, match=text):
+        d.control_pi("pi@test", "node", "stop", run=ssh(code, err))
+
+
+def actions(monkeypatch, tmp_path, mac, pi):
+    monkeypatch.setattr(d, "local", lambda db, root: mac)
+    state, done = d.Devices("x", tmp_path, "pi@test", lambda host: pi), []
+    return (lambda *a: state.act(*a, control_pi=lambda h, p, v: done.append(("pi", p, v)),
+                                 control_mac=lambda p, v, r: done.append(("mac", p, v)))), done
+
+
+@pytest.mark.parametrize("process", ["asr", "tunnel"])
+@pytest.mark.parametrize("verb", ["start", "restart"])
+def test_second_bot_or_tunnel_is_refused(monkeypatch, tmp_path, process, verb):
+    act, done = actions(monkeypatch, tmp_path, device(**{process: True}), device(**{process: False}))
+    with pytest.raises(d.Refused, match="іншому пристрої"):
+        act("pi", process, verb)
+    assert done == []
+    act("pi", process, "stop")
+    act("pi", "node", "start")
+    act("mac", process, "restart")
+    assert done == [("pi", process, "stop"), ("pi", "node", "start"), ("mac", process, "restart")]
+
+
+def test_unreachable_pi_does_not_block_mac(monkeypatch, tmp_path):
+    act, done = actions(monkeypatch, tmp_path, device(asr=False), {"reachable": False})
+    act("mac", "asr", "start")
+    assert done == [("mac", "asr", "start")]
+
+
+def test_mac_panel_cannot_stop_itself_and_needs_r345(tmp_path):
+    with pytest.raises(d.Refused, match="Невідома"):
+        d.control_mac("panel", "stop", tmp_path)
+    with pytest.raises(d.Refused, match="не r345"):
+        d.control_mac("asr", "stop", tmp_path)

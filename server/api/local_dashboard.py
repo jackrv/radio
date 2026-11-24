@@ -94,7 +94,8 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/backups"), "Запит на створення копії бази"),
         (re.compile(r"/api/training/export"), "Запит на вивантаження набору для дообучення"),
         (re.compile(r"/api/receiver-pause"), "Пауза приймача"),
-        (re.compile(r"/api/launcher/([a-z-]+)"), "Лаунчер: {0}"),
+        (re.compile(r"/api/launcher/([a-z-]+)"), "Служби: {0}"),
+        (re.compile(r"/api/devices/(mac|pi)/([a-z]+)/([a-z]+)"), "Пристрій {0}: {1} — {2}"),
     )
 
     def log_panel_action(path, payload=None):

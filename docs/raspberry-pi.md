@@ -109,6 +109,11 @@ API слухає лише `127.0.0.1:8765`; назовні його відкри
 
 Без `--miniapp` служби API й тунелю не встановлюються. Mini App показує базу **цього** пристрою: бази Mac і Pi не синхронізуються.
 
+## Керування з панелі Mac
+
+Один раз на Pi: `sudo sh deploy/hub/control.sh` (прибрати — `--remove`). Дозволяє без пароля лише `enable --now`, `disable --now` і
+`restart` для служб `radio345-*`. На Mac у `.env`: `RADIO345_PI_SSH=<користувач>@radio345`. Панель: «Система» → «Пристрої».
+
 ## Бекап баз на Mac
 
 `.venv/bin/python -m tools.pull_backup --host jackrv@radio345` на Mac: знімок `events.db` та індексу архіву,

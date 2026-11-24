@@ -77,14 +77,15 @@ def missing_env(profile, env, names=()):
 
 
 class Child:
-    def __init__(self, name, command, env, output, clock=time.monotonic, lease=None):
+    def __init__(self, name, command, env, output, clock=time.monotonic, lease=None, wanted=True):
         self.name, self.command, self.env, self.output, self.clock, self.lease = name, command, env, output, clock, lease
         self.process, self.pause, self.next_start, self.started, self.restarts = None, MIN_PAUSE_S, 0.0, 0.0, -1
         self.watch = self.done = None
+        self.wanted = wanted   # зупинений навмисно процес не піднімаємо
         self.blocked = False   # зайнято на іншому пристрої: лише ручний перезапуск
 
     def tick(self):
-        if self.blocked:
+        if self.blocked or not self.wanted:
             return
         now = self.clock()
         if self.process is not None:
@@ -162,11 +163,21 @@ class Child:
         """Навмисний перезапуск: без паузи й без зростання затримки."""
         self.terminate()
         self.finish(time.monotonic() + GRACE_S + 3)
-        self.pause, self.next_start, self.blocked = MIN_PAUSE_S, 0.0, False
+        self.pause, self.next_start, self.blocked, self.wanted = MIN_PAUSE_S, 0.0, False, True
+
+    def stop(self):
+        self.wanted, self.blocked = False, False
+        self.terminate()
+        self.finish(time.monotonic() + GRACE_S + 3)
+
+    def start(self):
+        if not self.wanted or self.blocked:
+            self.restart()
 
     def state(self):
         alive = self.process is not None and self.process.poll() is None
         return {"alive": alive, "pid": self.process.pid if alive else None, "restarts": max(self.restarts, 0),
+                "wanted": self.wanted,
                 **({"blocked": True} if self.blocked else {})}
 
 
@@ -206,8 +217,8 @@ def show_status(control):
         return 3
     print(f"r345 працює: профіль {data['profile']}, PID {data['pid']}")
     for name, item in data["processes"].items():
-        print(f"  {name}: {'працює' if item['alive'] else 'зайнято на іншому пристрої' if item.get('blocked') else 'не працює'}, перезапусків {item['restarts']}")
-    return 0 if all(p["alive"] for p in data["processes"].values()) else 1
+        print(f"  {name}: {'працює' if item['alive'] else 'зайнято на іншому пристрої' if item.get('blocked') else 'зупинено' if not item.get('wanted', True) else 'не працює'}, перезапусків {item['restarts']}")
+    return 0 if all(p["alive"] for p in data["processes"].values() if p.get("wanted", True)) else 1
 
 
 def stop_all(control, timeout=GRACE_S + 10):
@@ -235,9 +246,9 @@ def restart(control, names, timeout=GRACE_S + 20):
     if unknown:
         print("Не запущено: " + ", ".join(sorted(unknown)))
         return 2
-    names = list(names) or list(data["processes"])
+    names = list(names) or [n for n, p in data["processes"].items() if p.get("wanted", True)]
     before = {n: data["processes"][n]["pid"] for n in names}
-    control.request_restart(names)
+    control.request("restart", names)
     deadline = time.monotonic() + timeout * max(1, len(names))
     while time.monotonic() < deadline:
         time.sleep(0.3)
@@ -345,10 +356,11 @@ def main(argv=None):
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda *a: stop.set())
-    children = [Child(n, COMMANDS[n], process_environment(n, profile, env), output, lease=control.lock_fd) for n in names]
+    children = [Child(n, COMMANDS[n], process_environment(n, profile, env), output, lease=control.lock_fd, wanted=n in names)
+                for n in COMMANDS if n in profile["processes"]]   # решту профілю можна запустити з панелі
 
     def on_tick():
-        control.take_restarts(children)
+        control.take_requests(children)
         control.save(name, children)
 
     try:

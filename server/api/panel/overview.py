@@ -228,7 +228,7 @@ def register(app, ctx):
         running = Control((launcher_root or ROOT) / ".radio345-launcher").read()
         if running:
             return {"mode": "r345", "profile": running.get("profile"),
-                    "stopped": sorted(n for n, p in running.get("processes", {}).items() if not p.get("alive"))}
+                    "stopped": sorted(n for n, p in running.get("processes", {}).items() if not p.get("alive") and p.get("wanted", True))}
         return {"mode": "systemd" if os.environ.get("INVOCATION_ID") else "none", "profile": None, "stopped": []}
 
     @app.post("/api/launcher/{command}")
@@ -242,5 +242,5 @@ def register(app, ctx):
         if command == "stop":
             control.request_stop()
         else:
-            control.request_restart(list(running["processes"]))
+            control.request("restart", [n for n, p in running["processes"].items() if p.get("wanted", True)])
         return {"sent": command}

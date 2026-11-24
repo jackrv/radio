@@ -10,6 +10,7 @@ from pathlib import Path
 from shared.instance_lock import lock_held
 
 ROOT = Path(__file__).resolve().parent.parent
+VERBS = {"restart": "перезапуск", "stop": "зупинка", "start": "запуск"}
 
 
 class Control:
@@ -33,8 +34,9 @@ class Control:
             os.close(fd)
             raise SystemExit("Radio 345 уже запущено (або ще завершується): ./r345 status") from None
         self.lock_fd = fd
-        for old in self.directory.glob("r345-restart-*"):
-            old.unlink(missing_ok=True)
+        for verb in VERBS:
+            for old in self.directory.glob(f"r345-{verb}-*"):
+                old.unlink(missing_ok=True)
 
     def held(self):
         return lock_held(self.lock_path)
@@ -61,18 +63,23 @@ class Control:
             return None
         return data if type(pid) is int and "radio345 up" in command else None
 
-    def request_restart(self, names):
+    def request(self, verb, names):
+        if verb not in VERBS:
+            raise ValueError("Невідома дія")
         for name in names:
-            fd = os.open(self.directory / f"r345-restart-{name}", os.O_CREAT | os.O_WRONLY, 0o600)
+            for other in VERBS:   # остання команда скасовує попередню
+                (self.directory / f"r345-{other}-{name}").unlink(missing_ok=True)
+            fd = os.open(self.directory / f"r345-{verb}-{name}", os.O_CREAT | os.O_WRONLY, 0o600)
             os.close(fd)
 
-    def take_restarts(self, children):
+    def take_requests(self, children):
         for child in children:
-            path = self.directory / f"r345-restart-{child.name}"
-            if path.exists():
-                path.unlink(missing_ok=True)
-                child.output(child.name, "перезапуск за командою")
-                child.restart()
+            for verb, text in VERBS.items():
+                path = self.directory / f"r345-{verb}-{child.name}"
+                if path.exists():
+                    path.unlink(missing_ok=True)
+                    child.output(child.name, f"{text} за командою")
+                    getattr(child, verb)()
 
     def release(self):
         self.state_path.unlink(missing_ok=True)

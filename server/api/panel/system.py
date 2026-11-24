@@ -48,6 +48,17 @@ def register(app, ctx):
         """Mac і Pi: служби, база, код. Лише на Mac: з Pi на Mac доступу немає."""
         return device_state.read() if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
 
+    @app.post("/api/devices/{device}/{process}/{verb}")
+    def device_action(device: Literal["mac", "pi"], process: Literal["node", "asr", "panel", "api", "tunnel", "worker"],
+                      verb: Literal["start", "stop", "restart"], admin=Depends(actor)):
+        if device_state is None:
+            raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
+        try:
+            device_state.act(device, process, verb)
+        except devices.Refused as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"sent": True}
+
     @app.get("/api/storage")
     def storage(admin=Depends(actor)):
         from server.storage_status import storage_status

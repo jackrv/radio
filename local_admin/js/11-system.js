@@ -148,10 +148,29 @@
     $("audio-devices-result").replaceChildren(line);
   }));
 
-  // ---------- Пристрої: Mac і Pi (лише перегляд) ----------
+  // ---------- Пристрої: Mac і Pi ----------
   const PROCESS_NAMES = { node: "Ефір", asr: "Розпізнавання й бот", panel: "Панель", api: "API Mini App", tunnel: "Тунель Mini App", worker: "Whisper" };
   const HOME_TEXT = { mac: "База й бот працюють на Mac.", pi: "База й бот працюють на Pi.", both: "Бот працює і на Mac, і на Pi: зупиніть один, інакше дані розійдуться.", unknown: "Pi не видно: невідомо, чи працює там бот." };
-  function deviceCard(box, device, extra) {
+  const CONTROLLED = { mac: ["worker", "node", "asr", "api", "tunnel"], pi: ["node", "asr", "panel", "api", "tunnel"] };
+  const VERB_TEXT = { start: "Запустити", stop: "Зупинити", restart: "Перезапустити" };
+  function deviceButtons(name, process, alive) {
+    const box = el("span", "toolbar");
+    for (const verb of alive ? ["restart", "stop"] : ["start"]) {
+      const b = el("button", "ghost small-button", VERB_TEXT[verb]); b.type = "button";
+      b.addEventListener("click", () => action(async () => {
+        const title = PROCESS_NAMES[process], where = name === "pi" ? "Pi" : "Mac";
+        const open = process === "tunnel" && verb === "start" ? " Відкриється публічна адреса API Mini App." : "";
+        if (!confirm(`${VERB_TEXT[verb]}: ${title} на ${where}?${open}`)) return;
+        b.disabled = true;
+        await request(`/api/devices/${name}/${process}/${verb}`, "POST");
+        note(`${title} на ${where}: команду надіслано.`);
+        setTimeout(devices, 3000);
+      }));
+      box.append(b);
+    }
+    return box;
+  }
+  function deviceCard(name, box, device, extra) {
     if (!device) { box.replaceChildren(el("p", "muted small", "Не налаштовано: RADIO345_PI_SSH у .env на Mac.")); return; }
     if (!device.reachable) { box.replaceChildren(el("p", "alert small", device.error || "Недоступно")); return; }
     const rows = Object.entries(device.processes).map(([name, p]) => [PROCESS_NAMES[name] || name,
@@ -160,7 +179,12 @@
     rows.push(["Подій у базі", device.events == null ? "—" : num(device.events)],
       ["Остання подія", device.last_event ? ago(now() - device.last_event) : "—"], ["Фраз у черзі", num(device.queue)],
       ["Вільно на диску", storageSize(device.disk_free)], ...extra);
-    box.replaceChildren(kv(rows));
+    const table = kv(rows);
+    if (name === "pi" || serviceMode === "r345") for (const process of CONTROLLED[name]) {
+      const p = device.processes[process];
+      if (p) table.append(el("span", "", PROCESS_NAMES[process]), deviceButtons(name, process, p.alive));
+    }
+    box.replaceChildren(table);
   }
   async function devices() {
     let d;
@@ -169,8 +193,8 @@
     $("devices-panel").hidden = false;
     $("devices-home").textContent = HOME_TEXT[d.home] || "База й бот ніде не працюють.";
     $("devices-home").classList.toggle("alert", d.home === "both" || d.home === "unknown");
-    deviceCard($("device-mac"), d.mac, d.mac.model ? [["Модель Whisper", d.mac.model]] : []);
-    deviceCard($("device-pi"), d.pi, d.pi?.reachable ? [["Температура", d.pi.temp_c == null ? "—" : `${fix(d.pi.temp_c, 1)} °C`],
+    deviceCard("mac", $("device-mac"), d.mac, d.mac.model ? [["Модель Whisper", d.mac.model]] : []);
+    deviceCard("pi", $("device-pi"), d.pi, d.pi?.reachable ? [["Температура", d.pi.temp_c == null ? "—" : `${fix(d.pi.temp_c, 1)} °C`],
       ["Код", d.code_matches ? "як на Mac" : "відрізняється від Mac", d.code_matches ? "good" : "alert"]] : []);
   }
   $("devices-refresh")?.addEventListener?.("click", () => action(devices));

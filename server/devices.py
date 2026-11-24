@@ -1,4 +1,4 @@
-"""Стан пристроїв для панелі: цей Mac (r345) і Pi через SSH. Лише читання, без секретів і текстів ефіру.
+"""Стан пристроїв для панелі: цей Mac (r345) і Pi через SSH. Без секретів і текстів ефіру.
 
 Pi — RADIO345_PI_SSH у .env (напр. користувач@radio345); ключ має працювати без пароля. З Pi на Mac не ходимо.
 """
@@ -83,7 +83,7 @@ def local(db_path, root=ROOT):
     from shared.model_pause import ModelPause, model_root
     from shared.r345_control import Control
     running = Control(root / ".radio345-launcher").read()
-    processes = {n: {"alive": bool(p.get("alive")), "enabled": True, "restarts": p.get("restarts", 0),
+    processes = {n: {"alive": bool(p.get("alive")), "enabled": p.get("wanted", True), "restarts": p.get("restarts", 0),
                      "blocked": bool(p.get("blocked"))}
                  for n, p in (running or {}).get("processes", {}).items()}
     with get_db(db_path) as db:
@@ -117,6 +117,45 @@ def remote(host, folder="radio345-hub", run=subprocess.run):
     return {"reachable": True, **data}
 
 
+# Дія → аргументи systemctl. enable/disable --now: стан переживає перезавантаження Pi. Список дозволено в deploy/hub/control.sh.
+SYSTEMCTL = {"start": "enable --now", "stop": "disable --now", "restart": "restart"}
+PI_CONTROLLED = ("node", "asr", "panel", "api", "tunnel")
+MAC_CONTROLLED = ("node", "asr", "api", "tunnel", "worker")   # панель не зупиняє сама себе
+
+
+class Refused(Exception):
+    """Дію відхилено; текст показується оператору."""
+
+
+def control_pi(host, process, verb, run=subprocess.run):
+    if process not in PI_CONTROLLED or verb not in SYSTEMCTL:
+        raise Refused("Невідома дія")
+    command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "--", host,
+               f"sudo -n /usr/bin/systemctl {SYSTEMCTL[verb]} radio345-{process}"]
+    try:
+        done = run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+    except (OSError, subprocess.TimeoutExpired):
+        raise Refused("Pi не відповіла вчасно; перевірте стан") from None
+    if done.returncode == 255:
+        raise Refused("SSH до Pi недоступний")
+    if done.returncode:
+        raise Refused("Немає дозволу: на Pi один раз sudo sh deploy/hub/control.sh" if "password" in (done.stderr or "").lower()
+                      else "Pi не виконала дію; перевірте стан")
+
+
+def control_mac(process, verb, root=ROOT):
+    from shared.r345_control import VERBS, Control
+    if process not in MAC_CONTROLLED or verb not in VERBS:
+        raise Refused("Невідома дія")
+    control = Control(root / ".radio345-launcher")
+    running = control.read()
+    if running is None:
+        raise Refused("Службами на Mac керує не r345")
+    if process not in running["processes"]:
+        raise Refused(f"Профіль {running.get('profile')} не має цього процесу")
+    control.request(verb, [process])
+
+
 def home_of(devices):
     """Де працює бот із базою: "mac", "pi", "both" (конфлікт), None — ніде; "unknown" — Pi не видно."""
     def runs(device):
@@ -135,6 +174,26 @@ class Devices:
         self.db_path, self.root, self.fetch, self.clock = db_path, root, fetch, clock
         self.host = host
         self.lock, self._at, self._data = threading.Lock(), float("-inf"), None
+
+    def act(self, device, process, verb, control_pi=control_pi, control_mac=control_mac):
+        """Одна служба на одному пристрої. Другого бота чи тунелю не запускає."""
+        if device == "pi" and not self.host:
+            raise Refused("Не налаштовано RADIO345_PI_SSH")
+        if verb in ("start", "restart") and process in ("asr", "tunnel"):
+            with self.lock:
+                self._at = float("-inf")
+            state = self.read()
+            other = state["pi" if device == "mac" else "mac"]
+            if other is not None and not other.get("reachable"):
+                pass   # другого не видно: перевірить сама служба (shared/conflict.py)
+            elif other is not None and (other.get("processes") or {}).get(process, {}).get("alive"):
+                raise Refused("Уже працює на іншому пристрої: спершу зупиніть там")
+        if device == "pi":
+            control_pi(self.host, process, verb)
+        else:
+            control_mac(process, verb, self.root)
+        with self.lock:
+            self._at = float("-inf")
 
     def read(self):
         with self.lock:

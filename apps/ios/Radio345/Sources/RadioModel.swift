@@ -256,7 +256,6 @@ final class RadioModel {
         let (state, response) = await fetchEvents(source, after: shared ? feed.cursor : Int.max)
         // Поки чекали відповіді, користувач міг перемкнути вузол.
         guard !Task.isCancelled, source == settings.receiver, shared == !settings.hasSeparateTexts else { return }
-        let wasDown = airState != .ok
         airState = state
         if shared { textState = state }
         guard let response else {
@@ -266,7 +265,7 @@ final class RadioModel {
         }
         updateHome(response.at_home)
         transmitter.serverEnabled = response.transmit ?? false
-        if wasDown, settings.streamReceiver == source { reconnectNow() }
+        if settings.streamReceiver == source { reconnectNow() }
         if shared { await accept(response, from: source) }
     }
 
@@ -274,10 +273,9 @@ final class RadioModel {
         let source = settings.textReceiver
         let (state, response) = await fetchEvents(source, after: feed.cursor)
         guard !Task.isCancelled, settings.hasSeparateTexts, source == settings.textReceiver else { return }
-        let wasDown = textState != .ok
         textState = state
         guard let response else { return }
-        if wasDown, settings.streamReceiver == source { reconnectNow() }
+        if settings.streamReceiver == source { reconnectNow() }
         await accept(response, from: source)
     }
 
@@ -305,7 +303,8 @@ final class RadioModel {
         updateNowPlaying()
     }
 
-    /// Вузол повернувся: не чекати до 32 с паузи.
+    /// Вузол відповідає: не чекати до 32 с паузи. На кожній успішній відповіді, а не лише на першій після збою:
+    /// перша могла прийти, коли невдала спроба ще тривала (стан .connecting).
     private func reconnectNow() {
         guard isListening, case .retrying = state else { return }
         retries = 0

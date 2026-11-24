@@ -145,6 +145,10 @@ class UpdatesMixin:
         if self._updates_offset is None:
             self._updates_offset = load_telegram_offset(self.db_path)
         consecutive_errors = 0
+        from shared.conflict import BotOwner
+        owner = getattr(self, "_bot_owner", None)
+        if owner is None:
+            owner = self._bot_owner = BotOwner()
         while True:
             try:
                 r = self._request(
@@ -156,6 +160,10 @@ class UpdatesMixin:
                     },
                     timeout=40,
                 )
+                if r.status_code == 409 and owner.conflict():
+                    self.log.error("Бот уже працює на іншому пристрої; поступаюся й більше не пробую")
+                    self.bot_conflict = True
+                    return
                 if r.status_code != 200:
                     consecutive_errors += 1
                     delay = listener_retry_delay(consecutive_errors)
@@ -165,6 +173,7 @@ class UpdatesMixin:
                     )
                     time.sleep(delay)
                     continue
+                owner.ok()
                 if consecutive_errors:
                     self.log.info(
                         "Зв’язок із Telegram відновлено "

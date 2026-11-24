@@ -90,6 +90,10 @@ class AsrService:
                 stop.wait(1.0)
 
 
+class BotConflict(Exception):
+    """Бот працює на іншому пристрої: уся служба зупиняється, щоб не дублювати події й сповіщення."""
+
+
 class Bot:
     """Слухач Telegram з автоперезапуском, обслуговування й коректне завершення."""
 
@@ -97,6 +101,8 @@ class Bot:
         self.service, self.log, self.thread, self.next_start = service, log, None, 0.0
 
     def tick(self):
+        if getattr(self.service, "bot_conflict", False) is True:
+            raise BotConflict
         self.service.start_maintenance()
         if (self.thread is None or not self.thread.is_alive()) and time.monotonic() >= self.next_start:
             if self.thread is not None:
@@ -120,6 +126,7 @@ def main():
     from shared.recordings import RecordingStore
     from server.segment_spool import SegmentSpool
     from server.transcriber_factory import build_transcriber
+    from shared import conflict
 
     load_dotenv(config.BASE_DIR / ".env")
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -130,7 +137,7 @@ def main():
     # Не замок моделі: на Mac її поруч тримає worker.asr_worker.
     lock = acquire_instance_lock(Path(config.BASE_DIR) / OWNER_LOCK)
     if lock is None:
-        raise SystemExit("Інший приймач уже працює з цією базою")
+        conflict.stop("Інший приймач уже працює з цією базою")
     init_db(config.DB_PATH)
     apply_startup_settings(config.DB_PATH, config)
     store = RecordingStore(config.RECORDINGS_DIR, retention_days=config.RECORDINGS_RETENTION_DAYS,
@@ -139,6 +146,9 @@ def main():
     recorder = SpoolRecorder(store, {"MODEL_REPO": config.MODEL_REPO, "LANGUAGE": config.LANGUAGE, "SR": config.SR})
     bot, telegram = None, NullTelegram()
     if token:
+        if conflict.bot_busy(lambda: poll_bot(token)):
+            os.close(lock)
+            conflict.stop("Бот уже працює на іншому пристрої; службу не запущено. Зупиніть його там і запустіть цю вручну")
         from server.telegram import TelegramService
         telegram = TelegramService(bot_token=token, sample_rate=config.SR, db_path=config.DB_PATH, log=log)
         telegram.archive_root = config.RECORDINGS_DIR
@@ -172,11 +182,22 @@ def main():
     backup_stop = start_backup_scheduler(config.DB_PATH, config.BASE_DIR / ".local-backups", log=log)
     try:
         AsrService(SegmentSpool(spool_dir(config)), worker, recorder, log).run(stop, bot.tick if bot else lambda: None)
+    except BotConflict:
+        conflict.stop("Бот працює на іншому пристрої; службу зупинено")
     finally:
         backup_stop.set()
         if bot:
             telegram.shutdown(timeout=10.0)
         os.close(lock)
+
+
+def poll_bot(token):
+    import requests
+    try:
+        return requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"timeout": 5, "limit": 1},
+                            timeout=15).status_code
+    except requests.RequestException:
+        raise OSError("Telegram недоступний") from None   # без URL: у ньому токен
 
 
 def phrase_outbox(config, recorder, log):

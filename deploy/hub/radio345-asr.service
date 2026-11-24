@@ -10,6 +10,8 @@ User=@USER@
 WorkingDirectory=@ROOT@
 ExecStart=@ROOT@/.venv/bin/python -m server.asr_service
 Restart=always
+# 75 — зайнято на іншому пристрої: самі не повторюємо.
+RestartPreventExitStatus=75
 RestartSec=10
 TimeoutStopSec=75
 CPUWeight=100

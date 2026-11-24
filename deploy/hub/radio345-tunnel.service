@@ -9,8 +9,9 @@ StartLimitIntervalSec=0
 User=@USER@
 WorkingDirectory=@ROOT@
 ExecStart=@ROOT@/.venv/bin/python -m server.miniapp_tunnel
-# Домен може бути зайнятий тунелем Mac: не частіше разу на 30 с.
 Restart=always
+# 75 — зайнято на іншому пристрої: самі не повторюємо.
+RestartPreventExitStatus=75
 RestartSec=30
 TimeoutStopSec=20
 CPUWeight=50

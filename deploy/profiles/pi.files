@@ -76,6 +76,7 @@
 /server/console.py
 /server/cooldown.py
 /server/database_lifecycle.py
+/server/devices.py
 /server/dictionary_setup.py
 /server/event_processor.py
 /server/log_security.py
@@ -123,6 +124,7 @@
 /shared/audio_devices.py
 /shared/callsigns.py
 /shared/command_completion.py
+/shared/conflict.py
 /shared/correction.py
 /shared/daily_codes.py
 /shared/db_backup.py

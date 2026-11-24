@@ -17,6 +17,8 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from shared import conflict
+
 ROOT = Path(__file__).resolve().parent.parent
 API_PORT = 8765
 INSPECT_PORT = 4040
@@ -75,7 +77,7 @@ def important(line):
 
 def run(desired, executable, stop, say, *, reachable=api_reachable, urls=public_urls, page=page_api_url,
         sleep=None, start_s=START_S):
-    """Код завершення: 0 — штатна зупинка, інакше r345 перезапустить із паузою."""
+    """Код завершення: 0 — штатна зупинка, conflict.EXIT — домен зайнято (без повторів), інше — перезапуск із паузою."""
     wait = sleep or stop.wait
     reported = False
     while not reachable():
@@ -90,18 +92,25 @@ def run(desired, executable, stop, say, *, reachable=api_reachable, urls=public_
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                errors="replace")
 
+    busy = threading.Event()
+
     def pump():
         for line in process.stdout:
             if BUSY in line:
+                busy.set()
                 say("Домен ngrok уже відкрито на іншому пристрої: зупиніть тунель там")
             if important(line):
                 say("ngrok: " + line.strip()[:300])
 
-    threading.Thread(target=pump, daemon=True).start()
+    pumping = threading.Thread(target=pump, daemon=True)
+    pumping.start()
     try:
         deadline, opened = time.monotonic() + start_s, False
         while not stop.is_set():
             if process.poll() is not None:
+                pumping.join(2)
+                if busy.is_set():
+                    return conflict.EXIT
                 say(f"ngrok завершився (код {process.returncode})")
                 return 1
             if not opened:

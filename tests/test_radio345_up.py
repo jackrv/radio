@@ -208,7 +208,7 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
     """Справжній r345 у копії проєкту: стан, вибірковий перезапуск, зупинка, відмова другому запуску."""
     import shutil
     import subprocess
-    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/instance_lock.py", "shared/__init__.py"):
+    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/conflict.py", "shared/instance_lock.py", "shared/__init__.py"):
         target = tmp_path / item
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radio345.ROOT / item, target)

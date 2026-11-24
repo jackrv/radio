@@ -20,6 +20,7 @@ import time
 import tomllib
 from pathlib import Path
 
+from shared import conflict
 from shared.r345_control import Control
 
 ROOT = Path(__file__).resolve().parent
@@ -80,14 +81,21 @@ class Child:
         self.name, self.command, self.env, self.output, self.clock, self.lease = name, command, env, output, clock, lease
         self.process, self.pause, self.next_start, self.started, self.restarts = None, MIN_PAUSE_S, 0.0, 0.0, -1
         self.watch = self.done = None
+        self.blocked = False   # зайнято на іншому пристрої: лише ручний перезапуск
 
     def tick(self):
+        if self.blocked:
+            return
         now = self.clock()
         if self.process is not None:
             code = self.process.poll()
             if code is None:
                 return
             self._reap()
+            if code == conflict.EXIT:
+                self.blocked, self.process = True, None
+                self.output(self.name, f"зайнято на іншому пристрої; повторів не буде: ./r345 restart {self.name}")
+                return
             if now - self.started >= STABLE_S:
                 self.pause = MIN_PAUSE_S
             self.output(self.name, f"зупинився (код {code}); перезапуск через {self.pause:.0f} с")
@@ -154,11 +162,12 @@ class Child:
         """Навмисний перезапуск: без паузи й без зростання затримки."""
         self.terminate()
         self.finish(time.monotonic() + GRACE_S + 3)
-        self.pause, self.next_start = MIN_PAUSE_S, 0.0
+        self.pause, self.next_start, self.blocked = MIN_PAUSE_S, 0.0, False
 
     def state(self):
         alive = self.process is not None and self.process.poll() is None
-        return {"alive": alive, "pid": self.process.pid if alive else None, "restarts": max(self.restarts, 0)}
+        return {"alive": alive, "pid": self.process.pid if alive else None, "restarts": max(self.restarts, 0),
+                **({"blocked": True} if self.blocked else {})}
 
 
 def supervise(children, stop, interval=0.5, on_tick=lambda: None):
@@ -197,7 +206,7 @@ def show_status(control):
         return 3
     print(f"r345 працює: профіль {data['profile']}, PID {data['pid']}")
     for name, item in data["processes"].items():
-        print(f"  {name}: {'працює' if item['alive'] else 'не працює'}, перезапусків {item['restarts']}")
+        print(f"  {name}: {'працює' if item['alive'] else 'зайнято на іншому пристрої' if item.get('blocked') else 'не працює'}, перезапусків {item['restarts']}")
     return 0 if all(p["alive"] for p in data["processes"].values()) else 1
 
 

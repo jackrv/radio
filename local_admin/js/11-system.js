@@ -148,11 +148,39 @@
     $("audio-devices-result").replaceChildren(line);
   }));
 
+  // ---------- Пристрої: Mac і Pi (лише перегляд) ----------
+  const PROCESS_NAMES = { node: "Ефір", asr: "Розпізнавання й бот", panel: "Панель", api: "API Mini App", tunnel: "Тунель Mini App", worker: "Whisper" };
+  const HOME_TEXT = { mac: "База й бот працюють на Mac.", pi: "База й бот працюють на Pi.", both: "Бот працює і на Mac, і на Pi: зупиніть один, інакше дані розійдуться.", unknown: "Pi не видно: невідомо, чи працює там бот." };
+  function deviceCard(box, device, extra) {
+    if (!device) { box.replaceChildren(el("p", "muted small", "Не налаштовано: RADIO345_PI_SSH у .env на Mac.")); return; }
+    if (!device.reachable) { box.replaceChildren(el("p", "alert small", device.error || "Недоступно")); return; }
+    const rows = Object.entries(device.processes).map(([name, p]) => [PROCESS_NAMES[name] || name,
+      (p.alive ? "працює" : p.blocked ? "зупинено: зайнято на іншому пристрої" : "зупинено") + (p.restarts ? ` · перезапусків ${num(p.restarts)}` : ""), p.alive ? "good" : ""]);
+    if (!rows.length) rows.push(["Служби", "не запущено", ""]);
+    rows.push(["Подій у базі", device.events == null ? "—" : num(device.events)],
+      ["Остання подія", device.last_event ? ago(now() - device.last_event) : "—"], ["Фраз у черзі", num(device.queue)],
+      ["Вільно на диску", storageSize(device.disk_free)], ...extra);
+    box.replaceChildren(kv(rows));
+  }
+  async function devices() {
+    let d;
+    try { d = await request("/api/devices"); } catch (_) { return; }
+    if (!d.mac) { $("devices-panel").hidden = true; return; }
+    $("devices-panel").hidden = false;
+    $("devices-home").textContent = HOME_TEXT[d.home] || "База й бот ніде не працюють.";
+    $("devices-home").classList.toggle("alert", d.home === "both" || d.home === "unknown");
+    deviceCard($("device-mac"), d.mac, d.mac.model ? [["Модель Whisper", d.mac.model]] : []);
+    deviceCard($("device-pi"), d.pi, d.pi?.reachable ? [["Температура", d.pi.temp_c == null ? "—" : `${fix(d.pi.temp_c, 1)} °C`],
+      ["Код", d.code_matches ? "як на Mac" : "відрізняється від Mac", d.code_matches ? "good" : "alert"]] : []);
+  }
+  $("devices-refresh")?.addEventListener?.("click", () => action(devices));
+
   async function system() {
     if (!backupTask) backupJob().resume();
     if (!data) await overview();
     const d = data.diagnostics || {}, c = d.counters || {}, g = d.gauges || {};
     await launcherState();
+    if (view === "system") devices();   // не чекаємо: Pi може відповідати до 12 с
     const alive = value => value === false ? ["зупинено", "alert"] : value === true ? ["працює", "good"] : ["—", ""];
     const fresh = d.updated_at && now() - d.updated_at < 120;
     const [asr, asrTone] = fresh ? alive(g["workers.transcriber_alive"]) : ["немає свіжих даних", ""];

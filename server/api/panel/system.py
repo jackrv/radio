@@ -39,6 +39,15 @@ def register(app, ctx):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 
+    import sys
+    from server import devices
+    device_state = devices.Devices(db_path, host=devices.pi_host()) if sys.platform == "darwin" else None
+
+    @app.get("/api/devices")
+    def device_list(admin=Depends(actor)):
+        """Mac і Pi: служби, база, код. Лише на Mac: з Pi на Mac доступу немає."""
+        return device_state.read() if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
+
     @app.get("/api/storage")
     def storage(admin=Depends(actor)):
         from server.storage_status import storage_status

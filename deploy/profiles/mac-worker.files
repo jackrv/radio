@@ -10,6 +10,7 @@
 /shared/__init__.py
 /shared/asr_protocol.py
 /shared/audio_devices.py
+/shared/conflict.py
 /shared/default_text_lists.txt
 /shared/diagnostic_history.py
 /shared/diagnostics.py

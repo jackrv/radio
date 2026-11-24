@@ -1775,7 +1775,7 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
 .flow-legend span::before { content: "● "; }
 @media (prefers-reduced-motion: reduce) { .flow-edge.on { animation: none; } }
 .flow-scroll { overflow-x: auto; }
-@media (max-width: 800px) { .flow { width: 760px; max-width: none; max-height: none; } }
+@media (min-width: 701px) and (max-width: 800px) { .flow { width: 760px; max-width: none; max-height: none; } }
 
 /* ===== Телефон: меню внизу під пальцем, шапка в один рядок, вкладки стрічкою ===== */
 @media (max-width: 700px) {
@@ -1844,8 +1844,7 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
   .service-row { min-height: 42px; }
   .icon-button { width: 40px; height: 40px; }
   .service-buttons { min-width: 84px; }
-  .sys-row, .kv > * { overflow-wrap: anywhere; }
-  .flow { width: 680px; }
+  .sys-row { overflow-wrap: anywhere; }
 }
 /* Телефон: лише щоденне. Решта — на комп’ютері; прямі посилання й плитки ведуть і сюди. */
 @media (max-width: 700px) {
@@ -1857,4 +1856,19 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
   #nav { gap: 0; }
   #nav .nav-label { display: block; opacity: 1; font-size: 10px; letter-spacing: -.03em; max-width: none; overflow: visible; }
   #nav button > b { top: 0; right: 10px; }
+}
+@media (max-width: 700px) {
+  .flow { max-height: none; }
+  .flow .flow-sub { font-size: 14px; }
+  /* Довідкові абзаци — на комп’ютері. */
+  .panel-head + p.muted.small, .panel-head + p.muted.small + p.muted.small, #storage-status p.small.muted,
+  [data-panel="codes"] h2 + p.muted.small, [data-panel="mentions"] > p.muted { display: none; }
+  .archive-filters #recording-refresh:not(.fresh) { display: none; }
+  .panel-head input, .panel-head select, .toolbar select { max-width: 100%; min-width: 0; }
+  #learning-filter { flex: 1 0 100%; width: 100%; }
+  /* Таблиці з довгим текстом — картками. */
+  :is(#learning-items, #activity-items), :is(#learning-items, #activity-items) :is(tbody, tr, td) { display: block; width: 100%; }
+  :is(#learning-items, #activity-items) tr:has(> th) { display: none; }
+  :is(#learning-items, #activity-items) tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .table-wrap :is(#learning-items, #activity-items) td, .table-wrap :is(#learning-items, #activity-items) td:first-child { position: static; padding: 2px 0; border: 0; white-space: normal; overflow-wrap: break-word; }
 }

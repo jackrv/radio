@@ -92,7 +92,31 @@
     if ($("flow-status").textContent !== status) $("flow-status").textContent = status;
     $("flow-status").classList.toggle("good", m.live);
   }
+  // Телефон: та сама схема стовпчиком. Safari не вміє `d` у CSS, тож міняємо атрибути.
+  const FLOW_PHONE = { box: "0 0 465 575", home: { x: 255, y: 115, width: 200, height: 400 }, title: { x: 270, y: 138 },
+    move: { radio: [0, -55], level: [0, -55], node: [60, -55], asr: [-135, 80], db: [-308, 215], whisper: [-375, 262],
+      telegram: [-780, 290], panel: [-780, 278], iphone: [60, -357] },
+    edges: { air: "M150 175H285", tx: "M285 200H150", segment: "M355 225V285", whisper: "M270 322H220", db: "M355 360V420",
+      telegram: "M307 445L160 437", panel: "M307 470L160 520", listen: "M345 150V69", talk: "M375 69V150" } };
+  let flowWide = null;
+  function flowLayout(phone) {
+    const scheme = document.querySelector("svg.flow"), home = document.querySelector(".flow-home"), title = $("flow-home-title");
+    const set = (node, values) => { for (const [k, v] of Object.entries(values)) node.setAttribute(k, v); };
+    const get = (node, keys) => Object.fromEntries(keys.map(k => [k, node.getAttribute(k)]));
+    flowWide ||= { box: scheme.getAttribute("viewBox"), home: get(home, ["x", "y", "width", "height"]), title: get(title, ["x", "y"]),
+      edges: Object.fromEntries(Object.keys(FLOW_PHONE.edges).map(k => [k, $(`flow-edge-${k}`).getAttribute("d")])) };
+    const layout = phone ? FLOW_PHONE : flowWide;
+    scheme.setAttribute("viewBox", layout.box); set(home, layout.home); set(title, layout.title);
+    for (const [k, d] of Object.entries(layout.edges)) $(`flow-edge-${k}`).setAttribute("d", d);
+    for (const [k, [x, y]] of Object.entries(FLOW_PHONE.move)) $(`flow-${k}`).setAttribute("transform", phone ? `translate(${x} ${y})` : "");
+  }
+  let flowPhone = null;
+  function flowFit() {
+    const phone = matchMedia("(max-width: 700px)").matches;
+    if (phone !== flowPhone) { flowPhone = phone; flowLayout(phone); }
+  }
   async function flowView() {
+    flowFit();
     clearTimeout(flowTimer);
     if (flowBusy) return;
     flowBusy = true;

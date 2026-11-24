@@ -12,10 +12,8 @@ Pi — дім системи: ефір і передача для iPhone, роз
 
 ## Система
 
-**Raspberry Pi OS Lite (64-bit) на Debian 13 Trixie** — без робочого столу.
-Без PipeWire/PulseAudio звук іде напряму через ALSA, ніхто не перехоплює USB-карту.
-Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої Bookworm numpy з
-`deploy/requirements/pi.txt` може не встановитися.
+**Raspberry Pi OS Lite (64-bit) на Debian 13 Trixie** — без робочого столу: звук напряму через ALSA, без PipeWire/PulseAudio.
+Python 3.13, libgpiod 2; на Bookworm (3.11) numpy з `deploy/requirements/pi.txt` може не встановитися.
 
 Монітор не потрібен. У Raspberry Pi Imager перед записом карти («Edit settings»):
 
@@ -36,10 +34,8 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
 
 Для роботи цілодобово (стан на Trixie, перевірено 22.11.2026):
 
-- журнал уже в пам’яті за замовчуванням (`journalctl --header` → `/run/log/journal`),
-  log2ram не потрібен;
-- апаратний watchdog уже ввімкнено: `systemctl show -p RuntimeWatchdogUSec` → `1min`.
-  Система, що зависла, перезавантажиться сама;
+- журнал уже в пам’яті (`/run/log/journal`), log2ram не потрібен;
+- апаратний watchdog уже ввімкнено: `systemctl show -p RuntimeWatchdogUSec` → `1min`;
 - `sudo apt full-upgrade` після встановлення й `sudo apt install unattended-upgrades`
   (типово — лише оновлення безпеки);
 - підкачка лише в пам’яті (zram), без файла `/var/swap` на карті (на 8 ГБ звільняє 2 ГБ):
@@ -48,8 +44,7 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
   `sudo rm -f /var/swap`;
 - `swapon`, `losetup`, `iw` лежать у `/usr/sbin`: без sudo — повний шлях;
 - батарейка RTC (ML2032), щоб після ввімкнення без мережі був правильний час;
-- overlay FS (лише читання) — пізніше, після налагодження: захищає карту від
-  раптового вимкнення живлення, але заважає оновленням.
+- overlay FS (лише читання) — пізніше: береже карту від вимкнення живлення, але заважає оновленням.
 
 ## Встановлення й оновлення
 
@@ -74,18 +69,12 @@ sudo sh deploy/hub/install.sh            # і після оновлення ко
 `.env` на Pi: `RADIO_ASR_URL` (вузол Whisper на Mac), `RADIO_INPUT_DEVICE=USB`, `RADIO_PTT`, токен бота. Бот має працювати
 лише на одному пристрої. Бази з Mac — `deploy/hub/import.sh`.
 Стан: `systemctl is-active radio345-node radio345-panel radio345-asr`, журнал: `journalctl -u radio345-asr -f`.
-Pi пускає лише пристрої вашого облікового запису Tailscale (не ставте Pi тег).
-У застосунку: Налаштування → «Pi», адреса — ім'я Pi в Tailscale (напр. `radio345`).
+Доступ і Tailscale (не ставте Pi тег) — [безпека](iphone-radio.md#безпека).
 
 ## Перевірено на Pi
 
-22.11.2026, Pi 5 4 ГБ, без USB-карти — через віртуальну `snd-aloop` і 25 хв ефіру з архіву
-([звіт](reports/2026-11-22-pi-node-load.md)):
-
-- навантаження: вузол ~0,9 % одного ядра й 45 МБ, три ffmpeg разом ~1,5 %; 61 °C після хвилини
-  `stress-ng` на 4 ядрах, без троттлінгу;
-- захоплення на Linux іде зі змінним блоком і нарізається на кадри в Python: фіксований блок
-  PortAudio/ALSA втрачав ~60 % звуку (`input overflow`, ривки на iPhone).
+22.11.2026, без USB-карти, через `snd-aloop`: навантаження мале, без троттлінгу; на Linux — лише змінний блок
+захоплення, бо фіксований втрачав ~60 % звуку ([звіт](reports/2026-11-22-pi-asr-bench.md)).
 
 Пробний ефір без карти: `sudo modprobe snd-aloop`, у `.env` `RADIO_INPUT_DEVICE=hw:2,1`
 (номер — з `shared.audio_devices`), перезапуск служби, `aplay -D plughw:2,0 запис.wav`.

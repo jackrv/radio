@@ -93,6 +93,7 @@ def test_stop_uses_the_code_without_restart():
 def test_r345_does_not_restart_blocked_service_until_asked(monkeypatch):
     lines, started = [], []
     child = radio345.Child("asr", ("-c", ""), {}, lambda n, line: lines.append(line))
+    monkeypatch.setattr(radio345.home_marker, "foreign", lambda root: None)   # не позначка цього Mac
     child.process = SimpleNamespace(poll=lambda: c.EXIT, pid=10 ** 9)
     monkeypatch.setattr(child, "_start", lambda now: started.append(now))
     monkeypatch.setattr(child, "_reap", lambda: None)

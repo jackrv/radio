@@ -11,7 +11,9 @@
 """
 
 import os
+import re
 import sys
+from pathlib import Path
 
 
 class DeviceNotFound(RuntimeError):
@@ -142,7 +144,35 @@ def list_devices():
         for kind, key, default in (("inputs", "max_input_channels", default_in), ("outputs", "max_output_channels", default_out)):
             if d[key]:
                 result[kind].append({"name": d["name"], "channels": int(d[key]), "default": i == default})
+    if sys.platform.startswith("linux"):
+        add_busy(result)
     return result
+
+
+def add_busy(result, proc="/proc/asound"):
+    """PortAudio/ALSA не бачить зайняту карту (її тримає сам ефір): дописуємо такі з /proc під тією ж назвою."""
+    root = Path(proc)
+    try:
+        cards = dict(re.findall(r"^\s*(\d+) \[[^\]]*\]: \S+ - (.+?)\s*$", (root / "cards").read_text(), re.M))
+        lines = (root / "pcm").read_text().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        head, *parts = [p.strip() for p in line.split(":")]
+        match = re.fullmatch(r"(\d+)-(\d+)", head)
+        if not match or not parts:
+            continue
+        card, device = int(match[1]), int(match[2])
+        for kind, word, letter in (("inputs", "capture", "c"), ("outputs", "playback", "p")):
+            if not any(p.startswith(word) for p in parts):
+                continue
+            try:
+                subs = [f.read_text().strip() for f in root.glob(f"card{card}/pcm{device}{letter}/sub*/status")]
+            except OSError:
+                continue
+            name = f"{cards.get(str(card), f'card {card}')}: {parts[0]} (hw:{card},{device})"
+            if any(s and s != "closed" for s in subs) and all(f"(hw:{card},{device})" not in x["name"] for x in result[kind]):
+                result[kind].append({"name": name, "channels": None, "default": False, "busy": True})
 
 
 if __name__ == "__main__":

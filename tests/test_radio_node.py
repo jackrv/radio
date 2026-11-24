@@ -165,3 +165,19 @@ def test_radio_node_wires_stream_and_forwards_segments():
     none, _ = radio_node.build_node(cfg, logging.getLogger("test"), stream_starter=lambda c, l, **kw: None,
                                     supervisor_cls=FakeSupervisor)
     assert none is None
+
+
+def test_busy_card_hidden_by_portaudio_is_listed(tmp_path):
+    (tmp_path / "cards").write_text(" 0 [CAM            ]: USB-Audio - Test Card\n                      Test Card at usb\n")
+    (tmp_path / "pcm").write_text("00-00: USB Audio : USB Audio : capture 1\n01-00: HDMI : HDMI : playback 1\n")
+    status = tmp_path / "card0/pcm0c/sub0/status"
+    status.parent.mkdir(parents=True)
+    status.write_text("state: RUNNING\n")
+    found = {"inputs": [], "outputs": []}
+    ad.add_busy(found, tmp_path)
+    ad.add_busy(found, tmp_path)   # без дублів
+    assert [d["name"] for d in found["inputs"]] == ["Test Card: USB Audio (hw:0,0)"] and found["outputs"] == []
+    status.write_text("closed\n")
+    free = {"inputs": [], "outputs": []}
+    ad.add_busy(free, tmp_path)
+    assert free["inputs"] == []

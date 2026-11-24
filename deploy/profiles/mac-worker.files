@@ -9,6 +9,7 @@
 /radio345.py
 /server/__init__.py
 /server/devices.py
+/server/home_move.py
 /server/mac_update.py
 /server/pi_update.py
 /shared/__init__.py

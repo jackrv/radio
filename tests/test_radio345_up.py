@@ -279,7 +279,7 @@ def test_plain_up_uses_env_choice_and_respects_home(tmp_path):
     assert set(radio345.default_processes(profile, tmp_path, chosen)) == {"worker", "node", "asr", "panel", "api", "tunnel"}
     other = "pi" if home_marker.this_device() == "mac" else "mac"
     home_marker.write(tmp_path, other, 1)
-    assert set(radio345.default_processes(profile, tmp_path, chosen)) == {"worker", "panel"}
+    assert set(radio345.default_processes(profile, tmp_path, chosen)) == {"worker"}
     home_marker.write(tmp_path, home_marker.this_device(), 2)
     assert "asr" in radio345.default_processes(profile, tmp_path, chosen)
     with pytest.raises(SystemExit):
@@ -401,3 +401,53 @@ def test_named_sets_expand_and_unknown_name_lists_them():
         assert "panel" in radio345.selected(profile, [name])
     with pytest.raises(SystemExit, match="whisper"):
         radio345.selected(profile, ["невідомий"])
+
+
+class FakeHome:
+    def __init__(self, marker="mac", problems=(), phase="done"):
+        self.marker, self.problems, self.phase, self.calls, self.moving = marker, list(problems), phase, [], False
+
+    def read(self):   # водночас стан пристроїв і перенесення
+        if self.moving:
+            self.moving = False
+            return {"phase": "copying", "active": True}
+        return {"marker": self.marker, "home": None, "mode": "mac", "pi": None, "phase": self.phase, "active": False,
+                "interrupted": False, "target": "pi", "error": "синтетичний збій"}
+
+    def apply_mode(self, mode):
+        self.calls.append(mode)
+
+    def check(self, target):
+        return {"problems": self.problems, "warnings": ["увага"]}
+
+    def start(self, target, accept):
+        self.calls.append(("move", target))
+        self.moving = True
+
+
+@pytest.mark.parametrize("target,answer,fake,code,calls", [
+    (None, "", FakeHome(), 0, []),
+    ("pi", "y", FakeHome(), 0, [("move", "pi")]),
+    ("pi", "", FakeHome(), 1, []),
+    ("pi", "y", FakeHome(problems=["ні"]), 1, []),
+    ("pi", "y", FakeHome(phase="rolled_back"), 1, [("move", "pi")]),
+    ("pi", "y", FakeHome(marker="pi"), 0, ["pi"]),
+    ("off", "y", FakeHome(), 0, ["off"]),
+    ("off", "", FakeHome(), 1, [])])
+def test_home_command_moves_only_after_yes(monkeypatch, tmp_path, target, answer, fake, code, calls):
+    monkeypatch.setattr(radio345, "ROOT", tmp_path)
+    assert radio345.home(target, state=fake, mover=fake, ask=lambda text: answer, sleep=lambda s: None) == code
+    assert fake.calls == calls
+
+
+def test_pi_backups_run_without_mac_panel(monkeypatch):
+    from types import SimpleNamespace
+    made, lines = [], []
+    daily = lambda root, host: (made.append(host), SimpleNamespace(start=lambda: "started"))[1]
+    monkeypatch.setattr(radio345, "base_environment", lambda *a: {"RADIO345_PI_SSH": "u@pi"})
+    assert radio345.start_pi_backups(lambda *a: lines.append(a), daily, "darwin") == "started" and made == ["u@pi"]
+    assert radio345.start_pi_backups(lambda *a: lines.append(a), daily, "linux") is None and len(made) == 1
+
+    def broken(root, host):
+        raise RuntimeError
+    assert radio345.start_pi_backups(lambda *a: lines.append(a), broken, "darwin") is None and lines

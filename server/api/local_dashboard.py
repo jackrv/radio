@@ -100,6 +100,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/receiver-pause"), "Пауза приймача"),
         (re.compile(r"/api/launcher/([a-z-]+)"), "Служби: {0}"),
         (re.compile(r"/api/home-move(/rollback)?"), "Перенесення дому"),
+        (re.compile(r"/api/devices-mode/([a-z]+)"), "Режим роботи: {0}"),
         (re.compile(r"/api/devices/(mac|pi)/([a-z]+)/([a-z]+)"), "Пристрій {0}: {1} — {2}"),
     )
 
@@ -142,7 +143,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         if not public and not matches(request.cookies.get(cookie,""),session):
             return Response(status_code=401)
         if (request.method not in ("GET","HEAD") and request.url.path.startswith("/api/")
-                and not re.match(r"/api/(devices|home-move|launcher)(/|$)", request.url.path)
+                and not re.match(r"/api/(devices|devices-mode|home-move|launcher)(/|$)", request.url.path)
                 and home_marker.foreign(root_of(db_path))):
             return Response('{"detail":"Дім на іншому пристрої: дані змінюйте там"}',status_code=409,media_type="application/json")
         activity_payload=None
@@ -324,11 +325,6 @@ def main(argv=None):
     if args.open:
         open_when_ready(url)
     app = create_dashboard(config.DB_PATH,capability,recordings_dir=config.RECORDINGS_DIR,bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or "local-preview",suggestions=True,hosts=hosts,client_ok=client_ok)
-    if sys.platform == "darwin":
-        from server import devices
-        from shared import pull_backup
-        from shared.paths import root_of
-        pull_backup.Daily(root_of(config.DB_PATH), devices.pi_host()).start()
     uvicorn.run(app,host=hosts[0] if hosts else "127.0.0.1",port=PORT,access_log=False,proxy_headers=False)
     return 0
 

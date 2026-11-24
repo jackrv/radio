@@ -324,3 +324,21 @@ def test_stopped_home_moves_by_marker_and_starts_model(world):
     assert not result["problems"] and any("3 нерозпізнаних" in w for w in result["warnings"])
     assert run(world, "pi")["phase"] == "done"
     assert value(world.pi_root) == ["mac"] and {"asr", "api", "node"} <= world.pi.alive and "worker" in world.mac.alive
+
+
+def test_move_in_another_process_is_active_not_interrupted(world):
+    import os
+    import time
+    world.move.current = {"target": "pi", "source": "mac", "running": []}
+    world.move._save(phase="copying")
+    assert world.move.read()["interrupted"], "той самий процес без потоку"
+
+    def as_other(pid, at):
+        world.move.state_path.write_text(json.dumps({**world.move.current, "pid": pid, "at": at}))
+        return world.move.read()
+    other = as_other(os.getppid(), time.time())
+    assert other["active"] and not other["interrupted"]
+    with pytest.raises(hm.MoveError, match="вже триває"):
+        world.move.start("pi", True)
+    assert as_other(os.getppid(), time.time() - 10 ** 4)["interrupted"]
+    assert as_other(2 ** 30, time.time())["interrupted"]

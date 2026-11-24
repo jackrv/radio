@@ -538,7 +538,7 @@ def test_service_buttons_work_only_under_r345(setup, tmp_path, monkeypatch):
         assert client.post("/api/launcher/stop", headers=h).json() == {"sent": "stop"} and stopped == [1]
 
 
-def test_panel_is_read_only_when_home_is_elsewhere(local):
+def test_panel_is_read_only_when_home_is_elsewhere(local, monkeypatch):
     from shared import home_marker
     client, path, _ = local
     h = {"Origin": ORIGIN}
@@ -548,6 +548,9 @@ def test_panel_is_read_only_when_home_is_elsewhere(local):
     assert denied.status_code == 409 and "іншому пристрої" in denied.json()["detail"]
     assert client.get("/api/receiver-pause").status_code == 200
     assert client.post("/api/home-move/rollback", headers=h).json()["detail"] != denied.json()["detail"], "керування доступне"
+    monkeypatch.setattr("server.devices.Devices.apply_mode", lambda self, mode: None)
+    mode = client.post("/api/devices-mode/off", headers=h)
+    assert mode.status_code == 200 or "іншому пристрої" not in mode.json()["detail"], "режим — теж"
     home_marker.write(path.parent, home_marker.this_device(), 2)
     assert client.put("/api/receiver-pause", json={"minutes": 5}, headers=h).status_code != 409
     assert home_marker.foreign(path.parent) is None

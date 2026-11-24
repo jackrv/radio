@@ -208,3 +208,37 @@ def mode_state(monkeypatch, tmp_path, marker, mac, pi):
 
 def recorder(calls):
     return (lambda host, p, verb: calls.append(f"pi {p} {verb}"), lambda p, verb, root: calls.append(f"mac {p} {verb}"))
+
+
+def test_pi_panel_controls_only_its_own_services(tmp_path):
+    run = ssh()
+    pi = d.ThisPi(tmp_path, run=run)
+    pi.act("pi", "asr", "stop")
+    pi.act("pi", "panel", "restart")
+    assert run.seen == [["systemctl", "--no-ask-password", "stop", "radio345-asr"],
+                        ["systemctl", "--no-block", "--no-ask-password", "restart", "radio345-panel"]]
+    for device, process, verb in (("mac", "asr", "stop"), ("pi", "ssh", "stop"), ("pi", "asr", "mask"), ("pi", "panel", "stop")):
+        with pytest.raises(d.Refused):
+            pi.act(device, process, verb)
+    assert len(run.seen) == 2
+    with pytest.raises(d.Refused, match="control.sh"):
+        d.ThisPi(tmp_path, run=ssh(1, "Interactive authentication required.")).act("pi", "asr", "stop")
+    with pytest.raises(d.Refused):
+        pi.audio("mac")
+
+
+def test_pi_panel_reads_its_own_state(tmp_path):
+    from shared import home_marker
+    home_marker.write(tmp_path, "pi", 1)
+    answer = SimpleNamespace(returncode=0, stdout='{"processes": {"asr": {"alive": true}}}\n', stderr="")
+    data = d.ThisPi(tmp_path, run=lambda *a, **k: answer).read()
+    assert data["self"] == "pi" and data["mac"] is None and data["home"] == data["mode"] == "pi" and "asr" in data["needed"]["pi"]
+    broken = d.ThisPi(tmp_path, run=lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="")).read()
+    assert broken["pi"]["reachable"] is False
+
+
+def test_polkit_rule_is_narrow():
+    script = (d.ROOT / "deploy/hub/control.sh").read_text(encoding="utf-8")
+    rule = script.split("<<RULE")[1].split("RULE")[0]
+    assert "manage-units" in rule and "manage-unit-files" not in rule and '["start", "stop", "restart"]' in rule
+    assert '"' + '", "'.join(d.PI_CONTROLLED) + '"' in rule

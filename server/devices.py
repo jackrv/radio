@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -222,6 +223,64 @@ def mode_of(devices, marker):
     if not core(devices["mac"]) and (pi is None or pi.get("reachable") and not core(pi)):
         return "off"
     return home if home in ("mac", "pi") else None
+
+
+class ThisPi:
+    """Панель на самій Pi: лише її служби й звук. Права — вузьке правило polkit (deploy/hub/control.sh), не sudo."""
+
+    def __init__(self, root, run=subprocess.run, clock=time.monotonic):
+        self.root, self.run, self.clock = Path(root), run, clock
+        self.lock, self._at, self._data = threading.Lock(), float("-inf"), None
+
+    def _state(self):
+        folder = os.path.relpath(self.root, Path.home())
+        try:
+            done = self.run([sys.executable, "-I", "-", folder, ",".join(UNITS)], input=REMOTE, capture_output=True, text=True,
+                            timeout=SSH_TIMEOUT_S)
+            return {"reachable": True, **json.loads(done.stdout.strip().splitlines()[-1])}
+        except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
+            return {"reachable": False, "error": "Не вдалося прочитати стан служб"}
+
+    def read(self):
+        with self.lock:
+            if self._data is None or self.clock() - self._at >= FRESH_S:
+                found = {"mac": {"processes": {}}, "pi": self._state()}
+                marker = home_marker.read(self.root)
+                mode = mode_of(found, marker)
+                self._data = {"mac": None, "pi": found["pi"], "self": "pi", "configured": False, "home": home_of(found),
+                              "marker": marker and marker["home"], "mode": mode, "needed": MODES.get(mode),
+                              "code_matches": None, "at": time.time()}
+                self._at = self.clock()
+            return self._data
+
+    def act(self, device, process, verb):
+        if device != "pi" or process not in PI_CONTROLLED or verb not in SYSTEMCTL or (process, verb) == ("panel", "stop"):
+            raise Refused("Ця панель керує лише службами Pi")
+        command = ["systemctl", "--no-ask-password", verb, f"radio345-{process}"]
+        if process == "panel":
+            command.insert(1, "--no-block")   # перезапускаємо себе
+        try:
+            done = self.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+        except (OSError, subprocess.TimeoutExpired):
+            raise Refused("Служба не відповіла вчасно; перевірте стан") from None
+        finally:
+            with self.lock:
+                self._at = float("-inf")
+        if done.returncode:
+            denied = any(w in (done.stderr or "").lower() for w in ("authentication", "access denied", "not authorized", "permission"))
+            raise Refused("Немає дозволу: на Pi один раз sudo sh deploy/hub/control.sh" if denied else "Дію не виконано; перевірте стан")
+
+    def audio(self, device):
+        from shared import audio_choice
+        if device != "pi":
+            raise Refused("Ця панель керує лише звуком Pi")
+        return audio_choice.listing(self.root)
+
+    def save_audio(self, device, values, revision):
+        from shared import audio_choice
+        if device != "pi":
+            raise Refused("Ця панель керує лише звуком Pi")
+        return audio_choice.write(self.root, values, revision)
 
 
 class Devices:

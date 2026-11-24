@@ -145,9 +145,9 @@
   function serviceRow(name, process, p, d) {
     const row = el("div", "service-row"), buttons = el("span", "service-buttons");
     const state = serviceNeed(name, process, p, d);
-    if (CONTROLLED[name].includes(process) && (name === "pi" || serviceMode === "r345")) for (const verb of p.alive ? ["restart", "stop"] : ["start"]) {
+    if (CONTROLLED[name].includes(process) && (name === "pi" || serviceMode === "r345")) for (const verb of p.alive ? (d.self === "pi" && process === "panel" ? ["restart"] : ["restart", "stop"]) : ["start"]) {
       const b = el("button", "ghost icon-button", VERB_ICON[verb]); b.type = "button";
-      b.title = VERB_TEXT[verb]; b.setAttribute("aria-label", `${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}`);
+      b.title = VERB_TEXT[verb] + (d.self === "pi" && verb === "stop" ? " (до перезавантаження Pi)" : ""); b.setAttribute("aria-label", `${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}`);
       const run = async () => {
         b.disabled = true;
         await request(`/api/devices/${name}/${process}/${verb}`, "POST");
@@ -316,6 +316,11 @@
   async function devices() {
     let d;
     try { d = await request("/api/devices"); } catch (_) { return; }
+    if (d.self === "pi") {   // панель на самій Pi: свої служби й звук
+      $("device-mac").hidden = true;
+      deviceCard("pi", $("device-pi"), d, false);
+      return;
+    }
     if (!d.mac) { $("device-mac").replaceChildren(el("p", "muted small", "Керування пристроями — у панелі на Mac.")); return; }
     const moving = await moveState().catch(() => false);
     macUpdate = await request("/api/devices/mac/update").catch(() => macUpdate);

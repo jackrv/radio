@@ -77,9 +77,9 @@ def selected(profile, only=()):
 
 
 def default_processes(profile, root=None, environ=None):
-    """`up` без параметрів: RADIO345_ONLY з .env. Дім на іншому пристрої — лише модель і панель (решту не пустить conflict)."""
+    """`up` без параметрів: RADIO345_ONLY з .env. Дім на іншому пристрої — лише модель (решту не пустить conflict)."""
     if home_marker.foreign(root or ROOT):
-        away = [p for p in ("worker", "panel") if p in profile["processes"]]
+        away = [p for p in ("worker",) if p in profile["processes"]]
         if away:
             return selected(profile, away)
     wanted = (base_environment({}) if environ is None else environ).get("RADIO345_ONLY", "").split()
@@ -492,6 +492,122 @@ def update_pi(updater=None):
     return 0
 
 
+def start_pi_backups(output, daily=None, platform=None):
+    """Mac: копія баз Pi раз на добу, доки дім на Pi. Веде сам r345: панель Mac для цього не потрібна."""
+    if (platform or sys.platform) != "darwin":
+        return None
+    try:
+        from server import devices
+        from shared import pull_backup
+        host = devices.pi_host(base_environment({}))
+        return (daily or pull_backup.Daily)(ROOT, host).start() if host else None
+    except Exception as exc:   # копії не мають завадити запуску служб
+        output("копії Pi", f"не запущено: {type(exc).__name__}")
+        return None
+
+
+MOVE_STEPS = {"checking": "перевіряю", "stopping": "зупиняю служби", "copying": "копіюю базу", "installing": "записую базу",
+              "starting": "запускаю служби", "rolling_back": "повертаю, як було"}
+
+
+def follow_move(mover, sleep=time.sleep):
+    """Кроки перенесення до кінця; Ctrl+C його не перериває."""
+    shown = None
+    while True:
+        try:
+            data = mover.read()
+            if data["phase"] != shown and data.get("active"):
+                shown = data["phase"]
+                print(f"  {MOVE_STEPS.get(shown, shown)}", flush=True)
+            if not data.get("active"):
+                return data
+            sleep(0.5)
+        except KeyboardInterrupt:
+            print("  перенесення триває, дочекайтеся кінця", flush=True)
+
+
+def home(target=None, yes=False, state=None, mover=None, ask=input, sleep=time.sleep):
+    """Де працює система: показати, перенести дім або вимкнути все. Та сама логіка, що в панелі."""
+    if sys.platform != "darwin" and state is None:
+        print("Дім переносять з Mac: ./r345 home там")
+        return 1
+    from server import devices, home_move
+    Busy, exclusive = home_move.Busy, home_move.exclusive
+    names = {"pi": "Pi", "mac": "Mac"}
+    if state is None:
+        import config
+        host = devices.pi_host(base_environment({}))
+        state = devices.Devices(config.DB_PATH, ROOT, host=host)
+        mover = home_move.HomeMove(ROOT, home_move.MacSide(ROOT), home_move.PiSide(host, ROOT) if host else None)
+    now = state.read()
+    current = now["marker"] or now["home"]
+    move = mover.read()
+    if target is None:
+        print(f"Дім: {names.get(current, 'невідомо')}" + (" (усе зупинено)" if now["mode"] == "off" else ""))
+        pi = now.get("pi")
+        if pi is not None and not pi.get("reachable"):
+            print(f"Pi: {pi.get('error', 'недоступна')}")
+        if move.get("active"):
+            print("Триває перенесення")
+        elif move.get("interrupted"):
+            print("Є перерване перенесення: ./r345 home rollback")
+        print("Змінити: ./r345 home pi | mac | off")
+        return 0
+
+    def sure(text):
+        if yes:
+            return True
+        try:
+            return ask(f"{text} [y/N] ").strip().lower() in ("y", "yes", "т", "так")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+    try:
+        if target == "rollback":
+            if not sure("Повернути, як було до перерваного перенесення?"):
+                return 1
+            mover.rollback()
+            return finish_move(follow_move(mover, sleep))
+        if move.get("active") or move.get("interrupted"):
+            print("Триває перенесення" if move.get("active") else "Є перерване перенесення: ./r345 home rollback")
+            return 1
+        if target == "off" or current == target:
+            if target == "off" and not sure("Зупинити ефір, бота й розпізнавання на обох пристроях?"):
+                return 1
+            with exclusive(ROOT):
+                note = state.apply_mode(target)
+            print("Вимкнено" if target == "off" else f"Дім: {names[target]}; потрібне увімкнено, зайве зупинено")
+            if note:
+                print(note)
+        else:
+            check = mover.check(target)
+            if check["problems"]:
+                print("Не перенесено: " + "; ".join(check["problems"]))
+                return 1
+            for warning in check["warnings"]:
+                print(f"  ! {warning}")
+            if not sure(f"Перенести дім на {names[target]}? Бот, Mini App і ефір кілька хвилин не працюватимуть."):
+                return 1
+            mover.start(target, True)
+            code = finish_move(follow_move(mover, sleep))
+            if code:
+                return code
+        if target == "mac":   # на домі потрібна панель
+            Control().request("start", ["panel"])
+        return 0
+    except (Busy, devices.Refused, home_move.MoveError) as exc:
+        print(f"Не виконано: {exc}")
+        return 1
+
+
+def finish_move(data):
+    if data["phase"] == "done":
+        print(f"Готово, дім: {'Pi' if data['target'] == 'pi' else 'Mac'}")
+        return 0
+    print(("Усе повернуто, як було. " if data["phase"] == "rolled_back" else "Перевірте пристрої (./r345 doctor). ") + (data.get("error") or ""))
+    return 1
+
+
 HELP = """Radio 345
 
 Щодня
@@ -500,6 +616,11 @@ HELP = """Radio 345
   ./r345 status             що працює
   ./r345 restart [служба]   перезапустити: worker, node, asr, api, panel, tunnel
   ./r345 doctor             перевірити все: служби, база, Pi, підпис iPhone, копії
+
+Де працює система (з Mac)
+  ./r345 home               показати, де дім
+  ./r345 home pi | mac      перенести дім; на тому самому домі — увімкнути потрібне
+  ./r345 home off           зупинити все на обох
 
 Рідко
   ./r345 update [mac | pi]  оновити код із GitHub: Mac, потім Pi
@@ -531,6 +652,9 @@ def main(argv=None):
     sub.add_parser("resume-model", help="повернути модель вузлу")
     sub.add_parser("service", help="служба macOS замість вікна термінала").add_argument("switch", choices=("on", "off", "status"))
     sub.add_parser("update", help="оновити код із GitHub: Mac, потім Pi").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
+    where = sub.add_parser("home", help="де працює система: показати, перенести, вимкнути")
+    where.add_argument("target", nargs="?", choices=("pi", "mac", "off", "rollback"))
+    where.add_argument("--yes", action="store_true", help="без запитань")
     sub.add_parser("doctor", help="усе одним поглядом: служби, база, Pi, підпис iPhone, копії")
     sub.add_parser("move-data", help="перенести робочі дані в .local-data (служби зупинено)")
     args = parser.parse_args(argv)
@@ -542,6 +666,8 @@ def main(argv=None):
         return service(args.switch)
     if args.action == "update":
         return update(args.target)
+    if args.action == "home":
+        return home(args.target, args.yes)
     if args.action == "doctor":
         return doctor()
     if args.action == "move-data":
@@ -608,6 +734,7 @@ def main(argv=None):
         control.take_requests(children)
         control.save(name, children)
 
+    start_pi_backups(output)
     try:
         supervise(children, stop, on_tick=on_tick)
     finally:

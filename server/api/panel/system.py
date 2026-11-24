@@ -43,22 +43,27 @@ def register(app, ctx):
     import sys
     from pathlib import Path
     from server import devices
-    device_state = devices.Devices(db_path, root_of(db_path), host=devices.pi_host()) if sys.platform == "darwin" else None
+    root = root_of(db_path)
+    on_mac = sys.platform == "darwin"
+    device_state = None
+    if on_mac:
+        device_state = devices.Devices(db_path, root, host=devices.pi_host())
+    elif Path("/etc/systemd/system/radio345-panel.service").exists():
+        device_state = devices.ThisPi(root)   # лише служби й звук самої Pi
 
     @app.get("/api/devices")
     def device_list(admin=Depends(actor)):
-        """Mac і Pi: служби, база, код. Лише на Mac: з Pi на Mac доступу немає."""
+        """З Mac — Mac і Pi; на Pi — лише вона: з Pi на Mac доступу немає."""
         return device_state.read() if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
 
     mover = None
-    if device_state is not None:
+    if on_mac:
         from server import home_move
-        root = root_of(db_path)
         mover = home_move.HomeMove(root, home_move.MacSide(root),
                                    home_move.PiSide(device_state.host, root) if device_state.host else None)
 
     updater = None
-    if device_state is not None:
+    if on_mac:
         from server import pi_update
         updater = pi_update.PiUpdate(root, device_state.host)
 
@@ -66,10 +71,10 @@ def register(app, ctx):
 
     @app.get("/api/pi-backups")
     def pi_backups(admin=Depends(actor)):
-        return pull_backup.overview() if device_state is not None else None
+        return pull_backup.overview() if on_mac else None
 
     mac_updater = None
-    if device_state is not None:
+    if on_mac:
         from server import mac_update
         from shared.r345_control import Control
         from shared.paths import place
@@ -139,8 +144,8 @@ def register(app, ctx):
     @app.post("/api/devices-mode/{mode}")
     def device_mode(mode: Literal["mac", "pi", "off"], admin=Depends(actor)):
         """Режим роботи: увімкнути потрібні служби, зупинити зайві. Зміна дому — /api/home-move."""
-        if device_state is None:
-            raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
+        if mover is None:
+            raise HTTPException(409, "Режими — лише з панелі на Mac")
         move = mover.read()
         if move.get("active") or move.get("interrupted"):
             raise HTTPException(409, "Перенесення не завершено")

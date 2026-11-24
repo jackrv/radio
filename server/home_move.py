@@ -28,6 +28,7 @@ STOP_ORDER = ("node", "asr", "tunnel", "api")
 START_ORDER = ("api", "asr", "tunnel", "node")
 DRAIN_S, STOP_S, START_S, STABLE_S = 90.0, 60.0, 90.0, 25.0
 STAGING = ".import-move"
+ELSEWHERE_S = 1800.0   # довше без зміни кроку — вважаємо перерваним
 
 
 class MoveError(Exception):
@@ -256,13 +257,29 @@ class HomeMove:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {"phase": "idle"}
-        data["active"] = self.thread is not None and self.thread.is_alive()
+        data["active"] = (self.thread is not None and self.thread.is_alive()) or self._runs_elsewhere(data)
         data["interrupted"] = not data["active"] and data.get("phase") not in ("done", "failed", "rolled_back", "idle")
         return data
 
+    @staticmethod
+    def _runs_elsewhere(data):
+        """Перенесення веде інший процес (консоль чи панель) — воно не перерване."""
+        pid, at = data.get("pid"), data.get("at")
+        if data.get("phase") in ("done", "failed", "rolled_back", "idle") or type(pid) is not int or pid in (0, os.getpid()):
+            return False
+        if type(at) not in (int, float) or time.time() - at > ELSEWHERE_S:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except OSError:
+            pass
+        return True
+
     def _save(self, **fields):
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.current.update(fields, at=time.time())
+        self.current.update(fields, at=time.time(), pid=os.getpid())
         fd, temp = tempfile.mkstemp(dir=self.directory)
         with os.fdopen(fd, "w", encoding="utf-8") as out:
             json.dump(self.current, out, ensure_ascii=False)
@@ -319,6 +336,8 @@ class HomeMove:
     def start(self, target, accept_warnings=False):
         with self.guard:
             if self.thread is not None and self.thread.is_alive():
+                raise MoveError("Перенесення вже триває")
+            if self.read().get("active"):
                 raise MoveError("Перенесення вже триває")
             if self.read().get("interrupted"):
                 raise MoveError("Є перерване перенесення: спершу поверніть")

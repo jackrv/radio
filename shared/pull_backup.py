@@ -1,6 +1,6 @@
 """Копії баз Pi на Mac: знімок через SQLite Backup API на Pi → перевірка тут → .local-data/backups/pi.
 
-Раз на добу панель Mac знімає копію сама, доки дім на Pi (Daily). Вручну: ``python -m tools.pull_backup --host …``.
+Раз на добу r345 на Mac знімає копію сам, доки дім на Pi (Daily). Вручну: ``python -m tools.pull_backup --host …``.
 Pi нічого не встановлює: скрипт іде через ssh у стандартний python3. Живу базу не зачіпає, аудіо не копіює.
 """
 import argparse
@@ -190,7 +190,7 @@ def overview(out=None):
 
 
 class Daily:
-    """Фон панелі Mac: копія раз на добу, лише коли дім на Pi. Збій не заважає панелі; наступна спроба — за пів години."""
+    """Фон r345 на Mac: копія раз на добу, лише коли дім на Pi. Збій не заважає службам; наступна спроба — за пів години."""
 
     def __init__(self, root, host, out=None, pull=None, log=None):
         self.root, self.host, self.out = Path(root), host, Path(out or OUT)

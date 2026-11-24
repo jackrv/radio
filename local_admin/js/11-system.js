@@ -194,6 +194,21 @@
     box.append(b);
     return box;
   }
+  let macUpdate = { phase: "idle" };
+  function macCode() {
+    const m = macUpdate, box = el("div", "device-update");
+    if (m.active) { box.append(el("p", "small", `Оновлення коду: ${UPDATE_PHASE[m.phase] || "…"}`)); return [box]; }
+    const parts = [];
+    if (m.available) {
+      box.append(el("p", "small", `На GitHub новіший код: ${m.available.slice(0, 7)}.`));
+      const b = el("button", "ghost small-button", "Оновити код Mac"); b.type = "button";
+      armed(b, "Перезапустити служби?", async () => { await request("/api/devices/mac/update", "POST"); await devices(); });
+      box.append(b); parts.push(box);
+    }
+    if (m.phase === "failed") parts.push(el("p", "alert small", m.error));
+    if (m.phase === "done" && m.supervisor) parts.push(el("p", "alert small", "Змінився сам r345: ./r345 stop, потім ./r345 up"));
+    return parts;
+  }
   let piBackups = null;
   function backupLine() {
     const b = piBackups;
@@ -213,6 +228,7 @@
       const on = Object.values(device.processes).filter(p => p.alive).length;
       parts.push(el("p", "device-line", `Служб працює: ${on} з ${Object.keys(device.processes).length}`),
         el("p", "muted small", `Подій ${device.events == null ? "—" : num(device.events)} · остання ${device.last_event ? ago(now() - device.last_event) : "—"}${device.queue ? ` · у черзі ${num(device.queue)}` : ""}`));
+      if (name === "mac") parts.push(...macCode());
       if (name === "pi" && d.code_matches === false) parts.push(codeUpdate(moving, d));
       const list = el("div", "service-list");
       for (const [process, p] of Object.entries(device.processes)) list.append(serviceRow(name, process, p));
@@ -275,6 +291,8 @@
     try { d = await request("/api/devices"); } catch (_) { return; }
     if (!d.mac) { $("device-mac").replaceChildren(el("p", "muted small", "Керування пристроями — у панелі на Mac.")); return; }
     const moving = await moveState().catch(() => false);
+    macUpdate = await request("/api/devices/mac/update").catch(() => macUpdate);
+    if (macUpdate.active) { clearTimeout(updateTimer); updateTimer = setTimeout(() => devices().catch(() => {}), 2000); }
     if (d.configured) { await pollUpdate().catch(() => {}); piBackups = await request("/api/pi-backups").catch(() => null); }
     deviceCard("mac", $("device-mac"), d, moving);
     deviceCard("pi", $("device-pi"), d, moving);

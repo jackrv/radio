@@ -9,6 +9,7 @@
 /radio345.py
 /server/__init__.py
 /server/devices.py
+/server/mac_update.py
 /server/pi_update.py
 /shared/__init__.py
 /shared/analyzer.py
@@ -26,6 +27,7 @@
 /shared/event_store.py
 /shared/home_marker.py
 /shared/instance_lock.py
+/shared/mac_service.py
 /shared/model_exclusion.py
 /shared/model_pause.py
 /shared/move_data.py

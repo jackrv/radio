@@ -86,7 +86,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/suggestions/sync-events"), "Запит на оновлення подій за еталонами"),
         (re.compile(r"/api/suggestions/(dismiss|restore)"), "Пропозиції: приховано / повернуто"),
         (re.compile(r"/api/suggestions/mute"), "Пропозиції: перевірку виду вимкнено / увімкнено"),
-        (re.compile(r"/api/devices/pi/update"), "Оновлення коду Pi"),
+        (re.compile(r"/api/devices/(mac|pi)/update"), "Оновлення коду: {0}"),
         (re.compile(r"/api/devices/(mac|pi)/audio"), "Звукові пристрої: {0}"),
         (re.compile(r"/api/text-lists/([a-z_]+)"), "Фільтри тексту: {0}"),
         (re.compile(r"/api/dictionaries/([a-z_]+)"), "Словник: {0}"),

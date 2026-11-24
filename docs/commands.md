@@ -23,8 +23,9 @@
 
 | Команда | Що робить |
 | --- | --- |
-| `./r345 update` | оновити код Pi з GitHub (той самий коміт, що на Mac; те саме в панелі) |
+| `./r345 update` | оновити код із GitHub: Mac, потім Pi; `update mac` / `update pi` — окремо. Те саме в панелі |
 | `./r345 doctor` | усе одним поглядом: служби, база, Pi, підпис iPhone, копії |
+| `./r345 service on` / `off` / `status` | на Mac: служба замість вікна термінала; проєкт має лежати не в `~/Documents` |
 | `./r345 pause-model` / `resume-model` | віддати модель лабораторії / повернути |
 | `tools/ios_reinstall.sh --force` | поставити застосунок на iPhone зараз |
 | `.venv/bin/python -m tools.manage_database export` | словники у файл; `restore --from …` — відновити базу |

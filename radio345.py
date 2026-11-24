@@ -393,26 +393,36 @@ def mac_rows(run):
     return rows
 
 
-UPDATE_PHASES = {"copying": "беру код із GitHub", "checking": "перевіряю на Pi", "restarting": "перезапускаю служби Pi"}
-
-
-def update_pi(updater=None):
-    """Код Pi = коміт Mac (з GitHub). Те саме, що кнопка «Оновити код Pi»."""
+def service(switch):
     if sys.platform != "darwin":
-        print("Pi оновлюється з Mac: ./r345 update там або кнопка в панелі")
+        print("На Pi служби веде systemd: sudo sh deploy/hub/install.sh")
         return 1
-    from server import devices, pi_update
-    host = devices.pi_host(base_environment({}))
-    updater = updater or pi_update.PiUpdate(ROOT, host)
-    state = devices.remote(host) if host else {}
-    if state.get("reachable") and state.get("code") == devices.code_hash():
-        print("На Pi вже той самий код")
+    from shared import mac_service
+    if switch == "status":
+        print("Служба: " + ("увімкнено" if mac_service.enabled() else "вимкнено") + f"; журнал {mac_service.log_path(ROOT).relative_to(ROOT)}")
         return 0
     try:
-        updater.start()
-    except pi_update.UpdateError as exc:
-        print(f"Не оновлено: {exc}")
+        if switch == "on":
+            mac_service.on(ROOT, Control().held())
+            print("Служба увімкнена: запускається сама після входу в систему. Стан: ./r345 status, вимкнути: ./r345 service off")
+        else:
+            print("Службу зупинено й вимкнено" if mac_service.off() else "Служба й так вимкнена")
+    except mac_service.Refused as exc:
+        print(f"Не увімкнено: {exc}")
         return 1
+    return 0
+
+
+UPDATE_PHASES = {"copying": "беру код із GitHub", "checking": "перевіряю", "restarting": "перезапускаю служби"}
+
+
+def follow(updater, refused):
+    """Показати кроки оновлення; повертає кінцевий стан або None, якщо відмовлено."""
+    try:
+        updater.start()
+    except refused as exc:
+        print(f"  не оновлено: {exc}")
+        return None
     shown = None
     while True:
         current = updater.read()
@@ -420,14 +430,58 @@ def update_pi(updater=None):
             shown = current["phase"]
             print(f"  {UPDATE_PHASES[shown]}…", flush=True)
         if not current["active"]:
-            break
+            return current
         time.sleep(0.5)
-    if current["phase"] != "done":
-        print(f"Не оновлено: {current.get('error', 'невідома помилка')}")
+
+
+def update(target="all", mac=None, pi=None):
+    """Mac — з GitHub, потім Pi — той самий коміт."""
+    if sys.platform != "darwin":
+        print("Оновлення запускають з Mac: ./r345 update там або кнопка в панелі")
         return 1
-    print("Код Pi оновлено")
+    code = 0
+    if target in ("all", "mac"):
+        code = update_mac(mac)
+    if target in ("all", "pi") and code == 0:
+        code = update_pi(pi)
+    return code
+
+
+def update_mac(updater=None):
+    from server import mac_update
+    print("Mac", flush=True)
+    current = follow(updater or mac_update.MacUpdate(ROOT, control=Control()), mac_update.UpdateError)
+    if current is None or current["phase"] != "done":
+        if current is not None:
+            print(f"  не оновлено: {current.get('error', 'невідома помилка')}")
+        return 1
+    print("  оновлено, служби перезапускаються" if current.get("changed") else "  вже найновіший код")
+    if current.get("supervisor"):
+        print("  змінився сам r345: ./r345 stop, потім ./r345 up")
+    return 0
+
+
+def update_pi(updater=None):
+    """Код Pi = коміт Mac (з GitHub). Те саме, що кнопка «Оновити код Pi»."""
+    from server import devices, pi_update
+    host = devices.pi_host(base_environment({}))
+    if not host:
+        print("Pi\n  не налаштовано RADIO345_PI_SSH")
+        return 0
+    print("Pi", flush=True)
+    updater = updater or pi_update.PiUpdate(ROOT, host)
+    state = devices.remote(host)
+    if state.get("reachable") and state.get("code") == devices.code_hash():
+        print("  вже той самий код")
+        return 0
+    current = follow(updater, pi_update.UpdateError)
+    if current is None or current["phase"] != "done":
+        if current is not None:
+            print(f"  не оновлено: {current.get('error', 'невідома помилка')}")
+        return 1
+    print("  оновлено")
     if current.get("units"):
-        print("На Pi один раз: sudo sh deploy/hub/install.sh --units")
+        print("  на Pi один раз: sudo sh deploy/hub/install.sh --units")
     return 0
 
 
@@ -441,9 +495,10 @@ HELP = """Radio 345
   ./r345 doctor             перевірити все: служби, база, Pi, підпис iPhone, копії
 
 Рідко
-  ./r345 update             оновити код Pi (той самий коміт, що на Mac, із GitHub)
+  ./r345 update [mac | pi]  оновити код із GitHub: Mac, потім Pi
   ./r345 check              що запуститься й чого бракує
   ./r345 pause-model        віддати модель лабораторії (--minutes 120); resume-model — повернути
+  ./r345 service on | off   на Mac: працювати службою без вікна термінала (проєкт — не в ~/Documents)
   ./r345 move-data          перенести робочі дані в .local-data
 
 Явний запуск: ./r345 up --profile mac-dev --only worker panel
@@ -467,7 +522,8 @@ def main(argv=None):
     sub.add_parser("restart", help="перезапустити все або вибране").add_argument("names", nargs="*", metavar="ПРОЦЕС")
     sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
     sub.add_parser("resume-model", help="повернути модель вузлу")
-    sub.add_parser("update", help="оновити код Pi з GitHub (лише з Mac)")
+    sub.add_parser("service", help="служба macOS замість вікна термінала").add_argument("switch", choices=("on", "off", "status"))
+    sub.add_parser("update", help="оновити код із GitHub: Mac, потім Pi").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
     sub.add_parser("doctor", help="усе одним поглядом: служби, база, Pi, підпис iPhone, копії")
     sub.add_parser("move-data", help="перенести робочі дані в .local-data (служби зупинено)")
     args = parser.parse_args(argv)
@@ -475,8 +531,10 @@ def main(argv=None):
         return pause_model(args.minutes, lock_root())
     if args.action == "resume-model":
         return resume_model(lock_root())
+    if args.action == "service":
+        return service(args.switch)
     if args.action == "update":
-        return update_pi()
+        return update(args.target)
     if args.action == "doctor":
         return doctor()
     if args.action == "move-data":
@@ -517,6 +575,13 @@ def main(argv=None):
         raise SystemExit("Бракує в .env: " + ", ".join(missing))
     if any(state in ("active", "activating") for state in systemd_units().values()):
         raise SystemExit("Службами керує systemd: спершу sudo systemctl stop " + " ".join(systemd_units()))
+    in_service = os.environ.get("RADIO345_SERVICE") == "1"
+    if in_service:
+        from shared import mac_service
+        mac_service.trim_log(ROOT)
+        if control.held():
+            print("r345 уже працює; служба не повторює спроб")
+            return 0   # код 0: launchd не піднімає знову
     control.acquire()
     lock = threading.Lock()
 

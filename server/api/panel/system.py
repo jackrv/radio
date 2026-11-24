@@ -68,6 +68,27 @@ def register(app, ctx):
     def pi_backups(admin=Depends(actor)):
         return pull_backup.overview() if device_state is not None else None
 
+    mac_updater = None
+    if device_state is not None:
+        from server import mac_update
+        from shared.r345_control import Control
+        from shared.paths import place
+        mac_updater = mac_update.MacUpdate(root, control=Control(place(root, ".radio345-launcher")))
+
+    @app.get("/api/devices/mac/update")
+    def mac_update_state(admin=Depends(actor)):
+        return mac_updater.read() if mac_updater else {"phase": "idle", "active": False, "available": None}
+
+    @app.post("/api/devices/mac/update", status_code=202)
+    def mac_update_start(admin=Depends(actor)):
+        if mac_updater is None:
+            raise HTTPException(409, "Оновлення — лише з панелі на Mac")
+        try:
+            mac_updater.start()
+        except mac_update.UpdateError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"started": True}
+
     @app.get("/api/devices/pi/update")
     def pi_update_state(admin=Depends(actor)):
         return updater.read() if updater else {"phase": "idle", "active": False}

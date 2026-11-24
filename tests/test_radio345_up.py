@@ -326,7 +326,7 @@ def test_table_aligns_columns_and_marks():
 def test_help_lists_every_command(words, capsys):
     assert radio345.main(words) == 0
     out = capsys.readouterr().out
-    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "update", "move-data"):
+    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "update", "service", "move-data"):
         assert command in out
     assert "usage:" not in out
 
@@ -377,4 +377,17 @@ def test_update_does_nothing_when_code_is_the_same(monkeypatch, capsys):
 
 def test_update_is_refused_on_pi(monkeypatch, capsys):
     monkeypatch.setattr(radio345.sys, "platform", "linux")
-    assert radio345.update_pi() == 1 and "з Mac" in capsys.readouterr().out
+    assert radio345.update() == 1 and "з Mac" in capsys.readouterr().out
+
+
+def test_update_order_and_stop_on_failure(monkeypatch):
+    monkeypatch.setattr(radio345.sys, "platform", "darwin")
+    done, result = [], {"mac": 0}
+    monkeypatch.setattr(radio345, "update_mac", lambda updater=None: done.append("mac") or result["mac"])
+    monkeypatch.setattr(radio345, "update_pi", lambda updater=None: done.append("pi") or 0)
+    assert radio345.update() == 0 and done == ["mac", "pi"]
+    done.clear()
+    result["mac"] = 1
+    assert radio345.update() == 1 and done == ["mac"], "Pi не оновлюємо, якщо Mac не вдалося"
+    done.clear()
+    assert radio345.update("pi") == 0 and done == ["pi"]

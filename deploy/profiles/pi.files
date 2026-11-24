@@ -81,6 +81,7 @@
 /server/event_processor.py
 /server/home_move.py
 /server/log_security.py
+/server/mac_update.py
 /server/management/__init__.py
 /server/management/dictionaries.py
 /server/management/overview.py
@@ -148,6 +149,7 @@
 /shared/lab_queue.py
 /shared/lab_results.py
 /shared/llm_safety.py
+/shared/mac_service.py
 /shared/management/__init__.py
 /shared/management/common.py
 /shared/management/learning.py

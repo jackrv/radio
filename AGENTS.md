@@ -64,11 +64,11 @@ Claude Code підвантажує їх сам за `paths`; інші агент
   (під `r345` — `./r345 pause-model` і `./r345 resume-model`);
   використовуйте model slot і паузи між довгими тестами. Панельна черга керує цим сама.
 - Holdout не навчає правила/ваги; рецепт обирайте за validation, не відкритим test.
-  Порівнюйте на однакових записах через tools.analysis compare.
+  Порівнюйте на однакових записах через lab.analysis compare.
 
 ## Інструменти й перевірки
 
-- Readonly аналіз без зупинки: `.venv/bin/python -m tools.analysis summary`;
+- Readonly аналіз без зупинки: `.venv/bin/python -m lab.analysis summary`;
   errors/conditions/callsigns/records/checks/runs/compare/queue — [довідка](docs/lab.md).
   Архів: RecordingStore(config.RECORDINGS_DIR); API аналізу: services/error_analysis.py.
 - Текстові зміни: tools/text_replay; ASR: tools/asr_lab. Реальний UI-сценарій:

@@ -15,7 +15,7 @@ import shutil
 import time
 import wave
 
-from tools.asr_lab import SPLIT_BLOCK_S, load_records, split_of
+from lab.asr_lab import SPLIT_BLOCK_S, load_records, split_of
 
 
 def partition(created, seed=345):
@@ -168,7 +168,7 @@ def _train(args):
     from mlx_whisper.tokenizer import get_tokenizer
     from mlx_whisper.audio import log_mel_spectrogram, pad_or_trim, N_SAMPLES, N_FRAMES
     from core.audio import prepare_audio
-    from tools.asr_lab import keep_awake
+    from lab.asr_lab import keep_awake
 
     base, dataset, output = Path(args.base_model).resolve(), Path(args.dataset).resolve(), Path(args.output).resolve()
     dimensions = json.loads((base / 'config.json').read_text())

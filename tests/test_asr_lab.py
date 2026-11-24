@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from tools import asr_lab
+from lab import asr_lab
 
 
 def test_split_keeps_one_broadcast_block_together_and_is_deterministic():
@@ -277,13 +277,13 @@ def test_receiver_keeps_default_whisper_temperatures():
 
 
 def test_word_errors_ignore_apostrophe_forms():
-    from tools.asr_lab import score_text
+    from lab.asr_lab import score_text
     for hypothesis in ("на зв'язку, прийом", "на звʼязку прийом", "на звязку прийом"):
         assert score_text("на звʼязку, прийом", hypothesis)["word_errors"] == 0
 
 
 def test_whisper_options_are_parsed_and_passed_without_changing_defaults():
-    from tools.asr_lab import parse_whisper_options
+    from lab.asr_lab import parse_whisper_options
     from core.recognition import WhisperRecognizer
     options = parse_whisper_options(["hallucination_silence_threshold=2.0", "word_timestamps=true", "best_of=3"])
     assert options == {"hallucination_silence_threshold": 2.0, "word_timestamps": True, "best_of": 3}

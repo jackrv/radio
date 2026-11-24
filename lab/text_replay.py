@@ -1,8 +1,8 @@
 """Повтор текстової обробки на збережених виходах Whisper з архіву — без моделей і без зупинки приймача.
 
-    .venv/bin/python -m tools.text_replay                         # чинні шаблони проти стану до 17.11
-    .venv/bin/python -m tools.text_replay --patterns FILE         # додати шаблони фраз із файла (рядок — шаблон)
-    .venv/bin/python -m tools.text_replay --patterns FILE --each  # внесок кожного шаблону окремо
+    .venv/bin/python -m lab.text_replay                         # чинні шаблони проти стану до 17.11
+    .venv/bin/python -m lab.text_replay --patterns FILE         # додати шаблони фраз із файла (рядок — шаблон)
+    .venv/bin/python -m lab.text_replay --patterns FILE --each  # внесок кожного шаблону окремо
 
 Лише читання: архів і events.db відкриваються в режимі mode=ro.
 """

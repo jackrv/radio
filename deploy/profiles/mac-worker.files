@@ -18,7 +18,6 @@
 /requirements-worker.txt
 /services/__init__.py
 /services/asr_protocol.py
-/services/asr_worker.py
 /services/audio_devices.py
 /services/launcher_lifecycle.py
 /services/model_exclusion.py
@@ -29,3 +28,5 @@
 /services/radio_stream.py
 /services/receiver_control.py
 /services/sqlite_connection.py
+/worker/__init__.py
+/worker/asr_worker.py

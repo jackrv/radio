@@ -1,6 +1,6 @@
 """Вузол розшифровки на Mac: звук і підказка → результат Whisper. Без бази й Telegram.
 
-Запуск: ``.venv/bin/python -m services.asr_worker``. Тримає замок приймача, тож не запуститься
+Запуск: ``.venv/bin/python -m worker.asr_worker``. Тримає замок приймача, тож не запуститься
 поруч із radio.py чи лабораторією (замки — у каталозі цього checkout).
 """
 import logging

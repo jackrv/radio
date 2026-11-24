@@ -18,8 +18,8 @@ PROCESSES = {
     "panel": ("server", ("api.local_dashboard",)),
     "api": ("server", ("api.app", "api.local_server")),
     "tunnel": ("server", ("services.miniapp_tunnel",)),
-    "worker": ("worker", ("services.asr_worker",)),
-    "lab": ("lab", ("tools.asr_lab", "tools.whisper_finetune", "tools.text_replay", "tools.analysis")),
+    "worker": ("worker", ("worker.asr_worker",)),
+    "lab": ("lab", ("lab.asr_lab", "lab.whisper_finetune", "lab.text_replay", "lab.analysis")),
 }
 # Не входять до жодного нового процесу: нинішній моноліт Mac, обслуговування, разові інструменти.
 LEGACY_ENTRIES = ("radio", "radio345", "start_radio345", "manage_database", "diagnose_radio345")
@@ -28,7 +28,7 @@ MLX = ("mlx", "mlx_whisper", "mlx_lm")
 
 def modules(root=ROOT):
     result = {}
-    for top in ("core", "services", "api", "tools"):
+    for top in ("core", "services", "api", "tools", "shared", "server", "worker", "lab"):
         for path in sorted((root / top).rglob("*.py")):
             if "__pycache__" not in path.parts:
                 result[".".join(path.relative_to(root).with_suffix("").parts).removesuffix(".__init__")] = path

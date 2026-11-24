@@ -54,7 +54,7 @@ def list_runs(root, limit=40):
 
 
 def compare_runs(root, a, b):
-    """Метрики двох прогонів лише на спільних записах (як tools.asr_lab compare)."""
+    """Метрики двох прогонів лише на спільних записах (як lab.asr_lab compare)."""
     from services.lab_results import load_run, summarize as metrics_for
     _, ra = load_run(_run_dir(root, a))
     _, rb = load_run(_run_dir(root, b))

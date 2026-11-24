@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 PROFILES = ROOT / "deploy" / "profiles"
 COMMANDS = {
-    "worker": ("-m", "services.asr_worker"),
+    "worker": ("-m", "worker.asr_worker"),
     "node": ("-m", "services.radio_node"),
     "asr": ("-m", "services.asr_service"),
     "api": ("-m", "api.local_server"),

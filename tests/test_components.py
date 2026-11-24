@@ -63,7 +63,7 @@ def test_panel_and_api_never_reach_mlx(name):
 
 def test_mlx_is_imported_at_module_level_only_by_recognizer_and_lab():
     eager = {m for m in EAGER_INNER if EAGER_OUTER[m] & set(c.MLX)}
-    assert eager <= {"core.recognition", "tools.asr_lab", "tools.whisper_finetune"}
+    assert eager <= {"core.recognition", "lab.asr_lab", "lab.whisper_finetune"}
     for name in ("node", "asr", "panel", "api"):
         assert not c.closure(c.PROCESSES[name][1], EAGER_INNER) & eager, name
 

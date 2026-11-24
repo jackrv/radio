@@ -1,7 +1,7 @@
 """Одна метрика WER для архіву, повтору тексту й лабораторії."""
 from core.text_metrics import error_rates, metric_words
 from services import recordings, text_replay
-from tools import asr_lab
+from lab import asr_lab
 
 
 def test_apostrophe_forms_are_one_word_and_punctuation_is_ignored():

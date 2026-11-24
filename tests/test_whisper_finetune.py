@@ -5,7 +5,7 @@ import json
 import wave
 import pytest
 
-from tools import whisper_finetune as ft
+from lab import whisper_finetune as ft
 
 
 def row(split, label='speech', text='Вишня 210, прийом', sha='same', created=100):

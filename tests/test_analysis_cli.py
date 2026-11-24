@@ -6,7 +6,7 @@ import numpy as np
 import config
 from services.recordings import RecordingStore
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура тимчасової бази)
-from tools import analysis
+from lab import analysis
 
 
 def test_cli_reads_the_same_analysis_as_the_panel(setup, tmp_path, monkeypatch, capsys):

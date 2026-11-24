@@ -128,6 +128,6 @@ RECORDINGS_MAX_BYTES = 5 * 1024 * 1024 * 1024
 # Короткі фрагменти, відкинуті VAD (переважно клавіатура й клацання), не зберігаються:
 # вони займали майже половину архіву й майже не потрібні для розмітки.
 RECORDINGS_SAVE_VAD_SHORT = False
-# Frozen sample for offline experiments (python -m tools.asr_lab queue).
+# Frozen sample for offline experiments (python -m lab.asr_lab queue).
 # The audio archive UI uses live queues from SQLite, independently of this file.
 REVIEW_QUEUE_PATH = BASE_DIR / ".local-experiments" / "review-queue.json"

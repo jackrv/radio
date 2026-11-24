@@ -21,7 +21,7 @@ def test_snapshot_connections_close_before_file_reads_and_on_failure(tmp_path, m
     from services.archive_learning import learn_saved_archive
     from services.recordings import RecordingStore
     from services.user_store import bootstrap_admin, init_users_db
-    from tools.asr_lab import snapshot_database
+    from lab.asr_lab import snapshot_database
 
     path = tmp_path / "events.db"
     init_users_db(path)

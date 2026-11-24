@@ -5,13 +5,13 @@
 запуску. Результати й параметри зберігаються окремо в .local-experiments/.
 
 Приклади:
-  .venv/bin/python -m tools.asr_lab inventory
-  .venv/bin/python -m tools.asr_lab queue          # зафіксована вибірка для офлайн-порівнянь
-  .venv/bin/python -m tools.asr_lab run --name base --variant whisper --status ready,empty_text,blacklist
-  .venv/bin/python -m tools.asr_lab run --name no-prompt --variant whisper --prompt none
-  .venv/bin/python -m tools.asr_lab run --name band --variant whisper --bandpass on
-  .venv/bin/python -m tools.asr_lab report .local-experiments/<запуск>
-  .venv/bin/python -m tools.asr_lab compare <запуск A> <запуск B>
+  .venv/bin/python -m lab.asr_lab inventory
+  .venv/bin/python -m lab.asr_lab queue          # зафіксована вибірка для офлайн-порівнянь
+  .venv/bin/python -m lab.asr_lab run --name base --variant whisper --status ready,empty_text,blacklist
+  .venv/bin/python -m lab.asr_lab run --name no-prompt --variant whisper --prompt none
+  .venv/bin/python -m lab.asr_lab run --name band --variant whisper --bandpass on
+  .venv/bin/python -m lab.asr_lab report .local-experiments/<запуск>
+  .venv/bin/python -m lab.asr_lab compare <запуск A> <запуск B>
 
 Змінюйте один чинник за запуск. Повторний прогін Whisper не є еталоном:
 якість рахується лише за розшифровками оператора (reference).

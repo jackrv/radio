@@ -4,8 +4,8 @@
 
 Перевірка змін на **ваших розмічених записах** до того, як вони потраплять у приймач.
 
-> ⚠️ Модель Whisper — лише одна на Mac (16 ГБ). Ручний `tools.asr_lab` чи
-> `tools.whisper_finetune train`: спершу `start_radio345.py --receiver-stop`,
+> ⚠️ Модель Whisper — лише одна на Mac (16 ГБ). Ручний `lab.asr_lab` чи
+> `lab.whisper_finetune train`: спершу `start_radio345.py --receiver-stop`,
 > після роботи/помилки — `--receiver-start` (під `r345`: `./r345 pause-model` і `resume-model`). Панельна черга керує цим сама
 > (режим «лише запис», запобіжник до 4 год). MacBook Air без вентилятора
 > перегрівається від годин Whisper поспіль (18.11, «Thermal Emergency Sleep»):
@@ -19,8 +19,8 @@
 відтворюються — це не заміна ASR-прогону.
 
 ```bash
-.venv/bin/python -m tools.text_replay                          # чинні шаблони проти стану до 17.11
-.venv/bin/python -m tools.text_replay --patterns FILE --each   # внесок кожного шаблону фраз
+.venv/bin/python -m lab.text_replay                          # чинні шаблони проти стану до 17.11
+.venv/bin/python -m lab.text_replay --patterns FILE --each   # внесок кожного шаблону фраз
 ```
 
 Те саме в панелі: «Перевірити на моїх еталонах» у фільтрах тексту та
@@ -34,9 +34,9 @@
 з однаковими еталонами й ролями.
 
 ```bash
-.venv/bin/python -m tools.asr_lab run --name base  --variant whisper --ids ids.txt --prompt receiver
-.venv/bin/python -m tools.asr_lab run --name codes --variant whisper --ids ids.txt --prompt receiver --daily-codes latest
-.venv/bin/python -m tools.asr_lab compare .local-experiments/<A> .local-experiments/<B>
+.venv/bin/python -m lab.asr_lab run --name base  --variant whisper --ids ids.txt --prompt receiver
+.venv/bin/python -m lab.asr_lab run --name codes --variant whisper --ids ids.txt --prompt receiver --daily-codes latest
+.venv/bin/python -m lab.asr_lab compare .local-experiments/<A> .local-experiments/<B>
 ```
 
 | Параметр | Що змінює |
@@ -52,7 +52,7 @@
 Пауза й продовження: тест черги можна поставити на паузу (⏸) — приймач одразу повертає
 розпізнавання — і продовжити з того самого запису (▶ зараз або ⏲ за вікнами часу). Наприкінці
 вікна тест сам стає на паузу й продовжується в наступному. Вручну:
-`tools.asr_lab run … --resume <тека>` — ті самі записи (`records.txt`), той самий знімок бази;
+`lab.asr_lab run … --resume <тека>` — ті самі записи (`records.txt`), той самий знімок бази;
 інші параметри рецепта відхиляються.
 
 Рецепти черги в панелі (22.11.2026): `base`, `dictionary-blocks`, `word-silence`, `resegment`; вирішені досліди
@@ -81,7 +81,7 @@
 
 Набір: **Аналіз → Якість по днях → Набір для дообучення** →
 `.local-training/<час>/` (`audio/*.wav`, `metadata.jsonl`; останні ≈10 % днів — `test`).
-Пілот tiny: `python -m tools.whisper_finetune prepare --help` / `train --help`.
+Пілот tiny: `python -m lab.whisper_finetune prepare --help` / `train --help`.
 Підготовка може йти під час ефіру, навчання — лише з вільним model slot.
 Ваги не вмикаються автоматично, resume оптимізатора немає.
 [Результат пілота](reports/2026-11-21-tiny-finetuning-pilot.md): мовлення краще,
@@ -92,10 +92,10 @@
 Ті самі розбори, що «Аналіз» у панелі, без зупинки приймача:
 
 ```bash
-.venv/bin/python -m tools.analysis summary
-.venv/bin/python -m tools.analysis errors --days 7
-.venv/bin/python -m tools.analysis records callsigns -n 10
+.venv/bin/python -m lab.analysis summary
+.venv/bin/python -m lab.analysis errors --days 7
+.venv/bin/python -m lab.analysis records callsigns -n 10
 ```
 
 `--json` — сирі дані; також `conditions`, `callsigns`, `checks`, `runs`,
-`compare`, `queue`. Повний перелік — `.venv/bin/python -m tools.analysis -h`.
+`compare`, `queue`. Повний перелік — `.venv/bin/python -m lab.analysis -h`.

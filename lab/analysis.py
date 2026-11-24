@@ -4,15 +4,15 @@
 Архів і events.db лише читаються; приймач зупиняти не потрібно (усе на збережених текстах).
 
 Приклади:
-  .venv/bin/python -m tools.analysis summary              # головне: без правок, черги, по днях
-  .venv/bin/python -m tools.analysis errors --days 7      # що заважає тексту без правок
-  .venv/bin/python -m tools.analysis conditions           # без правок за тривалістю, гучністю, упевненістю
-  .venv/bin/python -m tools.analysis callsigns            # точність по позивних і вигадані позивні
-  .venv/bin/python -m tools.analysis records numbers -n 10  # самі фрази певного виду: еталон і що вийшло
-  .venv/bin/python -m tools.analysis checks               # можливі помилки у вашій розмітці (як «Потребує уваги»)
-  .venv/bin/python -m tools.analysis runs                 # прогони лабораторії з «без правок»
-  .venv/bin/python -m tools.analysis compare <A> <B>      # два прогони на спільних записах
-  .venv/bin/python -m tools.analysis queue                # черга тестів лабораторії
+  .venv/bin/python -m lab.analysis summary              # головне: без правок, черги, по днях
+  .venv/bin/python -m lab.analysis errors --days 7      # що заважає тексту без правок
+  .venv/bin/python -m lab.analysis conditions           # без правок за тривалістю, гучністю, упевненістю
+  .venv/bin/python -m lab.analysis callsigns            # точність по позивних і вигадані позивні
+  .venv/bin/python -m lab.analysis records numbers -n 10  # самі фрази певного виду: еталон і що вийшло
+  .venv/bin/python -m lab.analysis checks               # можливі помилки у вашій розмітці (як «Потребує уваги»)
+  .venv/bin/python -m lab.analysis runs                 # прогони лабораторії з «без правок»
+  .venv/bin/python -m lab.analysis compare <A> <B>      # два прогони на спільних записах
+  .venv/bin/python -m lab.analysis queue                # черга тестів лабораторії
 Будь-яка команда з --json — сирі дані (як віддає API панелі).
 
 Тексти містять справжні позивні й коди: показуйте їх лише локально, не переносьте в коміти.

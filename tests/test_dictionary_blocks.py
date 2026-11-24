@@ -179,7 +179,7 @@ def test_whisper_codes_prompt_is_opt_in_and_uses_dictionary_grouping():
 def test_lab_cannot_learn_callsign_number_from_holdout_references(tmp_path):
     import sqlite3
     from services.dictionary_store import init_db
-    from tools.asr_lab import dictionaries_from,split_of
+    from lab.asr_lab import dictionaries_from,split_of
     times={kind:[i*1200 for i in range(50) if split_of(i*1200)==kind] for kind in ('tune','holdout')}
     rows=[dict(feedback(i),created=times['tune'][i]) for i in range(2)]
     rows.append(dict(feedback(2),created=times['holdout'][0]))

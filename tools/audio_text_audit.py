@@ -16,7 +16,7 @@ import wave
 
 from core.audio_text_consistency import capacity_checks, measure_audio, word_count
 from services.sqlite_connection import read_only
-from tools.asr_lab import split_of
+from lab.asr_lab import split_of
 
 def audit(archive, *, record_id=None, min_words=12, max_words_per_s=5.0, extra_words=3):
     archive = Path(archive)

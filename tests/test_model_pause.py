@@ -13,7 +13,7 @@ import radio345
 from core.instance_lock import acquire_instance_lock
 from core.whisper_result import RecognizerUnavailable
 from services import lab_queue
-from services.asr_worker import ModelGate, Paused, build_transcribe, handler_for
+from worker.asr_worker import ModelGate, Paused, build_transcribe, handler_for
 from services.model_pause import MAX_PAUSE_S, WORKER_LOCK, ModelPause
 from services.remote_recognizer import RemoteRecognizer
 

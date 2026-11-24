@@ -127,7 +127,7 @@ def main():
     log = logging.getLogger("radio")
     if not os.environ.get("RADIO_ASR_URL", "").strip():
         raise SystemExit("Не задано RADIO_ASR_URL")
-    # Не замок моделі: на Mac її поруч тримає services.asr_worker.
+    # Не замок моделі: на Mac її поруч тримає worker.asr_worker.
     lock = acquire_instance_lock(Path(config.BASE_DIR) / OWNER_LOCK)
     if lock is None:
         raise SystemExit("Інший приймач уже працює з цією базою")

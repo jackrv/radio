@@ -118,7 +118,7 @@ def test_missing_or_corrupt_wav_is_counted_not_classified_as_silence(tmp_path):
 
 def test_silence_alignment_recipe_is_opt_in_and_parses_both_whisper_options():
     from services.lab_queue import BASE, PRESETS
-    from tools.asr_lab import parse_whisper_options
+    from lab.asr_lab import parse_whisper_options
     args = PRESETS['word-silence']['args']
     options = [args[i + 1] for i, value in enumerate(args[:-1]) if value == '--whisper-option']
     assert parse_whisper_options(options) == {'word_timestamps': True, 'hallucination_silence_threshold': 2}

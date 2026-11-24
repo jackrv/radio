@@ -102,13 +102,13 @@ def test_files_private_and_transcript_stays_in_console_only(tmp_path):
 @pytest.mark.parametrize('option', ['beam_size=5', 'language=en', 'initial_prompt=x', 'temperature=0', 'unknown=1',
                                   'patience=2','best_of=0','best_of=1.5','word_timestamps=1','logprob_threshold=1e309'])
 def test_lab_rejects_unsafe_options(option):
-    from tools.asr_lab import parse_whisper_options
+    from lab.asr_lab import parse_whisper_options
     with pytest.raises(SystemExit): parse_whisper_options([option])
 
 
 @pytest.mark.parametrize('retry', ['on', 'off'])
 def test_lab_retry_contract_shared_by_all_segments(retry):
-    from tools.asr_lab import Lab
+    from lab.asr_lab import Lab
     from core.recognition import WhisperRecognizer
     worker = object.__new__(Lab); worker.args = SimpleNamespace(retry=retry)
     worker.recognizer = SimpleNamespace(prompt='synthetic', extract_text=WhisperRecognizer.extract_text,

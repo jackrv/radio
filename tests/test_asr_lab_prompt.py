@@ -3,7 +3,7 @@ import sqlite3
 
 from services.dictionary_store import init_db
 from services import daily_codes
-from tools.asr_lab import receiver_prompt, receiver_prompt_variant, record_codes
+from lab.asr_lab import receiver_prompt, receiver_prompt_variant, record_codes
 
 
 def test_phrases_and_record_codes_go_before_dictionary_names(tmp_path):

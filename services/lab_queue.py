@@ -12,7 +12,7 @@ run``), який переживає перезапуск служб:
 - тест можна поставити на паузу (вручну чи в кінці вікна часу) і продовжити з того
   самого запису: результати пишуться порядково, перелік записів зафіксовано (``--resume``).
 
-Сам тест (``tools.asr_lab``) читає розмічені записи; приймач паралельно додає нові
+Сам тест (``lab.asr_lab``) читає розмічені записи; приймач паралельно додає нові
 фрагменти до архіву, щоб розпізнати їх після відновлення Whisper.
 """
 import argparse
@@ -546,7 +546,7 @@ def run(root=None, launcher=None, spawn=None, sleep=time.sleep, now=time.time, c
             logs.mkdir(exist_ok=True)
             began = now()
             with open(logs / f"{job['id']}.log", "a") as log:
-                command = [sys.executable, "-m", "tools.asr_lab", "run", "--name", name, *preset["args"]]
+                command = [sys.executable, "-m", "lab.asr_lab", "run", "--name", name, *preset["args"]]
                 if resume_from:
                     command += ["--resume", str(queue_dir(root) / resume_from)]
                 process = spawn(command, log)

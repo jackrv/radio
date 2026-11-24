@@ -14,7 +14,7 @@ import pytest
 from core.transcriber import Transcriber
 from core.whisper_result import RecognizerUnavailable
 from services.asr_protocol import pack_request, unpack_request
-from services.asr_worker import handler_for
+from worker.asr_worker import handler_for
 from services.recordings import RecordingStore
 from services.remote_recognizer import RemoteModelError, RemoteRecognizer
 

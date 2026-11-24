@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 import services.dictionary_loader as module
-from tools.asr_lab import read_only
+from lab.asr_lab import read_only
 
 
 def test_load_dictionaries(tmp_path):

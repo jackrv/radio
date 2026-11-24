@@ -3,25 +3,6 @@ import MediaPlayer
 import UIKit
 import UserNotifications
 
-struct Clip: Decodable, Identifiable, Equatable {
-    let id: Int
-    let at: Double
-    let caption: String
-    let duration_s: Double
-
-    var date: Date { Date(timeIntervalSince1970: at) }
-    /// Останній абзац підпису — сам текст фрази (шапка «Подія / Кому» вище).
-    var text: String { caption.components(separatedBy: "\n\n").last ?? caption }
-    var header: String { caption.components(separatedBy: "\n\n").first ?? "" }
-}
-
-private struct EventsResponse: Decodable {
-    let clips: [Clip]
-    let mode: String?
-    let at_home: Bool?
-    let transmit: Bool?
-}
-
 enum PlayerState: Equatable {
     case idle, connecting, playing, buffering
     case retrying(seconds: Int)
@@ -39,7 +20,8 @@ enum PlayerState: Equatable {
     }
 }
 
-/// Прослуховування потоку з Mac, список фраз, екран блокування.
+/// Два незалежні джерела: ефір із передачею та тексти. Кожне має своє опитування, стан і повтори —
+/// збій одного не зупиняє інше. Плюс екран блокування.
 /// Застосунок живе у фоні, поки грає потік (UIBackgroundModes: audio) — тому
 /// опитування списку й локальні сповіщення працюють без push.
 @MainActor
@@ -50,9 +32,11 @@ final class RadioModel {
 
     private(set) var isListening = false
     private(set) var state: PlayerState = .idle
-    private(set) var clips: [Clip] = []
-    private(set) var macReachable: Bool?
-    private(set) var replayingId: Int?
+    private var feed = ClipFeed()
+    var clips: [Clip] { feed.clips }
+    private(set) var airState: SourceState = .unknown
+    private(set) var textState: SourceState = .unknown
+    private(set) var replayingId: String?
     private(set) var lastError = ""
     /// Останні рівні звуку для анімації (старі → нові).
     private(set) var levels: [Double] = Array(repeating: 0, count: 36)
@@ -80,12 +64,14 @@ final class RadioModel {
 
     private var streamPlayer: StreamPlayer?
     private let replayPlayer = AVPlayer()
-    private var lastClipId = 0
+    private let cache = ClipCache(folder: URL.applicationSupportDirectory.appendingPathComponent("Radio345"))
     private var retries = 0
-    private var pollTask: Task<Void, Never>?
+    private var airTask: Task<Void, Never>?
+    private var textTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
 
     init() {
+        feed = ClipFeed(cached: cache.load(settings.textReceiver.rawValue))
         let center = NotificationCenter.default
         center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
@@ -146,9 +132,9 @@ final class RadioModel {
         retryTask = nil
         streamPlayer?.stop()
         // Новий запит щоразу: сервер віддає свіжий запас і живий край ефіру.
-        guard let url = settings.url(settings.channel.path(filterSignals: settings.filterSignals),
+        guard let url = settings.url(settings.channel.path(filterSignals: settings.filterSignals), from: settings.streamReceiver,
                                      query: [URLQueryItem(name: "s", value: String(Int(Date().timeIntervalSince1970)))]) else {
-            state = .failed("Некоректна адреса \(settings.receiver.title)")
+            state = .failed("Некоректна адреса \(settings.streamReceiver.title)")
             return
         }
         let player = StreamPlayer(url: url, maxQueuedSeconds: settings.channel == .live ? 2.5 : 6) { [weak self] event in
@@ -202,7 +188,7 @@ final class RadioModel {
     // MARK: Повтор фрази
 
     func replay(_ clip: Clip) {
-        guard let url = settings.url("/clip/\(clip.id).mp3") else { return }
+        guard feed.canReplay(clip), let url = settings.url("/clip/\(clip.number).mp3", from: settings.textReceiver) else { return }
         if !isListening {
             try? AudioSessionSetup.activate()
         }
@@ -215,56 +201,115 @@ final class RadioModel {
         }
     }
 
-    // MARK: Список фраз
+    // MARK: Опитування джерел
 
+    func canReplay(_ clip: Clip) -> Bool { textState == .ok && feed.canReplay(clip) }
+
+    /// Окремі цикли: тайм-аут вимкненого вузла не затримує інший.
     func startPolling() {
-        guard pollTask == nil else { return }
-        pollTask = Task { [weak self] in
+        if airTask == nil {
+            airTask = pollLoop { await $0.pollAir() } finished: { $0.airTask = nil }
+        }
+        if textTask == nil {
+            textTask = pollLoop { if $0.settings.hasSeparateTexts { await $0.pollTexts() } } finished: { $0.textTask = nil }
+        }
+    }
+
+    private func pollLoop(_ step: @escaping @MainActor (RadioModel) async -> Void,
+                          finished: @escaping @MainActor (RadioModel) -> Void) -> Task<Void, Never> {
+        Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.pollOnce()
+                await step(self)
+                guard !Task.isCancelled else { return }
                 let active = UIApplication.shared.applicationState == .active
                 // У фоні без звуку iOS однаково призупинить застосунок.
-                if !active && !self.isListening { self.pollTask = nil; return }
+                if !active && !self.isListening { finished(self); return }
                 try? await Task.sleep(for: .seconds(active ? 3 : 5))
             }
         }
     }
 
-    func refreshNow() async { await pollOnce() }
+    func refreshNow() async {
+        async let air: Void = pollAir()
+        async let texts: Void = settings.hasSeparateTexts ? pollTexts() : ()
+        _ = await (air, texts)
+    }
 
-    private func pollOnce() async {
-        guard let url = settings.url("/events", query: [URLQueryItem(name: "after", value: String(lastClipId))]) else {
-            macReachable = nil
-            return
+    private func fetchEvents(_ source: Receiver, after: Int) async -> (SourceState, EventsResponse?) {
+        guard let url = settings.url("/events", from: source, query: [URLQueryItem(name: "after", value: String(after)),
+                                                                      URLQueryItem(name: "api", value: "1")]) else {
+            return (.unknown, nil)
         }
         var request = URLRequest(url: url, timeoutInterval: 6)
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if code == 403 {
-                macReachable = true
-                if !isListening { state = .failed("Доступ лише з вашого облікового запису Tailscale") }
-                return
-            }
-            guard code == 200 else { macReachable = false; return }
-            macReachable = true
-            let decoded = try JSONDecoder().decode(EventsResponse.self, from: data)
-            updateHome(decoded.at_home)
-            transmitter.serverEnabled = decoded.transmit ?? false
-            let fresh = decoded.clips
-            guard !fresh.isEmpty else { return }
-            let isFirstLoad = lastClipId == 0
-            lastClipId = fresh.last!.id
-            clips = Array((fresh.reversed() + clips).prefix(30))
-            updateNowPlaying()
-            if !isFirstLoad, notifyInBackground, UIApplication.shared.applicationState != .active {
-                fresh.forEach(postLocalNotification)
-            }
-        } catch {
-            macReachable = false
+        guard let (data, response) = try? await URLSession.shared.data(for: request) else { return (.offline, nil) }
+        let state = SourceState(status: (response as? HTTPURLResponse)?.statusCode)
+        guard state == .ok else { return (state, nil) }
+        guard let decoded = try? JSONDecoder().decode(EventsResponse.self, from: data) else { return (.offline, nil) }
+        return (.ok, decoded)
+    }
+
+    private func pollAir() async {
+        let source = settings.receiver
+        let shared = !settings.hasSeparateTexts
+        let (state, response) = await fetchEvents(source, after: shared ? feed.cursor : Int.max)
+        // Поки чекали відповіді, користувач міг перемкнути вузол.
+        guard !Task.isCancelled, source == settings.receiver, shared == !settings.hasSeparateTexts else { return }
+        let wasDown = airState != .ok
+        airState = state
+        if shared { textState = state }
+        guard let response else {
+            transmitter.serverEnabled = false
+            if !isListening, state == .forbidden || state == .outdated { self.state = .failed(state.text(source.title)) }
+            return
         }
+        updateHome(response.at_home)
+        transmitter.serverEnabled = response.transmit ?? false
+        if wasDown, settings.streamReceiver == source { reconnectNow() }
+        if shared { await accept(response, from: source) }
+    }
+
+    private func pollTexts() async {
+        let source = settings.textReceiver
+        let (state, response) = await fetchEvents(source, after: feed.cursor)
+        guard !Task.isCancelled, settings.hasSeparateTexts, source == settings.textReceiver else { return }
+        let wasDown = textState != .ok
+        textState = state
+        guard let response else { return }
+        if wasDown, settings.streamReceiver == source { reconnectNow() }
+        await accept(response, from: source)
+    }
+
+    private func accept(_ response: EventsResponse, from source: Receiver) async {
+        var outcome = feed.merge(response)
+        if outcome == .restart {
+            let (state, again) = await fetchEvents(source, after: 0)
+            guard !Task.isCancelled, source == settings.textReceiver, state == .ok, let again else { return }
+            outcome = feed.merge(again)
+        }
+        guard case .added(let fresh) = outcome else { save(); return }
+        save()
+        updateNowPlaying()
+        if notifyInBackground, UIApplication.shared.applicationState != .active {
+            fresh.forEach(postLocalNotification)
+        }
+    }
+
+    private var savedIds: [String] = []
+    private func save() {
+        let ids = clips.map(\.id)
+        guard ids != savedIds else { return }
+        savedIds = ids
+        cache.save(clips, settings.textReceiver.rawValue)
+        updateNowPlaying()
+    }
+
+    /// Вузол повернувся: не чекати до 32 с паузи.
+    private func reconnectNow() {
+        guard isListening, case .retrying = state else { return }
+        retries = 0
+        connect()
     }
 
     /// Наскільки зараз «світиться» інтерфейс: рівень звуку, що реально грає.
@@ -278,7 +323,7 @@ final class RadioModel {
 
     func beginTransmit() async {
         streamPlayer?.muted = true  // не чути себе й не заважати
-        await transmitter.begin(url: settings.url("/transmit"))
+        await transmitter.begin(url: settings.url("/transmit", from: settings.receiver))
         if !transmitter.isTransmitting { streamPlayer?.muted = atHome }
     }
 
@@ -287,16 +332,38 @@ final class RadioModel {
         streamPlayer?.muted = atHome
     }
 
-    /// Перемикання Mac ↔ Pi: інший сервер — інша історія фраз і стан мережі.
+    /// Інший вузол ефіру або текстів: свій стан, курсор і кеш; нічого зі старого не змішується.
     func receiverChanged() {
-        lastClipId = 0
-        clips = []
-        macReachable = nil
+        airTask?.cancel(); textTask?.cancel()
+        airTask = nil; textTask = nil
+        feed = ClipFeed(cached: cache.load(settings.textReceiver.rawValue))
+        savedIds = clips.map(\.id)
+        airState = .unknown
+        textState = .unknown
         inMacNetwork = nil
         awayPolls = 0
         transmitter.serverEnabled = false
         settingsChanged()
         startPolling()
+    }
+
+    /// Лише тексти: звук «Наживо» з вузла ефіру не переривається.
+    func textSourceChanged() {
+        textTask?.cancel()
+        textTask = nil
+        airTask?.cancel()   // лише опитування; сам потік окремо
+        airTask = nil
+        feed = ClipFeed(cached: cache.load(settings.textReceiver.rawValue))
+        savedIds = clips.map(\.id)
+        textState = .unknown
+        if settings.channel == .selected { settingsChanged() }
+        startPolling()
+    }
+
+    /// Адресу вузла змінено: перезапускається лише те, що з нього працює.
+    func hostChanged(_ source: Receiver) {
+        if settings.receiver == source { receiverChanged() }
+        else if settings.textReceiver == source { textSourceChanged() }
     }
 
     /// Перезапуск потоку після зміни налаштувань (фільтр сигналів).

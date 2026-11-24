@@ -15,7 +15,7 @@ from services import radio_stream as r
 def base():
     channel = SimpleNamespace(listeners=0)
     stream = SimpleNamespace(
-        authorized=lambda ip: stream.allow, allow=True, transmit_enabled=False, _tx_active=False, ptt_key=None, mode="watch",
+        authorized=lambda ip: stream.allow, allow=True, transmit_enabled=False, session="s1", _tx_active=False, ptt_key=None, mode="watch",
         listeners=0, channels={"live": channel, "live_clean": channel, "selected": channel}, history=lambda after: [],
         peers=SimpleNamespace(is_home=lambda ip: True), gate=SimpleNamespace(dropped=0), log=None,
         mixer=SimpleNamespace(pending_s=0.0), clip_pcm=lambda i: None)
@@ -67,5 +67,5 @@ def test_foreign_device_does_not_learn_the_version(base):
 
 def test_events_fields_used_by_released_app_are_stable(base):
     fields = {"clips", "listeners", "live_listeners", "at_home", "signals_dropped", "transmit", "transmitting", "ptt_key",
-              "pending_s", "mode"}
+              "pending_s", "mode", "session"}
     assert fields <= set(get(base.url + "/events")[2]), "прибирання поля — несумісна зміна: потрібна нова версія"

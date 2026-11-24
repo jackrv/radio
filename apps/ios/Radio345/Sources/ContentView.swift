@@ -171,11 +171,7 @@ struct ListenVisualizer: View {
 
     private var statusText: String {
         if !model.isListening {
-            switch model.macReachable {
-            case .some(false): return "\(model.settings.receiver.title) недоступний · перевірте Tailscale"
-            case .some(true): return "\(model.settings.receiver.title) на зв'язку"
-            case .none: return "Не слухаю"
-            }
+            return model.airState == .unknown ? "Не слухаю" : model.airState.text(model.settings.receiver.title)
         }
         if case .retrying = model.state, !model.lastError.isEmpty {
             return "\(model.state.text) · \(model.lastError)"
@@ -192,7 +188,7 @@ struct ListenVisualizer: View {
             return model.isSoundActive ? .radioLime : .radioOk
         case .connecting, .buffering: return .radioWarn
         case .retrying, .failed: return .radioBad
-        case .idle: return model.macReachable == false ? .radioBad : .radioMuted
+        case .idle: return model.airState == .offline ? .radioBad : .radioMuted
         }
     }
 }
@@ -407,6 +403,11 @@ struct HistoryPage: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Історія").font(.system(size: 28, weight: .bold, design: .rounded))
                 .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 10)
+            if model.textState != .ok, model.textState != .unknown {
+                Text(model.textState.text("Тексти, \(model.settings.textReceiver.title)") + (model.clips.isEmpty ? "" : " · показано збережене"))
+                    .font(.footnote).foregroundStyle(Color.radioWarn)
+                    .padding(.horizontal, 20).padding(.bottom, 8)
+            }
             if model.clips.isEmpty {
                 Spacer()
                 Text("Фраз ще немає").foregroundStyle(Color.radioMuted).frame(maxWidth: .infinity)
@@ -471,6 +472,8 @@ struct ReplayButton: View {
                 .background(Color.radioSurface2, in: Circle())
         }
         .buttonStyle(.plain)
+        .disabled(!model.canReplay(clip))
+        .opacity(model.canReplay(clip) ? 1 : 0.35)
         .accessibilityLabel("Повторити фразу")
     }
 }
@@ -506,21 +509,25 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Приймач", selection: $settings.receiver) {
+                Picker("Ефір і передача", selection: $settings.receiver) {
                     ForEach(Receiver.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: settings.receiver) { model.receiverChanged() }
                 TextField("Адреса Mac (ім'я або 100.x.y.z)", text: $settings.macHost)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    .onSubmit { if settings.receiver == .mac { model.receiverChanged() } }
+                    .onSubmit { model.hostChanged(.mac) }
                 TextField("Адреса Pi (напр. radio345)", text: $settings.piHost)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    .onSubmit { if settings.receiver == .pi { model.receiverChanged() } }
+                    .onSubmit { model.hostChanged(.pi) }
+                Picker("Тексти", selection: $settings.textSource) {
+                    ForEach(TextSource.allCases) { Text($0.title).tag($0) }
+                }
+                .onChange(of: settings.textSource) { model.textSourceChanged() }
             } header: {
                 Text("Підключення")
             } footer: {
-                Text("Ім'я пристрою в Tailscale або адреса 100.x.y.z; порт типово 8346. Токен не потрібен: приймач пускає лише пристрої вашого облікового запису Tailscale.")
+                Text("«Наживо» й передача йдуть з обраного вузла ефіру; тексти, «Відібрані» й повтор фраз — з вузла текстів. Збій одного не зупиняє інший. Ім'я пристрою в Tailscale або адреса 100.x.y.z; порт типово 8346. Токен не потрібен: приймач пускає лише пристрої вашого облікового запису Tailscale.")
             }
         }
         .scrollContentBackground(.hidden)

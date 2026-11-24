@@ -531,6 +531,7 @@ class RadioStream:
         self._history = collections.deque(maxlen=HISTORY)
         self._history_lock = threading.Lock()
         self._ids = itertools.count(1)
+        self.session = os.urandom(6).hex()   # нумерація фраз починається знову з кожним запуском
         self._stop = threading.Event()
         self._server = None
         self._threads = []
@@ -741,6 +742,7 @@ def _handler_for(stream):
                     after = 0
                 body = json.dumps({
                     "clips": stream.history(after),
+                    "session": stream.session,
                     "listeners": stream.listeners,
                     "live_listeners": stream.channels["live"].listeners + stream.channels["live_clean"].listeners,
                     "at_home": stream.peers.is_home(self.client_address[0]),

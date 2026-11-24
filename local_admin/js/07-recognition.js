@@ -1156,10 +1156,9 @@
   }); });
 
   $("settings").addEventListener("submit", e => { e.preventDefault(); action(async () => {
-    if (!confirm("Зберегти? Налаштування застосуються після перезапуску приймача.")) return;
     const values = {};
     for (const key of Object.keys(current.settings.values)) { const i = $(`setting-${key}`); values[key] = i.type === "checkbox" ? i.checked : Number(i.value); }
     await request("/api/settings", "PUT", { values, expected_revision: current.settings.revision });
-    await settings(); note("Збережено. Приймач не перезапускався.");
+    await settings(); note("Збережено. Діятиме після перезапуску ефіру.");
   }); });
 

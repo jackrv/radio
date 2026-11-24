@@ -40,6 +40,7 @@ def register(app, ctx):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 
+    import subprocess
     import sys
     from pathlib import Path
     from server import devices
@@ -61,6 +62,27 @@ def register(app, ctx):
     if device_state is not None:
         from server import pi_update
         updater = pi_update.PiUpdate(root, device_state.host)
+
+    from shared import pull_backup
+
+    @app.get("/api/pi-backups")
+    def pi_backups(admin=Depends(actor)):
+        return pull_backup.overview() if device_state is not None else None
+
+    @app.post("/api/pi-backups/{action}")
+    def pi_backups_switch(action: Literal["enable", "disable"], admin=Depends(actor)):
+        if device_state is None:
+            raise HTTPException(409, "Копії Pi — лише з панелі на Mac")
+        try:
+            if action == "disable":
+                pull_backup.remove_agent()
+            elif device_state.host:
+                pull_backup.install_agent(device_state.host, "radio345-hub", pull_backup.OUT)
+            else:
+                raise HTTPException(409, "Не налаштовано RADIO345_PI_SSH")
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise HTTPException(409, "Не вдалося змінити розклад копій") from None
+        return pull_backup.overview()
 
     @app.get("/api/devices/pi/update")
     def pi_update_state(admin=Depends(actor)):

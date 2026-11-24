@@ -436,7 +436,7 @@
     const b = el("button", "ghost small-button danger-text", t.exhausted ? `Повторити видалення (${t.exhausted})` : `🗑 у всіх (${t.copies})`); b.type = "button";
     b.title = `Видалити в Telegram у всіх: повідомлення зникне в ${t.copies} отримувачів і в журналі. Можна ще ≈${hours} год.`;
     b.addEventListener("click", () => action(async () => {
-      if (!confirm(`Видалити це повідомлення в Telegram в усіх отримувачів (${t.copies})? Фраза також зникне з журналу й Mini App. Скасувати не можна.`)) return;
+      if (!twice(b, `Видалити в ${t.copies} чатах? Не скасувати — ще раз`)) return;
       const r = await request(`/api/recordings/${item.id}/telegram-delete`, "POST");
       item.telegram = {...item.telegram, ...r};
       b.replaceWith(telegramRecall(item));
@@ -594,7 +594,7 @@
         const sample = el("button", "ghost small-button", "＋ До зразків сигналу"); sample.type = "button";
         sample.title = "Зробити цей звук зразком фільтра сигналів (лише чистий сигнал без мовлення)";
         sample.addEventListener("click", () => action(async () => {
-          if (!confirm("Додати цей запис як зразок звуку сповіщення? Лише якщо в ньому чистий сигнал без мовлення. Діє після перезапуску.")) return;
+          if (!twice(sample, "Лише чистий сигнал? Ще раз")) return;
           await request(`/api/recordings/${item.id}/notification-sample`, "POST", { confirmed_isolated: true });
           sample.disabled = true; sample.textContent = "✓ у зразках";
           note("Зразок додано. Він почне діяти після перезапуску (кнопка внизу меню).");

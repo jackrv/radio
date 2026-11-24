@@ -119,7 +119,7 @@ API слухає лише `127.0.0.1:8765`; назовні його відкри
 ## Бекап баз на Mac
 
 `.venv/bin/python -m tools.pull_backup --host jackrv@radio345` на Mac: знімок `events.db` та індексу архіву,
-перевірка сум і цілісності, 14 останніх у `~/Library/Application Support/radio345/pi-backups`. Аудіо не копіюється.
+перевірка сум і цілісності, 3 останні у `~/Library/Application Support/radio345/pi-backups`. Аудіо не копіюється.
 
 Розклад (на Mac): та сама команда з `--install-agent`; вимкнути — `--remove-agent`, стан — `--status`. Щогодини перевіряє,
 чи є копія, молодша за 20 год; Pi недоступна — спробує знову, понад 3 доби без копії — сповіщення macOS (раз на добу).

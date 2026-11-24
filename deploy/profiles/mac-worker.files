@@ -14,6 +14,7 @@
 /shared/default_text_lists.txt
 /shared/diagnostic_history.py
 /shared/diagnostics.py
+/shared/home_marker.py
 /shared/instance_lock.py
 /shared/model_exclusion.py
 /shared/model_pause.py

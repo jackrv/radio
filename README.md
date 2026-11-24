@@ -54,6 +54,7 @@ Mini App чи локальній панелі, і система вчиться 
 | --- | --- |
 | 🚀 [Встановлення](docs/install.md) | `.env`, словники, перший адміністратор |
 | 🧭 [Як усе влаштовано](docs/system.md) | Pi, Mac, iPhone |
+| ⌨️ [Команди](docs/commands.md) | усі потрібні в одному місці |
 | ⚙️ [Запуск і служби](docs/launcher.md) | `r345`, systemd |
 | 🆘 [Якщо щось не так](docs/troubleshooting.md) | симптоми й перевірки |
 | 📻 [iPhone](docs/iphone-radio.md) | канали, передача, підпис |

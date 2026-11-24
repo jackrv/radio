@@ -621,7 +621,7 @@
         fill.style.width = `${Math.min(100, (job.progress.done / job.progress.total) * 100)}%`; bar.append(fill); text.append(bar);
       }
       const tools = el("span", "lab-job-tools");
-      const tool = (label, title, go) => { const b = el("button", "lab-tool", label); b.type = "button"; b.title = title; b.addEventListener("click", () => action(go)); tools.append(b); };
+      const tool = (label, title, go) => { const b = el("button", "lab-tool", label); b.type = "button"; b.title = title; b.addEventListener("click", () => action(() => go(b))); tools.append(b); };
       if (job.status === "queued") {
         const position = queued.indexOf(job);
         if (position > 0) tool("↑", "Раніше", async () => { await request(`/api/lab/queue/${job.id}/move`, "POST", { delta: -1 }); await labQueue(); });
@@ -642,8 +642,8 @@
       }
       if (["cancelled", "failed"].includes(job.status))
         tool("↻", "Повторити з нуля: знову в чергу", async () => { await request(`/api/lab/queue/${job.id}/retry`, "POST"); await labQueue(); });
-      tool("✕", job.status === "running" ? "Зупинити цей тест (черга піде далі)" : job.status === "queued" ? "Прибрати з черги" : "Прибрати з переліку", async () => {
-        if (job.status === "running" && !confirm("Зупинити тест, що йде, і перейти до наступного? Готові записи збережуться — його можна буде продовжити.")) return;
+      tool("✕", job.status === "running" ? "Зупинити цей тест (черга піде далі)" : job.status === "queued" ? "Прибрати з черги" : "Прибрати з переліку", async b => {
+        if (job.status === "running" && !twice(b, "Точно?")) return;
         await request(`/api/lab/queue/${job.id}`, "DELETE"); await labQueue();
       });
       row.append(el("span", "lab-job-icon", STATUS_ICON[job.status] || "•"), text, tools);
@@ -652,10 +652,9 @@
     $("lab-jobs").replaceChildren(...(rows.length ? rows : [el("p", "muted", "Тестів у черзі немає. Оберіть праворуч, що перевірити.")]));
     // Кнопки керування.
     const controls = [];
-    const button = (label, cls, title, go) => { const b = el("button", cls, label); b.type = "button"; b.title = title; b.addEventListener("click", () => action(go)); controls.push(b); return b; };
+    const button = (label, cls, title, go) => { const b = el("button", cls, label); b.type = "button"; b.title = title; b.addEventListener("click", () => action(() => go(b))); controls.push(b); return b; };
     if (!active && queued.length) {
       button("▶ Почати зараз", "", "Вивантажити Whisper, записувати фрагменти під час тестів, потім доробити їх", async () => {
-        if (!confirm(`Запустити ${queued.length} тест(и), ≈${duration(minutes)}? Приймач продовжить слухати й записувати фрагменти; Whisper буде вивантажено.`)) return;
         await request("/api/lab/queue/start", "POST", {}); await labQueue();
       });
       controls.push(windowsEditor(q, queued));
@@ -667,8 +666,8 @@
     }
     if (active) {
       button("Зупинити після поточного", "ghost", "Дочекатися кінця тесту, що йде, і зупинити чергу", async () => { await request("/api/lab/queue/stop", "POST", { now: false }); await labQueue(); });
-      button("Зупинити зараз", "ghost danger-text", "Перервати тест, що йде, і зупинити чергу", async () => {
-        if (!confirm("Перервати тест, що йде? Приймач відновить розпізнавання й доробить накопичене.")) return;
+      button("Зупинити зараз", "ghost danger-text", "Перервати тест, що йде, і зупинити чергу", async b => {
+        if (!twice(b, "Перервати? Ще раз")) return;
         await request("/api/lab/queue/stop", "POST", { now: true }); await labQueue();
       });
     }

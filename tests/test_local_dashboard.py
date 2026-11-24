@@ -538,6 +538,22 @@ def test_service_buttons_work_only_under_r345(setup, tmp_path, monkeypatch):
         assert client.post("/api/launcher/stop", headers=h).json() == {"sent": "stop"} and stopped == [1]
 
 
+def test_pi_backups_switch_is_explicit(local, monkeypatch):
+    from shared import pull_backup
+    if __import__("sys").platform != "darwin":
+        pytest.skip("керування — з Mac")
+    client, _, _ = local
+    h, calls = {"Origin": ORIGIN}, []
+    monkeypatch.setattr(pull_backup, "overview", lambda: {"enabled": False, "count": 0, "bytes": 0, "age_h": None, "keep": 3})
+    monkeypatch.setattr(pull_backup, "remove_agent", lambda: calls.append("remove"))
+    monkeypatch.setattr(pull_backup, "install_agent", lambda *a: calls.append("install"))
+    assert client.get("/api/pi-backups").json()["keep"] == 3
+    assert client.post("/api/pi-backups/disable").status_code == 403, "без Origin панелі"
+    assert client.post("/api/pi-backups/disable", headers=h).status_code == 200
+    assert client.post("/api/pi-backups/enable", headers=h).status_code == 409, "Pi не налаштовано"
+    assert client.post("/api/pi-backups/x", headers=h).status_code == 422 and calls == ["remove"]
+
+
 def test_panel_is_read_only_when_home_is_elsewhere(local):
     from shared import home_marker
     client, path, _ = local

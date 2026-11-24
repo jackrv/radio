@@ -21,7 +21,7 @@
 ## Автоматичні копії
 
 Служба розпізнавання раз на добу (перша — через 5 хв після старту) створює
-`.local-backups/events-auto-<час UTC>.db`: SQLite Backup API, `integrity_check`,
+`.local-data/backups/events-auto-<час UTC>.db`: SQLite Backup API, `integrity_check`,
 звірка кількості рядків, права 0600. Зберігаються останні 7. Збій пишеться в
 журнал і `backup.failed`, але не зупиняє приймання. Копія вручну — «Система →
 Створити зараз».
@@ -39,7 +39,7 @@
 Лише командою, не копіюванням файлу, і **при зупинених службах** (`./r345 stop` або systemd):
 
 ```bash
-.venv/bin/python -m tools.manage_database restore --from .local-backups/events-auto-….db
+.venv/bin/python -m tools.manage_database restore --from .local-data/backups/events-auto-….db
 ```
 
 Поточна база спершу зберігається як `events-before-restore-…`. Лічильник ID

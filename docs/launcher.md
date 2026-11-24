@@ -10,7 +10,7 @@
 
 | Команда | Дія |
 | --- | --- |
-| `./r345 up` | запустити процеси профілю; `--only worker node` — лише вибрані |
+| `./r345 up` | `RADIO345_PROFILE` і `RADIO345_ONLY` з `.env`; `--profile`, `--only worker node` — явно |
 | `./r345 status` / `stop` / `restart [процес …]` | стан / зупинити / перезапустити |
 | `./r345 check` | що запуститься й чого бракує |
 | `./r345 pause-model [--minutes 120]` / `resume-model` | віддати модель лабораторії / повернути |

@@ -32,7 +32,7 @@ HOME = Path.home() / "Library" / "Application Support" / "radio345"
 OUT = HOME / "pi-backups"
 LABEL = "local.radio345.pi-backup"
 EVERY_S, DUE_H, STALE_DAYS = 3600, 20, 3
-KEEP = 14
+KEEP = 3
 NAMES = ("events.db", "index.sqlite3")
 STAMP = re.compile(r"\d{8}T\d{6}Z")
 MAX_BYTES = 2 * 1024 ** 3
@@ -249,6 +249,14 @@ def install_agent(host, root, out, label=LABEL):
 def remove_agent(label=LABEL):
     launchctl("bootout", f"gui/{os.getuid()}/{label}")
     agent_paths(label)[0].unlink(missing_ok=True)
+
+
+def overview(out=OUT):
+    """Для панелі: чи ввімкнено, скільки копій і місця. Нічого не створює."""
+    out = Path(out)
+    copies = [p for p in out.iterdir() if p.is_dir() and STAMP.fullmatch(p.name)] if out.is_dir() else []
+    size = sum(f.stat().st_size for p in copies for f in p.iterdir() if f.is_file())
+    return {"enabled": agent_paths()[0].exists(), "count": len(copies), "bytes": size, "age_h": latest(out)[1], "keep": KEEP}
 
 
 def status(out):

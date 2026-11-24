@@ -165,7 +165,7 @@
       const save = el("button", "", "Зберегти");
       save.addEventListener("click", () => action(async () => {
         if (u.role === "admin" && (role.value !== "admin" || !enabled.checked)
-            && !confirm("Забрати права адміністратора чи доступ? Якщо це ваш обліковий запис, керувати з Mini App ви вже не зможете.")) return;
+            && !twice(save, "Забрати доступ адміністратора? Ще раз")) return;
         await request(`/api/users/${u.user_id}`, "PUT", { role: role.value, enabled: enabled.checked,
           display_name: name.value, notify_mode: mode.value, expected_version: u.version });
         await users(); note("Користувача збережено.");

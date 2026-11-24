@@ -235,7 +235,8 @@ async function until(fn,timeout=15000){const at=Date.now();while(Date.now()-at<t
  await evaluate(`document.querySelector('[data-group="system"]').click()`);
  await until(()=>evaluate(`document.querySelector('#telegram-retention input')!==null`));
  await until(()=>evaluate(`[...document.querySelectorAll('#telegram button')].some(b=>b.textContent==='Пропустити ці оновлення')`));
- await evaluate(`window.confirm=()=>true;[...document.querySelectorAll('#telegram button')].find(b=>b.textContent==='Пропустити ці оновлення').click()`);
+ await evaluate(`{const b=[...document.querySelectorAll('#telegram button')].find(b=>b.textContent==='Пропустити ці оновлення');b.click()}`);await sleep(300);
+ await evaluate(`document.querySelector('#telegram button.armed').click()`);
  await until(()=>evaluate(`fetch('/api/summary').then(r=>r.json()).then(d=>d.telegram_sync.exhausted===0&&d.telegram_sync.skipped===1)`));
  await until(()=>evaluate(`!document.querySelector('#telegram button') && document.querySelector('#telegram').textContent.includes('Пропущено за вашим рішенням')`));
  console.log('flows: exhausted Telegram edit explicitly skipped through UI');

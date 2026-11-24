@@ -160,7 +160,7 @@
     return archiveLearningTask;
   }
   learnArchiveButton.addEventListener('click',()=>{
-    if (!confirm('Навчити словесні правила за всіма збереженими еталонами «Мовлення»? Перед цим буде перевірена резервна копія events.db. Повтор не додасть зайвих голосів; пороги й окремий дозвіл слів збережуться.'))return;
+    if (!twice(learnArchiveButton, 'Навчити за всіма еталонами? Ще раз')) return;
     archiveLearningPanel().run();
   });
 

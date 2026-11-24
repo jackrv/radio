@@ -209,7 +209,7 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
     """Справжній r345 у копії проєкту: стан, вибірковий перезапуск, зупинка, відмова другому запуску."""
     import shutil
     import subprocess
-    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/conflict.py", "shared/paths.py", "shared/instance_lock.py", "shared/__init__.py"):
+    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/conflict.py", "shared/home_marker.py", "shared/paths.py", "shared/instance_lock.py", "shared/__init__.py"):
         target = tmp_path / item
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radio345.ROOT / item, target)
@@ -269,3 +269,18 @@ def test_foreign_lock_blocks_r345_and_is_not_stopped_by_it(tmp_path, capsys):
         assert "не відповідає" in capsys.readouterr().out
     finally:
         os.close(old)
+
+
+def test_plain_up_uses_env_choice_and_respects_home(tmp_path):
+    from shared import home_marker
+    profile = radio345.load_profile("mac-all")
+    chosen = {"RADIO345_ONLY": "worker node asr panel api tunnel"}
+    assert "tunnel" not in radio345.default_processes(profile, tmp_path, {}), "без явного вибору публічної адреси немає"
+    assert set(radio345.default_processes(profile, tmp_path, chosen)) == {"worker", "node", "asr", "panel", "api", "tunnel"}
+    other = "pi" if home_marker.this_device() == "mac" else "mac"
+    home_marker.write(tmp_path, other, 1)
+    assert set(radio345.default_processes(profile, tmp_path, chosen)) == {"worker", "panel"}
+    home_marker.write(tmp_path, home_marker.this_device(), 2)
+    assert "asr" in radio345.default_processes(profile, tmp_path, chosen)
+    with pytest.raises(SystemExit):
+        radio345.default_processes(profile, tmp_path, {"RADIO345_ONLY": "невідомий"})

@@ -86,6 +86,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/suggestions/(dismiss|restore)"), "Пропозиції: приховано / повернуто"),
         (re.compile(r"/api/suggestions/mute"), "Пропозиції: перевірку виду вимкнено / увімкнено"),
         (re.compile(r"/api/devices/pi/update"), "Оновлення коду Pi"),
+        (re.compile(r"/api/pi-backups/(enable|disable)"), "Копії баз Pi: {0}"),
         (re.compile(r"/api/devices/(mac|pi)/audio"), "Звукові пристрої: {0}"),
         (re.compile(r"/api/text-lists/([a-z_]+)"), "Фільтри тексту: {0}"),
         (re.compile(r"/api/dictionaries/([a-z_]+)"), "Словник: {0}"),
@@ -141,7 +142,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         if not public and not matches(request.cookies.get(cookie,""),session):
             return Response(status_code=401)
         if (request.method not in ("GET","HEAD") and request.url.path.startswith("/api/")
-                and not re.match(r"/api/(devices|home-move|launcher)(/|$)", request.url.path)
+                and not re.match(r"/api/(devices|home-move|launcher|pi-backups)(/|$)", request.url.path)
                 and home_marker.foreign(root_of(db_path))):
             return Response('{"detail":"Дім на іншому пристрої: дані змінюйте там"}',status_code=409,media_type="application/json")
         activity_payload=None

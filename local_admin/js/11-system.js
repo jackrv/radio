@@ -194,6 +194,17 @@
     box.append(b);
     return box;
   }
+  let piBackups = null;
+  function backupLine() {
+    const box = el("div", "device-update"), b = piBackups;
+    const text = b.count ? `${num(b.count)} з ${num(b.keep)} · ${storageSize(b.bytes)}${b.age_h == null ? "" : ` · остання ${num(Math.round(b.age_h))} год тому`}` : "ще немає";
+    box.append(el("p", "muted small", `Копії баз Pi на Mac: ${b.enabled ? "щодня" : "вимкнено"} · ${text}`));
+    const button = el("button", "ghost small-button", b.enabled ? "Вимкнути" : "Увімкнути"); button.type = "button";
+    button.title = b.enabled ? "Наявні копії лишаться" : "Раз на добу, у ~/Library/Application Support/radio345";
+    button.addEventListener("click", () => action(async () => { piBackups = await request(`/api/pi-backups/${b.enabled ? "disable" : "enable"}`, "POST"); await devices(); }));
+    box.append(button);
+    return box;
+  }
   function deviceCard(name, box, d, moving) {
     const device = d[name], home = d.home === name || d.home === "both";
     box.classList.toggle("home", home);
@@ -214,6 +225,7 @@
       const facts = [`вільно ${storageSize(device.disk_free)}`, device.temp_c == null ? "" : `${fix(device.temp_c, 1)} °C`, device.model ? `модель: ${device.model}` : ""].filter(Boolean).join(" · ");
       parts.push(list, el("p", "muted small", facts), audioSection(name, device.processes));
     }
+    if (name === "pi" && piBackups) parts.push(backupLine());
     if (name === "pi" && updateState.phase === "failed") parts.push(el("p", "alert small", updateState.error));
     if (name === "pi" && updateState.phase === "done" && updateState.units?.length)
       parts.push(el("p", "alert small", "Змінилися файли служб: на Pi один раз sudo sh deploy/hub/install.sh --units"));
@@ -269,7 +281,7 @@
     try { d = await request("/api/devices"); } catch (_) { return; }
     if (!d.mac) { $("device-mac").replaceChildren(el("p", "muted small", "Керування пристроями — у панелі на Mac.")); return; }
     const moving = await moveState().catch(() => false);
-    if (d.configured) await pollUpdate().catch(() => {});
+    if (d.configured) { await pollUpdate().catch(() => {}); piBackups = await request("/api/pi-backups").catch(() => null); }
     deviceCard("mac", $("device-mac"), d, moving);
     deviceCard("pi", $("device-pi"), d, moving);
   }
@@ -312,7 +324,7 @@
       for(const [mode,title] of [['retry','Повторити невдалі оновлення'],['skip','Пропустити ці оновлення']]) {
         const b=el('button','ghost',title);b.type='button';buttons.push(b);actions.append(b);
         b.addEventListener('click',()=>action(async()=>{
-          if(mode==='skip'&&!confirm('Не повторювати ці невдалі оновлення старих повідомлень? Вони можуть залишитися зі старим текстом. Правки в базі не видаляються; нові правки знову синхронізуватимуться.'))return;
+          if(mode==='skip'&&!twice(b,'Пропустити? Ще раз')) return;
           for(const button of buttons)button.disabled=true;
           try {
             const result=await request(`/api/telegram-sync/${mode}`,'POST');

@@ -2,16 +2,19 @@
   const SERVICE_MODE = { r345: "r345", systemd: "systemd (Pi)", none: "запущено окремо" };
   let serviceMode = "none";
   // Замість спливних вікон: перше натискання питає прямо в кнопці, друге — виконує; за 4 с питання зникає.
+  const asked = new WeakMap();
+  function twice(button, question) {
+    const pending = asked.get(button);
+    if (pending) { pending(); return true; }
+    const label = [...button.childNodes];
+    const reset = () => { clearTimeout(timer); asked.delete(button); button.replaceChildren(...label); button.classList.remove("armed"); };
+    const timer = setTimeout(reset, 4000);
+    asked.set(button, reset);
+    button.replaceChildren(question); button.classList.add("armed");
+    return false;
+  }
   function armed(button, question, run) {
-    let timer = null, label = null;
-    const reset = () => { clearTimeout(timer); timer = null; if (label !== null) button.replaceChildren(...label); label = null; button.classList.remove("armed"); };
-    button.addEventListener("click", () => {
-      if (timer === null) {
-        label = [...button.childNodes]; button.replaceChildren(question); button.classList.add("armed");
-        timer = setTimeout(reset, 4000); return;
-      }
-      reset(); action(run);
-    });
+    button.addEventListener("click", () => { if (twice(button, question)) action(run); });
   }
   async function launcherState() {
     try {

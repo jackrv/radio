@@ -180,3 +180,16 @@ def test_agent_script_runs_alone_without_project(tmp_path):
     shutil.copyfile(b.__file__, script)
     done = subprocess.run([sys._base_executable, "-I", str(script), "--help"], cwd=tmp_path, capture_output=True)
     assert done.returncode == 0
+
+
+def test_overview_for_panel_counts_and_creates_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(b, "agent_paths", lambda label=b.LABEL: (tmp_path / "agent.plist", None, None))
+    assert b.overview(tmp_path / "none") == {"enabled": False, "count": 0, "bytes": 0, "age_h": None, "keep": b.KEEP}
+    assert not (tmp_path / "none").exists()
+    copy = tmp_path / "out" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    copy.mkdir(parents=True)
+    (copy / "events.db").write_bytes(b"x" * 10)
+    (tmp_path / "out" / "чуже").mkdir()
+    (tmp_path / "agent.plist").touch()
+    data = b.overview(tmp_path / "out")
+    assert data["enabled"] and data["count"] == 1 and data["bytes"] == 10 and data["age_h"] < 1 and data["keep"] == 3

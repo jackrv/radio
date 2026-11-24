@@ -16,7 +16,7 @@
       if (item.managed) {
         const remove = el("button", "danger small-button", "✕"); remove.type = "button"; remove.title = "Видалити зразок";
         remove.addEventListener("click", () => action(async () => {
-          if (!confirm("Видалити цей зразок?")) return;
+          if (!twice(remove, "Точно?")) return;
           await request(`/api/samples/${item.id}`, "DELETE"); await samples(); note("Зразок видалено. Діє після перезапуску приймача.");
         }));
         row.append(remove);

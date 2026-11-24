@@ -1,6 +1,7 @@
 """Один запуск на будь-якому пристрої: профіль → окремі процеси під наглядом. Команда — ./r345.
 
-    ./r345 up [--profile mac-dev] [--only panel]   # профіль типово з RADIO345_PROFILE у .env
+    ./r345 up                                      # RADIO345_PROFILE і RADIO345_ONLY з .env; дім на іншому пристрої — лише потрібне
+    ./r345 up --profile mac-dev --only panel       # явно
     ./r345 status | stop                           # стан; зупинити все
     ./r345 restart [panel …]                       # перезапустити всі або вибрані процеси
     ./r345 check                                   # що запуститься й чого бракує
@@ -21,7 +22,7 @@ import time
 import tomllib
 from pathlib import Path
 
-from shared import conflict
+from shared import conflict, home_marker
 from shared.r345_control import Control
 
 ROOT = Path(__file__).resolve().parent
@@ -69,6 +70,16 @@ def selected(profile, only=()):
         raise SystemExit(f"Профіль не має процесів: {', '.join(sorted(unknown))}")
     # manual (напр. публічний тунель) — лише коли назвали явно.
     return [p for p in names if (p in only if only else p not in profile.get("manual", ()))]
+
+
+def default_processes(profile, root=None, environ=None):
+    """`up` без параметрів: RADIO345_ONLY з .env. Дім на іншому пристрої — лише модель і панель (решту не пустить conflict)."""
+    if home_marker.foreign(root or ROOT):
+        away = [p for p in ("worker", "panel") if p in profile["processes"]]
+        if away:
+            return selected(profile, away)
+    wanted = (base_environment({}) if environ is None else environ).get("RADIO345_ONLY", "").split()
+    return selected(profile, wanted)
 
 
 def missing_env(profile, env, names=()):
@@ -345,7 +356,7 @@ def main(argv=None):
     if not name:
         raise SystemExit("Не задано профіль: RADIO345_PROFILE у .env або --profile")
     profile = load_profile(name)
-    names = selected(profile, args.only)
+    names = selected(profile, args.only) if args.only or args.profile else default_processes(profile)
     env = base_environment(profile)
     missing = missing_env(profile, env, names)
     if args.action == "check":

@@ -1760,6 +1760,13 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
 .flow-node.warn, .flow-legend .warn { color: var(--warn); }
 .flow-node.bad, .flow-legend .bad { color: var(--bad); }
 .flow-node.busy rect { stroke-width: 3; filter: drop-shadow(0 0 7px rgba(184, 239, 134, .5)); }
+.flow-level-now { font-weight: 600; font-variant-numeric: tabular-nums; }
+.flow-level-track { fill: var(--surface2); stroke: var(--border); }
+.flow #flow-level-bar { fill: var(--off); transition: width .4s ease-out, fill .3s; }
+.flow-level.above #flow-level-bar { fill: var(--lime); }
+.flow-level.clip #flow-level-bar { fill: var(--bad); }
+#flow-level-mark { stroke: var(--warn); stroke-width: 2; }
+.flow-level.off #flow-level-bar, .flow-level.off #flow-level-mark { visibility: hidden; }
 .flow-edge { fill: none; stroke: var(--border); stroke-width: 3; stroke-linecap: round; }
 .flow-edge.on { stroke: var(--lime); stroke-width: 4; stroke-dasharray: 5 9; animation: flow-run .7s linear infinite; }
 @keyframes flow-run { to { stroke-dashoffset: -14; } }

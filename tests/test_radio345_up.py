@@ -286,7 +286,7 @@ def test_plain_up_uses_env_choice_and_respects_home(tmp_path):
         radio345.default_processes(profile, tmp_path, {"RADIO345_ONLY": "невідомий"})
 
 
-def doctor(monkeypatch, capsys, remote, ios="Встановлено: 1 дн. тому\nПідпис діє до: 29.11.2026 11:03\nАгент: увімкнено\n", rows=None):
+def doctor(monkeypatch, capsys, remote, ios="Встановлено: 1 дн. тому\nПідпис діє до: 29.11.2026 11:03\nАгент: увімкнено\n", rows=None, home=None, seen=None):
     import json
     from types import SimpleNamespace
     from server import devices
@@ -297,8 +297,14 @@ def doctor(monkeypatch, capsys, remote, ios="Встановлено: 1 дн. т�
     monkeypatch.setattr(devices, "code_hash", lambda: "same")
     monkeypatch.setattr(pull_backup, "overview", lambda: {"count": 1, "keep": 3, "age_h": 5.0})
     monkeypatch.setattr(radio345.sys, "platform", "darwin")
+    monkeypatch.setattr(radio345.home_marker, "foreign", lambda root: home)
     out = json.dumps(rows or [["База", "ціла", True]], ensure_ascii=False)
-    code = radio345.doctor(run=lambda command, **k: SimpleNamespace(stdout=out if "--rows" in command else ios))
+
+    def run(command, **k):
+        if seen is not None:
+            seen.append(command)
+        return SimpleNamespace(stdout=out if "--rows" in command[-1] else ios)
+    code = radio345.doctor(run=run)
     return code, capsys.readouterr().out
 
 
@@ -451,3 +457,13 @@ def test_pi_backups_run_without_mac_panel(monkeypatch):
     def broken(root, host):
         raise RuntimeError
     assert radio345.start_pi_backups(lambda *a: lines.append(a), broken, "darwin") is None and lines
+
+
+def test_doctor_reads_data_from_home(monkeypatch, capsys):
+    up, seen = {"reachable": True, "processes": {}, "code": "same"}, []
+    code, out = doctor(monkeypatch, capsys, up, home="pi", seen=seen)
+    assert code == 0 and "База Pi" in out and seen[0][0] == "ssh"
+    code, out = doctor(monkeypatch, capsys, up, seen=seen[:0])
+    assert "База Pi" not in out
+    code, out = doctor(monkeypatch, capsys, up, home="pi", rows="не список рядків")
+    assert code == 1 and "Дані Pi" in out

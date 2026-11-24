@@ -82,6 +82,7 @@
 /server/event_processor.py
 /server/flow.py
 /server/home_move.py
+/server/level_meter.py
 /server/log_security.py
 /server/mac_update.py
 /server/management/__init__.py

@@ -356,3 +356,31 @@ def test_shared_speaker_stays_open_between_sessions(monkeypatch):
     assert len(opened) == 1 and not opened[0].closed
     time.sleep(0.4)
     assert opened[0].closed and speaker.out is None
+
+
+def test_null_output_transmits_into_nothing_and_never_presses_key(monkeypatch):
+    import logging
+    from types import SimpleNamespace
+    from shared import ptt_key, radio_stream as rs
+    made, specs = {}, []
+
+    class Stream:
+        def __init__(self, **kwargs):
+            made.update(kwargs)
+
+        def start(self):
+            return self
+    monkeypatch.setattr(rs, "RadioStream", Stream)
+    original = ptt_key.make_key
+    monkeypatch.setattr(ptt_key, "make_key", lambda spec: (specs.append(spec), original("none"))[1])
+    monkeypatch.setenv("RADIO_OUTPUT_DEVICE", "null")
+    monkeypatch.setenv("RADIO_PTT", "gpio:17")
+    config = SimpleNamespace(SR=16000, RADIO_STREAM_MODE="watch", RADIO_STREAM_HOST="127.0.0.1", RADIO_STREAM_PORT=0,
+                             RADIO_STREAM_TRANSMIT=True, RADIO_STREAM_ENABLED=True)
+    assert rs.start_radio_stream(config, logging.getLogger("t"), force=True) is not None
+    assert isinstance(made["player_factory"], rs.NullOutput) and specs == ["none"]
+    with made["player_factory"](16000) as play:
+        assert play(b"\0\0" * 320) is None
+    monkeypatch.setenv("RADIO_OUTPUT_DEVICE", "Synthetic")
+    rs.start_radio_stream(config, logging.getLogger("t"), force=True)
+    assert isinstance(made["player_factory"], rs.SharedSpeaker) and specs[-1] == "gpio:17"

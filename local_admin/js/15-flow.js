@@ -44,6 +44,17 @@
       air, tx, segment: hot("segment"), whisper: asking, db: hot("db"), telegram: hot("telegram"), panel: hot("db"),
       listen: listeners > 0 && air, talk: tx } };
   }
+  // Рівень входу: шкала −60…−10 dBFS, колір за порогом MIN_RMS.
+  function flowLevel(live) {
+    const level = live?.level, rms = level?.rms, min = live?.min_rms;
+    const db = v => 20 * Math.log10(Math.max(v, 1e-5)), part = v => Math.min(1, Math.max(0, (db(v) + 60) / 50));
+    if (typeof rms !== "number") return { tone: "off", now: "рівня немає", phrase: "", part: 0, mark: 0 };
+    const over = typeof min === "number" && rms >= min;
+    return { tone: level.peak >= 0.985 ? "clip" : over ? "above" : "", part: part(rms), mark: typeof min === "number" ? part(min) : 0,
+      now: `RMS ${rms.toFixed(4)} · ${Math.round(db(rms))} дБ`,
+      phrase: typeof level.phrase_rms !== "number" ? (typeof min === "number" ? `поріг ${min}` : "")
+        : `фраза ${level.phrase_rms.toFixed(4)}${typeof min !== "number" ? "" : level.phrase_rms >= min ? " ✓" : " тихо"}` };
+  }
   // Що змінилося між двома знімками. Перший знімок — лише точка відліку.
   function flowChanges(before, after) {
     if (!before || !after) return [];
@@ -64,6 +75,12 @@
       box.setAttribute("class", `flow-node ${tone}`);
       box.querySelector(".flow-sub").textContent = text;
     }
+    const level = flowLevel(m.live ? flow.data : null), meter = $("flow-level");
+    meter.setAttribute("class", `flow-level ${level.tone}`);
+    meter.querySelector(".flow-level-now").textContent = level.now;
+    meter.querySelector(".flow-sub").textContent = level.phrase;
+    $("flow-level-bar").setAttribute("width", String(Math.round(130 * level.part)));
+    $("flow-level-mark").setAttribute("transform", `translate(${20 + Math.round(130 * level.mark)} 0)`);
     for (const [name, on] of Object.entries(m.edges)) $(`flow-edge-${name}`).classList.toggle("on", on);
     $("flow-home-title").textContent = m.home ? `Дім: ${deviceTitle(m.home)}` : "Дім: невідомо";
     const status = m.live ? "Наживо" : flow?.home === null ? "Дім на іншому пристрої: живих даних тут немає" : "Чекаю дані з дому…";

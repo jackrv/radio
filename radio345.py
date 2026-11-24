@@ -364,15 +364,29 @@ def capture(run, command):
 def doctor(run=subprocess.run):
     """Лише читання. Pi й iPhone — з Mac; на Pi — її служби, база й діагностика."""
     show_status(Control(), "Служби")
-    try:
-        rows = [(ok, name, value) for name, value, ok in json.loads(capture(run, [sys.executable, "-m", "tools.diagnose", "--rows"]))]
-    except ValueError:
-        rows = [(False, "База", "перевірка не виконалася")]
+    rows = data_rows(run)
     if sys.platform == "darwin":
         rows += mac_rows(run)
     print("\nСтан")
     print(table(rows))
     return 0 if all(ok is not False for ok, *_ in rows) else 1
+
+
+def data_rows(run):
+    """База, діагностика й ефір — того пристрою, де дім: на Mac застигла копія була б хибною тривогою."""
+    command, where = [sys.executable, "-m", "tools.diagnose", "--rows"], ""
+    if sys.platform == "darwin" and home_marker.foreign(ROOT) == "pi":
+        from server import devices
+        host = devices.pi_host(base_environment({}))
+        if not host:
+            return [(False, "Дані Pi", "не налаштовано RADIO345_PI_SSH")]
+        where = " Pi"
+        command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "--", host,
+                   "cd radio345-hub && .venv/bin/python -m tools.diagnose --rows"]
+    try:
+        return [(ok, name + where, value) for name, value, ok in json.loads(capture(run, command))]
+    except ValueError:
+        return [(False, "Дані Pi" if where else "База", "перевірка не виконалася")]
 
 
 def mac_rows(run):

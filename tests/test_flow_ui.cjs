@@ -38,3 +38,11 @@ test('exchange between two snapshots still pulses',()=>{
  const a={...snap().data,whisper:{state:'ready',sent:1}};
  assert.deepEqual([...c.ch(a,{...a,whisper:{state:'ready',sent:2}})],['whisper']);
 });
+test('level bar follows RMS, threshold and clipping',()=>{
+ vm.runInContext(source.slice(source.indexOf('  function flowLevel('),source.indexOf('  // Що змінилося між'))+'\nglobalThis.lv=flowLevel;',c);
+ const l=(rms,peak=.1,phrase)=>c.lv({min_rms:.02,level:{rms,peak,phrase_rms:phrase}});
+ assert.equal(l(.01).tone,'');assert.equal(l(.03).tone,'above');assert.equal(l(.03,.99).tone,'clip');
+ assert.ok(l(.01).part<l(.01).mark&&l(.03).part>l(.03).mark);
+ assert.match(l(.0107).now,/0\.0107 · -39 дБ/);assert.match(l(.01,.1,.0231).phrase,/0\.0231 ✓/);assert.match(l(.01,.1,.011).phrase,/тихо/);
+ assert.equal(c.lv(null).tone,'off');assert.equal(c.lv({level:{}}).tone,'off');
+});

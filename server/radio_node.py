@@ -27,6 +27,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
     from server.segment_timing import capture_frame
     from shared.audio_devices import configured, input_stream_factory
     from shared.radio_stream import start_radio_stream
+    from server.level_meter import LevelMeter
 
     if supervisor_cls is None:
         from server.supervisor import ApplicationSupervisor as supervisor_cls
@@ -38,6 +39,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
 
     _attach_signal_filter(stream, config, log)
 
+    stream.level = meter = LevelMeter()
     frames = DropOldestQueue(100)
     segments = DropOldestQueue(5)
     stop = threading.Event()
@@ -45,7 +47,9 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
     def on_audio(indata, frame_count, time_info, status):
         if status:
             log.warning("Стан аудіопотоку: %s", status)
-        frames.put(capture_frame(apply_gain(indata, config.GAIN), frame_count, config.SR, time_info))
+        frame = capture_frame(apply_gain(indata, config.GAIN), frame_count, config.SR, time_info)
+        frames.put(frame)
+        meter.add(frame)
 
     def consume_segments():
         """Замість Whisper: передати сегмент далі (або відкинути, поки приймача тексту немає)."""
@@ -54,6 +58,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
                 item = segments.get(timeout=0.5)
             except queue.Empty:
                 continue
+            meter.segment(item)
             if segment_sink is not None:
                 try:
                     segment_sink(item)

@@ -75,3 +75,22 @@ def test_stream_reports_speech_until_segment_ends():
     assert stream.on_air()
     stream.live_audio(b"\0\0" * 480, "end")
     assert not stream.on_air()
+
+
+def test_level_meter_matches_the_threshold_metric():
+    import numpy as np
+    from server.level_meter import LevelMeter
+    from shared.audio import prepare_audio
+    now = [0.0]
+    meter = LevelMeter(clock=lambda: now[0])
+    assert meter.read()["rms"] is None
+    loud, quiet = np.full(480, 3277, np.int16).tobytes(), np.full(480, 327, np.int16).tobytes()
+    meter.add(loud)
+    meter.segment(loud)
+    assert meter.read()["phrase_rms"] == round(prepare_audio(loud, 0, False)[1], 4) == meter.read()["rms"]
+    now[0] = 1.5   # гучне вийшло з вікна
+    meter.add(quiet)
+    assert meter.read()["rms"] == round(327 / 32768, 4) and meter.read()["phrase_age_s"] == 1.5
+    now[0] = 9.0
+    assert meter.read()["rms"] is None, "мікрофон закрито"
+    meter.add(b"x")   # непарні байти не валять захоплення

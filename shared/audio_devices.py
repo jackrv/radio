@@ -16,6 +16,9 @@ import sys
 from pathlib import Path
 
 
+NULL_OUTPUT = "null"   # RADIO_OUTPUT_DEVICE: передача у порожнечу, без звукового виходу
+
+
 class DeviceNotFound(RuntimeError):
     pass
 

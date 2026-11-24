@@ -180,7 +180,8 @@
         const label = el("label", "", settings.env_override.includes(key) ? `${title} · задано в .env` : title), select = el("select"), chosen = settings.values[key] || "";
         const system = (list || []).find(x => x.default), options = [["", `Системний${system ? ` (${system.name})` : ""}`]];
         for (const x of list || []) options.push([x.name, x.name]);
-        const match = (list || []).find(x => x.name === chosen) || (list || []).find(x => chosen && x.name.toLowerCase().includes(chosen.toLowerCase()));
+        if (key === "RADIO_OUTPUT_DEVICE" && !options.some(o => o[0] === "null")) options.push(["null", "У порожнечу (без звуку)"]);
+        const match = chosen === "null" && key === "RADIO_OUTPUT_DEVICE" ? { name: "null" } : (list || []).find(x => x.name === chosen) || (list || []).find(x => chosen && x.name.toLowerCase().includes(chosen.toLowerCase()));
         if (chosen && !match) options.push([chosen, `${chosen} — не знайдено`]);
         for (const [value, text] of options) { const o = el("option", "", text); o.value = value; select.append(o); }
         select.value = chosen ? (match ? match.name : chosen) : ""; select.dataset.saved = select.value;

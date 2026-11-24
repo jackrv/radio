@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 
+import config
 from shared import home_marker
 from shared.paths import REMOTE_PLACE
 
@@ -60,6 +61,10 @@ for _ in range(1800):
         names = []
     out["queue"], out["segment"] = len(names), names[-1] if names else None
     out["event"] = scalar("SELECT MAX(id) FROM radio_events")
+    try:
+        out["min_rms"] = json.loads(scalar("SELECT values_json FROM runtime_settings WHERE id = 1") or "{}").get("MIN_RMS")
+    except ValueError:
+        out["min_rms"] = None
     out["sent"] = scalar("SELECT MAX(rowid) FROM telegram_deliveries")
     if ip is None and time.monotonic() - checked > 15:
         ip, checked = address(), time.monotonic()
@@ -70,6 +75,10 @@ for _ in range(1800):
                 live = json.load(r)
             out["air"], out["transmitting"] = live.get("air"), bool(live.get("transmitting"))
             out["listeners"] = int(live.get("listeners") or 0)
+            level = live.get("level")
+            if isinstance(level, dict):
+                out["level"] = {k: level[k] for k in ("rms", "peak", "phrase_rms", "phrase_age_s")
+                                if isinstance(level.get(k), (int, float))}
     except (OSError, ValueError, TypeError):
         pass
     print(json.dumps(out), flush=True)
@@ -132,6 +141,8 @@ class Flow:
                 with self.lock:
                     if self._process is not process:
                         break
+                    if data.get("min_rms") is None:
+                        data["min_rms"] = config.MIN_RMS   # у базі лише змінене в панелі
                     self._data, self._at = data, self.clock()
                     if self._at - self._asked > IDLE_S:
                         break

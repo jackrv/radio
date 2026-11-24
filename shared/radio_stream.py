@@ -163,6 +163,14 @@ def ws_frame(opcode, payload=b""):
     return bytes([0x80 | opcode, len(payload)]) + payload
 
 
+class NullOutput:
+    """Вихід «у порожнечу» (RADIO_OUTPUT_DEVICE=null): передача йде як справжня, звук нікуди не потрапляє."""
+
+    def __call__(self, sample_rate):
+        from contextlib import nullcontext
+        return nullcontext(lambda pcm: None)
+
+
 class SharedSpeaker:
     """Типовий вихід Mac (динаміки), відкритий між передачами ще ``idle_s``:
     відкриття аудіопристрою на кожне натискання PTT забирало початок фрази."""
@@ -527,6 +535,7 @@ class RadioStream:
         self._tx_lock = threading.Lock()
         self._tx_active = False
         self._tx_until = 0.0
+        self.level = None              # вимірювач рівня входу (server/level_meter.py)
         self._air_at = float("-inf")   # останній кадр мовлення з ефіру
         self.mixer = self.channels["selected"].mixer
         self._history = collections.deque(maxlen=HISTORY)
@@ -764,6 +773,7 @@ def _handler_for(stream):
                     "transmit": stream.transmit_enabled,
                     "transmitting": stream._tx_active,
                     "air": stream.on_air(),
+                    **({"level": stream.level.read()} if getattr(stream, "level", None) is not None else {}),
                     "ptt_key": stream.ptt_key.name if stream.ptt_key is not None else "немає",
                     "pending_s": round(stream.mixer.pending_s, 1),
                     "mode": stream.mode,
@@ -894,18 +904,21 @@ def start_radio_stream(config, log, force=False):
     except ValueError:
         log.error("Потік для iPhone: некоректна адреса %s", host)
         return None
-    from shared.audio_devices import configured
+    from shared.audio_devices import NULL_OUTPUT, configured
     from shared.ptt_key import GuardedKey, make_key
     transmit = getattr(config, "RADIO_STREAM_TRANSMIT", False)
+    output = configured("RADIO_OUTPUT_DEVICE", config)
+    muted = output.casefold() == NULL_OUTPUT
     key = None
     try:
         if transmit:
-            spec = configured("RADIO_PTT", config) or "none"
+            # Без звуку ключ не натискаємо: рація передавала б порожню несну.
+            spec = "none" if muted else configured("RADIO_PTT", config) or "none"
             key = GuardedKey(make_key(spec), TX_MAX_S + 5, log)
         stream = RadioStream(
             sample_rate=config.SR, host=host, port=config.RADIO_STREAM_PORT,
             mode=mode, log=log, transmit=transmit,
-            player_factory=SharedSpeaker(device=configured("RADIO_OUTPUT_DEVICE", config)),
+            player_factory=NullOutput() if muted else SharedSpeaker(device=output),
             ptt_key=key,
             ptt_lead_s=getattr(config, "RADIO_PTT_LEAD_MS", 0) / 1000,
             ptt_tail_s=getattr(config, "RADIO_PTT_TAIL_MS", 0) / 1000,
@@ -917,7 +930,7 @@ def start_radio_stream(config, log, force=False):
         return None
     if transmit:
         log.info("Передача з iPhone: вихід %s, ключ PTT — %s",
-                 configured("RADIO_OUTPUT_DEVICE", config) or "системний", key.name, extra={"console": True})
+                 "у порожнечу" if muted else output or "системний", key.name, extra={"console": True})
     log.info("Потік для iPhone: %s:%s (режим %s; доступ — ваші пристрої в Tailscale)",
              host, config.RADIO_STREAM_PORT, mode, extra={"console": True})
     return stream

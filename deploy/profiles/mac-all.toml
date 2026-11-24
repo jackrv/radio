@@ -10,7 +10,7 @@ full_checkout = true
 [env]
 RADIO_SPOOL = "1"
 RADIO_PTT = "none"
-RADIO_ASR_HOST = "127.0.0.1"
+RADIO_ASR_HOST = "127.0.0.1,tailscale"   # Pi користується вузлом, коли дім на ній
 RADIO_ASR_URL = "http://127.0.0.1:8347"
 
 [required_env]

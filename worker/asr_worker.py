@@ -171,8 +171,11 @@ def main():
     log = logging.getLogger("radio.asr_worker")
     # Інший checkout — інші замки: для worktree вкажіть каталог основного проєкту.
     root = model_root(config.BASE_DIR)
-    host = os.environ.get("RADIO_ASR_HOST", "").strip() or tailscale_ipv4()
-    if not host or host in ("0.0.0.0", "::"):
+    # Кілька адрес через кому; "tailscale" — адреса Tailscale, якщо вона є (Pi ходить саме туди).
+    hosts = [tailscale_ipv4() if h.strip() == "tailscale" else h.strip()
+             for h in (os.environ.get("RADIO_ASR_HOST", "").strip() or "tailscale").split(",")]
+    hosts = list(dict.fromkeys(h for h in hosts if h))
+    if not hosts or any(h in ("0.0.0.0", "::") for h in hosts):
         raise SystemExit("Потрібна адреса Tailscale (або RADIO_ASR_HOST)")
     worker_lock = acquire_instance_lock(root / WORKER_LOCK)
     if worker_lock is None:
@@ -192,13 +195,15 @@ def main():
         if not gate.open():
             raise SystemExit("Модель уже використовує приймач або лабораторія")
         peers = TailnetPeers()
-        server = _QuietServer((host, PORT), handler_for(
-            build_transcribe(config, gate), lambda ip: client_allowed(ip) and peers.is_owner(ip), log))
-        server.daemon_threads = True
-        threading.Thread(target=server.serve_forever, name="asr-http", daemon=True).start()
-        log.info("Вузол розшифровки: %s:%s", host, PORT)
+        handler = handler_for(build_transcribe(config, gate), lambda ip: client_allowed(ip) and peers.is_owner(ip), log)
+        servers = [_QuietServer((host, PORT), handler) for host in hosts]
+        for server in servers:
+            server.daemon_threads = True
+            threading.Thread(target=server.serve_forever, name="asr-http", daemon=True).start()
+        log.info("Вузол розшифровки: %s, порт %s", ", ".join(hosts), PORT)
         gate.run(stop)
-        server.shutdown()
+        for server in servers:
+            server.shutdown()
     finally:
         gate.finish()
         os.close(worker_lock)

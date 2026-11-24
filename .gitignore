@@ -70,3 +70,6 @@ radio345.code-workspace
 .local-segment-spool/
 .import/
 .local-node/
+.local-move/
+.import-move/
+.local-home.json

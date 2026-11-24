@@ -80,6 +80,7 @@
 /server/devices.py
 /server/dictionary_setup.py
 /server/event_processor.py
+/server/home_move.py
 /server/log_security.py
 /server/management/__init__.py
 /server/management/audio_settings.py
@@ -140,6 +141,7 @@
 /shared/error_analysis.py
 /shared/event_store.py
 /shared/experiments.py
+/shared/home_marker.py
 /shared/instance_lock.py
 /shared/lab_notify.py
 /shared/lab_queue.py
@@ -162,6 +164,7 @@
 /shared/private_files.py
 /shared/process_guard.py
 /shared/ptt_key.py
+/shared/pull_backup.py
 /shared/r345_control.py
 /shared/radio_stream.py
 /shared/receiver_control.py

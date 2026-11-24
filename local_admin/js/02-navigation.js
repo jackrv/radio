@@ -35,8 +35,9 @@
   document.addEventListener("focusout", event => rememberField(event.target));
   const groupOf = name => Object.keys(GROUPS).find(g => GROUPS[g][1].includes(name));
   // history: "push" — новий крок для кнопки «Назад», "replace" — замінити поточний, "none" — уже з історії.
-  function show(name, { history: mode = "push" } = {}) {
-    if (GROUPS[name]) name = lastTab[name] || GROUPS[name][1][0];
+  function show(name, { history: mode = "push", menu = false } = {}) {
+    // Розділ і вкладка можуть зватися однаково («system»): з меню — остання вкладка розділу, інакше — сама вкладка.
+    if (GROUPS[name] && (menu || !titles[name])) name = lastTab[name] || GROUPS[name][1][0];
     const group = groupOf(name);
     if (!group) return;
     const changed = name !== view;
@@ -105,7 +106,7 @@
       pending.then(restore, error => { note(error.message); restore(); });
     } else { if (name === "preview") roles(); restore(); }
   }
-  for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.group));
+  for (const b of document.querySelectorAll("#nav button")) b.addEventListener("click", () => show(b.dataset.group, { menu: true }));
   // «Назад» / «Вперед» у браузері перемикають розділи панелі, а не залишають її.
   window.addEventListener("popstate", event => {
     const wanted = event.state?.view || new URLSearchParams(location.search).get("view") || "overview";

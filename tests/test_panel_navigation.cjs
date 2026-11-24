@@ -137,6 +137,18 @@ test('preview loads on its tab and releases its iframe on leaving',async()=>{
   h.context.navigate('preview');h.flush();assert.equal(h.context.$('preview').src,'/preview/viewer/');
 });
 
+test('tab named like its group opens from the tab bar, the menu returns to the last tab', async () => {
+  const h=harness();
+  for (const name of ['system','sessions']) h.context.loaders[name]=async()=>{};
+  const at=()=>vm.runInContext('view',h.context);
+  h.context.navigate('system');assert.equal(at(),'system');
+  h.context.navigate('sessions');assert.equal(at(),'sessions');
+  h.context.navigate('system');assert.equal(at(),'system');
+  h.context.navigate('sessions');h.context.navigate('overview');
+  h.context.navigate('system',{menu:true});assert.equal(at(),'sessions');
+  await tick();
+});
+
 test('assembled panel script is valid JavaScript and matches what the server sends', () => {
   new vm.Script(source);
   const python = path.join(__dirname, '../.venv/bin/python');

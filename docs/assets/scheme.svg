@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 430" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" role="img" aria-label="Рація — дім на Pi або Mac — Telegram, панель, iPhone; Whisper завжди на Mac">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8fa3c4"/></marker>
+    <style>.b{fill:#1b2538;stroke:#33445f;stroke-width:1.5}.t{fill:#eaf0fb;font-size:17px;font-weight:600;text-anchor:middle}.s{fill:#9fb0cc;font-size:13px;text-anchor:middle}.l{stroke:#8fa3c4;stroke-width:2;fill:none;marker-end:url(#a)}.d{marker-start:url(#a)}</style>
+  </defs>
+  <rect width="960" height="430" rx="18" fill="#0f1626"/>
+  <rect x="200" y="150" width="520" height="170" rx="16" fill="#142036" stroke="#6ea8ff" stroke-width="2" stroke-dasharray="7 6"/>
+  <text x="315" y="184" class="t" style="fill:#8cc4ff">Дім: Pi або Mac</text>
+  <text x="460" y="304" class="s">переноситься однією кнопкою</text>
+
+  <rect x="30" y="205" width="120" height="70" rx="12" class="b"/><text x="90" y="246" class="t">Рація</text>
+  <rect x="225" y="205" width="130" height="70" rx="12" class="b"/><text x="290" y="246" class="t">Ефір</text>
+  <rect x="395" y="205" width="160" height="70" rx="12" class="b"/><text x="475" y="237" class="t">Розпізнавання</text><text x="475" y="258" class="s">словники, правила</text>
+  <rect x="595" y="205" width="105" height="70" rx="12" class="b"/><text x="647" y="237" class="t">База</text><text x="647" y="258" class="s">й архів</text>
+
+  <rect x="375" y="30" width="200" height="64" rx="12" class="b" style="stroke:#b8ef86"/><text x="475" y="58" class="t">Whisper</text><text x="475" y="79" class="s">завжди на Mac</text>
+
+  <rect x="790" y="120" width="140" height="62" rx="12" class="b"/><text x="860" y="147" class="t">Telegram</text><text x="860" y="167" class="s">бот, Mini App</text>
+  <rect x="790" y="210" width="140" height="60" rx="12" class="b"/><text x="860" y="246" class="t">Панель</text>
+  <rect x="215" y="358" width="150" height="54" rx="12" class="b"/><text x="290" y="391" class="t">iPhone</text>
+
+  <path class="l d" d="M150 240H225"/><path class="l" d="M355 240H395"/><path class="l" d="M555 240H595"/>
+  <path class="l d" d="M475 94V205"/><text x="530" y="128" class="s">звук / текст</text>
+  <path class="l" d="M720 225 L790 160"/><path class="l" d="M720 240H790"/>
+  <path class="l d" d="M290 275V358"/><text x="425" y="346" class="s">наживо, тексти, передача</text>
+</svg>

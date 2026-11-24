@@ -54,6 +54,11 @@ try:
     out["code"] = digest.hexdigest()[:12]
 except OSError:
     out["code"] = None
+try:
+    with open("/proc/asound/pcm") as f:
+        out["audio"] = any("capture" in l for l in f)
+except OSError:
+    out["audio"] = False
 out["disk_free"] = shutil.disk_usage(root).free
 try:
     with open("/sys/class/thermal/thermal_zone0/temp") as f:

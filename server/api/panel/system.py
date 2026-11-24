@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from typing import Literal
 
 import config
-from server.api.panel.models import PauseUpdate
+from server.api.panel.models import HomeMoveStart, PauseUpdate
 from server.api.panel.common import backups_overview, read_diagnostics, diagnostics_view
 
 def register(app, ctx):
@@ -47,6 +47,43 @@ def register(app, ctx):
     def device_list(admin=Depends(actor)):
         """Mac і Pi: служби, база, код. Лише на Mac: з Pi на Mac доступу немає."""
         return device_state.read() if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
+
+    mover = None
+    if device_state is not None:
+        from pathlib import Path
+        from server import home_move
+        root = Path(db_path).resolve().parent
+        mover = home_move.HomeMove(root, home_move.MacSide(root),
+                                   home_move.PiSide(device_state.host, root) if device_state.host else None)
+
+    def need_mover():
+        if mover is None:
+            raise HTTPException(409, "Перенесення — лише з панелі на Mac")
+        return mover
+
+    @app.get("/api/home-move")
+    def home_move_state(admin=Depends(actor)):
+        return mover.read() if mover else {"phase": "idle"}
+
+    @app.get("/api/home-move/check")
+    def home_move_check(target: Literal["mac", "pi"], admin=Depends(actor)):
+        return need_mover().check(target)
+
+    @app.post("/api/home-move", status_code=202)
+    def home_move_start(payload: HomeMoveStart, admin=Depends(actor)):
+        try:
+            need_mover().start(payload.target, payload.accept_warnings)
+        except home_move.MoveError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"started": True}
+
+    @app.post("/api/home-move/rollback", status_code=202)
+    def home_move_rollback(admin=Depends(actor)):
+        try:
+            need_mover().rollback()
+        except home_move.MoveError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"started": True}
 
     @app.post("/api/devices/{device}/{process}/{verb}")
     def device_action(device: Literal["mac", "pi"], process: Literal["node", "asr", "panel", "api", "tunnel", "worker"],

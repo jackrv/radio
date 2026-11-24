@@ -28,16 +28,7 @@ Radio 345 слухає рацію на Raspberry Pi, розпізнає мовл
 Mini App чи локальній панелі, і система вчиться на цих правках, **не вигадуючи
 чисел і позивних**.
 
-```mermaid
-flowchart LR
-  M[🎙️ Мікрофон] --> V[VAD] --> S{🔔 Сигнал?}
-  S -- так --> D[відкинуто]
-  S -- ні --> W[Whisper large-v3]
-  W --> T[Фільтри, словники,<br/>шаблони, навчання]
-  T --> B[(SQLite)]
-  B --> TG[💬 Telegram]
-  B --> P[🖥️ Панель і Mini App]
-```
+<p align="center"><img src="docs/assets/scheme.svg" alt="Схема: рація — дім на Pi або Mac — Telegram, панель, iPhone; Whisper завжди на Mac" width="860"></p>
 
 ## ✨ Можливості
 

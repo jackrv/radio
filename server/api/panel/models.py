@@ -137,3 +137,8 @@ class PauseUpdate(BaseModel):
 
 class SampleConfirmation(BaseModel):
     confirmed_isolated: bool = Field(strict=True)
+
+
+class HomeMoveStart(BaseModel):
+    target: Literal["mac", "pi"]
+    accept_warnings: bool = False

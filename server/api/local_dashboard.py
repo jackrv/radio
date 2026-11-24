@@ -21,6 +21,7 @@ import uvicorn
 
 import config
 from server.api.app import create_app
+from shared import home_marker
 from shared.sqlite_connection import get_db
 from shared.user_store import PERMISSIONS
 from shared.diagnostic_history import DiagnosticsHistory, history_directory
@@ -95,6 +96,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         (re.compile(r"/api/training/export"), "Запит на вивантаження набору для дообучення"),
         (re.compile(r"/api/receiver-pause"), "Пауза приймача"),
         (re.compile(r"/api/launcher/([a-z-]+)"), "Служби: {0}"),
+        (re.compile(r"/api/home-move(/rollback)?"), "Перенесення дому"),
         (re.compile(r"/api/devices/(mac|pi)/([a-z]+)/([a-z]+)"), "Пристрій {0}: {1} — {2}"),
     )
 
@@ -136,6 +138,10 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         public = request.url.path in ("/","/admin.js","/styles.css","/session")
         if not public and not matches(request.cookies.get(cookie,""),session):
             return Response(status_code=401)
+        if (request.method not in ("GET","HEAD") and request.url.path.startswith("/api/")
+                and not re.match(r"/api/(devices|home-move|launcher)(/|$)", request.url.path)
+                and home_marker.foreign(Path(db_path).resolve().parent)):
+            return Response('{"detail":"Дім на іншому пристрої: дані змінюйте там"}',status_code=409,media_type="application/json")
         activity_payload=None
         if request.method not in ('GET','HEAD') and any(p.fullmatch(request.url.path) for p,_ in panel_actions):
             length=request.headers.get('content-length','0')

@@ -186,6 +186,44 @@
     }
     box.replaceChildren(table);
   }
+  // ---------- Перенесення дому ----------
+  const MOVE_PHASE = { checking: "перевіряю", stopping: "зупиняю служби", copying: "копіюю базу", installing: "записую базу",
+    starting: "запускаю служби", rolling_back: "повертаю, як було" };
+  const deviceTitle = name => name === "pi" ? "Pi" : "Mac";
+  let moveTimer = null;
+  async function moveState(home) {
+    const m = await request("/api/home-move");
+    const line = $("move-state");
+    $("move-rollback").hidden = !m.interrupted;
+    if (home !== undefined) {
+      $("move-pi").hidden = m.active || m.interrupted || home !== "mac";
+      $("move-mac").hidden = m.active || m.interrupted || home === "mac" || home === "both";
+    }
+    const route = m.target ? `${deviceTitle(m.source)} → ${deviceTitle(m.target)}` : "";
+    line.textContent = m.active ? `Перенесення ${route}: ${MOVE_PHASE[m.phase] || m.phase}…`
+      : m.interrupted ? `Перенесення ${route} перервано на кроці «${MOVE_PHASE[m.phase] || m.phase}».`
+      : m.phase === "done" ? `Останнє перенесення ${route}: виконано ${stamp(m.at)}.`
+      : m.phase === "rolled_back" ? `Перенесення ${route} не вдалося, усе повернуто: ${m.error}`
+      : m.phase === "failed" ? `Перенесення ${route} не вдалося, перевірте пристрої: ${m.error}` : "";
+    line.classList.toggle("alert", m.interrupted || ["failed", "rolled_back"].includes(m.phase));
+    clearTimeout(moveTimer);
+    if (m.active) { $("move-pi").hidden = $("move-mac").hidden = true; moveTimer = setTimeout(() => moveState().then(() => devices()).catch(() => {}), 2000); }
+  }
+  async function moveHome(target) {
+    const check = await request(`/api/home-move/check?target=${target}`);
+    if (check.problems.length) { note(check.problems.join(" ")); return; }
+    const lines = [`Перенести базу, бота, Mini App та ефір на ${deviceTitle(target)}? Кілька хвилин вони не працюватимуть.`, ...check.warnings.map(w => `• ${w}`)];
+    if (!confirm(lines.join("\n"))) return;
+    await request("/api/home-move", "POST", { target, accept_warnings: true });
+    note("Перенесення почалося.");
+    await moveState();
+  }
+  $("move-pi")?.addEventListener?.("click", () => action(() => moveHome("pi")));
+  $("move-mac")?.addEventListener?.("click", () => action(() => moveHome("mac")));
+  $("move-rollback")?.addEventListener?.("click", () => action(async () => {
+    if (!confirm("Повернути дім туди, звідки його переносили?")) return;
+    await request("/api/home-move/rollback", "POST"); await moveState();
+  }));
   async function devices() {
     let d;
     try { d = await request("/api/devices"); } catch (_) { return; }
@@ -193,6 +231,7 @@
     $("devices-panel").hidden = false;
     $("devices-home").textContent = HOME_TEXT[d.home] || "База й бот ніде не працюють.";
     $("devices-home").classList.toggle("alert", d.home === "both" || d.home === "unknown");
+    moveState(d.configured ? d.home : "both").catch(() => {});
     deviceCard("mac", $("device-mac"), d.mac, d.mac.model ? [["Модель Whisper", d.mac.model]] : []);
     deviceCard("pi", $("device-pi"), d.pi, d.pi?.reachable ? [["Температура", d.pi.temp_c == null ? "—" : `${fix(d.pi.temp_c, 1)} °C`],
       ["Код", d.code_matches ? "як на Mac" : "відрізняється від Mac", d.code_matches ? "good" : "alert"]] : []);

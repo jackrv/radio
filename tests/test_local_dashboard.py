@@ -537,6 +537,21 @@ def test_service_buttons_work_only_under_r345(setup, tmp_path, monkeypatch):
         assert client.post("/api/launcher/stop", headers=h).json() == {"sent": "stop"} and stopped == [1]
 
 
+def test_panel_is_read_only_when_home_is_elsewhere(local):
+    from shared import home_marker
+    client, path, _ = local
+    h = {"Origin": ORIGIN}
+    other = "pi" if home_marker.this_device() == "mac" else "mac"
+    home_marker.write(path.parent, other, 1)
+    denied = client.put("/api/receiver-pause", json={"minutes": 5}, headers=h)
+    assert denied.status_code == 409 and "іншому пристрої" in denied.json()["detail"]
+    assert client.get("/api/receiver-pause").status_code == 200
+    assert client.post("/api/home-move/rollback", headers=h).json()["detail"] != denied.json()["detail"], "керування доступне"
+    home_marker.write(path.parent, home_marker.this_device(), 2)
+    assert client.put("/api/receiver-pause", json={"minutes": 5}, headers=h).status_code != 409
+    assert home_marker.foreign(path.parent) is None
+
+
 def test_attention_lists_what_waits_for_the_operator(local):
     client, path, _ = local
     import sqlite3

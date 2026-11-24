@@ -8,11 +8,15 @@ from dotenv import load_dotenv
 
 import config
 from server.api.app import create_app
+from shared import conflict, home_marker
 from shared.sqlite_connection import get_db
 
 
 def main():
     load_dotenv(config.BASE_DIR / ".env")
+    other = home_marker.foreign(config.BASE_DIR)
+    if other:
+        conflict.stop(f"Дім на іншому пристрої ({other}): API тут не запущено")
 
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     db_path = Path(config.DB_PATH)

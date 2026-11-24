@@ -126,7 +126,7 @@ def main():
     from shared.recordings import RecordingStore
     from server.segment_spool import SegmentSpool
     from server.transcriber_factory import build_transcriber
-    from shared import conflict
+    from shared import conflict, home_marker
 
     load_dotenv(config.BASE_DIR / ".env")
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -134,6 +134,9 @@ def main():
     log = logging.getLogger("radio")
     if not os.environ.get("RADIO_ASR_URL", "").strip():
         raise SystemExit("Не задано RADIO_ASR_URL")
+    other = home_marker.foreign(config.BASE_DIR)
+    if other:
+        conflict.stop(f"Дім на іншому пристрої ({other}): розпізнавання й бота тут не запущено")
     # Не замок моделі: на Mac її поруч тримає worker.asr_worker.
     lock = acquire_instance_lock(Path(config.BASE_DIR) / OWNER_LOCK)
     if lock is None:

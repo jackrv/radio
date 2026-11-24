@@ -1,4 +1,4 @@
-"""Команда бекапу Pi: сам код — shared/pull_backup.py (агент launchd копіює його поза ~/Documents)."""
+"""Копія баз Pi зараз (сама по собі знімається панеллю раз на добу, коли дім на Pi)."""
 from shared.pull_backup import main
 
 if __name__ == "__main__":

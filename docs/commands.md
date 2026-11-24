@@ -17,21 +17,14 @@
 
 `./r345 up` без параметрів читає з `.env` `RADIO345_PROFILE` і `RADIO345_ONLY` (що запускати; `tunnel` відкриває Mini App назовні).
 
-## iPhone
+## Перевірка й обслуговування
 
 | Команда | Що робить |
 | --- | --- |
-| `tools/ios_reinstall.sh --status` | строк підпису й агент |
-| `tools/ios_reinstall.sh --force` | поставити застосунок зараз |
-
-## Обслуговування
-
-| Команда | Що робить |
-| --- | --- |
-| `.venv/bin/python -m tools.diagnose` | коротка перевірка бази й служби (`--network` — ще й мережа) |
-| `.venv/bin/python -m tools.pull_backup --status` | копії баз Pi; вмикаються в панелі («Пристрої» → Pi) |
-| `.venv/bin/python -m tools.manage_database export` | словники у файл; `restore --from …` — відновити базу |
+| `./r345 doctor` | усе одним поглядом: служби, база, Pi, підпис iPhone, копії |
 | `./r345 pause-model` / `resume-model` | віддати модель лабораторії / повернути |
+| `tools/ios_reinstall.sh --force` | поставити застосунок на iPhone зараз |
+| `.venv/bin/python -m tools.manage_database export` | словники у файл; `restore --from …` — відновити базу |
 
 Лабораторія — [lab.md](lab.md).
 
@@ -39,17 +32,13 @@
 
 | Команда | Коли |
 | --- | --- |
-| `systemctl is-active radio345-panel radio345-asr radio345-api radio345-tunnel radio345-node` | що працює |
+| `./r345 status` або `./r345 doctor` | що працює |
 | `journalctl -u radio345-asr -f` | журнал (Ctrl+C — вийти) |
 | `sudo sh deploy/hub/install.sh --units` | лише якщо панель просить після оновлення коду |
 
 ## Що лежить поза проєктом
 
-Лише для фонових агентів: macOS не пускає їх у `~/Documents`. Усе — в `~/Library/Application Support/radio345`.
+Лише знімок застосунку iPhone для продовження підпису: `~/Library/Application Support/radio345/ios` (до ~80 МБ; macOS не пускає фонові
+процеси в `~/Documents`). Прибрати: `tools/ios_reinstall.sh --remove-agent`, потім `rm -r ~/Library/Application\ Support/radio345`.
 
-| Що | Місце | Прибрати |
-| --- | --- | --- |
-| копії баз Pi (до 3, близько 100 МБ кожна) | `pi-backups/` | `.venv/bin/python -m tools.pull_backup --remove-agent`, потім видалити теку |
-| знімок застосунку для підпису (до ~80 МБ зі збіркою) | `ios/` | `tools/ios_reinstall.sh --remove-agent`, потім видалити теку |
-
-Повністю прибрати сліди: обидві команди, потім `rm -r ~/Library/Application\ Support/radio345`. Код і дані системи від цього не залежать.
+Копії баз Pi панель знімає сама раз на добу, коли дім на Pi: `.local-data/backups/pi`, до 3.

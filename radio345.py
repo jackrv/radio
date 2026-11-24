@@ -5,6 +5,7 @@
     ./r345 status | stop                           # стан; зупинити все
     ./r345 restart [panel …]                       # перезапустити всі або вибрані процеси
     ./r345 check                                   # що запуститься й чого бракує
+    ./r345 doctor                                  # перевірити все
     ./r345 pause-model [--minutes 120]             # віддати модель вузла лабораторії; resume-model — повернути
 
 Кожен процес окремий: падіння одного не зупиняє інші, він перезапускається з паузою.
@@ -220,16 +221,29 @@ def systemd_units():
     return result
 
 
+def table(rows):
+    """Рядки однакової ширини колонок."""
+    rows = [tuple(map(str, r)) for r in rows]
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))] if rows else []
+    return "\n".join("  " + "  ".join(c.ljust(w) for c, w in zip(r, widths)).rstrip() for r in rows)
+
+
 def show_status(control):
-    for unit, state in systemd_units().items():
-        print(f"{unit} (systemd): {state}")
+    units = systemd_units()
+    if units:
+        print("Служби systemd:")
+        print(table((unit.removeprefix("radio345-"), {"active": "працює", "inactive": "зупинено"}.get(state, state)) for unit, state in units.items()))
     data = control.read()
     if data is None:
-        print("r345 завершується" if control.held() else "r345 не запущено")
-        return 3
+        if control.held():
+            print("r345 завершується")
+        elif not units:
+            print("r345 не запущено")
+        return 0 if units and not control.held() else 3
     print(f"r345 працює: профіль {data['profile']}, PID {data['pid']}")
-    for name, item in data["processes"].items():
-        print(f"  {name}: {'працює' if item['alive'] else 'зайнято на іншому пристрої' if item.get('blocked') else 'зупинено' if not item.get('wanted', True) else 'не працює'}, перезапусків {item['restarts']}")
+    print(table((name, "працює" if item["alive"] else "зайнято на іншому пристрої" if item.get("blocked") else
+                 "зупинено" if not item.get("wanted", True) else "не працює",
+                 f"перезапусків {item['restarts']}" if item["restarts"] else "") for name, item in data["processes"].items()))
     return 0 if all(p["alive"] for p in data["processes"].values() if p.get("wanted", True)) else 1
 
 
@@ -315,6 +329,30 @@ def resume_model(root=ROOT, timeout=120.0):
     return 1
 
 
+def doctor(run=subprocess.run):
+    """Лише читання. Pi й iPhone — з Mac; на Pi показуємо її служби."""
+    show_status(Control())
+    sys.stdout.flush()
+    run([sys.executable, "-m", "tools.diagnose"], cwd=ROOT, stdin=subprocess.DEVNULL)
+    if sys.platform != "darwin":
+        return 0
+    from server import devices
+    host = devices.pi_host(base_environment({}))
+    if host:
+        state = devices.remote(host)
+        if state.get("reachable"):
+            on = [n for n, p in state["processes"].items() if p["alive"]]
+            print("Pi: працює " + (", ".join(on) or "нічого") + ("" if state.get("code") == devices.code_hash() else "; код інший, ніж на Mac"))
+        else:
+            print("Pi: " + state.get("error", "недоступна"))
+    print("iPhone:", flush=True)
+    run(["/bin/bash", str(ROOT / "tools" / "ios_reinstall.sh"), "--status"], stdin=subprocess.DEVNULL)
+    from shared import pull_backup
+    info = pull_backup.overview()
+    print(f"Копії Pi: {info['count']} з {info['keep']}" + (f", остання {info['age_h']:.0f} год тому" if info["age_h"] is not None else ""))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="r345", description="Radio 345: процеси цього пристрою")
     sub = parser.add_subparsers(dest="action", required=True)
@@ -327,12 +365,15 @@ def main(argv=None):
     sub.add_parser("restart", help="перезапустити все або вибране").add_argument("names", nargs="*", metavar="ПРОЦЕС")
     sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
     sub.add_parser("resume-model", help="повернути модель вузлу")
+    sub.add_parser("doctor", help="усе одним поглядом: служби, база, Pi, підпис iPhone, копії")
     sub.add_parser("move-data", help="перенести робочі дані в .local-data (служби зупинено)")
     args = parser.parse_args(argv)
     if args.action == "pause-model":
         return pause_model(args.minutes, lock_root())
     if args.action == "resume-model":
         return resume_model(lock_root())
+    if args.action == "doctor":
+        return doctor()
     if args.action == "move-data":
         from shared import move_data
         if any(state in ("active", "activating") for state in systemd_units().values()):

@@ -284,3 +284,24 @@ def test_plain_up_uses_env_choice_and_respects_home(tmp_path):
     assert "asr" in radio345.default_processes(profile, tmp_path, chosen)
     with pytest.raises(SystemExit):
         radio345.default_processes(profile, tmp_path, {"RADIO345_ONLY": "невідомий"})
+
+
+def test_doctor_reads_only_and_survives_unreachable_pi(monkeypatch, capsys):
+    from server import devices
+    from shared import pull_backup
+    commands = []
+    monkeypatch.setattr(radio345, "show_status", lambda control: 0)
+    monkeypatch.setattr(devices, "pi_host", lambda env: "pi@test")
+    monkeypatch.setattr(devices, "remote", lambda host: {"reachable": False, "error": "SSH недоступний"})
+    monkeypatch.setattr(pull_backup, "overview", lambda: {"count": 1, "keep": 3, "age_h": 5.0})
+    monkeypatch.setattr(radio345.sys, "platform", "darwin")
+    assert radio345.doctor(run=lambda command, **k: commands.append(command)) == 0
+    out = capsys.readouterr().out
+    assert "Pi: SSH недоступний" in out and "Копії Pi: 1 з 3, остання 5 год тому" in out
+    assert [c[-1] for c in commands] == ["tools.diagnose", "--status"]
+
+
+def test_table_aligns_columns():
+    text = radio345.table([("node", "працює", ""), ("asr-довга", "зупинено", "перезапусків 2")])
+    first, second = text.splitlines()
+    assert first.index("працює") == second.index("зупинено") and not first.endswith(" ")

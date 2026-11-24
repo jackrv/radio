@@ -202,4 +202,5 @@
 /shared/word_rule_validation.py
 /shared/word_store.py
 /tools/__init__.py
+/tools/diagnose.py
 /tools/manage_database.py

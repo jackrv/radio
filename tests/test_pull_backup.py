@@ -144,52 +144,37 @@ def test_interrupted_copy_is_cleaned_next_time(pi, tmp_path):
     assert not list((tmp_path / "out").glob(".partial-*"))
 
 
-def test_scheduled_skips_fresh_copy_and_retries_old(tmp_path, monkeypatch):
-    calls = []
-    monkeypatch.setattr(b, "pull", lambda command, out: calls.append(1) or tmp_path)
-    args = ["--host", "pi@test", "--out", str(tmp_path), "--scheduled"]
-    (tmp_path / (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")).mkdir()
-    assert b.main(args) == 0 and not calls
-    for path in list(tmp_path.iterdir()):
-        path.rmdir()
-    (tmp_path / (datetime.now(timezone.utc) - timedelta(hours=21)).strftime("%Y%m%dT%H%M%SZ")).mkdir()
-    assert b.main(args) == 0 and calls
+def copy_at(folder, hours):
+    path = folder / (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y%m%dT%H%M%SZ")
+    path.mkdir(parents=True)
+    (path / "events.db").write_bytes(b"x" * 10)
 
 
-def test_stale_warning_once_a_day_and_not_for_fresh(tmp_path):
-    said = []
-    assert not b.warn_stale(tmp_path, said.append)   # щойно, без установки
-    old = tmp_path / (datetime.now(timezone.utc) - timedelta(days=4)).strftime("%Y%m%dT%H%M%SZ")
-    old.mkdir()
-    assert b.warn_stale(tmp_path, said.append) and not b.warn_stale(tmp_path, said.append)
-    assert len(said) == 1 and "4" in said[0]
-    old.rename(tmp_path / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
-    (tmp_path / ".warned").unlink()
-    assert not b.warn_stale(tmp_path, said.append)
-
-
-def test_agent_does_not_depend_on_documents(tmp_path):
-    data = b.agent_plist("pi@test", "hub", tmp_path / "out", tmp_path / "s.py", tmp_path / "log")
-    assert ".venv" not in data["ProgramArguments"][0] and data["ProgramArguments"][-1] == "--scheduled"
-    assert data["Umask"] == 0o077 and b.OUT.is_relative_to(b.Path.home() / "Library")
-
-
-def test_agent_script_runs_alone_without_project(tmp_path):
-    import shutil, subprocess
-    script = tmp_path / "alone.py"
-    shutil.copyfile(b.__file__, script)
-    done = subprocess.run([sys._base_executable, "-I", str(script), "--help"], cwd=tmp_path, capture_output=True)
-    assert done.returncode == 0
-
-
-def test_overview_for_panel_counts_and_creates_nothing(tmp_path, monkeypatch):
-    monkeypatch.setattr(b, "agent_paths", lambda label=b.LABEL: (tmp_path / "agent.plist", None, None))
-    assert b.overview(tmp_path / "none") == {"enabled": False, "count": 0, "bytes": 0, "age_h": None, "keep": b.KEEP}
+def test_overview_counts_and_creates_nothing(tmp_path):
+    assert b.overview(tmp_path / "none") == {"count": 0, "bytes": 0, "age_h": None, "keep": b.KEEP}
     assert not (tmp_path / "none").exists()
-    copy = tmp_path / "out" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    copy.mkdir(parents=True)
-    (copy / "events.db").write_bytes(b"x" * 10)
-    (tmp_path / "out" / "чуже").mkdir()
-    (tmp_path / "agent.plist").touch()
-    data = b.overview(tmp_path / "out")
-    assert data["enabled"] and data["count"] == 1 and data["bytes"] == 10 and data["age_h"] < 1 and data["keep"] == 3
+    copy_at(tmp_path, 2)
+    (tmp_path / "чуже").mkdir()
+    data = b.overview(tmp_path)
+    assert data["count"] == 1 and data["bytes"] == 10 and 1 < data["age_h"] < 3
+
+
+@pytest.mark.parametrize("home,age,host,expected", [("pi", None, "pi@test", True), ("pi", 30, "pi@test", True), ("pi", 2, "pi@test", False),
+                                                    ("mac", None, "pi@test", False), (None, None, "pi@test", False), ("pi", None, None, False)])
+def test_daily_copy_only_when_home_is_on_pi(tmp_path, home, age, host, expected):
+    from shared import home_marker
+    if home:
+        home_marker.write(tmp_path, home, 1)
+    out, calls = tmp_path / "out", []
+    if age is not None:
+        copy_at(out, age)
+    assert b.Daily(tmp_path, host, out, pull=lambda *a: calls.append(a)).step() is expected and bool(calls) is expected
+
+
+def test_daily_failure_is_quiet(tmp_path):
+    from shared import home_marker
+    home_marker.write(tmp_path, "pi", 1)
+
+    def fail(*args):
+        raise RuntimeError("Pi недоступна")
+    assert b.Daily(tmp_path, "pi@test", tmp_path / "out", pull=fail).step() is False

@@ -11,6 +11,5 @@
 | Mini App: сервіс недоступний | на Pi `systemctl is-active radio345-api radio345-tunnel`; тунель не має працювати на іншому пристрої |
 | Бот мовчить | бот запущено на двох пристроях або `radio345-asr` не активна |
 | Застосунок не відкривається | закінчився підпис: `tools/ios_reinstall.sh --status`, потім `--force` |
-| Немає копій Pi | `.venv/bin/python -m tools.pull_backup --status` |
 
 Журнал: на Pi `journalctl -u radio345-asr -f`, на Mac — вікно `r345` і `radio.log`.

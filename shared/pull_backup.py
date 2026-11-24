@@ -1,22 +1,14 @@
-"""Бекап баз Pi на Mac: знімок через SQLite Backup API на Pi → перевірка тут → ~/Library/Application Support/radio345.
+"""Копії баз Pi на Mac: знімок через SQLite Backup API на Pi → перевірка тут → .local-data/backups/pi.
 
-    .venv/bin/python -m tools.pull_backup                       # jackrv@radio345 задає RADIO345_PI_SSH або --host
-    .venv/bin/python -m tools.pull_backup --host pi@radio345 --root radio345-hub
-    … -m tools.pull_backup --host jackrv@radio345 --install-agent   # щодня (спроба щогодини, доки не вийде)
-    … -m tools.pull_backup --status | --remove-agent
-
-Агент працює з копією цього файла поза ~/Documents: туди macOS фонові процеси не пускає.
-Тому тут лише стандартна бібліотека. Після зміни скрипта повторіть --install-agent.
-
-Pi нічого не встановлює: скрипт іде через ssh у стандартний python3. Живу базу не зачіпає,
-тимчасові знімки на Pi прибирає. Аудіо не копіює.
+Раз на добу панель Mac знімає копію сама, доки дім на Pi (Daily). Вручну: ``python -m tools.pull_backup --host …``.
+Pi нічого не встановлює: скрипт іде через ssh у стандартний python3. Живу базу не зачіпає, аудіо не копіює.
 """
 import argparse
 import fcntl
 import hashlib
 import json
+import logging
 import os
-import plistlib
 import re
 import shutil
 import sqlite3
@@ -24,14 +16,15 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import time
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-HOME = Path.home() / "Library" / "Application Support" / "radio345"
-OUT = HOME / "pi-backups"
-LABEL = "local.radio345.pi-backup"
-EVERY_S, DUE_H, STALE_DAYS = 3600, 20, 3
+from shared.paths import place
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = place(ROOT, ".local-backups") / "pi"
+DUE_H = 20
 KEEP = 3
 NAMES = ("events.db", "index.sqlite3")
 STAMP = re.compile(r"\d{8}T\d{6}Z")
@@ -188,125 +181,59 @@ def latest(folder):
     return done[-1], (datetime.now(timezone.utc) - at).total_seconds() / 3600
 
 
-def warn_stale(folder, notify=None, now=time.time):
-    """Не частіше разу на добу, якщо давно немає копії. Без вмісту помилки й адрес."""
-    folder = Path(folder)
-    _, age = latest(folder)
-    started, warned = folder / ".installed", folder / ".warned"
-    if age is None:
-        age = (now() - started.stat().st_mtime) / 3600 if started.exists() else 0
-    if age < STALE_DAYS * 24 or (warned.exists() and now() - warned.stat().st_mtime < 86400):
-        return False
-    warned.touch()
-    (notify or mac_notify)(f"Немає свіжої копії баз Pi: {int(age // 24)} дн.")
-    return True
-
-
-def mac_notify(text):
-    subprocess.run(["/usr/bin/osascript", "-e", "on run a", "-e", 'display notification (item 1 of a) with title "Radio 345"',
-                    "-e", "end run", text], check=False, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def stable_python():
-    """Не .venv (лежить у ~/Documents) і не Cellar із версією (зникне після brew upgrade)."""
-    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    for path in (f"/opt/homebrew/bin/{version}", f"/usr/local/bin/{version}", "/opt/homebrew/bin/python3"):
-        if os.access(path, os.X_OK):
-            return path
-    return os.path.realpath(getattr(sys, "_base_executable", None) or sys.executable)
-
-
-def agent_plist(host, root, out, script, log, label=LABEL):
-    python = stable_python()
-    return {"Label": label, "RunAtLoad": True, "StartInterval": EVERY_S, "ProcessType": "Background", "Umask": 0o077,
-            "ProgramArguments": [python, "-I", str(script), "--host", host, "--root", root, "--out", str(out), "--scheduled"],
-            "WorkingDirectory": str(Path(script).parent), "StandardOutPath": str(log), "StandardErrorPath": str(log),
-            "EnvironmentVariables": {"PATH": "/usr/bin:/bin", "PYTHONIOENCODING": "utf-8"}}
-
-
-def agent_paths(label=LABEL):
-    return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist", HOME / "pull_backup.py", HOME / "pi-backup.log"
-
-
-def launchctl(*args, check=False):
-    return subprocess.run(["/bin/launchctl", *args], check=check, capture_output=True, timeout=30)
-
-
-def install_agent(host, root, out, label=LABEL):
-    plist, script, log = agent_paths(label)
-    for folder in (HOME, Path(out)):
-        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-    plist.parent.mkdir(parents=True, exist_ok=True)
-    if Path(__file__).resolve() != script.resolve():
-        shutil.copyfile(__file__, script)
-    script.chmod(0o600)
-    (Path(out) / ".installed").touch()
-    plist.write_bytes(plistlib.dumps(agent_plist(host, root, out, script, log, label)))
-    launchctl("bootout", f"gui/{os.getuid()}/{label}")
-    launchctl("bootstrap", f"gui/{os.getuid()}", str(plist), check=True)
-
-
-def remove_agent(label=LABEL):
-    launchctl("bootout", f"gui/{os.getuid()}/{label}")
-    agent_paths(label)[0].unlink(missing_ok=True)
-
-
-def overview(out=OUT):
-    """Для панелі: чи ввімкнено, скільки копій і місця. Нічого не створює."""
-    out = Path(out)
+def overview(out=None):
+    """Для панелі й doctor: скільки копій і місця. Нічого не створює."""
+    out = Path(out or OUT)
     copies = [p for p in out.iterdir() if p.is_dir() and STAMP.fullmatch(p.name)] if out.is_dir() else []
     size = sum(f.stat().st_size for p in copies for f in p.iterdir() if f.is_file())
-    return {"enabled": agent_paths()[0].exists(), "count": len(copies), "bytes": size, "age_h": latest(out)[1], "keep": KEEP}
+    return {"count": len(copies), "bytes": size, "age_h": latest(out)[1], "keep": KEEP}
 
 
-def status(out):
-    plist, script, _ = agent_paths()
-    path, age = latest(out)
-    print(f"Остання копія: {path.name if path else 'немає'}" + (f" ({age:.0f} год тому)" if path else ""))
-    installed = plist.exists()
-    print("Розклад: " + ("увімкнено" if installed else "вимкнено"))
-    if installed and (not script.exists() or script.read_bytes() != Path(__file__).read_bytes()):
-        print("Скрипт змінився: повторіть --install-agent")
-    return 0 if path and age < STALE_DAYS * 24 else 1
+class Daily:
+    """Фон панелі Mac: копія раз на добу, лише коли дім на Pi. Збій не заважає панелі; наступна спроба — за пів години."""
+
+    def __init__(self, root, host, out=None, pull=None, log=None):
+        self.root, self.host, self.out = Path(root), host, Path(out or OUT)
+        self.pull, self.log, self.stop = pull, log or logging.getLogger("radio.pi_backup"), threading.Event()
+
+    def step(self):
+        """True — копію знято."""
+        from shared import home_marker
+        marker = home_marker.read(self.root)
+        if not self.host or not marker or marker["home"] != "pi":
+            return False
+        age = latest(self.out)[1]
+        if age is not None and 0 <= age < DUE_H:
+            return False
+        try:
+            (self.pull or pull)(ssh_command(self.host, "radio345-hub"), self.out)
+        except (OSError, ValueError, RuntimeError, tarfile.TarError, sqlite3.Error, subprocess.SubprocessError) as exc:
+            self.log.warning("Копію баз Pi не знято: %s", type(exc).__name__)
+            return False
+        return True
+
+    def run(self, interval=1800):
+        while not self.stop.wait(interval):
+            self.step()
+
+    def start(self):
+        threading.Thread(target=self.run, name="pi-backup", daemon=True).start()
+        return self
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Бекап баз Pi на Mac")
+    parser = argparse.ArgumentParser(description="Копія баз Pi на Mac зараз")
     parser.add_argument("--host", default=os.environ.get("RADIO345_PI_SSH", "radio345"))
     parser.add_argument("--root", default="radio345-hub", help="каталог проєкту на Pi (від домашнього)")
     parser.add_argument("--out", type=Path, default=OUT)
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument("--install-agent", action="store_true", help="увімкнути щоденну копію")
-    action.add_argument("--remove-agent", action="store_true", help="вимкнути (копії лишаються)")
-    action.add_argument("--status", action="store_true")
-    action.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.host.startswith("-") or not re.fullmatch(r"[\w.@-]+", args.host):
         raise SystemExit("Некоректна адреса Pi")
-    if args.install_agent or args.remove_agent:
-        if sys.platform != "darwin":
-            raise SystemExit("Розклад — лише на Mac")
-        if args.install_agent:
-            install_agent(args.host, args.root, args.out.expanduser().resolve())
-            print(f"Увімкнено: копія раз на добу в {args.out}")
-        else:
-            remove_agent()
-            print("Вимкнено; копії лишилися")
-        return 0
-    if args.status:
-        return status(args.out)
-    if args.scheduled:
-        _, age = latest(args.out)
-        if age is not None and 0 <= age < DUE_H:
-            return 0
-        print(datetime.now().strftime("%Y-%m-%d %H:%M"), flush=True)
     try:
         path = pull(ssh_command(args.host, args.root), args.out)
     except (OSError, ValueError, RuntimeError, tarfile.TarError, sqlite3.Error, subprocess.SubprocessError) as exc:
-        if args.scheduled:
-            warn_stale(args.out)
-        raise SystemExit(f"Бекап не зроблено: {type(exc).__name__}: {exc}") from None
-    print(f"{path}: {', '.join(f'{p.name} {p.stat().st_size // 1024} КБ' for p in sorted(path.iterdir()))}")
+        raise SystemExit(f"Копію не знято: {type(exc).__name__}: {exc}") from None
+    print(f"{path.name}: {', '.join(f'{p.name} {p.stat().st_size // 1024} КБ' for p in sorted(path.iterdir()))}")
     return 0
 
 

@@ -173,6 +173,7 @@ def main():
         config=config, segments=queue.Queue(), callsigns=callsigns, commands=commands, watch=watch,
         prompt=prompt, telegram_service=telegram, cooldown=Cooldown(config.COOLDOWN_S), log=log, recorder=recorder,
         health=health, radio_stream=outbox)
+    worker.recognizer.on_state = whisper_state(directory(config) / "whisper.json")
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *a: stop.set())
     signal.signal(signal.SIGINT, lambda *a: stop.set())
@@ -209,6 +210,18 @@ def tick(bot, runtime):
         runtime.gauge("workers.telegram_alive", bot.alive())
     runtime.gauge("workers.transcriber_alive", True)
     runtime.flush()
+
+
+def whisper_state(path):
+    """Останній обмін із Whisper — для схеми в панелі: стан, час і номер запиту, без текстів."""
+    from server.node_control import write_json
+    sent = 0
+
+    def report(state):
+        nonlocal sent
+        sent += state == "sending"
+        write_json(path, {"state": state, "at": time.time(), "sent": sent})
+    return report
 
 
 def poll_bot(token):

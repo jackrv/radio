@@ -45,6 +45,7 @@
 /local_admin/js/12-recordings.js
 /local_admin/js/13-refresh-login.js
 /local_admin/js/14-mentions.js
+/local_admin/js/15-flow.js
 /local_admin/styles.css
 /r345
 /radio345.py
@@ -79,6 +80,7 @@
 /server/devices.py
 /server/dictionary_setup.py
 /server/event_processor.py
+/server/flow.py
 /server/home_move.py
 /server/log_security.py
 /server/mac_update.py

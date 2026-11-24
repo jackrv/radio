@@ -18,7 +18,7 @@ def base():
         authorized=lambda ip: stream.allow, allow=True, transmit_enabled=False, session="s1", _tx_active=False, ptt_key=None, mode="watch",
         listeners=0, channels={"live": channel, "live_clean": channel, "selected": channel}, history=lambda after: [],
         peers=SimpleNamespace(is_home=lambda ip: True), gate=SimpleNamespace(dropped=0), log=None,
-        mixer=SimpleNamespace(pending_s=0.0), clip_pcm=lambda i: None)
+        mixer=SimpleNamespace(pending_s=0.0), clip_pcm=lambda i: None, on_air=lambda: False)
     stream.features = lambda: r.RadioStream.features(stream)
     server = ThreadingHTTPServer(("127.0.0.1", 0), r._handler_for(stream))
     threading.Thread(target=server.serve_forever, daemon=True).start()

@@ -12,6 +12,10 @@ class RemoteModelError(Exception):
     """Помилка конкретної фрази (як збій локального Whisper)."""
 
 
+class _Refused(ValueError):
+    """Вузол відповів, але фразу не взяв (503: зайнятий або модель віддано)."""
+
+
 class RemoteRecognizer:
     CONNECT_TIMEOUT_S = 3.0
     READ_TIMEOUT_S = 60.0
@@ -27,6 +31,7 @@ class RemoteRecognizer:
         self._blocked_until = float("-inf")
         self._down = False
         self.down_since = None   # monotonic; None — вузол відповідав останнього разу
+        self.on_state = None     # (sending | ready | refused | unavailable) — для схеми панелі
 
     extract_text = staticmethod(extract_text)
 
@@ -36,16 +41,29 @@ class RemoteRecognizer:
     def unload(self):
         """Моделлю керує вузол на Mac."""
 
+    def _report(self, state):
+        if self.on_state is None:
+            return
+        try:
+            self.on_state(state)
+        except Exception:
+            runtime.count("whisper_state.error")   # показ стану не заважає розпізнаванню
+
     def transcribe(self, audio, prompt=None):
         if self.clock() < self._blocked_until:
             raise RecognizerUnavailable("вузол недавно не відповідав")
         body = pack_request(audio, prompt=self.prompt if prompt is None else prompt,
                             language=self.language, sample_rate=self.sample_rate)
+        self._report("sending")
         try:
             result = unpack_result(self._post(body))
+        except RemoteModelError:
+            self._report("ready")
+            raise
         except (OSError, http.client.HTTPException, ValueError) as exc:
             self._blocked_until = self.clock() + self.COOLDOWN_S
             runtime.gauge("models.whisper", "unavailable")
+            self._report("refused" if isinstance(exc, _Refused) else "unavailable")
             if not self._down:
                 self.down_since = time.monotonic()
                 self.log.warning("Вузол розшифровки недоступний (%s): фрази відкладаються", type(exc).__name__)
@@ -56,6 +74,7 @@ class RemoteRecognizer:
         self._down = False
         self.down_since = None
         runtime.gauge("models.whisper", "ready")
+        self._report("ready")
         return result
 
     def _post(self, body):
@@ -70,7 +89,7 @@ class RemoteRecognizer:
                 # Вузол живий, але ця фраза не розпізнається: повторювати її вічно не можна.
                 raise RemoteModelError(f"вузол відхилив фразу: {response.status}")
             if response.status != 200:
-                raise ValueError(f"відповідь {response.status}")
+                raise _Refused(f"відповідь {response.status}")
             return data
         finally:
             conn.close()

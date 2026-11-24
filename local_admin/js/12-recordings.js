@@ -1163,7 +1163,7 @@
   rememberValue("learning-filter", "radio345:learning-filter");
   rememberValue("role", "radio345:preview-role");
 
-  const loaders = { recordings: () => recordings(true), overview, filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, sessions: system, storage: system, checks: system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
+  const loaders = { recordings: () => recordings(true), overview, flow: () => flowView(), filter: filterView, dictionaries, codes: dailyCodes, texts, learning, settings: async () => { await settings(); await runtimeSettings(); }, users, activity: () => activity(), system, sessions: system, storage: system, checks: system, quality: async () => { await quality(); await training(); }, experiments, preview: roles };
 
   // ---------- Швидка розмітка архіву: активна картка, клавіші, швидкість ----------
   const REVIEW_PREFS = "radio345:review-prefs";

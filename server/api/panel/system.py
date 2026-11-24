@@ -56,6 +56,13 @@ def register(app, ctx):
         """З Mac — Mac і Pi; на Pi — лише вона: з Pi на Mac доступу немає."""
         return device_state.read() if device_state else {"mac": None, "pi": None, "configured": False, "home": None}
 
+    from server.flow import Flow
+    flow = Flow(root, host=device_state.host if on_mac else None)
+
+    @app.get("/api/flow")
+    def flow_state(admin=Depends(actor)):
+        return flow.read()
+
     mover = None
     if on_mac:
         from server import home_move

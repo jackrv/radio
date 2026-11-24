@@ -527,6 +527,7 @@ class RadioStream:
         self._tx_lock = threading.Lock()
         self._tx_active = False
         self._tx_until = 0.0
+        self._air_at = float("-inf")   # останній кадр мовлення з ефіру
         self.mixer = self.channels["selected"].mixer
         self._history = collections.deque(maxlen=HISTORY)
         self._history_lock = threading.Lock()
@@ -574,6 +575,7 @@ class RadioStream:
         """
         if self._stop.is_set():
             return
+        self._air_at = float("-inf") if phase == "end" else time.monotonic()
         self.channels["live"].mixer.add(pcm)
         try:
             self._gate_queue.put_nowait((pcm, phase))
@@ -583,6 +585,10 @@ class RadioStream:
     def features(self):
         """Що вміє саме цей вузол: застосунок ховає недоступне, а не вгадує за адресою."""
         return ["live", "live_clean", "selected", "events", "clips", *(("transmit",) if self.transmit_enabled else ())]
+
+    def on_air(self):
+        """Зараз іде мовлення; без кінця сегмента згасає само."""
+        return time.monotonic() - self._air_at < 1.5
 
     def input_muted(self):
         """Напівдуплекс: True під час передачі з iPhone і TX_TAIL_S після неї."""
@@ -757,6 +763,7 @@ def _handler_for(stream):
                     "signals_dropped": stream.gate.dropped,
                     "transmit": stream.transmit_enabled,
                     "transmitting": stream._tx_active,
+                    "air": stream.on_air(),
                     "ptt_key": stream.ptt_key.name if stream.ptt_key is not None else "немає",
                     "pending_s": round(stream.mixer.pending_s, 1),
                     "mode": stream.mode,

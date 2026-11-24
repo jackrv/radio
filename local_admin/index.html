@@ -373,7 +373,7 @@
           <p class="muted small">Зеленим — найкраще значення в колонці серед завершених. «Без правок» і помилки рахуються за вашими еталонами; для тестів «лише Whisper» — на сирому тексті, без обробки.</p></article>
       </section>
 
-      <!-- Система: вкладки «Стан», «Діагностика», «Дані й копії», «Перевірки» (усі заповнює system()). -->
+      <!-- Система: вкладки «Стан», «Схема», «Діагностика», «Дані й копії», «Перевірки» (усі заповнює system()). -->
       <section data-panel="system" hidden>
         <article class="panel" id="devices-panel">
           <div class="panel-head"><h2>Пристрої</h2><button id="devices-refresh" class="ghost small-button" type="button">Оновити</button></div>
@@ -387,6 +387,32 @@
           <article class="panel sys"><h3>Служби й моделі</h3><div id="workers"></div></article>
           <article class="panel sys"><h3>Telegram</h3><div id="telegram"></div><div id="telegram-retention" class="toolbar"></div></article>
         </div>
+      </section>
+      <section data-panel="flow" hidden>
+        <article class="panel">
+          <div class="panel-head"><h2>Схема</h2><span id="flow-status" class="small" role="status">Чекаю дані з дому…</span></div>
+          <div class="flow-scroll"><svg class="flow" viewBox="0 0 960 440" role="group" aria-label="Схема роботи: рація — дім — Telegram, панель, iPhone; Whisper на Mac">
+            <rect class="flow-home" x="200" y="150" width="525" height="165" rx="16"/><text id="flow-home-title" x="225" y="184">Дім</text>
+            <path id="flow-edge-air" class="flow-edge" d="M150 230H225"/>
+            <path id="flow-edge-tx" class="flow-edge" d="M225 255H150"/>
+            <path id="flow-edge-segment" class="flow-edge" d="M365 242H405"/>
+            <path id="flow-edge-whisper" class="flow-edge" d="M490 205V98"/>
+            <path id="flow-edge-db" class="flow-edge" d="M575 242H615"/>
+            <path id="flow-edge-telegram" class="flow-edge" d="M725 225 L800 165"/>
+            <path id="flow-edge-panel" class="flow-edge" d="M725 248H800"/>
+            <path id="flow-edge-listen" class="flow-edge" d="M280 280V362"/>
+            <path id="flow-edge-talk" class="flow-edge" d="M310 362V280"/>
+            <g id="flow-radio" class="flow-node"><rect x="20" y="205" width="130" height="75" rx="12"/><circle cx="34" cy="219" r="4"/><text class="flow-title" x="85" y="240.5">Рація</text><text class="flow-sub" x="85" y="260.5">—</text></g>
+            <g id="flow-node" class="flow-node"><rect x="225" y="205" width="140" height="75" rx="12"/><circle cx="239" cy="219" r="4"/><text class="flow-title" x="295" y="240.5">Ефір</text><text class="flow-sub" x="295" y="260.5">—</text></g>
+            <g id="flow-asr" class="flow-node"><rect x="405" y="205" width="170" height="75" rx="12"/><circle cx="419" cy="219" r="4"/><text class="flow-title" x="490" y="240.5">Розпізнавання</text><text class="flow-sub" x="490" y="260.5">—</text></g>
+            <g id="flow-db" class="flow-node"><rect x="615" y="205" width="95" height="75" rx="12"/><circle cx="629" cy="219" r="4"/><text class="flow-title" x="662.5" y="240.5">База</text><text class="flow-sub" x="662.5" y="260.5">—</text></g>
+            <g id="flow-whisper" class="flow-node"><rect x="385" y="23" width="210" height="75" rx="12"/><circle cx="399" cy="37" r="4"/><text class="flow-title" x="490" y="58.5">Whisper</text><text class="flow-sub" x="490" y="78.5">—</text></g>
+            <g id="flow-telegram" class="flow-node"><rect x="800" y="110" width="140" height="75" rx="12"/><circle cx="814" cy="124" r="4"/><text class="flow-title" x="870" y="145.5">Telegram</text><text class="flow-sub" x="870" y="165.5">—</text></g>
+            <g id="flow-panel" class="flow-node"><rect x="800" y="212" width="140" height="75" rx="12"/><circle cx="814" cy="226" r="4"/><text class="flow-title" x="870" y="247.5">Панель</text><text class="flow-sub" x="870" y="267.5">—</text></g>
+            <g id="flow-iphone" class="flow-node"><rect x="225" y="362" width="140" height="64" rx="12"/><circle cx="239" cy="376" r="4"/><text class="flow-title" x="295" y="392">iPhone</text><text class="flow-sub" x="295" y="412">—</text></g>
+          </svg></div>
+          <p class="muted small flow-legend"><span class="ok">працює</span><span class="busy">ідуть дані</span><span class="warn">пауза</span><span class="bad">зупинено</span><span>немає даних / не підключено</span></p>
+        </article>
       </section>
       <section data-panel="sessions" hidden>
         <article class="panel">

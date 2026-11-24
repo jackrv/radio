@@ -170,3 +170,37 @@ def test_pi_code_does_not_import_mlx():
     probe = ("import sys, server.transcriber_factory, server.remote_recognizer, server.transcriber;"
              "sys.exit(any(m.split('.')[0].startswith('mlx') for m in sys.modules))")
     assert subprocess.run([sys.executable, "-c", probe], cwd=Path(__file__).resolve().parent.parent).returncode == 0
+
+
+def test_exchange_state_is_reported_and_never_breaks_recognition(serve):
+    seen = []
+    remote = client(serve(lambda head, audio: RESULT))
+    remote.on_state = seen.append
+    remote.transcribe(AUDIO)
+    assert seen == ["sending", "ready"]
+
+    def broken(state):
+        raise OSError
+    remote.on_state = broken
+    assert remote.transcribe(AUDIO)["text"] == " клен"
+
+    def fail(head, audio):
+        raise ValueError
+    for port, expected in ((free_port(), "unavailable"), (serve(fail), "ready")):
+        seen.clear()
+        remote = client(port)
+        remote.on_state = seen.append
+        with pytest.raises((RecognizerUnavailable, RemoteModelError)):
+            remote.transcribe(AUDIO)
+        assert seen == ["sending", expected]
+
+    from worker.asr_worker import Paused
+
+    def paused(head, audio):
+        raise Paused
+    remote = client(serve(paused))
+    seen.clear()
+    remote.on_state = seen.append
+    with pytest.raises(RecognizerUnavailable):
+        remote.transcribe(AUDIO)
+    assert seen == ["sending", "refused"]

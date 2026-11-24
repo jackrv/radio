@@ -1744,3 +1744,27 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b; width: auto; padding: 0 10px; white-space: nowrap; }
 .device-ask { margin-top: auto; padding: 12px; border: 1px solid #4f7359; border-radius: 10px; display: grid; gap: 8px; }
 .device-ask ul { margin: 0; padding-left: 18px; }
+
+/* Система → Схема */
+.flow { display: block; width: 100%; max-width: 1200px; max-height: 70vh; margin: 8px auto; }
+.flow text { fill: var(--text); text-anchor: middle; font-size: 13px; }
+.flow .flow-title { font-size: 17px; font-weight: 600; }
+.flow .flow-sub { fill: var(--muted); }
+.flow #flow-home-title { fill: var(--cyan); font-size: 16px; font-weight: 600; text-anchor: start; }
+.flow-home { fill: #142036; stroke: var(--cyan); stroke-width: 2; stroke-dasharray: 7 6; }
+.flow-node { color: var(--off); }
+.flow-node rect { fill: var(--surface2); stroke: currentColor; stroke-width: 1.5; transition: stroke .3s; }
+.flow-node circle { fill: currentColor; }
+.flow-node.ok, .flow-legend .ok { color: var(--ok); }
+.flow-node.busy, .flow-legend .busy { color: var(--lime); }
+.flow-node.warn, .flow-legend .warn { color: var(--warn); }
+.flow-node.bad, .flow-legend .bad { color: var(--bad); }
+.flow-node.busy rect { stroke-width: 3; filter: drop-shadow(0 0 7px rgba(184, 239, 134, .5)); }
+.flow-edge { fill: none; stroke: var(--border); stroke-width: 3; stroke-linecap: round; }
+.flow-edge.on { stroke: var(--lime); stroke-width: 4; stroke-dasharray: 5 9; animation: flow-run .7s linear infinite; }
+@keyframes flow-run { to { stroke-dashoffset: -14; } }
+.flow-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; }
+.flow-legend span::before { content: "● "; }
+@media (prefers-reduced-motion: reduce) { .flow-edge.on { animation: none; } }
+.flow-scroll { overflow-x: auto; }
+@media (max-width: 800px) { .flow { width: 760px; max-width: none; max-height: none; } }

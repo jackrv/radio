@@ -1,5 +1,5 @@
   // ---------- Навігація: розділи й вкладки ----------
-  const titles = { recordings: "Аудіоархів", overview: "Огляд", filter: "Сигнали сповіщень", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", preview: "Mini App", quality: "Якість по днях", experiments: "Експерименти", system: "Стан", sessions: "Діагностика", storage: "Дані й копії", checks: "Перевірки" };
+  const titles = { recordings: "Аудіоархів", overview: "Огляд", filter: "Сигнали сповіщень", dictionaries: "Словники", codes: "Коди доби", texts: "Фільтри тексту", learning: "Навчання", settings: "Налаштування", users: "Користувачі", activity: "Активність", preview: "Mini App", quality: "Якість по днях", experiments: "Експерименти", system: "Стан", flow: "Схема", sessions: "Діагностика", storage: "Дані й копії", checks: "Перевірки" };
   const GROUPS = {
     mentions: ["Вибірки", ["mentions"]],
     overview: ["Огляд", ["overview"]],
@@ -8,11 +8,11 @@
     signals: ["Сигнали сповіщень", ["filter"]],
     people: ["Люди", ["users", "activity", "preview"]],
     analysis: ["Аналіз", ["quality", "experiments"]],
-    system: ["Система", ["system", "sessions", "storage", "checks"]],
+    system: ["Система", ["system", "flow", "sessions", "storage", "checks"]],
   };
   titles.mentions = 'Вибірки';
   // Дані, які змінюються поза цією вкладкою, перечитуються при кожному відкритті.
-  const ALWAYS_RELOAD = new Set(["codes", "learning", "users", "activity", "mentions"]);
+  const ALWAYS_RELOAD = new Set(["codes", "learning", "users", "activity", "mentions", "flow"]);
   const lastTab = {};
   const pageScroller = () => document.querySelector?.('main') || window;
   const pageScrollY = () => pageScroller()===window ? window.scrollY : pageScroller().scrollTop;

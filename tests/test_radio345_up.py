@@ -286,22 +286,46 @@ def test_plain_up_uses_env_choice_and_respects_home(tmp_path):
         radio345.default_processes(profile, tmp_path, {"RADIO345_ONLY": "невідомий"})
 
 
-def test_doctor_reads_only_and_survives_unreachable_pi(monkeypatch, capsys):
+def doctor(monkeypatch, capsys, remote, ios="Встановлено: 1 дн. тому\nПідпис діє до: 29.11.2026 11:03\nАгент: увімкнено\n", rows=None):
+    import json
+    from types import SimpleNamespace
     from server import devices
     from shared import pull_backup
-    commands = []
-    monkeypatch.setattr(radio345, "show_status", lambda control: 0)
+    monkeypatch.setattr(radio345, "show_status", lambda control, title="": 0)
     monkeypatch.setattr(devices, "pi_host", lambda env: "pi@test")
-    monkeypatch.setattr(devices, "remote", lambda host: {"reachable": False, "error": "SSH недоступний"})
+    monkeypatch.setattr(devices, "remote", lambda host: remote)
+    monkeypatch.setattr(devices, "code_hash", lambda: "same")
     monkeypatch.setattr(pull_backup, "overview", lambda: {"count": 1, "keep": 3, "age_h": 5.0})
     monkeypatch.setattr(radio345.sys, "platform", "darwin")
-    assert radio345.doctor(run=lambda command, **k: commands.append(command)) == 0
+    out = json.dumps(rows or [["База", "ціла", True]], ensure_ascii=False)
+    code = radio345.doctor(run=lambda command, **k: SimpleNamespace(stdout=out if "--rows" in command else ios))
+    return code, capsys.readouterr().out
+
+
+def test_doctor_is_aligned_and_complete(monkeypatch, capsys):
+    code, out = doctor(monkeypatch, capsys, {"reachable": True, "processes": {"panel": {"alive": True}, "asr": {"alive": False}}, "code": "old"})
+    assert code == 0 and "підпис до 29.11.2026 11:03" in out and "Оновити код Pi" in out and "1 з 3, остання 5 год тому" in out
+    lines = [line for line in out.splitlines() if line.startswith("  ")]
+    starts = {line.index(v) for line, v in zip(lines, ("ціла", "працює: panel", "інший", "підпис до", "увімкнено", "1 з 3"))}
+    assert len(starts) == 1, out
+
+
+def test_doctor_reports_problems(monkeypatch, capsys):
+    code, out = doctor(monkeypatch, capsys, {"reachable": False, "error": "SSH недоступний"}, rows=[["База", "ПОШКОДЖЕНА", False]])
+    assert code == 1 and "✗ База" in out and "✗ Pi" in out and "SSH недоступний" in out
+
+
+def test_table_aligns_columns_and_marks():
+    text = radio345.table([(True, "node", "працює", ""), (None, "asr-довга", "зупинено", ""), (False, "x", "не працює", "перезапусків 2")])
+    first, second, third = text.splitlines()
+    assert first.index("працює") == second.index("зупинено") == third.index("не працює") and not first.endswith(" ")
+    assert "●" in first and "○" in second and "✗" in third
+
+
+@pytest.mark.parametrize("words", [[], ["-h"], ["--help"], ["help"]])
+def test_help_lists_every_command(words, capsys):
+    assert radio345.main(words) == 0
     out = capsys.readouterr().out
-    assert "Pi: SSH недоступний" in out and "Копії Pi: 1 з 3, остання 5 год тому" in out
-    assert [c[-1] for c in commands] == ["tools.diagnose", "--status"]
-
-
-def test_table_aligns_columns():
-    text = radio345.table([("node", "працює", ""), ("asr-довга", "зупинено", "перезапусків 2")])
-    first, second = text.splitlines()
-    assert first.index("працює") == second.index("зупинено") and not first.endswith(" ")
+    for command in ("up", "check", "status", "stop", "restart", "pause-model", "resume-model", "doctor", "move-data"):
+        assert command in out
+    assert "usage:" not in out

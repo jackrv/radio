@@ -161,23 +161,35 @@ def probe_network():
     return checks
 
 
-def summary(report):
-    """Кілька рядків людині; повний звіт — --json."""
+STATES = {"listening": "слухає", "paused": "пауза", "stopped": "зупинено"}
+
+
+def rows(report):
+    """[(назва, значення, ok)] людині; повний звіт — --json."""
     database, runtime = report["database"], report["runtime"]
-    checks, age = database.get("checks", {}), runtime.get("age_s")
-    if database.get("error"):
-        state = database["error"]
+    intact, age = database.get("checks", {}).get("integrity_ok"), runtime.get("age_s")
+    result = [("База", database.get("error") or ("ціла" if intact else "ПОШКОДЖЕНА"), bool(intact) and not database.get("error"))]
+    if age is None:
+        result.append(("Діагностика", runtime.get("note") or runtime.get("error"), False))
+    elif age < 120:
+        result.append(("Діагностика", f"оновлено {age:.0f} с тому", True))
     else:
-        state = "ціла" if checks.get("integrity_ok") else "ПОШКОДЖЕНА"
-    lines = [f"База: {state}", "Діагностика служби: " + (runtime.get("note") or runtime.get("error") if age is None else
-             f"оновлено {age:.0f} с тому" if age < 120 else f"застаріла, {age / 3600:.1f} год тому: служба розпізнавання її не пише")]
+        result.append(("Діагностика", f"застаріла, {age / 3600:.1f} год тому: служба її не пише", False))
     receiver = (database.get("counts") or {}).get("receiver") or database.get("receiver")
     if isinstance(receiver, dict):
-        lines.append(f"Ефір: {receiver.get('state')}, сигнал {receiver.get('heartbeat_age_s')} с тому")
+        beat = receiver.get("heartbeat_age_s") or 0
+        result.append(("Ефір", f"{STATES.get(receiver.get('state'), receiver.get('state'))}, сигнал {beat:.0f} с тому",
+                       receiver.get("state") == "listening" and beat < 60))
     for name, item in (report.get("network") or {}).items():
         if isinstance(item, dict):
-            lines.append(f"{name}: {'пропущено' if 'skipped' in item else 'OK' if item.get('ok') else 'НЕ ПРАЦЮЄ'}")
-    return "\n".join(lines)
+            result.append((name, "пропущено" if "skipped" in item else "OK" if item.get("ok") else "НЕ ПРАЦЮЄ", "skipped" in item or bool(item.get("ok"))))
+    return result
+
+
+def summary(report):
+    items = rows(report)
+    width = max(len(name) for name, _, _ in items)
+    return "\n".join(f"{name.ljust(width)}  {value}" for name, value, _ in items)
 
 
 def main():
@@ -187,6 +199,7 @@ def main():
     parser.add_argument("--logs", type=Path, nargs="*")
     parser.add_argument("--network", action="store_true", help="GET-перевірки getMe та доступності API без зміни даних")
     parser.add_argument("--json", action="store_true", help="увесь звіт")
+    parser.add_argument("--rows", action="store_true", help=argparse.SUPPRESS)   # для ./r345 doctor
     args = parser.parse_args()
     report = {"generated_at": time.time(), "environment": environment_report()}
     if args.network:
@@ -208,7 +221,8 @@ def main():
             report["runtime"] = {"error": "Некоректний знімок робочих метрик"}
     else:
         report["runtime"] = {"note": "Вимірювання будуть доступні після перезапуску оновленого приймача."}
-    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else summary(report))
+    print(json.dumps(rows(report), ensure_ascii=False) if args.rows else
+          json.dumps(report, ensure_ascii=False, indent=2) if args.json else summary(report))
     checks = report["database"].get("checks", {})
     errors = (report["database"].get("error") or not checks.get("integrity_ok")
               or any(checks.get(key) for key in ("missing_required_tables", "foreign_key_violations", "confirmation_mismatches",

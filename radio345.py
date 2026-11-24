@@ -12,6 +12,7 @@
 Якщо зникне сам наглядач, process_guard зупинить служби. На Pi процеси веде systemd (deploy/hub).
 """
 import argparse
+import json
 import os
 import shutil
 import signal
@@ -221,18 +222,37 @@ def systemd_units():
     return result
 
 
+MARK = {True: "●", False: "✗", None: "○"}
+COLOR = {True: "32", False: "31", None: "90"}
+
+
 def table(rows):
-    """Рядки однакової ширини колонок."""
-    rows = [tuple(map(str, r)) for r in rows]
-    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))] if rows else []
-    return "\n".join("  " + "  ".join(c.ljust(w) for c, w in zip(r, widths)).rstrip() for r in rows)
+    """[(ok, назва, значення…)] — рівні колонки; колір лише в терміналі. ok: True, False, None (навмисно вимкнено)."""
+    rows = [(r[0], *map(str, r[1:])) for r in rows]
+    widths = [max(len(r[i]) for r in rows) for i in range(1, len(rows[0]))] if rows else []
+    lines = []
+    for ok, *cells in rows:
+        mark = MARK[ok]
+        if sys.stdout.isatty():
+            mark = f"\x1b[{COLOR[ok]}m{mark}\x1b[0m"
+        lines.append(f"  {mark} " + "  ".join(c.ljust(w) for c, w in zip(cells, widths)).rstrip())
+    return "\n".join(lines)
 
 
-def show_status(control):
+def service_rows(processes):
+    for name, item in processes.items():
+        wanted = item.get("wanted", True)
+        text = ("працює" if item["alive"] else "зайнято на іншому пристрої" if item.get("blocked") else "не працює" if wanted else "зупинено")
+        yield (True if item["alive"] else False if wanted else None, name, text,
+               f"перезапусків {item['restarts']}" if item["restarts"] else "")
+
+
+def show_status(control, title="r345"):
     units = systemd_units()
     if units:
-        print("Служби systemd:")
-        print(table((unit.removeprefix("radio345-"), {"active": "працює", "inactive": "зупинено"}.get(state, state)) for unit, state in units.items()))
+        print("Служби systemd")
+        print(table((True if state == "active" else None if state == "inactive" else False, unit.removeprefix("radio345-"),
+                     {"active": "працює", "inactive": "зупинено"}.get(state, state)) for unit, state in units.items()))
     data = control.read()
     if data is None:
         if control.held():
@@ -240,10 +260,8 @@ def show_status(control):
         elif not units:
             print("r345 не запущено")
         return 0 if units and not control.held() else 3
-    print(f"r345 працює: профіль {data['profile']}, PID {data['pid']}")
-    print(table((name, "працює" if item["alive"] else "зайнято на іншому пристрої" if item.get("blocked") else
-                 "зупинено" if not item.get("wanted", True) else "не працює",
-                 f"перезапусків {item['restarts']}" if item["restarts"] else "") for name, item in data["processes"].items()))
+    print(f"{title}: профіль {data['profile']}, PID {data['pid']}")
+    print(table(service_rows(data["processes"])))
     return 0 if all(p["alive"] for p in data["processes"].values() if p.get("wanted", True)) else 1
 
 
@@ -329,31 +347,76 @@ def resume_model(root=ROOT, timeout=120.0):
     return 1
 
 
+def capture(run, command):
+    try:
+        return run(command, cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
 def doctor(run=subprocess.run):
-    """Лише читання. Pi й iPhone — з Mac; на Pi показуємо її служби."""
-    show_status(Control())
-    sys.stdout.flush()
-    run([sys.executable, "-m", "tools.diagnose"], cwd=ROOT, stdin=subprocess.DEVNULL)
-    if sys.platform != "darwin":
-        return 0
+    """Лише читання. Pi й iPhone — з Mac; на Pi — її служби, база й діагностика."""
+    show_status(Control(), "Служби")
+    try:
+        rows = [(ok, name, value) for name, value, ok in json.loads(capture(run, [sys.executable, "-m", "tools.diagnose", "--rows"]))]
+    except ValueError:
+        rows = [(False, "База", "перевірка не виконалася")]
+    if sys.platform == "darwin":
+        rows += mac_rows(run)
+    print("\nСтан")
+    print(table(rows))
+    return 0 if all(ok is not False for ok, *_ in rows) else 1
+
+
+def mac_rows(run):
     from server import devices
-    host = devices.pi_host(base_environment({}))
+    from shared import pull_backup
+    rows, host = [], devices.pi_host(base_environment({}))
     if host:
         state = devices.remote(host)
         if state.get("reachable"):
             on = [n for n, p in state["processes"].items() if p["alive"]]
-            print("Pi: працює " + (", ".join(on) or "нічого") + ("" if state.get("code") == devices.code_hash() else "; код інший, ніж на Mac"))
+            same = state.get("code") == devices.code_hash()
+            rows += [(True, "Pi", "працює: " + (", ".join(on) or "нічого")),
+                     (True if same else None, "Код на Pi", "як на Mac" if same else "інший: «Оновити код Pi» в панелі")]
         else:
-            print("Pi: " + state.get("error", "недоступна"))
-    print("iPhone:", flush=True)
-    run(["/bin/bash", str(ROOT / "tools" / "ios_reinstall.sh"), "--status"], stdin=subprocess.DEVNULL)
-    from shared import pull_backup
+            rows.append((False, "Pi", state.get("error", "недоступна")))
+    text = capture(run, ["/bin/bash", str(ROOT / "tools" / "ios_reinstall.sh"), "--status"])
+    ios = dict(line.split(": ", 1) for line in text.splitlines() if ": " in line)
+    if "Підпис діє до" in ios:
+        rows.append((True, "iPhone", f"підпис до {ios['Підпис діє до']}"))
+    if "Агент" in ios:
+        rows.append((ios["Агент"] == "увімкнено", "Продовження підпису", ios["Агент"]))
     info = pull_backup.overview()
-    print(f"Копії Pi: {info['count']} з {info['keep']}" + (f", остання {info['age_h']:.0f} год тому" if info["age_h"] is not None else ""))
-    return 0
+    rows.append((True if info["count"] else None, "Копії Pi", f"{info['count']} з {info['keep']}"
+                 + (f", остання {info['age_h']:.0f} год тому" if info["age_h"] is not None else "")))
+    return rows
+
+
+HELP = """Radio 345
+
+Щодня
+  ./r345 up                 запустити; що саме — RADIO345_PROFILE і RADIO345_ONLY у .env
+  ./r345 stop               зупинити все (або Ctrl+C)
+  ./r345 status             що працює
+  ./r345 restart [служба]   перезапустити: worker, node, asr, api, panel, tunnel
+  ./r345 doctor             перевірити все: служби, база, Pi, підпис iPhone, копії
+
+Рідко
+  ./r345 check              що запуститься й чого бракує
+  ./r345 pause-model        віддати модель лабораторії (--minutes 120); resume-model — повернути
+  ./r345 move-data          перенести робочі дані в .local-data
+
+Явний запуск: ./r345 up --profile mac-dev --only worker panel
+Подробиці команди: ./r345 <команда> --help. Усі команди: docs/commands.md
+На Pi службами керує systemd і панель Mac: там корисні status і doctor."""
 
 
 def main(argv=None):
+    words = sys.argv[1:] if argv is None else argv
+    if not words or words[0] in ("-h", "--help", "help"):
+        print(HELP)
+        return 0
     parser = argparse.ArgumentParser(prog="r345", description="Radio 345: процеси цього пристрою")
     sub = parser.add_subparsers(dest="action", required=True)
     for name, text in (("up", "запустити"), ("check", "що запуститься й чого бракує")):

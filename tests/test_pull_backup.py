@@ -135,3 +135,47 @@ def test_restored_copy_passes_project_restore(tmp_path):
     path = b.pull(command(root), tmp_path / "out", now=START)
     init_db(tmp_path / "live.db")
     restore_database(tmp_path / "live.db", path / "events.db", tmp_path / "copies")
+
+
+def test_interrupted_copy_is_cleaned_next_time(pi, tmp_path):
+    (tmp_path / "out" / ".partial-old").mkdir(parents=True)
+    b.pull(command(pi), tmp_path / "out", now=START)
+    assert not list((tmp_path / "out").glob(".partial-*"))
+
+
+def test_scheduled_skips_fresh_copy_and_retries_old(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(b, "pull", lambda command, out: calls.append(1) or tmp_path)
+    args = ["--host", "pi@test", "--out", str(tmp_path), "--scheduled"]
+    (tmp_path / (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")).mkdir()
+    assert b.main(args) == 0 and not calls
+    for path in list(tmp_path.iterdir()):
+        path.rmdir()
+    (tmp_path / (datetime.now(timezone.utc) - timedelta(hours=21)).strftime("%Y%m%dT%H%M%SZ")).mkdir()
+    assert b.main(args) == 0 and calls
+
+
+def test_stale_warning_once_a_day_and_not_for_fresh(tmp_path):
+    said = []
+    assert not b.warn_stale(tmp_path, said.append)   # щойно, без установки
+    old = tmp_path / (datetime.now(timezone.utc) - timedelta(days=4)).strftime("%Y%m%dT%H%M%SZ")
+    old.mkdir()
+    assert b.warn_stale(tmp_path, said.append) and not b.warn_stale(tmp_path, said.append)
+    assert len(said) == 1 and "4" in said[0]
+    old.rename(tmp_path / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    (tmp_path / ".warned").unlink()
+    assert not b.warn_stale(tmp_path, said.append)
+
+
+def test_agent_does_not_depend_on_documents(tmp_path):
+    data = b.agent_plist("pi@test", "hub", tmp_path / "out", tmp_path / "s.py", tmp_path / "log")
+    assert ".venv" not in data["ProgramArguments"][0] and data["ProgramArguments"][-1] == "--scheduled"
+    assert data["Umask"] == 0o077 and b.OUT.is_relative_to(b.Path.home() / "Library")
+
+
+def test_agent_script_runs_alone_without_project(tmp_path):
+    import shutil, subprocess
+    script = tmp_path / "alone.py"
+    shutil.copyfile(b.__file__, script)
+    done = subprocess.run([sys._base_executable, "-I", str(script), "--help"], cwd=tmp_path, capture_output=True)
+    assert done.returncode == 0

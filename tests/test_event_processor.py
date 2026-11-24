@@ -277,7 +277,7 @@ def test_sqlite_failure_allows_immediate_retry(monkeypatch):
 
 
 def test_bare_callsign_without_number_is_not_an_event():
-    from core.callsigns import Callsigns
+    from shared.callsigns import Callsigns
     callsigns = Callsigns.from_lines(["дуб", "вишня: 210"])
     for text in ("Дуб", "дуб, дуб."):
         processor, save_event, telegram, log = make_processor(callsigns=callsigns)
@@ -293,7 +293,7 @@ def test_bare_callsign_without_number_is_not_an_event():
 
 
 def test_bare_callsign_with_command_or_watch_word_stays():
-    from core.callsigns import Callsigns
+    from shared.callsigns import Callsigns
     callsigns = Callsigns.from_lines(["дуб"])
     commands = Callsigns.from_lines(["дуб"])
     processor, save_event, _, _ = make_processor(callsigns=callsigns, commands=commands)
@@ -313,7 +313,7 @@ def test_bare_callsign_with_command_or_watch_word_stays():
 
 
 def test_event_and_message_ids_are_noted_for_the_archive():
-    from core.recording_trace import _trace
+    from shared.recording_trace import _trace
 
     processor, _, telegram, _ = make_processor(
         mode="commands",
@@ -330,8 +330,8 @@ def test_event_and_message_ids_are_noted_for_the_archive():
 
 
 def test_annotate_notes_roles_and_text_without_event_telegram_or_stream():
-    from core import recording_trace
-    from core.callsigns import Callsigns, command_dictionary
+    from shared import recording_trace
+    from shared.callsigns import Callsigns, command_dictionary
     processor, save_event, telegram, *_ = make_processor(
         callsigns=Callsigns.from_lines(["клен 48"]), commands=command_dictionary(["грім 022"]))
     trace = {}

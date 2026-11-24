@@ -14,8 +14,8 @@ import uuid
 
 import pytest
 
-from core.diagnostics import RuntimeDiagnostics
-from core.diagnostic_history import (
+from shared.diagnostics import RuntimeDiagnostics
+from shared.diagnostic_history import (
     DiagnosticsHistory, atomic_write, history_directory, snapshot_filename,
 )
 
@@ -50,13 +50,13 @@ def test_restart_retains_previous_session_and_current_snapshot(tmp_path):
 
 def test_periodic_writes_update_one_file_and_skip_within_30_seconds(tmp_path, monkeypatch):
     path = tmp_path / "diagnostics.json"
-    with patch("core.diagnostics.time.monotonic", return_value=100):
+    with patch("shared.diagnostics.time.monotonic", return_value=100):
         metrics = RuntimeDiagnostics()
         metrics.configure(path)
         metrics.count("asr.segments", 4)
         metrics.flush()
         assert "asr.segments" not in DiagnosticsHistory(history_directory(path)).load(metrics.session)["counters"]
-    with patch("core.diagnostics.time.monotonic", return_value=131):
+    with patch("shared.diagnostics.time.monotonic", return_value=131):
         metrics.flush()
     store = DiagnosticsHistory(history_directory(path))
     assert len(store.list_sessions()["items"]) == 1
@@ -137,7 +137,7 @@ def test_corrupt_latest_is_replaced_without_importing_private_fields(tmp_path):
 def test_atomic_write_failure_leaves_valid_old_snapshot_and_cleans_temporary(tmp_path):
     target = tmp_path / "snapshot.json"
     atomic_write(target, {"counter": 1})
-    with patch("core.diagnostic_history.os.replace", side_effect=OSError("synthetic failure")):
+    with patch("shared.diagnostic_history.os.replace", side_effect=OSError("synthetic failure")):
         with pytest.raises(OSError):
             atomic_write(target, {"counter": 2})
     assert json.loads(target.read_text()) == {"counter": 1}
@@ -179,7 +179,7 @@ def test_sigkill_leaves_last_periodic_snapshot_and_allows_a_new_session(tmp_path
     path = tmp_path / "diagnostics.json"
     code = '''
 import sys,time
-from core.diagnostics import RuntimeDiagnostics
+from shared.diagnostics import RuntimeDiagnostics
 m=RuntimeDiagnostics()
 m.configure(sys.argv[1])
 m.count("asr.measured_segments",17)

@@ -3,9 +3,9 @@ paths:
   - "local_admin/**"
   - "apps/miniapp/**"
   - "api/panel/**"
-  - "services/mention_selection.py"
+  - "shared/mention_selection.py"
   - "services/miniapp_*.py"
-  - "services/suggestions.py"
+  - "shared/suggestions.py"
   - "api/local_dashboard.py"
 ---
 

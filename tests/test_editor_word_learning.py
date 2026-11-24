@@ -2,10 +2,10 @@ import logging
 
 import pytest
 
-from services.miniapp_correction_editor import load_edit_draft, save_edit_draft
+from shared.miniapp_correction_editor import load_edit_draft, save_edit_draft
 from services.telegram import TelegramService
-from services.event_store import init_db
-from services.sqlite_connection import get_db
+from shared.event_store import init_db
+from shared.sqlite_connection import get_db
 
 
 @pytest.fixture

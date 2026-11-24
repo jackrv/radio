@@ -6,10 +6,10 @@ manual = ["api", "tunnel"]
 requirements = "requirements-hub.txt"
 bot = true
 # Запускаються за іменем: фонові завдання панелі, створення бази й адміністратора.
-extra_modules = ["services.panel_jobs", "manage_database", "api.bootstrap_admin", "radio345"]
-extra = ["r345", "services/process_guard.py", "local_admin", "apps/miniapp", "deploy/hub", "deploy/profiles/pi.toml", "requirements-pi.txt",
+extra_modules = ["shared.panel_jobs", "manage_database", "api.bootstrap_admin", "radio345"]
+extra = ["r345", "shared/process_guard.py", "local_admin", "apps/miniapp", "deploy/hub", "deploy/profiles/pi.toml", "requirements-pi.txt",
          "docs/raspberry-pi.md", "dictionaries.example.txt", ".gitignore"]
-exclude_modules = ["core.recognition"]    # MLX: вибір робить RADIO_ASR_URL
+exclude_modules = ["shared.recognition"]    # MLX: вибір робить RADIO_ASR_URL
 
 [env]
 RADIO_INPUT_DEVICE = "USB"

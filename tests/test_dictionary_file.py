@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from services.dictionary_store import format_dictionary_file, parse_dictionary_file
+from shared.dictionary_store import format_dictionary_file, parse_dictionary_file
 
 ROOT = Path(__file__).resolve().parent.parent
 

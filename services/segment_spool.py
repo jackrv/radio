@@ -10,7 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
-from core.diagnostics import runtime
+from shared.diagnostics import runtime
 from core.segment_timing import SegmentTiming, TimedSegment
 
 MAX_BYTES = 2 * 1024 ** 3   # ~17 год мовлення 16 кГц

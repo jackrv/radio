@@ -1,7 +1,7 @@
 """Другий шанс Whisper без підказки, коли з підказкою модель зациклилася."""
 from unittest.mock import Mock
 
-from core.recognition import WhisperRecognizer, is_looped
+from shared.recognition import WhisperRecognizer, is_looped
 
 LOOP = {"segments": [{"text": " Грозу, Грозу, Грозу", "compression_ratio": 19.9, "avg_logprob": -0.1, "no_speech_prob": 0.0}]}
 GOOD = {"segments": [{"text": " Клен 15, прийнято, прийом", "compression_ratio": 1.2, "avg_logprob": -0.2, "no_speech_prob": 0.0}]}
@@ -39,8 +39,8 @@ def test_no_retry_when_text_exists_flag_is_off_or_result_is_not_a_loop():
 
 
 def test_prompt_takes_only_the_latest_code_of_the_current_day(tmp_path):
-    from services import daily_codes
-    from services.dictionary_store import init_db
+    from shared import daily_codes
+    from shared.dictionary_store import init_db
     from services.transcriber_factory import prompt_codes
     path = tmp_path / "events.db"
     init_db(path)

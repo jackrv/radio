@@ -1,6 +1,6 @@
 """Names are display metadata; Telegram ID remains the authorization identity."""
 
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 
 
 def ensure_table(db):

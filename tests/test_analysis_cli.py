@@ -4,7 +4,7 @@ import sqlite3
 import numpy as np
 
 import config
-from services.recordings import RecordingStore
+from shared.recordings import RecordingStore
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура тимчасової бази)
 from lab import analysis
 

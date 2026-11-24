@@ -11,10 +11,10 @@ import sys, hashlib, sqlite3
 from pathlib import Path
 sys.path.insert(0, ".")
 import config
-import core.template_text as tt
-from services.text_replay import load_records, load_setup, run, templates
+import shared.template_text as tt
+from shared.text_replay import load_records, load_setup, run, templates
 from lab.asr_lab import split_of, SPLIT_BLOCK_S
-from core.text_metrics import metric_words
+from shared.text_metrics import metric_words
 arch = str(config.RECORDINGS_DIR)
 rows = load_records(arch, include_non_speech=True)
 dicts, short_garbage, values = load_setup(config.DB_PATH, arch)

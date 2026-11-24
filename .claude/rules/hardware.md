@@ -5,8 +5,8 @@ paths:
   - "tools/pi_files.py"
   - "tools/ios_*"
   - "services/radio_node.py"
-  - "services/radio_stream.py"
-  - "services/ptt_key.py"
+  - "shared/radio_stream.py"
+  - "shared/ptt_key.py"
   - "requirements-pi.txt"
 ---
 

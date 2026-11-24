@@ -2,11 +2,11 @@
 from api.panel.jobs import start_task
 from fastapi import Depends, HTTPException
 
-from services.management.common import ManagementConflict
-from services.management.learning import approve_rule, learning_queue, toggle_rule
+from shared.management.common import ManagementConflict
+from shared.management.learning import approve_rule, learning_queue, toggle_rule
 from services.management.settings import write_settings
 from services.receiver_status import read_receiver_status
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 from api.panel.models import DailyCodesUpdate, RuntimeSettingsUpdate, TextListCheck, TextListUpdate, DictionaryUpdate, RuleApproval, RuleUpdate, SettingsUpdate
 from api.panel.common import read_diagnostics
 
@@ -23,7 +23,7 @@ def register(app, ctx):
     @app.get("/api/daily-codes")
     def daily_codes_list(admin=Depends(actor)):
         """Коди доби, внесені вручну, за останні дні."""
-        from services import daily_codes
+        from shared import daily_codes
         today = daily_codes.local_day()
         with get_db(db_path) as db:
             permanent = daily_codes.read_permanent(db)
@@ -33,7 +33,7 @@ def register(app, ctx):
     @app.put("/api/daily-codes/permanent")
     def daily_codes_permanent(payload: DailyCodesUpdate, admin=Depends(actor)):
         """Постійні коди: діють у будь-яку добу разом із кодами доби."""
-        from services import daily_codes
+        from shared import daily_codes
         try:
             return {"codes": daily_codes.write_permanent(db_path, payload.codes)}
         except ValueError as exc:
@@ -41,7 +41,7 @@ def register(app, ctx):
 
     @app.put("/api/daily-codes/{day}")
     def daily_codes_update(day: str, payload: DailyCodesUpdate, admin=Depends(actor)):
-        from services import daily_codes
+        from shared import daily_codes
         try:
             codes = daily_codes.write(db_path, day, payload.codes)
         except ValueError as exc:
@@ -50,7 +50,7 @@ def register(app, ctx):
 
     @app.get("/api/runtime-settings")
     def runtime_settings(admin=Depends(actor)):
-        from services.runtime_settings import read_runtime_settings
+        from shared.runtime_settings import read_runtime_settings
         result = read_runtime_settings(db_path)
         try:
             diagnostics = read_diagnostics(diagnostics_path)
@@ -63,7 +63,7 @@ def register(app, ctx):
 
     @app.put("/api/runtime-settings")
     def runtime_settings_update(payload: RuntimeSettingsUpdate, admin=Depends(actor)):
-        from services.runtime_settings import RuntimeSettingsConflict, write_runtime_settings
+        from shared.runtime_settings import RuntimeSettingsConflict, write_runtime_settings
         try:
             return write_runtime_settings(db_path, payload.values, payload.expected_revision)
         except RuntimeSettingsConflict as exc:
@@ -73,7 +73,7 @@ def register(app, ctx):
 
     @app.get("/api/text-lists")
     def text_lists(admin=Depends(actor)):
-        from services.text_lists import read_lists
+        from shared.text_lists import read_lists
         result = read_lists(db_path)
         try:
             diagnostics = read_diagnostics(diagnostics_path)
@@ -87,9 +87,9 @@ def register(app, ctx):
     @app.get("/api/text-lists/callsign-alias-candidates")
     def callsign_alias_candidates(admin=Depends(actor)):
         """Підказка: почуті Whisper варіанти позивних із розмічених записів. Нічого не записує."""
-        from core.callsigns import Callsigns
-        from services.alias_candidates import collect
-        from services.text_lists import _dictionary_names, ensure_tables, load_active, sync_aliases
+        from shared.callsigns import Callsigns
+        from shared.alias_candidates import collect
+        from shared.text_lists import _dictionary_names, ensure_tables, load_active, sync_aliases
         with get_db(db_path) as db:
             ensure_tables(db)
             sync_aliases(db)
@@ -101,7 +101,7 @@ def register(app, ctx):
             all_names, _ = _dictionary_names(db)
         callsigns = Callsigns.from_lines(lines)
         records = recordings.labelled_speech()
-        from services.alias_candidates import final_callsigns
+        from shared.alias_candidates import final_callsigns
         resolved = final_callsigns(records, db_path, recordings.root)
         return {"items": collect(records, callsigns, all_names, active["callsign_aliases"], resolved),
                 "records": len(records)}
@@ -109,8 +109,8 @@ def register(app, ctx):
     @app.get("/api/text-lists/noise-candidates")
     def noise_candidates(admin=Depends(actor)):
         """Підказка: тексти Whisper, що повторюються на записах без мовлення. Нічого не записує."""
-        from services.noise_candidates import collect, key
-        from services.text_lists import _dictionary_names, ensure_tables, load_active
+        from shared.noise_candidates import collect, key
+        from shared.text_lists import _dictionary_names, ensure_tables, load_active
         with get_db(db_path) as db:
             ensure_tables(db)
             _, active = load_active(db)
@@ -122,7 +122,7 @@ def register(app, ctx):
 
     @app.put("/api/text-lists/{list_type}/check")
     def text_list_check(list_type: str, payload: TextListCheck, admin=Depends(actor)):
-        from services.text_lists import check_list
+        from shared.text_lists import check_list
         try:
             return check_list(db_path, list_type, [e.model_dump() for e in payload.entries])
         except ValueError as exc:
@@ -146,7 +146,7 @@ def register(app, ctx):
 
         Повтор текстової обробки на збережених виходах Whisper — без моделей, приймач працює.
         """
-        from services import panel_jobs
+        from shared import panel_jobs
         if list_type not in panel_jobs.LISTS:
             raise HTTPException(404, "Цей список не перевіряється на еталонах")
         try:
@@ -157,7 +157,7 @@ def register(app, ctx):
 
     @app.put("/api/text-lists/{list_type}")
     def text_list_update(list_type: str, payload: TextListUpdate, admin=Depends(actor)):
-        from services.text_lists import LIST_TYPES, TextListConflict, write_list
+        from shared.text_lists import LIST_TYPES, TextListConflict, write_list
         if list_type not in LIST_TYPES:
             raise HTTPException(404, "Невідомий список")
         try:
@@ -176,7 +176,7 @@ def register(app, ctx):
     @app.put("/api/dictionaries/{kind}")
     def dictionary_update(kind: str, payload: DictionaryUpdate, admin=Depends(actor)):
         """Збереження з тією самою перевіркою рядків і захистом від одночасної правки, що й у Mini App."""
-        from services.management.common import ManagementConflict
+        from shared.management.common import ManagementConflict
         from services.management.dictionaries import write_dictionary
         if kind not in ("callsigns", "commands", "telegram"):
             raise HTTPException(404, "Невідомий словник")

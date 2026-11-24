@@ -8,18 +8,18 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import core.callsigns as callsign_module
+import shared.callsigns as callsign_module
 import config as project_config
-import services.text_lists as text_lists
-from core.callsigns import Callsigns, configure_aliases
-from core.analyzer import looks_like_garbage
+import shared.text_lists as text_lists
+from shared.callsigns import Callsigns, configure_aliases
+from shared.analyzer import looks_like_garbage
 from core.cooldown import Cooldown
-from services.dictionary_store import init_db as init_dictionary_db
-from services.dictionary_loader import LiveDictionaries
-from services.event_store import init_db as init_event_db
-from services.runtime_settings import (LiveRuntimeSettings, RuntimeSettingsConflict, read_runtime_settings,
+from shared.dictionary_store import init_db as init_dictionary_db
+from shared.dictionary_loader import LiveDictionaries
+from shared.event_store import init_db as init_event_db
+from shared.runtime_settings import (LiveRuntimeSettings, RuntimeSettingsConflict, read_runtime_settings,
                                        write_runtime_settings)
-from services.text_lists import read_lists, write_list
+from shared.text_lists import read_lists, write_list
 
 ORIGIN = "http://127.0.0.1:8766"
 KEY = "x" * 43
@@ -96,7 +96,7 @@ def test_empty_callsigns_or_broken_database_keep_previous_dictionary(db_path):
     assert dictionaries.refresh() is False
     assert dictionaries.callsigns.find("віра 68") == [("віра", "68", 100)]
     assert log.error.called
-    with patch("services.dictionary_loader.get_db", side_effect=sqlite3.OperationalError("locked")):
+    with patch("shared.dictionary_loader.get_db", side_effect=sqlite3.OperationalError("locked")):
         assert dictionaries.refresh(force=True) is False
     assert dictionaries.callsigns.names == ["віра"]
 
@@ -153,7 +153,7 @@ def test_live_settings_apply_once_per_revision_and_survive_db_errors(db_path):
     clock.now = 5.0
     settings.refresh()
     assert [a["GARBAGE_MIN_WORDS"] for a in applied] == [12, 5]
-    with patch("services.runtime_settings.get_db", side_effect=sqlite3.OperationalError("locked")):
+    with patch("shared.runtime_settings.get_db", side_effect=sqlite3.OperationalError("locked")):
         assert settings.refresh(force=True) is False
     assert settings.values["GARBAGE_MIN_WORDS"] == 5
 
@@ -179,7 +179,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
     cooldown = Cooldown(3.0)
-    with patch("core.recognition.WhisperRecognizer") as whisper:
+    with patch("shared.recognition.WhisperRecognizer") as whisper:
         recognizer = whisper.return_value
         worker = build_transcriber(config=config, segments=Mock(), callsigns=Callsigns.from_lines(["віра: 68"]),
                                    commands=empty, watch=empty, prompt="віра", telegram_service=Mock(),
@@ -202,7 +202,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
     assert "береза" in recognizer.prompt, "підказку Whisper оновлено"
     assert cooldown.cooldown_s == 30.0
 
-    from core.diagnostics import runtime
+    from shared.diagnostics import runtime
     recognizer.extract_text.return_value = "Віра 68 Віра 68 Віра 68"
     garbage = lambda: runtime.snapshot()["counters"].get("asr.garbage_filtered", 0)
     before = garbage()
@@ -217,7 +217,7 @@ def test_receiver_applies_dictionary_and_settings_without_restart(db_path, tmp_p
 # ---------- Локальна панель ----------
 
 def test_local_panel_edits_runtime_settings(db_path, tmp_path):
-    from services.user_store import init_users_db, bootstrap_admin
+    from shared.user_store import init_users_db, bootstrap_admin
     from api.local_dashboard import create_dashboard
     init_users_db(db_path)
     bootstrap_admin(db_path, 1001)
@@ -238,14 +238,14 @@ def test_local_panel_edits_runtime_settings(db_path, tmp_path):
 
 def test_receiver_applies_whisper_prompt_list_without_restart(db_path, tmp_path):
     from services.transcriber_factory import build_transcriber
-    from services.text_lists import read_lists, write_list
+    from shared.text_lists import read_lists, write_list
     values = {k: getattr(project_config, k) for k in dir(project_config) if k.isupper()}
     config = SimpleNamespace(**{**values, "DB_PATH": str(db_path), "USE_LLM": False,
                                 "RECORDINGS_DIR": tmp_path / "recordings",
                                 "SPECTRAL_NOTIFICATION_MODE": "off",
                                 "NOTIFICATION_SOUNDS_DIR": tmp_path / "none"})
     empty = Callsigns.from_lines([])
-    with patch("core.recognition.WhisperRecognizer") as whisper:
+    with patch("shared.recognition.WhisperRecognizer") as whisper:
         worker = build_transcriber(config=config, segments=Mock(), callsigns=Callsigns.from_lines(["віра: 68"]),
                                    commands=empty, watch=empty, prompt="віра", telegram_service=Mock(),
                                    cooldown=Cooldown(3.0), log=Mock())

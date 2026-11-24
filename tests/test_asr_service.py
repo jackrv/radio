@@ -8,9 +8,9 @@ import pytest
 
 from core.segment_timing import SegmentTiming, TimedSegment
 from core.transcriber import Transcriber
-from core.whisper_result import RecognizerUnavailable
+from shared.whisper_result import RecognizerUnavailable
 from services.asr_service import AsrService, NullTelegram, SpoolRecorder
-from services.recordings import RecordingStore
+from shared.recordings import RecordingStore
 from services.segment_spool import SegmentSpool
 
 LOG = logging.getLogger("test")

@@ -28,12 +28,12 @@ def wav(samples=None):
 
 @pytest.fixture(autouse=True)
 def no_background_spawn(monkeypatch):
-    from services import panel_jobs
+    from shared import panel_jobs
     monkeypatch.setattr(panel_jobs, "_launch", lambda root: None)
 
 
 def finish_job(client, path, response):
-    from services import panel_jobs
+    from shared import panel_jobs
     assert response.status_code == 202
     job = response.json()
     panel_jobs.work(panel_jobs.directory(path))
@@ -156,7 +156,7 @@ def test_session_survives_dashboard_restart_with_same_key(setup,tmp_path):
 
 def test_overview_has_everything_for_home_page(local):
     client,path,_=local
-    from services.event_store import save_event
+    from shared.event_store import save_event
     save_event("дуб","","","","Дуб 700",path)
     data=client.get("/api/overview").json()
     assert data["overview"]["events"]==1
@@ -180,7 +180,7 @@ def test_manual_backup_from_dashboard(setup,tmp_path):
 def test_events_by_hour_buckets(tmp_path):
     import sqlite3
     from api.panel.common import events_by_hour
-    from services.event_store import init_db
+    from shared.event_store import init_db
     db=tmp_path/"e.db"; init_db(db)
     now=1_800_001_800  # 30 хв після початку години
     with sqlite3.connect(db) as conn:
@@ -193,7 +193,7 @@ def test_events_by_hour_buckets(tmp_path):
 def test_archive_labels_feed_filter_evaluation(local):
     client,path,tmp=local
     import numpy as np
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     from tests.audio_helpers import phone_sound, voice_like
     add_sample(tmp/"samples",wav(phone_sound()),confirmed_isolated=True)
     store=RecordingStore(tmp/"recordings")
@@ -232,7 +232,7 @@ def test_spectral_observations_reach_filter_page(local):
 
 def test_current_archive_views_refresh_without_rewriting_samples(setup, tmp_path):
     _, path = setup
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(tmp_path/'recordings')
     ids = [store.save(pcm(segment()), 16000, {'status':'ready', 'fix_id':f'db:{i+1}'}) for i in range(4)]
     store.review(ids[0], 'текст', 'speech', 0)
@@ -251,7 +251,7 @@ def test_current_archive_views_refresh_without_rewriting_samples(setup, tmp_path
 
 def test_listening_hold_endpoint_requires_origin_and_bounds(local):
     client,path,_=local
-    from services.receiver_control import reception_request
+    from shared.receiver_control import reception_request
     assert client.put("/api/listening-hold",json={"seconds":10}).status_code==403
     assert client.put("/api/listening-hold",json={"seconds":10},headers={"Origin":ORIGIN}).json()["active"] is True
     assert reception_request(path)=="listening"
@@ -289,7 +289,7 @@ def test_callsign_suggestions_and_roles_for_two_callsigns(local):
 
 def test_review_accepts_room_label_and_multiple_messages(local):
     client,path,tmp=local
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store=RecordingStore(tmp/"recordings")
     record=store.save(pcm(segment()),16000,{"status":"ready","final_text":"текст"})
     url=f"/api/recordings/{record}/review"
@@ -305,7 +305,7 @@ def test_review_accepts_room_label_and_multiple_messages(local):
 def test_callsign_alias_candidates_read_archive_without_writing(local):
     client,path,tmp=local
     import sqlite3
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     with sqlite3.connect(path) as db:
         db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
         db.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
@@ -323,7 +323,7 @@ def test_callsign_alias_candidates_read_archive_without_writing(local):
 
 def test_archive_search_by_id_event_number_and_text(setup, tmp_path):
     _,path=setup
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store=RecordingStore(tmp_path/"recordings")
     a=store.save(pcm(segment()),16000,{"status":"ready","raw_text":"Берега 56, приєм","fix_id":"db:82"})
     b=store.save(pcm(segment()),16000,{"status":"ready","raw_text":"шум"})
@@ -378,7 +378,7 @@ def test_dictionaries_are_edited_from_the_panel_with_miniapp_rules(local):
 
 def test_archive_listing_carries_text_check_of_references(setup, tmp_path):
     _,path=setup
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store=RecordingStore(tmp_path/"recordings")
     remark=store.save(pcm(segment()),16000,{"status":"ready"})
     clean=store.save(pcm(segment()),16000,{"status":"ready"})
@@ -399,7 +399,7 @@ def test_archive_listing_carries_text_check_of_references(setup, tmp_path):
 def test_archive_speech_and_radio_groups(setup, tmp_path):
     _,path=setup
     import sqlite3
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store=RecordingStore(tmp_path/"recordings")
     def rec(status, duration, **data):
         rid=store.save(pcm(segment()),16000,{"status":status,**data})
@@ -427,7 +427,7 @@ def test_archive_speech_and_radio_groups(setup, tmp_path):
 def test_archive_views_split_archive_and_period_limits(setup, tmp_path):
     _,path=setup
     import sqlite3, time
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store=RecordingStore(tmp_path/"recordings")
     def rec(status, duration, age_h=0, **data):
         rid=store.save(pcm(segment()),16000,{"status":status,**data})
@@ -458,9 +458,9 @@ def test_archive_views_split_archive_and_period_limits(setup, tmp_path):
 def test_reference_from_panel_updates_linked_event_and_telegram(setup, tmp_path):
     _,path=setup
     import sqlite3
-    from services.event_store import save_event
-    from services.recordings import RecordingStore
-    from services.telegram_sync import remember_delivery
+    from shared.event_store import save_event
+    from shared.recordings import RecordingStore
+    from shared.telegram_sync import remember_delivery
     heard="Берега 56, прийом"
     event=save_event("береза 56","","","",heard,path,raw_text=heard)
     fix=f"db:{event}"
@@ -486,7 +486,7 @@ def test_learning_queue_shows_why_rules_wait_and_allows_approval(local):
     client,path,_=local
     h={"Origin":ORIGIN}
     import sqlite3
-    from services.word_store import init_word_db
+    from shared.word_store import init_word_db
     init_word_db(path)
     with sqlite3.connect(path) as db:
         db.executemany("INSERT INTO word_corrections (original, corrected, confirmations, status) VALUES (?,?,?,?)",
@@ -510,7 +510,7 @@ def test_learning_queue_shows_why_rules_wait_and_allows_approval(local):
 
 
 def test_launcher_buttons_use_the_authenticated_control_channel(setup, tmp_path):
-    from services.launcher_lifecycle import LauncherSession
+    from shared.launcher_lifecycle import LauncherSession
     _, path = setup
     root = tmp_path / "launcher"
     root.mkdir()
@@ -541,8 +541,8 @@ def test_launcher_buttons_use_the_authenticated_control_channel(setup, tmp_path)
 def test_attention_lists_what_waits_for_the_operator(local):
     client, path, _ = local
     import sqlite3
-    from services import daily_codes
-    from services.word_store import init_word_db
+    from shared import daily_codes
+    from shared.word_store import init_word_db
     data = client.get("/api/attention").json()
     assert data["codes_missing"] is True and data["codes_day"] == daily_codes.local_day()
     assert data["approvals"] == 0 and data["telegram_failed"] == 0 and data["unlabeled_radio_24h"] == 0
@@ -577,7 +577,7 @@ def test_lists_and_dictionaries_are_checked_while_typing_without_saving(local):
 
 def test_archive_shows_what_went_to_telegram_and_turns_a_clean_signal_into_a_sample(setup, tmp_path):
     _, path = setup
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(tmp_path/'recordings')
     sent = store.save(pcm(segment()), 16000, {'status': 'ready', 'fix_id': 'mem:' + 'a'*32, 'notification_score': 0.91})
     store.save(pcm(segment()), 16000, {'status': 'low_rms'})
@@ -600,7 +600,7 @@ def test_archive_shows_what_went_to_telegram_and_turns_a_clean_signal_into_a_sam
 def test_live_feed_quality_experiments_and_pause_for_the_panel(setup, tmp_path):
     _, path = setup
     import json as _json
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(tmp_path/'recordings')
     heard = store.save(pcm(segment()), 16000, {'status': 'ready', 'raw_text': 'Вишня 12, прийом', 'final_text': 'Вишня 12, прийом', 'fix_id': 'db:3'})
     store.save(pcm(segment()), 16000, {'status': 'low_rms'})   # тихий після показаного — лише підраховується
@@ -635,7 +635,7 @@ def test_live_feed_quality_experiments_and_pause_for_the_panel(setup, tmp_path):
 
 def test_signals_page_lists_dropped_segments_and_plays_samples(setup, tmp_path):
     _, path = setup
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(tmp_path/'recordings')
     dropped = store.save(pcm(segment()), 16000, {'status': 'notification', 'notification_score': 0.93})
     store.save(pcm(segment()), 16000, {'status': 'ready'})
@@ -711,13 +711,13 @@ def test_storage_status_endpoint_requires_auth_and_does_not_create_archive(setup
 
 def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path, monkeypatch):
     # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
-    monkeypatch.setattr('core.template_text.CLOSING_TURN', False)
-    from services import panel_jobs as text_jobs
+    monkeypatch.setattr('shared.template_text.CLOSING_TURN', False)
+    from shared import panel_jobs as text_jobs
     monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
     """Кнопка «Перевірити на моїх еталонах»: порівняння до/після, нічого не зберігається."""
     _, path = setup
     import sqlite3
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(tmp_path/'recordings')
     with sqlite3.connect(path) as db:
         db.execute("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES ('callsigns', 2, 'Ліна: 63')")
@@ -746,8 +746,8 @@ def test_list_is_evaluated_on_reviewed_records_without_saving(setup, tmp_path, m
 def test_stale_events_are_updated_from_references_on_request(setup, tmp_path):
     _, path = setup
     import sqlite3
-    from services.event_store import save_event
-    from services.recordings import RecordingStore
+    from shared.event_store import save_event
+    from shared.recordings import RecordingStore
     event = save_event("віра 68", "", "", "", "вира 68 прийом", path)
     store = RecordingStore(tmp_path/'recordings')
     rid = store.save(pcm(segment()), 16000, {'status': 'ready', 'fix_id': f'db:{event}'})
@@ -764,8 +764,8 @@ def test_stale_events_are_updated_from_references_on_request(setup, tmp_path):
 
 
 def test_done_button_hides_a_suggestion_kind_and_can_be_undone(local):
-    from services.recordings import RecordingStore
-    from services.suggestions import refresh
+    from shared.recordings import RecordingStore
+    from shared.suggestions import refresh
     client, path, tmp_path = local
     store = RecordingStore(tmp_path / "recordings")
     for label in ("room", "noise"):
@@ -793,9 +793,9 @@ def test_done_button_hides_a_suggestion_kind_and_can_be_undone(local):
 
 def test_archive_card_deletes_a_sent_phrase_for_every_recipient(local):
     import time
-    from services.event_store import save_event
-    from services.recordings import RecordingStore
-    from services.telegram_sync import remember_delivery
+    from shared.event_store import save_event
+    from shared.recordings import RecordingStore
+    from shared.telegram_sync import remember_delivery
     client, path, tmp_path = local
     store = RecordingStore(tmp_path / "recordings")
     fix = f'db:{save_event("", "", "", "", "Вишня 12, прийом", path)}'
@@ -830,8 +830,8 @@ def test_saved_panel_changes_are_journaled_but_checks_are_not(local):
 
 def test_workdesk_shows_queues_quality_and_todays_codes(local):
     client, path, tmp = local
-    from services import daily_codes
-    from services.recordings import RecordingStore
+    from shared import daily_codes
+    from shared.recordings import RecordingStore
     data = client.get("/api/workdesk").json()
     assert data["queue"] == {"radio_24h": 0, "no_roles": 0, "false_text": 0, "missed": 0, "unclear": 0}
     assert data["quality"] == [] and data["codes"]["codes"] == [] and data["codes"]["day"] == daily_codes.local_day()
@@ -847,7 +847,7 @@ def test_workdesk_shows_queues_quality_and_todays_codes(local):
 def test_quality_errors_explain_what_needs_edits(local):
     client, path, tmp = local
     import sqlite3
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     with sqlite3.connect(path) as db:
         db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
         db.execute("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',1,'клен: 48')")
@@ -860,7 +860,7 @@ def test_quality_errors_explain_what_needs_edits(local):
 
 
 def test_quality_text_impact_endpoint_returns_local_countercheck(local, monkeypatch):
-    from services import panel_jobs as text_jobs
+    from shared import panel_jobs as text_jobs
     monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
     client, path, _ = local
     response = client.post("/api/quality/text-impact", headers={"Origin": ORIGIN})
@@ -874,7 +874,7 @@ def test_quality_text_impact_endpoint_returns_local_countercheck(local, monkeypa
 
 
 def test_suggestions_refresh_is_a_resumable_background_job(local, monkeypatch):
-    from services import panel_jobs as text_jobs
+    from shared import panel_jobs as text_jobs
     monkeypatch.setattr(text_jobs, "_launch", lambda root: None)
     client, path, _ = local
     assert client.post("/api/suggestions/refresh").status_code == 403
@@ -890,7 +890,7 @@ def test_suggestions_refresh_is_a_resumable_background_job(local, monkeypatch):
 
 def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
     _, path = setup
-    from services import lab_queue
+    from shared import lab_queue
     started = []
     monkeypatch.setattr(lab_queue, "start", lambda root, **kw: started.append(root) or True)
     runs = tmp_path / "runs"
@@ -920,7 +920,7 @@ def test_lab_queue_is_managed_from_the_panel(setup, tmp_path, monkeypatch):
 def test_lab_queue_requires_audio_recording_for_capture_mode(setup, tmp_path, monkeypatch):
     _, path = setup
     import config
-    from services import lab_queue
+    from shared import lab_queue
     started = []
     monkeypatch.setattr(config, "RECORD_AUDIO", False)
     monkeypatch.setattr(lab_queue, "start", lambda *args, **kwargs: started.append(True))
@@ -939,8 +939,8 @@ def test_lab_queue_requires_audio_recording_for_capture_mode(setup, tmp_path, mo
 def test_reference_checks_catch_doubled_words_self_role_and_digits(local):
     client, path, tmp = local
     import sqlite3
-    from services.recordings import RecordingStore
-    from services.suggestions import reference_checks
+    from shared.recordings import RecordingStore
+    from shared.suggestions import reference_checks
     with sqlite3.connect(path) as db:
         db.execute("DELETE FROM dictionary_entries WHERE dictionary_type='callsigns'")
         db.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
@@ -967,7 +967,7 @@ def test_reference_checks_catch_doubled_words_self_role_and_digits(local):
 def test_lab_queue_accepts_time_windows_and_reports_estimates(setup, tmp_path, monkeypatch):
     _, path = setup
     import time
-    from services import lab_queue
+    from shared import lab_queue
     monkeypatch.setattr(lab_queue, "start", lambda root, **kw: True)
     runs = tmp_path / "runs"
     app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", recordings_dir=tmp_path / "recordings", experiments_dir=runs)
@@ -992,7 +992,7 @@ def test_lab_queue_accepts_time_windows_and_reports_estimates(setup, tmp_path, m
 
 
 def test_lab_plan_is_computed_without_starting_or_mutating_the_queue(local):
-    from services import lab_queue
+    from shared import lab_queue
     import time
     client, path, tmp = local
     # Цей екземпляр панелі використовує стандартну теку прогонів; підмінимо її через новий app.

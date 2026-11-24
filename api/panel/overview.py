@@ -6,14 +6,14 @@ from api.panel.jobs import start_task
 from fastapi import Depends, HTTPException
 
 import config
-from services.management.learning import learning_queue
+from shared.management.learning import learning_queue
 from services.management.overview import overview
 from services.management.settings import read_settings
 from services.notification_samples import list_samples
 from services.receiver_status import read_receiver_status
-from services.sqlite_connection import get_db
-from services.user_store import PERMISSIONS
-from services.telegram_sync import sync_status
+from shared.sqlite_connection import get_db
+from shared.user_store import PERMISSIONS
+from shared.telegram_sync import sync_status
 from api.panel.models import AudioDevicesUpdate, SuggestionDismiss, SuggestionMute, SuggestionRestore
 from api.panel.common import ROOT, spectral_settings, events_by_hour, users_overview, backups_overview, read_diagnostics
 
@@ -53,7 +53,7 @@ def register(app, ctx):
     @app.get("/api/quality/errors")
     def quality_errors(days: int = 0, admin=Depends(actor)):
         """Що заважає тексту «без правок»: види розбіжностей, вплив обробки, найчастіші заміни (days=0 — увесь архів)."""
-        from services.error_analysis import analyse, callsign_names, load_records
+        from shared.error_analysis import analyse, callsign_names, load_records
         records = load_records(recordings, days)
         with get_db(db_path) as db:
             names = callsign_names(db)
@@ -75,7 +75,7 @@ def register(app, ctx):
     @app.get("/api/training")
     def training(admin=Depends(actor)):
         """Скільки розмічено для дообучення Whisper (орієнтири — 2 і 5 годин мовлення)."""
-        from services.training_set import readiness
+        from shared.training_set import readiness
         return readiness(recordings)
 
     @app.post("/api/training/export", status_code=202)
@@ -84,12 +84,12 @@ def register(app, ctx):
 
     @app.get("/api/experiments")
     def experiments(admin=Depends(actor)):
-        from services.experiments import list_runs
+        from shared.experiments import list_runs
         return {"items": list_runs(experiments_dir)}
 
     @app.get("/api/experiments/compare")
     def experiments_compare(a: str, b: str, admin=Depends(actor)):
-        from services.experiments import compare_runs
+        from shared.experiments import compare_runs
         try:
             return compare_runs(experiments_dir, a, b)
         except ValueError as exc:
@@ -99,7 +99,7 @@ def register(app, ctx):
 
     @app.get("/api/experiments/{name}")
     def experiment_report(name: str, admin=Depends(actor)):
-        from services.experiments import report
+        from shared.experiments import report
         try:
             return report(experiments_dir, name)
         except ValueError as exc:
@@ -110,7 +110,7 @@ def register(app, ctx):
     @app.get("/api/attention")
     def attention(admin=Depends(actor)):
         """Що чекає на оператора: коди доби, дозволи замін, збої Telegram, свіжа розмітка."""
-        from services import daily_codes
+        from shared import daily_codes
         day = daily_codes.local_day()
         with get_db(db_path) as db:
             codes = daily_codes.read_day(db, day)
@@ -119,7 +119,7 @@ def register(app, ctx):
         # Самі заміни — щоб у «Потребує уваги» було видно, що саме чекає (до 3 прикладів).
         pairs = lambda state: [f"«{i['original']}» → «{i['corrected']}»" for i in queue["items"] if i["state"] == state][:3]
         fresh = recordings.view_counts(time.time() - 86400)
-        from services import suggestions as suggestion_service
+        from shared import suggestions as suggestion_service
         found = suggestion_service.overview(db_path)
         return {"suggestions": found["groups"], "suggestions_hidden": found["hidden"], "suggestion_kinds": found["kinds"],
                 "suggestions_pending": bool(suggestion_worker and suggestion_worker.pending),
@@ -132,7 +132,7 @@ def register(app, ctx):
 
     def lab_running():
         """Іде черга тестів лабораторії (приймач слухає, але Whisper вивантажено)."""
-        from services import lab_queue
+        from shared import lab_queue
         try:
             return lab_queue.runner_active(lab_queue.read(experiments_dir))
         except OSError:
@@ -141,7 +141,7 @@ def register(app, ctx):
     @app.get("/api/workdesk")
     def workdesk(admin=Depends(actor)):
         """Робочий стіл Огляду: черги розмітки, якість за 7 днів і коди поточної доби (оновлення раз на хвилину)."""
-        from services import daily_codes
+        from shared import daily_codes
         day = daily_codes.local_day()
         with get_db(db_path) as db:
             codes = daily_codes.read_day(db, day)
@@ -158,7 +158,7 @@ def register(app, ctx):
     @app.post("/api/suggestions/dismiss")
     def suggestions_dismiss(payload: SuggestionDismiss, admin=Depends(actor)):
         """«Готово»: оператор бачив пропозиції цього виду й лишає як є."""
-        from services import suggestions as suggestion_service
+        from shared import suggestions as suggestion_service
         if payload.kind not in suggestion_service.KINDS:
             raise HTTPException(422, "Невідомий вид пропозицій")
         return {"dismissed": suggestion_service.dismiss(db_path, payload.kind)}
@@ -166,7 +166,7 @@ def register(app, ctx):
     @app.post("/api/suggestions/mute")
     def suggestions_mute(payload: SuggestionMute, admin=Depends(actor)):
         """«Не перевіряти»: вид пропозицій більше не обчислюється й не показується (вмикається в «Система»)."""
-        from services import suggestions as suggestion_service
+        from shared import suggestions as suggestion_service
         try:
             return suggestion_service.set_muted(db_path, payload.kind, payload.muted)
         except ValueError as exc:
@@ -174,12 +174,12 @@ def register(app, ctx):
 
     @app.post("/api/suggestions/restore")
     def suggestions_restore(payload: SuggestionRestore | None = None, admin=Depends(actor)):
-        from services import suggestions as suggestion_service
+        from shared import suggestions as suggestion_service
         return {"restored": suggestion_service.restore(db_path, keys=payload.keys if payload else None)}
 
     @app.get('/api/suggestions/resolved')
     def suggestion_decisions(offset: int=0, admin=Depends(actor)):
-        from services.suggestions import decisions
+        from shared.suggestions import decisions
         if not 0 <= offset <= 1_000_000: raise HTTPException(422, 'Некоректна сторінка')
         return decisions(db_path, offset)
 
@@ -199,7 +199,7 @@ def register(app, ctx):
         from services.management.audio_settings import read_audio_settings
         result = {"settings": read_audio_settings(db_path), "devices": None, "error": None}
         try:
-            run = subprocess.run([sys.executable, "-m", "services.audio_devices", "--json"], cwd=ROOT,
+            run = subprocess.run([sys.executable, "-m", "shared.audio_devices", "--json"], cwd=ROOT,
                                  capture_output=True, text=True, timeout=15)
             if run.returncode == 0:
                 result["devices"] = json.loads(run.stdout)
@@ -212,7 +212,7 @@ def register(app, ctx):
     @app.put("/api/audio-devices")
     def audio_devices_save(payload: AudioDevicesUpdate, admin=Depends(actor)):
         from services.management.audio_settings import write_audio_settings
-        from services.management.common import ManagementConflict
+        from shared.management.common import ManagementConflict
         try:
             return write_audio_settings(db_path, admin, payload.values.model_dump(), payload.expected_revision)
         except ManagementConflict as exc:
@@ -223,7 +223,7 @@ def register(app, ctx):
     @app.get("/api/launcher")
     def launcher_state(admin=Depends(actor)):
         """Чи працює керований лаунчер (без токена керування)."""
-        from services.launcher_lifecycle import managed_status
+        from shared.launcher_lifecycle import managed_status
         state = managed_status(launcher_root or ROOT)
         return {"managed": state["managed"], "reachable": state["launcher_reachable"], "state": state["state"],
                 "receiver_stopped": "radio" in state.get("stopped_services", [])}
@@ -232,7 +232,7 @@ def register(app, ctx):
     def launcher_command(command: Literal["restart", "stop", "receiver-stop", "receiver-start"], admin=Depends(actor)):
         """Команда лаунчеру через його захищений канал. Відповідь — одразу: панель
         працює всередині лаунчера й зупиниться разом з усіма службами."""
-        from services.launcher_lifecycle import send_command
+        from shared.launcher_lifecycle import send_command
         try:
             sent = send_command(launcher_root or ROOT, command)
         except RuntimeError as exc:

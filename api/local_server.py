@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 import config
 from api.app import create_app
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 
 
 def main():

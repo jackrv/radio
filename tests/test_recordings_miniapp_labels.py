@@ -2,10 +2,10 @@
 
 import sqlite3
 
-from services.dictionary_store import init_db as init_dictionary_db
-from services.event_store import init_db as init_event_db, save_event
-from services.miniapp_correction_editor import save_edit_draft
-from services.recordings import RecordingStore, label_archive_from_correction
+from shared.dictionary_store import init_db as init_dictionary_db
+from shared.event_store import init_db as init_event_db, save_event
+from shared.miniapp_correction_editor import save_edit_draft
+from shared.recordings import RecordingStore, label_archive_from_correction
 
 PCM = b"\0\0" * 1600
 

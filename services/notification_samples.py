@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
-from core.notification_templates import MAX_TEMPLATES, MAX_RECORDING_S, _prepare_template
+from shared.notification_templates import MAX_TEMPLATES, MAX_RECORDING_S, _prepare_template
 
 MAX_UPLOAD_BYTES = 200_000
 SAMPLE_ID = re.compile(r"[0-9a-f]{32}\.wav\Z")

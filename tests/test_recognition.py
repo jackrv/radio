@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from core.recognition import WhisperRecognizer
+from shared.recognition import WhisperRecognizer
 
 
 def make_recognizer():

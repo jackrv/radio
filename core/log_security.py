@@ -5,7 +5,7 @@ import os
 import copy
 import re
 from core.console import ConsoleDashboard
-from services.private_files import private_open, protect_existing
+from shared.private_files import private_open, protect_existing
 
 from config import LOG_PATH
 
@@ -91,7 +91,7 @@ def configure_logging(token, starting_message=None):
             backupCount=LOG_BACKUP_COUNT,
             encoding="utf-8",
         ),
-        ConsoleDashboard(provider=lambda: __import__("core.diagnostics", fromlist=["runtime"]).runtime.snapshot(),
+        ConsoleDashboard(provider=lambda: __import__("shared.diagnostics", fromlist=["runtime"]).runtime.snapshot(),
                          starting_message=starting_message),
     ]
 

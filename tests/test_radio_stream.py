@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services import radio_stream as rs
+from shared import radio_stream as rs
 
 SR = 16000
 
@@ -54,7 +54,7 @@ def test_start_refuses_unspecified_host_and_disabled(tmp_path, monkeypatch):
 
 
 def make_processor(stream, select=lambda _: []):
-    from core.callsigns import Callsigns, command_dictionary
+    from shared.callsigns import Callsigns, command_dictionary
     from core.event_processor import EventProcessor
     return EventProcessor(
         callsigns=Callsigns.from_lines([]), commands=command_dictionary(["грім 022"]),

@@ -1,4 +1,4 @@
-from services.error_analysis import analyse, record_errors
+from shared.error_analysis import analyse, record_errors
 
 NAMES = {"клен", "дуб", "ясень"}
 

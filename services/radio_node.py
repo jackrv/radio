@@ -21,11 +21,11 @@ import threading
 
 def build_node(config, log, *, segment_sink=None, stream_starter=None, supervisor_cls=None, control=None):
     """Збирає вузол; повертає (supervisor, stream) або (None, None), якщо потік не стартував."""
-    from core.audio import apply_gain
+    from shared.audio import apply_gain
     from core.bounded_queue import DropOldestQueue
     from core.segment_timing import capture_frame
-    from services.audio_devices import configured, input_stream_factory
-    from services.radio_stream import start_radio_stream
+    from shared.audio_devices import configured, input_stream_factory
+    from shared.radio_stream import start_radio_stream
 
     if supervisor_cls is None:
         from core.supervisor import ApplicationSupervisor as supervisor_cls
@@ -88,8 +88,8 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
 
 def _attach_signal_filter(stream, config, log):
     try:
-        from core.notification_spectral import SpectralNotificationMatcher
-        from core.notification_templates import load_templates
+        from shared.notification_spectral import SpectralNotificationMatcher
+        from shared.notification_templates import load_templates
         templates = load_templates(config.NOTIFICATION_SOUNDS_DIR, config.SR, log)
         matcher = SpectralNotificationMatcher(
             templates, config.SR, prepared=True, threshold=config.SPECTRAL_NOTIFICATION_THRESHOLD,

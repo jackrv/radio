@@ -111,7 +111,7 @@ def test_busy_port_starts_nothing(mocked_services, monkeypatch):
 
 def test_existing_receiver_lock_prevents_starting_api_and_ngrok(mocked_services, tmp_path):
     import os
-    from core.instance_lock import acquire_instance_lock
+    from shared.instance_lock import acquire_instance_lock
 
     created, stopped, _ = mocked_services
     path = tmp_path / ".radio345.lock"

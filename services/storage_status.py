@@ -7,9 +7,9 @@ import stat
 import time
 
 from core.log_security import LOG_MAX_BYTES, LOG_BACKUP_COUNT
-from services.db_backup import DEFAULT_KEEP, AUTO_RE
-from core.diagnostic_history import FILE_RE
-from services.sqlite_connection import read_only
+from shared.db_backup import DEFAULT_KEEP, AUTO_RE
+from shared.diagnostic_history import FILE_RE
+from shared.sqlite_connection import read_only
 
 
 def _files(paths):
@@ -30,7 +30,7 @@ def audio_status(store, now):
              'low_rms_retention_seconds':store.low_rms_retention_seconds}
     if not index.is_file() or index.is_symlink() or store.root.is_symlink():
         return empty
-    from services.recordings import PRUNE_TIERS
+    from shared.recordings import PRUNE_TIERS
     try:
         with closing(read_only(index, timeout=2)) as db:
             records, deadlines, plan = store.prune_snapshot(db, now)

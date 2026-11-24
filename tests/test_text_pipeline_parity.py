@@ -5,8 +5,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from core.callsigns import Callsigns, command_dictionary
-from core.diagnostics import RuntimeDiagnostics
+from shared.callsigns import Callsigns, command_dictionary
+from shared.diagnostics import RuntimeDiagnostics
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
 from lab.asr_lab import Lab

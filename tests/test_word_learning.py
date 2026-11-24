@@ -1,4 +1,4 @@
-from core.word_learning import analyze_word_changes
+from shared.word_learning import analyze_word_changes
 
 
 def test_two_word_corrections():

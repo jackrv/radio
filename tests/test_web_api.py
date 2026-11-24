@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from services.user_store import (
+from shared.user_store import (
     bootstrap_admin,
     create_user,
     init_users_db,

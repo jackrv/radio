@@ -6,11 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from core.callsigns import Callsigns, command_dictionary
-from services.dictionary_store import init_db as init_dictionary_db
-from services.event_store import init_db as init_event_db
-from services.text_check import check_text, format_text, tidy_text
-from services.user_store import bootstrap_admin, create_user, init_users_db
+from shared.callsigns import Callsigns, command_dictionary
+from shared.dictionary_store import init_db as init_dictionary_db
+from shared.event_store import init_db as init_event_db
+from shared.text_check import check_text, format_text, tidy_text
+from shared.user_store import bootstrap_admin, create_user, init_users_db
 from tests.test_web_api import TOKEN, auth_header
 
 CALLSIGNS = Callsigns.from_lines(["береза: 31 56", "клен: 15", "вишня"])
@@ -85,7 +85,7 @@ def test_number_missing_from_dictionary_is_only_a_note():
 
 
 def test_alias_is_not_applied_to_a_dictionary_word(monkeypatch):
-    import core.callsigns as callsigns
+    import shared.callsigns as callsigns
     monkeypatch.setattr(callsigns, "CALLSIGN_ALIASES", {"злива": "береза", "бук": "клен"})
     notes = [i["message"] for i in check("злива 42 42, бук 99")["issues"] if i["kind"] == "info"]
     assert len(notes) == 1 and "«клен 99»" in notes[0]
@@ -182,8 +182,8 @@ def test_command_numbers_and_known_numbers_do_not_offer_callsign_creation():
 
 def test_unknown_word_before_a_number_offers_a_new_callsign_entry():
     """Нового позивного немає в словнику: підказка з готовим рядком; опечатка відомого — ні."""
-    from core.callsigns import Callsigns, command_dictionary
-    from services.text_check import check_text
+    from shared.callsigns import Callsigns, command_dictionary
+    from shared.text_check import check_text
     callsigns = Callsigns.from_lines(["береза: 56", "вишня"])
     commands = command_dictionary(["злива 4242"])
     entries = lambda text: [i.get("dictionary_entry") for i in check_text(text, callsigns, commands)["issues"] if i.get("dictionary_entry")]

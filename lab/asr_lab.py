@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-from services.sqlite_connection import read_only
+from shared.sqlite_connection import read_only
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / ".local-recordings"
@@ -94,10 +94,10 @@ def read_pcm(archive, record_id):
 
 # ---------- Метрики ----------
 
-# Слова для WER і сімейств зворотів — спільні з архівом (core/text_metrics.py).
-from core.text_metrics import edit_distance, metric_words as words  # noqa: E402
+# Слова для WER і сімейств зворотів — спільні з архівом (shared/text_metrics.py).
+from shared.text_metrics import edit_distance, metric_words as words  # noqa: E402
 plain_tokens = words
-from services.lab_results import FAMILIES, NON_SPEECH, ROOM, SPEECH, UNCLEAR, has_family, load_run, role_tokens, summarize  # noqa: E402,F401
+from shared.lab_results import FAMILIES, NON_SPEECH, ROOM, SPEECH, UNCLEAR, has_family, load_run, role_tokens, summarize  # noqa: E402,F401
 
 
 def digit_groups(text):
@@ -106,7 +106,7 @@ def digit_groups(text):
 
 
 def app_number_groups(text):
-    from core.word_learning import number_groups
+    from shared.word_learning import number_groups
     return number_groups(text or "")
 
 
@@ -176,7 +176,7 @@ def snapshot_database(target):
         source.backup(copy)
     os.chmod(target, 0o600)
     # Таблиці правил у копії (стара база могла їх не мати); робоча база не змінюється.
-    from services.word_store import init_word_db
+    from shared.word_store import init_word_db
     init_word_db(target)
     return target
 
@@ -187,7 +187,7 @@ def receiver_prompt(db_path, dictionary_prompt, phrases=None, extra=()):
     ``phrases`` — інший перелік фраз (файл --whisper-phrases); ``extra`` — додаткові
     фрази перед назвами (коди доби запису для --daily-codes).
     """
-    from services.text_lists import compose_prompt, load_active
+    from shared.text_lists import compose_prompt, load_active
     if phrases is None:
         with read_only(db_path) as db:
             _, values = load_active(db)
@@ -211,7 +211,7 @@ def record_codes(db_path, created, mode="append"):
 
     append — постійні й усі коди доби; latest — лише останній доданий код цієї доби.
     """
-    from services import daily_codes
+    from shared import daily_codes
     day = daily_codes.local_day(created)
     with read_only(db_path) as db:
         try:
@@ -221,20 +221,20 @@ def record_codes(db_path, created, mode="append"):
 
 
 def dictionaries_from(db_path, archive=None):
-    from services.dictionary_loader import build_prompt, dictionaries_from_lines, read_dictionary_lines
+    from shared.dictionary_loader import build_prompt, dictionaries_from_lines, read_dictionary_lines
     with read_only(db_path) as db:
         lines = read_dictionary_lines(db)
         try:
-            from services.text_lists import load_active
-            from core.callsigns import configure_aliases
+            from shared.text_lists import load_active
+            from shared.callsigns import configure_aliases
             _, values = load_active(db)
             configure_aliases(values["aliases"], values["callsign_aliases"])
             blacklist, short_garbage = values["blacklist"], values["short_garbage"]
         except sqlite3.Error:
-            from core.default_text_lists import enabled
+            from shared.default_text_lists import enabled
             blacklist, short_garbage = list(enabled("blacklist")), list(enabled("short_garbage"))
     callsigns, commands, watch = dictionaries_from_lines(lines)
-    from services.dictionary_number_evidence import load_rules
+    from shared.dictionary_number_evidence import load_rules
     archive=Path(archive) if archive is not None else Path(db_path).resolve().parent/'.local-recordings'
     # Еталони контрольної частини не можуть навчати правило, що їх оцінює.
     allowed_ids=set()
@@ -259,7 +259,7 @@ def prompt_token_count(prompt, language):
 
 
 def dictionary_fingerprint_of(db_path):
-    from services.dictionary_loader import dictionary_fingerprint
+    from shared.dictionary_loader import dictionary_fingerprint
     try:
         with read_only(db_path) as db:
             return dictionary_fingerprint(db)
@@ -335,7 +335,7 @@ class Lab:
         self.db_path = snapshot if reuse_snapshot and snapshot.is_file() else snapshot_database(snapshot)
         self.dictionaries, dictionary_prompt, self.blacklist, self.short_garbage = dictionaries_from(self.db_path,getattr(args,'archive',None))
         if args.prompt=='receiver-command-codes':
-            from services.dictionary_loader import build_prompt
+            from shared.dictionary_loader import build_prompt
             dictionary_prompt=build_prompt(*self.dictionaries,include_command_codes=True)
         if getattr(args, "names", None):
             # Інший перелік назв у підказці (напр. лише ті, що звучать в ефірі): рядок — назва.
@@ -355,12 +355,12 @@ class Lab:
         self.language = None if args.language == "auto" else args.language
         self.model = args.model or config.MODEL_REPO
         self.sample_rate = config.SR
-        from core.recognition import WhisperRecognizer
+        from shared.recognition import WhisperRecognizer
         self.temperature = tuple(float(t) for t in getattr(args, "temperature", "0,0.2,0.4").split(","))
         self.whisper_options = parse_whisper_options(getattr(args, "whisper_option", None) or [])
         self.recognizer = WhisperRecognizer(self.model, self.language, self.sample_rate, self.prompt, self.log,
                                             temperature=self.temperature, options=self.whisper_options)
-        from services.runtime_settings import _read
+        from shared.runtime_settings import _read
         with read_only(self.db_path) as db:
             self.runtime_values, self.runtime_revision = _read(db)
         self.garbage_limits = {
@@ -373,7 +373,7 @@ class Lab:
         if args.variant == "qwen" and getattr(args, "llm", "on") == "off":
             raise SystemExit("--llm off має сенс лише для --variant pipeline")
         if args.variant in ("qwen", "pipeline") and getattr(args, "llm", "on") == "on":
-            from core.correction import build_llm_corrector
+            from shared.correction import build_llm_corrector
             callsigns, commands, _ = self.dictionaries
             self.llm = build_llm_corrector(True, config.LLM_REPO, callsigns, commands, self.log)
 
@@ -403,7 +403,7 @@ class Lab:
                 "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only}
 
     def apply_rules(self, text):
-        from services.word_rule_engine import apply_verified_word_rules
+        from shared.word_rule_engine import apply_verified_word_rules
         revised = apply_verified_word_rules(text, self.db_path, self.dictionaries)
         return revised, revised != text
 
@@ -415,7 +415,7 @@ class Lab:
         шумом ефіру, закриває сегмент через SILENCE_END_MS, як справжня тиша.
         """
         import config
-        from core.vad import VADSegmenter
+        from shared.vad import VADSegmenter
         frame = config.FRAME_LEN * 2
         frames = [pcm[i:i + frame] for i in range(0, len(pcm) - frame + 1, frame)]
         if not frames:
@@ -440,7 +440,7 @@ class Lab:
 
     def _transcribe_with_retry(self, audio):
         """Однаковий recovery для цілого запису й кожної повторно нарізаної частини."""
-        from core.recognition import is_looped
+        from shared.recognition import is_looped
         whisper = self.recognizer.transcribe(audio)
         text = self.recognizer.extract_text(whisper)
         retried, accepted = False, False
@@ -454,11 +454,11 @@ class Lab:
 
     def process(self, pcm):
         import config
-        from core.audio import prepare_audio
-        from core.analyzer import confident_roles, fmt, is_low_confidence_short, looks_like_garbage, split_roles, strip_dictionary_echo
-        from core.pipeline import build_text_pipeline
-        from core.analyzer import correction_is_safe
-        from services.text_lists import blacklist_key
+        from shared.audio import prepare_audio
+        from shared.analyzer import confident_roles, fmt, is_low_confidence_short, looks_like_garbage, split_roles, strip_dictionary_echo
+        from shared.pipeline import build_text_pipeline
+        from shared.analyzer import correction_is_safe
+        from shared.text_lists import blacklist_key
         timing = {}
         started = time.perf_counter()
         audio, rms = prepare_audio(pcm, 0.0, self.args.normalize == "on")
@@ -543,7 +543,7 @@ class Lab:
                     pipeline = build_text_pipeline(self.llm, self.apply_rules, self.dictionaries, correction_is_safe, self.log)
                     text = pipeline(cleaned)
                     timing["correction_s"] = time.perf_counter() - t
-                    from core.text_analysis import analyze_text
+                    from shared.text_analysis import analyze_text
                     analysis = analyze_text(text, *self.dictionaries, self.short_garbage, self.log)
                     text = "" if analysis.rejected else analysis.text
                     stage = analysis.rejected or "pipeline"
@@ -558,7 +558,7 @@ class Lab:
 
 def roles_from_reference(reference, callsigns):
     """Логіка «кому / від кого» на правильному тексті: окремо від помилок слуху моделі."""
-    from core.analyzer import fmt, split_roles
+    from shared.analyzer import fmt, split_roles
     to_found, from_found = split_roles(reference, callsigns)
     return fmt(to_found), fmt(from_found)
 
@@ -582,7 +582,7 @@ def keep_awake():
 
 def run(args):
     import config
-    from services.model_exclusion import lab_model_slot
+    from shared.model_exclusion import lab_model_slot
     parse_whisper_options(getattr(args, "whisper_option", None) or [])
     import math
     try: temperatures=[float(t) for t in getattr(args,'temperature','0,0.2,0.4').split(',')]

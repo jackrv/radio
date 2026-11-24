@@ -4,7 +4,7 @@ import pytest
 import requests
 
 from services.telegram import TelegramService
-from services.telegram_retry import listener_retry_delay
+from shared.telegram_retry import listener_retry_delay
 
 
 def make_service():

@@ -9,13 +9,13 @@ import pytest
 import requests
 
 from core.event_processor import EventProcessor
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 from services.telegram import TelegramService
-from services.user_notify_store import (
+from shared.user_notify_store import (
     DEFAULT_USER_MODE, allowed_modes, apply_telegram_user_mode, list_recipients,
     load_user_mode, save_user_mode,
 )
-from services.user_store import bootstrap_admin, init_users_db
+from shared.user_store import bootstrap_admin, init_users_db
 
 ADMIN, EDITOR, VIEWER = 1001, 2002, 3003
 
@@ -313,7 +313,7 @@ def test_database_error_means_nobody_receives(db_path):
     with get_db(db_path) as db:
         db.execute("UPDATE telegram_users SET enabled=0 WHERE user_id=?", (ADMIN,))
     service = make_service(db_path)
-    with patch("services.telegram_outbox.list_recipients", side_effect=sqlite3.OperationalError("locked")):
+    with patch("shared.telegram_outbox.list_recipients", side_effect=sqlite3.OperationalError("locked")):
         assert service.recipients_for(lambda m: True) == []
 
 
@@ -360,7 +360,7 @@ def test_admin_alert_retries_recheck_current_access(db_path, monkeypatch, change
         with get_db(db_path) as db:
             db.execute(f"UPDATE telegram_users SET {change} WHERE user_id=?", (ADMIN,))
 
-    monkeypatch.setattr("services.telegram_common.time.sleep", revoke_before_retry)
+    monkeypatch.setattr("shared.telegram_common.time.sleep", revoke_before_retry)
     thread = service.notify_admin_async("Службове повідомлення", delays=(0, 1))
     thread.join(timeout=5)
     assert not thread.is_alive()
@@ -371,7 +371,7 @@ def test_admin_alert_recovers_after_unavailable_database(db_path, monkeypatch):
     service = make_service(db_path)
     service._admin_chats = Mock(side_effect=[[], [ADMIN]])
     service._request = Mock(return_value=Mock(status_code=200))
-    monkeypatch.setattr("services.telegram_common.time.sleep", lambda _: None)
+    monkeypatch.setattr("shared.telegram_common.time.sleep", lambda _: None)
     thread = service.notify_admin_async("Службове повідомлення", delays=(0, 1))
     thread.join(timeout=5)
     assert not thread.is_alive()
@@ -391,7 +391,7 @@ def test_older_mode_command_cannot_overwrite_newer(db_path):
 
 
 def test_failed_mode_transaction_changes_nothing(db_path):
-    from services.telegram_offset_store import load_telegram_offset
+    from shared.telegram_offset_store import load_telegram_offset
 
     assert load_telegram_offset(db_path) is None
     with sqlite3.connect(db_path) as db:

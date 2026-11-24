@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import requests
 
 from services.telegram import TelegramService
-from services.user_store import bootstrap_admin, init_users_db
+from shared.user_store import bootstrap_admin, init_users_db
 from tests.test_telegram_outbox import RECIPIENTS
 
 

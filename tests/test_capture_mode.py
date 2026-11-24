@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from core.transcriber import Transcriber
-from services.receiver_control import capture_state, mark_capture_unloaded, set_capture_only
-from services.recordings import RecordingStore
+from shared.receiver_control import capture_state, mark_capture_unloaded, set_capture_only
+from shared.recordings import RecordingStore
 
 
 def pcm(seconds=1.0):
@@ -70,7 +70,7 @@ def test_capture_mode_unloads_once_and_stores_phrases_for_later():
 def test_whisper_unload_releases_model_and_mlx_cache(monkeypatch):
     import importlib
     import mlx.core as mx
-    from core.recognition import WhisperRecognizer
+    from shared.recognition import WhisperRecognizer
 
     class ModelHolder:
         model = object()

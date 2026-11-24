@@ -11,10 +11,10 @@
 Права й отримувачів визначає лише база користувачів.
 """
 
-from services.telegram_maintenance import MaintenanceMixin
+from shared.telegram_maintenance import MaintenanceMixin
 from services.telegram_access import AccessMixin
-from services.telegram_common import TelegramBase
-from services.telegram_outbox import OutboxMixin
+from shared.telegram_common import TelegramBase
+from shared.telegram_outbox import OutboxMixin
 from services.telegram_updates import UpdatesMixin
 from services.telegram_wishlist import WishlistMixin
 

@@ -2,9 +2,9 @@ import sqlite3
 
 import pytest
 
-from services.dictionary_store import init_db as init_dictionary_db
+from shared.dictionary_store import init_db as init_dictionary_db
 
-from services.event_store import (
+from shared.event_store import (
     init_db,
     save_event,
     save_correction,

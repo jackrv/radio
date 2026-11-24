@@ -42,7 +42,7 @@ def test_sparse_checkout_imports_every_process(tmp_path, name):
     # MLX заблоковано для Pi: там його немає.
     block = "import sys\n" + ("for n in ('mlx','mlx_whisper','mlx_lm'): sys.modules[n]=None\n" if name == "pi" else "")
     # Ліниві імпорти теж: усі модулі профілю мають завантажуватися.
-    skip = set(profiles.load(name).get("exclude_modules", ())) | {"core.correction"}
+    skip = set(profiles.load(name).get("exclude_modules", ())) | {"shared.correction"}
     inner, _ = components.graph()
     pruned = {m: t - skip for m, t in inner.items()}
     mods = sorted(m for m in components.closure(entries, pruned) - skip)

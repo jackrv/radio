@@ -1,5 +1,5 @@
 """Кандидати в шум і галюцинації: лише підказка з розмічених записів, без запису."""
-from services.noise_candidates import collect
+from shared.noise_candidates import collect
 
 
 def record(label, raw, status="ready", reference=""):

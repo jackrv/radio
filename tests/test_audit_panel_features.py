@@ -2,7 +2,7 @@ import sqlite3
 
 from tests.test_local_dashboard import local, no_background_spawn, finish_job, ORIGIN
 from tests.test_miniapp_management import setup
-from services.recordings import RecordingStore
+from shared.recordings import RecordingStore
 
 
 def test_telegram_sync_resolution_requires_local_origin(local):
@@ -69,9 +69,9 @@ def test_archive_inventory_is_background_job(local):
 
 
 def test_auto_delete_is_off_until_configured_and_never_deletes_archive(tmp_path):
-    from services.telegram_sync import remember_delivery
-    from services.telegram_recall import expire_deliveries,state
-    from services.runtime_settings import read_runtime_settings,write_runtime_settings
+    from shared.telegram_sync import remember_delivery
+    from shared.telegram_recall import expire_deliveries,state
+    from shared.runtime_settings import read_runtime_settings,write_runtime_settings
     path=tmp_path/'events.db'
     remember_delivery(path,'db:1',{'chat':{'id':11},'message_id':5},'text')
     with sqlite3.connect(path) as db:db.execute('UPDATE telegram_deliveries SET sent_at=100')
@@ -85,8 +85,8 @@ def test_auto_delete_is_off_until_configured_and_never_deletes_archive(tmp_path)
 
 
 def test_operator_decision_is_retained_and_can_be_restored_individually(tmp_path):
-    from services.suggestions import ensure_table,dismiss,restore,decisions
-    from services.sqlite_connection import get_db
+    from shared.suggestions import ensure_table,dismiss,restore,decisions
+    from shared.sqlite_connection import get_db
     path=tmp_path/'events.db'
     with get_db(path) as db:
         ensure_table(db)
@@ -107,7 +107,7 @@ def test_activity_records_allowed_details_without_arbitrary_payload():
 
 
 def test_archive_learning_counts_sources_not_repeated_saves(local):
-    from services.management.learning import learning_queue
+    from shared.management.learning import learning_queue
     client,path,tmp=local
     store=RecordingStore(tmp/'recordings')
     ids=[store.save(b'\0\0'*1600,16000,{'status':'ready','raw_text':'позицю'}) for _ in range(2)]
@@ -145,8 +145,8 @@ def test_saved_archive_learning_is_idempotent_and_creates_backup(local):
 
 
 def test_archive_and_mem_editor_share_one_training_source(local):
-    from services.telegram_phrase_store import register_phrase
-    from services.word_store import save_word_feedback
+    from shared.telegram_phrase_store import register_phrase
+    from shared.word_store import save_word_feedback
     client,path,tmp=local
     token='a'*32;source='mem:'+token
     register_phrase(path,token,'позицю')

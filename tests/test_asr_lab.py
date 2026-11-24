@@ -54,7 +54,7 @@ def test_summary_counts_missed_speech_false_text_and_excludes_unknown_roles():
 
 
 def make_archive(path):
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(path)
     t = np.arange(16000 * 2) / 16000
     pcm = (0.2 * np.sin(2 * np.pi * 300 * t) * 32767).astype("<i2").tobytes()
@@ -68,7 +68,7 @@ def test_run_reads_archive_only_and_saves_results_with_parameters(tmp_path, monk
     archive = tmp_path / "recordings"
     store, speech, quiet = make_archive(archive)
     db = tmp_path / "events.db"
-    from services.dictionary_store import init_db
+    from shared.dictionary_store import init_db
     init_db(db)
     with sqlite3.connect(db) as conn:
         conn.executemany("INSERT INTO dictionary_entries (dictionary_type,line_number,raw_line) VALUES ('callsigns',?,?)",
@@ -84,11 +84,11 @@ def test_run_reads_archive_only_and_saves_results_with_parameters(tmp_path, monk
             return {"segments": [{"text": "Вишня 210, я Клен 300", "avg_logprob": -0.2, "no_speech_prob": 0.0,
                                   "compression_ratio": 1.1, "temperature": 0.0, "start": 0, "end": 2}]}
 
-        extract_text = staticmethod(__import__("core.recognition", fromlist=["x"]).WhisperRecognizer.extract_text)
+        extract_text = staticmethod(__import__("shared.recognition", fromlist=["x"]).WhisperRecognizer.extract_text)
 
     monkeypatch.setattr("config.DB_PATH", str(db))
     monkeypatch.setattr(asr_lab, "OUTPUT", tmp_path / "experiments")
-    with patch("core.recognition.WhisperRecognizer", FakeWhisper):
+    with patch("shared.recognition.WhisperRecognizer", FakeWhisper):
         asr_lab.main(["--archive", str(archive), "run", "--name", "smoke", "--variant", "rules", "--min-rms", "0.02"])
 
     assert hashlib.sha256(index.read_bytes()).hexdigest() == before, "архів не змінюється"
@@ -132,7 +132,7 @@ def _tone_noise_tone(sr=16000):
 
 
 def test_speech_gate_closes_segment_on_noise_that_vad_calls_speech(monkeypatch):
-    from core.vad import VADSegmenter
+    from shared.vad import VADSegmenter
 
     class AlwaysSpeech:
         def __init__(self, level):
@@ -141,7 +141,7 @@ def test_speech_gate_closes_segment_on_noise_that_vad_calls_speech(monkeypatch):
         def is_speech(self, frame, sr):
             return True  # як WebRTC VAD на шумі ефіру
 
-    monkeypatch.setattr("core.vad.webrtcvad.Vad", AlwaysSpeech)
+    monkeypatch.setattr("shared.vad.webrtcvad.Vad", AlwaysSpeech)
     loud = b"\x10\x27" * 480
     quiet = b"\x01\x00" * 480
     frames = [loud] * 25 + [quiet] * 30 + [loud] * 25 + [quiet] * 30
@@ -159,7 +159,7 @@ def test_lab_resegments_a_merged_record_into_parts(monkeypatch):
         def is_speech(self, frame, sr):
             return True
 
-    monkeypatch.setattr("core.vad.webrtcvad.Vad", AlwaysSpeech)
+    monkeypatch.setattr("shared.vad.webrtcvad.Vad", AlwaysSpeech)
     lab = asr_lab.Lab.__new__(asr_lab.Lab)
     lab.args = type("Args", (), {"gate_db": 12.0})()
     pieces = lab.resegment(_tone_noise_tone())
@@ -213,7 +213,7 @@ def test_family_metrics_separate_kept_from_invented_phrases():
 
 @pytest.mark.parametrize("variant, expected", [("dictionary", "вишня"), ("phrases", "Посилку отримав"), ("none", "")])
 def test_prompt_variants_are_built_from_phrases_and_dictionary(tmp_path, monkeypatch, variant, expected):
-    from services.dictionary_store import init_db
+    from shared.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     with sqlite3.connect(db) as conn:
@@ -221,18 +221,18 @@ def test_prompt_variants_are_built_from_phrases_and_dictionary(tmp_path, monkeyp
     monkeypatch.setattr("config.DB_PATH", str(db))
     args = type("Args", (), {"prompt": variant, "prompt_file": None, "language": "uk", "model": None,
                              "variant": "whisper"})()
-    with patch("core.recognition.WhisperRecognizer"):
+    with patch("shared.recognition.WhisperRecognizer"):
         lab = asr_lab.Lab(args, tmp_path)
     assert (expected in lab.prompt) if expected else lab.prompt == ""
     args.prompt = "combined"
-    with patch("core.recognition.WhisperRecognizer"):
+    with patch("shared.recognition.WhisperRecognizer"):
         combined = asr_lab.Lab(args, tmp_path).prompt
     assert combined.startswith(asr_lab.PHRASES_PROMPT) and combined.endswith("вишня")
     assert not any(ch.isdigit() for ch in asr_lab.PHRASES_PROMPT), "у підказці немає номерів"
 
 
 def test_pipeline_without_llm_skips_qwen_and_records_it(tmp_path, monkeypatch):
-    from services.dictionary_store import init_db
+    from shared.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     with sqlite3.connect(db) as conn:
@@ -242,17 +242,17 @@ def test_pipeline_without_llm_skips_qwen_and_records_it(tmp_path, monkeypatch):
                              "variant": "pipeline", "llm": "off", "normalize": "on", "min_rms": None, "seed": 345,
                              "resegment": "none", "gate_db": 12.0, "bandpass": "off", "band_low": 300.0,
                              "band_high": 3400.0, "split": "all", "status": None, "labelled_only": False})()
-    with patch("core.recognition.WhisperRecognizer"), patch("core.correction.build_llm_corrector") as build:
+    with patch("shared.recognition.WhisperRecognizer"), patch("shared.correction.build_llm_corrector") as build:
         lab = asr_lab.Lab(args, tmp_path)
     assert not build.called and lab.llm is None
     assert lab.params()["llm"] == "off" and lab.params()["llm_repo"] is None
     args.variant = "qwen"
-    with patch("core.recognition.WhisperRecognizer"), pytest.raises(SystemExit):
+    with patch("shared.recognition.WhisperRecognizer"), pytest.raises(SystemExit):
         asr_lab.Lab(args, tmp_path)
 
 
 def test_temperature_option_reaches_whisper_and_is_recorded(tmp_path, monkeypatch):
-    from services.dictionary_store import init_db
+    from shared.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     monkeypatch.setattr("config.DB_PATH", str(db))
@@ -261,14 +261,14 @@ def test_temperature_option_reaches_whisper_and_is_recorded(tmp_path, monkeypatc
                              "seed": 345, "resegment": "none", "gate_db": 12.0, "bandpass": "off",
                              "band_low": 300.0, "band_high": 3400.0, "split": "all", "status": None,
                              "labelled_only": False})()
-    with patch("core.recognition.WhisperRecognizer") as recognizer:
+    with patch("shared.recognition.WhisperRecognizer") as recognizer:
         lab = asr_lab.Lab(args, tmp_path)
     assert recognizer.call_args.kwargs["temperature"] == (0.0,)
     assert lab.params()["temperature"] == [0.0]
 
 
 def test_receiver_keeps_default_whisper_temperatures():
-    from core.recognition import WhisperRecognizer
+    from shared.recognition import WhisperRecognizer
     calls = []
     recognizer = WhisperRecognizer("model", "uk", 16000, "", None)
     recognizer.transcribe_fn = lambda audio, **kw: calls.append(kw) or {}
@@ -284,7 +284,7 @@ def test_word_errors_ignore_apostrophe_forms():
 
 def test_whisper_options_are_parsed_and_passed_without_changing_defaults():
     from lab.asr_lab import parse_whisper_options
-    from core.recognition import WhisperRecognizer
+    from shared.recognition import WhisperRecognizer
     options = parse_whisper_options(["hallucination_silence_threshold=2.0", "word_timestamps=true", "best_of=3"])
     assert options == {"hallucination_silence_threshold": 2.0, "word_timestamps": True, "best_of": 3}
     calls = []
@@ -302,7 +302,7 @@ def test_resume_continues_same_records_on_same_snapshot_without_repeating_done(t
     archive = tmp_path / "recordings"
     store, speech, quiet = make_archive(archive)
     db = tmp_path / "events.db"
-    from services.dictionary_store import init_db
+    from shared.dictionary_store import init_db
     init_db(db)
     calls = []
 
@@ -315,12 +315,12 @@ def test_resume_continues_same_records_on_same_snapshot_without_repeating_done(t
             return {"segments": [{"text": "Вишня 210", "avg_logprob": -0.2, "no_speech_prob": 0.0,
                                   "compression_ratio": 1.1, "temperature": 0.0, "start": 0, "end": 2}]}
 
-        extract_text = staticmethod(__import__("core.recognition", fromlist=["x"]).WhisperRecognizer.extract_text)
+        extract_text = staticmethod(__import__("shared.recognition", fromlist=["x"]).WhisperRecognizer.extract_text)
 
     monkeypatch.setattr("config.DB_PATH", str(db))
     monkeypatch.setattr(asr_lab, "OUTPUT", tmp_path / "experiments")
     args = ["--archive", str(archive), "run", "--name", "q-base", "--variant", "rules"]
-    with patch("core.recognition.WhisperRecognizer", FakeWhisper):
+    with patch("shared.recognition.WhisperRecognizer", FakeWhisper):
         asr_lab.main(args)
     run_dir = next((tmp_path / "experiments").iterdir())
     full = (run_dir / "results.jsonl").read_text().splitlines()
@@ -332,7 +332,7 @@ def test_resume_continues_same_records_on_same_snapshot_without_repeating_done(t
     store.save(np.zeros(16000, "<i2").tobytes(), 16000, {"status": "ready"})
     snapshot = hashlib.sha256((run_dir / "events-snapshot.db").read_bytes()).hexdigest()
     calls.clear()
-    with patch("core.recognition.WhisperRecognizer", FakeWhisper):
+    with patch("shared.recognition.WhisperRecognizer", FakeWhisper):
         asr_lab.main([*args, "--resume", run_dir.name])
     rows = [json.loads(line) for line in (run_dir / "results.jsonl").read_text().splitlines()]
     assert [r["id"] for r in rows] == [json.loads(line)["id"] for line in full], "ті самі записи, кожен раз"
@@ -344,5 +344,5 @@ def test_resume_continues_same_records_on_same_snapshot_without_repeating_done(t
     with pytest.raises(SystemExit):   # завершений прогін не продовжується
         asr_lab.main([*args, "--resume", run_dir.name])
     (run_dir / "metrics.json").unlink()
-    with pytest.raises(SystemExit, match="resegment"), patch("core.recognition.WhisperRecognizer", FakeWhisper):
+    with pytest.raises(SystemExit, match="resegment"), patch("shared.recognition.WhisperRecognizer", FakeWhisper):
         asr_lab.main([*args, "--resegment", "energy", "--resume", run_dir.name])

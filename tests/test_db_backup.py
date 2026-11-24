@@ -6,10 +6,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.db_backup import (
+from shared.db_backup import (
     auto_backups, backup_if_due, create_backup, latest_backup_age, prune_backups,
 )
-from services.event_store import init_db, save_event
+from shared.event_store import init_db, save_event
 
 T0 = datetime(2026, 11, 15, 3, 0, tzinfo=timezone.utc)
 
@@ -62,7 +62,7 @@ def test_failure_is_logged_and_never_raises(tmp_path):
 
 
 def test_corrupt_copy_is_discarded(live, tmp_path, monkeypatch):
-    import services.db_backup as module
+    import shared.db_backup as module
 
     real_connect = sqlite3.connect
 

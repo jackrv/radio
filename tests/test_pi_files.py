@@ -30,6 +30,6 @@ def test_manifest_files_exist_and_are_not_private():
 
 def test_node_does_not_pull_heavy_receiver_parts():
     closure = pi_files.node_closure()
-    for heavy in ("core/recognition.py", "core/transcriber.py", "services/telegram.py",
-                  "services/event_store.py", "api/local_dashboard.py", "radio.py"):
+    for heavy in ("shared/recognition.py", "core/transcriber.py", "services/telegram.py",
+                  "shared/event_store.py", "api/local_dashboard.py", "radio.py"):
         assert heavy not in closure, heavy

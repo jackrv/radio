@@ -11,7 +11,7 @@ from tests.test_web_api import auth_header
 
 def test_record_and_open_throttling(tmp_path):
     db = tmp_path / "events.db"
-    from services.user_store import init_users_db, bootstrap_admin, create_user
+    from shared.user_store import init_users_db, bootstrap_admin, create_user
     init_users_db(db); bootstrap_admin(db, 1001); create_user(db, 1001, 3003, role="editor")
     user_activity.touch_open(db, 3003, now=1000)
     user_activity.touch_open(db, 3003, now=1000 + 60)                    # за хвилину — не вдруге
@@ -49,8 +49,8 @@ def test_miniapp_correction_and_mode_are_recorded_with_user(setup):  # noqa: F81
 def test_panel_activity_page(tmp_path):
     from api.local_dashboard import create_dashboard
     from tests.test_local_dashboard import KEY, ORIGIN
-    from services.event_store import init_db
-    from services.user_store import init_users_db, bootstrap_admin, create_user
+    from shared.event_store import init_db
+    from shared.user_store import init_users_db, bootstrap_admin, create_user
     db = tmp_path / "events.db"
     init_db(db); init_users_db(db); bootstrap_admin(db, 1001); create_user(db, 1001, 3003, role="editor")
     user_activity.record(db, 3003, "correction", "db:5", {"from": "а", "to": "б", "changed": True})
@@ -67,9 +67,9 @@ def test_panel_activity_page(tmp_path):
 def test_archive_filter_by_editor(tmp_path):
     from api.local_dashboard import create_dashboard
     from tests.test_local_dashboard import KEY, ORIGIN, pcm, segment
-    from services.event_store import init_db
-    from services.recordings import RecordingStore
-    from services.user_store import init_users_db, bootstrap_admin, create_user
+    from shared.event_store import init_db
+    from shared.recordings import RecordingStore
+    from shared.user_store import init_users_db, bootstrap_admin, create_user
     db = tmp_path / "events.db"
     init_db(db); init_users_db(db); bootstrap_admin(db, 1001); create_user(db, 1001, 3003, role="editor")
     store = RecordingStore(tmp_path / "recordings")

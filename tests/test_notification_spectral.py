@@ -5,10 +5,10 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from core.diagnostics import RuntimeDiagnostics
-from core.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher
+from shared.diagnostics import RuntimeDiagnostics
+from shared.notification_spectral import MAX_SCORE_S, SpectralNotificationMatcher
 from core.transcriber import Transcriber
-from services import notification_eval
+from shared import notification_eval
 from tests.audio_helpers import SR, pcm, phone_sound, segment, voice_like
 from tests.test_local_dashboard import wav
 
@@ -134,7 +134,7 @@ def test_matcher_error_never_stops_recognition():
 
 def archive_with(tmp_path, clips):
     """Аудіоархів із розміченими записами: [(pcm-масив, мітка або None)]."""
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     store = RecordingStore(tmp_path / "recordings")
     ids = []
     for audio, label in clips:

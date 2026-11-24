@@ -17,7 +17,7 @@ def register(app, ctx):
 
     @app.post('/api/telegram-sync/{action}')
     def telegram_sync_action(action: Literal['retry','skip'], admin=Depends(actor)):
-        from services.telegram_sync import resolve_failed_corrections
+        from shared.telegram_sync import resolve_failed_corrections
         try:
             return resolve_failed_corrections(db_path, admin, action)
         except PermissionError as exc:
@@ -25,13 +25,13 @@ def register(app, ctx):
 
     @app.get("/api/receiver-pause")
     def receiver_pause(admin=Depends(actor)):
-        from services.receiver_control import read_pause_state
+        from shared.receiver_control import read_pause_state
         return read_pause_state(db_path)
 
     @app.put("/api/receiver-pause")
     def receiver_pause_update(payload: PauseUpdate, admin=Depends(actor)):
         """Та сама пауза, що в Mini App: мікрофон закривається на N хвилин, 0 — відновити."""
-        from services.receiver_control import PauseVersionConflict, set_pause_minutes
+        from shared.receiver_control import PauseVersionConflict, set_pause_minutes
         try:
             return set_pause_minutes(db_path, payload.minutes, expected_revision=payload.expected_revision)
         except PauseVersionConflict:

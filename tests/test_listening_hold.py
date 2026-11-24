@@ -7,7 +7,7 @@ import pytest
 
 from core.pause_gate import PauseGate
 from core.supervisor import ApplicationSupervisor
-from services.receiver_control import reception_request, set_listening_hold, set_pause_minutes
+from shared.receiver_control import reception_request, set_listening_hold, set_pause_minutes
 
 
 def test_hold_expires_by_itself_and_operator_pause_has_priority(tmp_path):

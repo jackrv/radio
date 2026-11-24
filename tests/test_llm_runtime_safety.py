@@ -2,7 +2,7 @@ import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 
-from core.correction import build_llm_corrector
+from shared.correction import build_llm_corrector
 
 
 def make_corrector(monkeypatch, response="Віра 68", fail=False):

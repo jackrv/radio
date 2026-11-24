@@ -1,6 +1,6 @@
-from core.analyzer import fmt, fmt_spoken
-from core.diagnostics import runtime
-from core.text_analysis import analyze_text
+from shared.analyzer import fmt, fmt_spoken
+from shared.diagnostics import runtime
+from shared.text_analysis import analyze_text
 
 
 class EventProcessor:
@@ -33,7 +33,7 @@ class EventProcessor:
         self.rollback = rollback
         # Особисті режими: функція(wants) -> отримувачі за поточними правами з бази.
         self.select_recipients = select_recipients
-        # Потік для iPhone (services/radio_stream.py): ті самі режими, що в Telegram.
+        # Потік для iPhone (shared/radio_stream.py): ті самі режими, що в Telegram.
         self.radio_stream = radio_stream
 
     def annotate(self, text):
@@ -46,7 +46,7 @@ class EventProcessor:
         analysis = analyze_text(text, self.callsigns, self.commands, self.watch, self.short_garbage, self.log)
         text = analysis.text
 
-        from core.recording_trace import note
+        from shared.recording_trace import note
         note(predicted_recipient=fmt(analysis.recipient), predicted_sender=fmt(analysis.sender), roles_parsed=True)
         if text != original:
             note(final_text=text)
@@ -63,7 +63,7 @@ class EventProcessor:
         return analysis
 
     def process(self, text, pcm, raw_text=None):
-        from core.recording_trace import note
+        from shared.recording_trace import note
         original = text
         analysis = self.annotate(text)
         text = analysis.text
@@ -169,7 +169,7 @@ class EventProcessor:
         try:
             if not stream.wants(wants) or not self.fresh(("stream", text)):
                 return
-            from services.telegram_outbox import build_caption
+            from shared.telegram_outbox import build_caption
             stream.publish(pcm, build_caption(watch_str or "Ефір", to_str, from_str, text))
             runtime.count("radio_stream.published")
         except Exception:

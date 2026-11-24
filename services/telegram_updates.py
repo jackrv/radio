@@ -8,11 +8,11 @@ import time
 
 import requests
 
-from core.diagnostics import error_kind, runtime
-from services.telegram_sync import forget_delivery
-from services.telegram_media_store import callback_fix_id, deletion_intent, deletion_result
-from services.telegram_offset_store import load_telegram_offset, save_telegram_offset
-from services.telegram_retry import listener_retry_delay
+from shared.diagnostics import error_kind, runtime
+from shared.telegram_sync import forget_delivery
+from shared.telegram_media_store import callback_fix_id, deletion_intent, deletion_result
+from shared.telegram_offset_store import load_telegram_offset, save_telegram_offset
+from shared.telegram_retry import listener_retry_delay
 
 
 _NETWORK_ERRORS = (requests.ConnectionError, requests.Timeout)

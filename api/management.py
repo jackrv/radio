@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from services.management.phrases import list_phrases
-from services.miniapp_correction_editor import load_edit_draft
-from services.telegram_media_store import audio_file_id
+from shared.miniapp_correction_editor import load_edit_draft
+from shared.telegram_media_store import audio_file_id
 from services.telegram_audio import download_voice, AudioUnavailable
 
 

@@ -1,7 +1,7 @@
 """Люди: користувачі й активність."""
 from fastapi import Depends, HTTPException
 
-from services.management.common import ManagementConflict
+from shared.management.common import ManagementConflict
 from services.management.users import list_users, write_user
 from api.panel.models import UserUpdate
 

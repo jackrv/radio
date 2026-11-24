@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from services.management.common import ManagementConflict
+from shared.management.common import ManagementConflict
 from services.management.users import list_users, write_user
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header

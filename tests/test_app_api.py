@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from services import radio_stream as r
+from shared import radio_stream as r
 
 
 @pytest.fixture

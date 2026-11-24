@@ -19,20 +19,20 @@ MANIFEST = ROOT / "deploy" / "pi-files.txt"
 # Модулі, які вузол імпортує (частину — всередині функцій, тому статичного імпорту замало).
 ENTRY_MODULES = (
     "services.radio_node",
-    "services.radio_stream",
-    "services.audio_devices",
-    "services.ptt_key",
+    "shared.radio_stream",
+    "shared.audio_devices",
+    "shared.ptt_key",
     "services.segment_spool",
     "services.phrase_feed",
     "services.node_control",
     "core.supervisor",
-    "core.notification_spectral",
-    "core.notification_templates",
+    "shared.notification_spectral",
+    "shared.notification_templates",
     "core.log_security",
-    "core.audio",
+    "shared.audio",
     "core.segment_timing",
     "core.bounded_queue",
-    "core.diagnostics",
+    "shared.diagnostics",
     "config",
 )
 

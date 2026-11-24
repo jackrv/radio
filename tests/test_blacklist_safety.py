@@ -4,7 +4,7 @@ import pytest
 
 import core.transcriber as transcriber_module
 from core.transcriber import Transcriber
-from core.default_text_lists import enabled
+from shared.default_text_lists import enabled
 
 BLACKLIST = enabled("blacklist")
 

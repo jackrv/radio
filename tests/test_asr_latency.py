@@ -9,9 +9,9 @@ import numpy as np
 import pytest
 
 from core.bounded_queue import DropOldestQueue
-from core.diagnostics import RuntimeDiagnostics
+from shared.diagnostics import RuntimeDiagnostics
 from core.pause_gate import PauseGate
-from core.pipeline import build_text_pipeline
+from shared.pipeline import build_text_pipeline
 from core.segment_timing import CapturedFrame, SegmentTiming, TimedSegment, capture_frame
 from core.transcriber import Transcriber
 
@@ -42,7 +42,7 @@ def worker(monkeypatch, *, qwen=True, gate=None):
     clock = Clock()
     metrics = RuntimeDiagnostics(clock=clock.now, wall_clock=lambda: 1000 + clock.value)
     monkeypatch.setattr("core.transcriber.runtime", metrics)
-    monkeypatch.setattr("core.pipeline.runtime", metrics)
+    monkeypatch.setattr("shared.pipeline.runtime", metrics)
     monkeypatch.setattr("core.transcriber.looks_like_garbage", lambda *_: False)
 
     def whisper(_):

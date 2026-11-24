@@ -1,7 +1,7 @@
 """Оцінка фільтра сигналів на розмітці: поріг і ліміт сторонньої енергії разом."""
 from types import SimpleNamespace
 
-from services.notification_eval import _summary
+from shared.notification_eval import _summary
 
 
 def item(label, score, extra, outside=0.0):

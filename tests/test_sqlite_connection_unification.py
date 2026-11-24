@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 
 import config
-import services.dictionary_store as database
-import services.event_store as event_store
-import services.sqlite_connection as shared
+import shared.dictionary_store as database
+import shared.event_store as event_store
+import shared.sqlite_connection as shared
 
 
 def test_modules_use_same_connection_manager():
@@ -108,7 +108,7 @@ def test_default_paths_are_project_absolute(
 
 def test_init_drops_the_unused_shared_notify_mode_table(tmp_path):
     import sqlite3
-    import services.dictionary_store as database
+    import shared.dictionary_store as database
     path = tmp_path / "events.db"
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE bot_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)")

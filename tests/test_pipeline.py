@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from core.pipeline import build_text_pipeline
+from shared.pipeline import build_text_pipeline
 
 
 def make_pipeline(

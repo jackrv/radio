@@ -4,10 +4,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.callsigns import Callsigns
+from shared.callsigns import Callsigns
 from services.transcriber_factory import build_transcriber
-from services.event_store import init_db as init_event_db
-from services.word_store import init_word_db, save_word_feedback
+from shared.event_store import init_db as init_event_db
+from shared.word_store import init_word_db, save_word_feedback
 
 
 DICTIONARY = ["вишня: 700 720", "кобза: 110 112", "віра: 68"]
@@ -16,7 +16,7 @@ DICTIONARY = ["вишня: 700 720", "кобза: 110 112", "віра: 68"]
 @pytest.fixture
 def db_path(tmp_path):
     import sqlite3
-    from services.dictionary_store import init_db as init_dictionary_db
+    from shared.dictionary_store import init_db as init_dictionary_db
     path = tmp_path / "runtime.db"
     init_event_db(path)
     init_word_db(path)

@@ -1,8 +1,8 @@
 """Пошук фраз журналу для редактора Mini App."""
 import time
-from services.sqlite_connection import get_db
-from services.telegram_phrase_store import ensure_table, RETENTION_SECONDS
-from services.telegram_media_store import ensure_table as ensure_media_table
+from shared.sqlite_connection import get_db
+from shared.telegram_phrase_store import ensure_table, RETENTION_SECONDS
+from shared.telegram_media_store import ensure_table as ensure_media_table
 
 
 def list_phrases(db_path, query="", offset=0, limit=20):
@@ -11,7 +11,7 @@ def list_phrases(db_path, query="", offset=0, limit=20):
     with get_db(db_path) as db:
         ensure_table(db)
         ensure_media_table(db)
-        from services.telegram_sync import ensure_tables as ensure_deliveries
+        from shared.telegram_sync import ensure_tables as ensure_deliveries
         ensure_deliveries(db)
         db.execute("DELETE FROM telegram_recent_phrases WHERE created_at <= ?",
                    (int(time.time()) - RETENTION_SECONDS,))

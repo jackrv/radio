@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.recordings import RecordingArchive, RecordingStore
+from shared.recordings import RecordingArchive, RecordingStore
 from tests.test_capture_mode import pcm, worker
 
 

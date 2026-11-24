@@ -8,10 +8,10 @@ import requests
 from services.access_requests import (
     mark_undelivered, profile_of, register_request, request_token, resolve_request,
 )
-from services.telegram_common import (
+from shared.telegram_common import (
     ACCESS_CALLBACK_RE, MODE_COMMANDS, MODE_HELP, MODE_NAMES, ROLE_LABELS,
 )
-from services.user_notify_store import apply_telegram_user_mode, save_user_mode
+from shared.user_notify_store import apply_telegram_user_mode, save_user_mode
 
 
 class AccessMixin:

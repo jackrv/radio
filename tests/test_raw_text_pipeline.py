@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import core.transcriber as transcriber_module
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
-from services.event_store import init_db, save_event
+from shared.event_store import init_db, save_event
 
 
 def test_transcriber_passes_original_text(monkeypatch):
@@ -76,7 +76,7 @@ def make_processor(db_path):
 
 
 def test_stores_original_and_corrected_text(tmp_path, monkeypatch):
-    import core.text_analysis as ep
+    import shared.text_analysis as ep
 
     monkeypatch.setattr(
         ep, "split_roles", lambda *_: ([], [])
@@ -104,7 +104,7 @@ def test_stores_original_and_corrected_text(tmp_path, monkeypatch):
 
 
 def test_legacy_call_without_raw_text(tmp_path, monkeypatch):
-    import core.text_analysis as ep
+    import shared.text_analysis as ep
 
     monkeypatch.setattr(
         ep, "split_roles", lambda *_: ([], [])

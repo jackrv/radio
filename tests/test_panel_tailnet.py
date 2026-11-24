@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import local_dashboard
-from services.event_store import init_db
+from shared.event_store import init_db
 
 HOSTS = ["100.64.0.9", "pi.example.ts.net", "pi"]
 
@@ -45,6 +45,6 @@ def test_default_panel_stays_local(tmp_path):
 
 
 def test_tailnet_mode_requires_tailscale(monkeypatch):
-    monkeypatch.setattr("services.radio_stream.tailscale_ipv4", lambda: None)
+    monkeypatch.setattr("shared.radio_stream.tailscale_ipv4", lambda: None)
     with pytest.raises(SystemExit):
         local_dashboard.tailnet_access()

@@ -4,7 +4,7 @@ from pathlib import Path
 from html.parser import HTMLParser
 import re
 
-from core.diagnostics import RuntimeDiagnostics
+from shared.diagnostics import RuntimeDiagnostics
 from tests.test_local_dashboard import local
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header

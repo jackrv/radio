@@ -72,7 +72,7 @@ cd ~/radio345
 git sparse-checkout set --no-cone --stdin < <(git show HEAD:deploy/pi-files.txt)
 [ -d .venv ] || python3 -m venv .venv
 .venv/bin/pip install -r requirements-pi.txt
-.venv/bin/python -m services.audio_devices        # знайти назву USB-карти
+.venv/bin/python -m shared.audio_devices        # знайти назву USB-карти
 ```
 
 Для приватного репозиторію потрібен deploy key лише на читання (GitHub → Settings → Deploy keys).
@@ -124,7 +124,7 @@ sudo systemctl restart radio345-node   # якщо змінився deploy/radio3
   PortAudio/ALSA втрачав ~60 % звуку (`input overflow`, ривки на iPhone).
 
 Пробний ефір без карти: `sudo modprobe snd-aloop`, у `.env` `RADIO_INPUT_DEVICE=hw:2,1`
-(номер — з `services.audio_devices`), перезапуск служби, `aplay -D plughw:2,0 запис.wav`.
+(номер — з `shared.audio_devices`), перезапуск служби, `aplay -D plughw:2,0 запис.wav`.
 
 ## Ще не перевірено на Pi
 

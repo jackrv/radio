@@ -4,22 +4,22 @@ from pathlib import Path
 sys.path.insert(0,str(Path.cwd()))
 import uvicorn
 import sqlite3
-from services.dictionary_store import init_db
-from services.event_store import init_db as init_events
-from services.user_store import init_users_db,bootstrap_admin
-from services.recordings import RecordingStore
+from shared.dictionary_store import init_db
+from shared.event_store import init_db as init_events
+from shared.user_store import init_users_db,bootstrap_admin
+from shared.recordings import RecordingStore
 from api.local_dashboard import create_dashboard
 root=Path(sys.argv[1]);db=root/'events.db'
 init_db(db);init_events(db);init_users_db(db);bootstrap_admin(db,1001)
 with sqlite3.connect(db) as connection:
  connection.executemany("INSERT INTO dictionary_entries(dictionary_type,line_number,raw_line) VALUES('callsigns',?,?)",[(1,'Клен: 12'),(2,'Дуб: 34')])
-from services.telegram_sync import remember_delivery,queue_correction
-from services.sqlite_connection import get_db
+from shared.telegram_sync import remember_delivery,queue_correction
+from shared.sqlite_connection import get_db
 remember_delivery(db,'db:999',{'chat':{'id':1001},'message_id':1},'voice')
 with get_db(db) as connection:
  queue_correction(connection,'db:999')
  connection.execute('UPDATE telegram_deliveries SET attempts=8')
-from services.word_store import save_word_feedback
+from shared.word_store import save_word_feedback
 for token in ('1','2'):
  save_word_feedback(db,'archive:'+token*32,'дорга','дорога')
 for token in ('3','4'):

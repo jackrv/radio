@@ -1,13 +1,13 @@
 import sqlite3
 
-from core.callsigns import Callsigns
-from services.dictionary_store import init_db as init_dictionary_db
-from services.event_store import (
+from shared.callsigns import Callsigns
+from shared.dictionary_store import init_db as init_dictionary_db
+from shared.event_store import (
     init_db as init_event_db,
     save_event,
 )
-from services.miniapp_correction_editor import save_edit_draft
-from services.word_rule_engine import apply_verified_word_rules
+from shared.miniapp_correction_editor import save_edit_draft
+from shared.word_rule_engine import apply_verified_word_rules
 
 
 def test_two_editor_corrections_activate_word_rule(tmp_path):

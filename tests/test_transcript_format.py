@@ -3,9 +3,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.callsigns import Callsigns,command_dictionary
-from core.text_metrics import metric_words
-from core.transcript_format import tidy_text,infer_transmission_boundaries
+from shared.callsigns import Callsigns,command_dictionary
+from shared.text_metrics import metric_words
+from shared.transcript_format import tidy_text,infer_transmission_boundaries
 
 CS=Callsigns.from_lines(['клен: 12 34','дуб: 56','оператор: *'])
 COMMANDS=command_dictionary([])
@@ -56,8 +56,8 @@ def test_address_forms_are_capitalized_without_changing_declension():
 
 
 def test_live_and_editor_use_the_same_formatter():
-    from core.text_analysis import analyze_text
-    from services.text_check import tidy_text as editor_formatter
+    from shared.text_analysis import analyze_text
+    from shared.text_check import tidy_text as editor_formatter
     assert editor_formatter is tidy_text
     text='клен 12, до роботи приступив, прийом, дуб 56, прийнято, прийом'
     result=analyze_text(text,CS,COMMANDS,Callsigns.from_lines([]),set(),Mock())
@@ -65,7 +65,7 @@ def test_live_and_editor_use_the_same_formatter():
 
 
 def test_formatting_never_changes_recipient_metadata_or_rejection(monkeypatch):
-    import core.text_analysis as analysis
+    import shared.text_analysis as analysis
     watch = Callsigns.from_lines([])
     text = 'клен 12, до роботи приступив, прийом, дуб 56, прийнято, прийом'
     formatted = analysis.analyze_text(text, CS, COMMANDS, watch, set(), Mock())

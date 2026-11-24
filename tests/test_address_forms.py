@@ -3,12 +3,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.callsigns import Callsigns, command_dictionary
-from core.analyzer import canonical_text
-from core.template_text import template_text
-from core.text_analysis import analyze_text
-from services.text_check import check_text
-from core.text_metrics import metric_words
+from shared.callsigns import Callsigns, command_dictionary
+from shared.analyzer import canonical_text
+from shared.template_text import template_text
+from shared.text_analysis import analyze_text
+from shared.text_check import check_text
+from shared.text_metrics import metric_words
 
 
 @pytest.mark.parametrize('form', ['Клену', 'клену', 'КЛЕНУ', 'Кленові'])

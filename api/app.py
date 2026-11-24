@@ -12,20 +12,20 @@ from services.miniapp_auth import (
     TelegramAuthError,
     verify_init_data,
 )
-from services.user_store import PERMISSIONS, require_permission
-from services.miniapp_correction_editor import (
+from shared.user_store import PERMISSIONS, require_permission
+from shared.miniapp_correction_editor import (
     CorrectionConflict,
     decide_learning,
     load_edit_draft,
     save_edit_draft,
 )
 from services.receiver_status import read_receiver_status
-from services.receiver_control import (
+from shared.receiver_control import (
     read_pause_state,
     set_pause_minutes,
     PauseVersionConflict,
 )
-from services.user_notify_store import (
+from shared.user_notify_store import (
     allowed_modes,
     load_user_mode,
     save_user_mode,
@@ -237,9 +237,9 @@ def create_app(db_path, bot_token):
     def check_correction_text(payload: TextCheck, user=Depends(current_user)):
         """Зауваження до оформлення правки (пробіли, цифри, «з», апостроф, назви словника)."""
         require_settings_permission(user, "corrections.write")
-        from services import daily_codes
-        from services.sqlite_connection import get_db
-        from services.text_check import check_with_db
+        from shared import daily_codes
+        from shared.sqlite_connection import get_db
+        from shared.text_check import check_with_db
         try:
             with get_db(db_path) as db:
                 return check_with_db(db, payload.text, daily_codes.for_fix_id(db, payload.fix_id))
@@ -286,7 +286,7 @@ def create_app(db_path, bot_token):
         role, mode = state
         if user.get("_preview"):
             role = user["role"]
-            from services.user_notify_store import effective_mode
+            from shared.user_notify_store import effective_mode
             mode = effective_mode(role, mode)
         return {"mode": mode, "allowed": allowed_modes(role)}
 

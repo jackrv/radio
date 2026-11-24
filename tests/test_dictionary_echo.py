@@ -2,8 +2,8 @@
 
 import pytest
 
-from core.callsigns import Callsigns, command_dictionary
-from core.analyzer import strip_dictionary_echo
+from shared.callsigns import Callsigns, command_dictionary
+from shared.analyzer import strip_dictionary_echo
 from tests.test_transcriber import make_pcm, make_transcriber
 
 CALLSIGNS = Callsigns.from_lines(["береза: 31 56", "вишня", "клен: 15"])

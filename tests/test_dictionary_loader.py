@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-import services.dictionary_loader as module
+import shared.dictionary_loader as module
 from lab.asr_lab import read_only
 
 

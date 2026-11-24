@@ -6,10 +6,10 @@ import threading
 
 import sounddevice as sd
 
-from core.vad import VADSegmenter
+from shared.vad import VADSegmenter
 from core.queue_monitor import QueueDropMonitor
 from core.restart_policy import RestartPolicy
-from core.diagnostics import runtime
+from shared.diagnostics import runtime
 from core.segment_timing import stamp_segment
 
 

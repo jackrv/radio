@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from core.vad import VADSegmenter
+from shared.vad import VADSegmenter
 
 
 def make_segmenter(**overrides):
@@ -15,7 +15,7 @@ def make_segmenter(**overrides):
     }
     settings.update(overrides)
 
-    with patch("core.vad.webrtcvad.Vad") as vad_class:
+    with patch("shared.vad.webrtcvad.Vad") as vad_class:
         vad_class.return_value.is_speech.side_effect = (
             lambda frame, sample_rate: frame == b"S"
         )

@@ -3,8 +3,8 @@ import wave
 from unittest.mock import Mock
 import numpy as np
 import pytest
-from core.notification_templates import MAX_TEMPLATES, load_templates, _prepare_template
-from core.notification_spectral import SpectralNotificationMatcher
+from shared.notification_templates import MAX_TEMPLATES, load_templates, _prepare_template
+from shared.notification_spectral import SpectralNotificationMatcher
 from tests.audio_helpers import SR, pcm, phone_sound, segment
 
 

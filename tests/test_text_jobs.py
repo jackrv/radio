@@ -7,10 +7,10 @@ import time
 
 import pytest
 
-from services import panel_jobs as text_jobs
-from services.dictionary_store import init_db
-from services.recordings import RecordingStore
-from services.text_lists import ensure_tables
+from shared import panel_jobs as text_jobs
+from shared.dictionary_store import init_db
+from shared.recordings import RecordingStore
+from shared.text_lists import ensure_tables
 
 
 def setup_job(tmp_path, monkeypatch):
@@ -65,7 +65,7 @@ def test_worker_progress_cancel_and_api_independence(tmp_path, monkeypatch):
     code = '''
 import sys, time
 from pathlib import Path
-from services import panel_jobs as text_jobs
+from shared import panel_jobs as text_jobs
 root = Path(sys.argv[1])
 def execute(job, progress):
     (root / 'ready').touch()
@@ -125,7 +125,7 @@ def test_filter_draft_evaluates_speech_loss_and_false_text_without_saving(tmp_pa
 
 
 def test_started_side_effect_job_cannot_be_cancelled_and_needs_a_current_admin(tmp_path, monkeypatch):
-    from services.user_store import init_users_db, bootstrap_admin
+    from shared.user_store import init_users_db, bootstrap_admin
     db, archive = setup_job(tmp_path, monkeypatch)
     init_users_db(db); bootstrap_admin(db, 1001)
     job = text_jobs.submit(db, archive, 'backup', actor_id=1001, options={'backup_dir':str(tmp_path/'backups')})

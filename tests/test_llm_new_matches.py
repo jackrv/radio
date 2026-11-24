@@ -1,5 +1,5 @@
-from core.callsigns import Callsigns
-from core.analyzer import correction_is_safe
+from shared.callsigns import Callsigns
+from shared.analyzer import correction_is_safe
 
 
 def test_llm_cannot_invent_command():

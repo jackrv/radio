@@ -7,15 +7,15 @@ from pathlib import Path
 import sqlite3
 import time
 
-from core.callsigns import Callsigns
-from services.dictionary_store import (
+from shared.callsigns import Callsigns
+from shared.dictionary_store import (
     DICTIONARY_TYPES, format_dictionary_file, init_db as init_dictionaries,
     import_dictionaries, parse_dictionary_file,
 )
-from services.event_store import init_db as init_events
+from shared.event_store import init_db as init_events
 from services.management.dictionaries import validate_dictionary
-from services.sqlite_connection import get_db, read_only
-from services.user_store import init_users_db
+from shared.sqlite_connection import get_db, read_only
+from shared.user_store import init_users_db
 
 
 def validate_sections(sections, filename):
@@ -150,7 +150,7 @@ def _floors(conn):
 
 def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=None):
     """Відновлює events.db з копії, не повторюючи вже виданих ID подій."""
-    from core.instance_lock import OWNER_LOCK, acquire_instance_lock
+    from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
 
     db_path = Path(db_path).resolve()
     backup_path = Path(backup_path).resolve()

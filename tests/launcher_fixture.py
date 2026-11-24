@@ -65,7 +65,7 @@ def service(name, root, port, hung=False):
 
 def parent(root, ports, *, slow_start=False, hung=False):
     import start_radio345 as launcher
-    from services.launcher_lifecycle import LauncherSession
+    from shared.launcher_lifecycle import LauncherSession
 
     launcher.ROOT = root
     names = ["api", "ngrok", "radio"]

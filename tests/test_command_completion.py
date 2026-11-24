@@ -2,10 +2,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.callsigns import Callsigns, command_dictionary
-from core.command_completion import restore_repeated_command_codes
-from core.transcript_format import tidy_text
-from services.text_check import check_text
+from shared.callsigns import Callsigns, command_dictionary
+from shared.command_completion import restore_repeated_command_codes
+from shared.transcript_format import tidy_text
+from shared.text_check import check_text
 
 CS = Callsigns.from_lines(['клен: 12'])
 

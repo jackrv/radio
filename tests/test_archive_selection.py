@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from services.recordings import RecordingStore
-from services.archive_inventory import inventory
-from services.mention_selection import find, save_selection, load_selection
+from shared.recordings import RecordingStore
+from shared.archive_inventory import inventory
+from shared.mention_selection import find, save_selection, load_selection
 
 
 def corpus(tmp_path):
@@ -23,7 +23,7 @@ def corpus(tmp_path):
 
 
 def test_selection_order_override_sorts_all_pages_and_archive_without_changing_membership(tmp_path):
-    from services.mention_selection import page_selection
+    from shared.mention_selection import page_selection
     store=RecordingStore(tmp_path/'records')
     with store.connect() as db:
         for i in range(205):
@@ -81,7 +81,7 @@ def test_expired_selections_are_pruned_without_touching_other_files(tmp_path):
 
 
 def test_mentions_exclude_non_speech_and_use_chronology_on_every_page(tmp_path):
-    from services.mention_selection import page_selection
+    from shared.mention_selection import page_selection
     store, a, b = corpus(tmp_path)
     store.review(a, 'Клен 12, прийом', 'speech', 0)
     with store.connect() as db:
@@ -104,8 +104,8 @@ def test_mentions_exclude_non_speech_and_use_chronology_on_every_page(tmp_path):
 
 
 def test_model_slot_blocks_competing_receivers_and_labs(tmp_path):
-    from core.instance_lock import acquire_instance_lock
-    from services.model_exclusion import lab_model_slot,receiver_model_available
+    from shared.instance_lock import acquire_instance_lock
+    from shared.model_exclusion import lab_model_slot,receiver_model_available
     path=tmp_path/'events.db'
     with sqlite3.connect(path) as db:db.execute('create table synthetic(id int)')
     receiver=acquire_instance_lock(tmp_path/'.radio345.lock')
@@ -122,8 +122,8 @@ def test_model_slot_blocks_competing_receivers_and_labs(tmp_path):
 
 def test_receiver_start_invalidates_old_unloaded_acknowledgement(tmp_path):
     import time
-    from services.model_exclusion import acquire_receiver_slot,lab_model_slot
-    from services.receiver_control import set_capture_only,mark_capture_unloaded,capture_state
+    from shared.model_exclusion import acquire_receiver_slot,lab_model_slot
+    from shared.receiver_control import set_capture_only,mark_capture_unloaded,capture_state
     path=tmp_path/'events.db'
     set_capture_only(path,time.time()+3600)
     mark_capture_unloaded(path,True)
@@ -166,7 +166,7 @@ def test_abandoned_inflight_asr_has_no_late_event_or_archive_submission():
 
 
 def test_mention_reference_is_authoritative_and_snapshot_rechecks_current_text(tmp_path):
-    from services.mention_selection import page_selection
+    from shared.mention_selection import page_selection
     store,a,b=corpus(tmp_path)
     with store.connect() as db:
         db.execute('UPDATE recordings SET data=? WHERE id=?',(json.dumps({'raw_text':'Клен 12','final_text':'Клен 12'}),b))
@@ -202,7 +202,7 @@ def test_reviewed_and_unreviewed_share_strict_time_order(tmp_path):
 
 
 def test_mentions_skip_unreviewed_records_filtered_by_program(tmp_path):
-    from services.mention_selection import page_selection
+    from shared.mention_selection import page_selection
     import time
     now = time.time() - 60
     store = RecordingStore(tmp_path/'recordings')

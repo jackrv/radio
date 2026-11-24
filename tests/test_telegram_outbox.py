@@ -126,7 +126,7 @@ def _ok(file_id):
 
 def test_hung_recipient_does_not_delay_others(monkeypatch):
     """Зависле завантаження першому отримувачу не тримає другого й наступні фрази."""
-    import services.telegram_outbox as outbox
+    import shared.telegram_outbox as outbox
 
     monkeypatch.setattr(outbox, "SHARED_UPLOAD_WAIT_S", 0.2)
     service = make_service()
@@ -160,7 +160,7 @@ def test_hung_recipient_does_not_delay_others(monkeypatch):
 
 
 def test_full_recipient_queue_skips_only_that_recipient(caplog):
-    import services.telegram_outbox as outbox
+    import shared.telegram_outbox as outbox
 
     service = make_service()
     release = threading.Event()

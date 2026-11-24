@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 
 import config
-from services import error_analysis
-from services.recordings import RecordingStore
+from shared import error_analysis
+from shared.recordings import RecordingStore
 
 KINDS = tuple(error_analysis.CATEGORIES) + ("one_word", "edit_free", "worse", "better", "doubtful")
 
@@ -155,7 +155,7 @@ def records(args):
 def checks(args):
     """Перепровірка вашої розмітки — те саме, що «Потребує уваги» в панелі (описки, ролі, подвоєння тощо)."""
     from collections import defaultdict
-    from services.suggestions import KINDS, reference_checks
+    from shared.suggestions import KINDS, reference_checks
     found = reference_checks(config.DB_PATH, _store())
     if args.json:
         return found
@@ -171,7 +171,7 @@ def checks(args):
 
 
 def runs(args):
-    from services.experiments import list_runs
+    from shared.experiments import list_runs
     items = list_runs(Path(config.BASE_DIR) / ".local-experiments", limit=args.limit)
     for run in items:
         s = run.get("summary") or {}
@@ -188,7 +188,7 @@ def runs(args):
 
 
 def compare(args):
-    from services.experiments import compare_runs
+    from shared.experiments import compare_runs
     r = compare_runs(Path(config.BASE_DIR) / ".local-experiments", args.a, args.b)
     if args.json:
         return r
@@ -198,7 +198,7 @@ def compare(args):
 
 
 def queue(args):
-    from services import lab_queue
+    from shared import lab_queue
     state = lab_queue.read(Path(config.BASE_DIR) / ".local-experiments")
     state["runner"]["active"] = lab_queue.runner_active(state)
     if args.json:

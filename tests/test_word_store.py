@@ -2,8 +2,8 @@ import sqlite3
 
 import pytest
 
-from services.word_store import init_word_db
-from services.sqlite_connection import get_db
+from shared.word_store import init_word_db
+from shared.sqlite_connection import get_db
 
 
 def test_creates_word_corrections_table(tmp_path):

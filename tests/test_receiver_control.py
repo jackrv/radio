@@ -1,6 +1,6 @@
 import pytest
 
-from services.receiver_control import (
+from shared.receiver_control import (
     read_pause_state,
     set_pause_minutes,
 )
@@ -118,7 +118,7 @@ def test_existing_database_preserves_pause(tmp_path):
 
 
 def test_stale_revision_cannot_overwrite_pause(tmp_path):
-    from services.receiver_control import PauseVersionConflict
+    from shared.receiver_control import PauseVersionConflict
 
     db = tmp_path / "conflict.db"
 
@@ -136,7 +136,7 @@ def test_stale_revision_cannot_overwrite_pause(tmp_path):
 
 def test_parallel_commands_allow_only_one_winner(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
-    from services.receiver_control import PauseVersionConflict
+    from shared.receiver_control import PauseVersionConflict
 
     db = tmp_path / "parallel.db"
     version = read_pause_state(db, now=1000)["revision"]

@@ -1,4 +1,4 @@
-from core.vad import VADSegmenter
+from shared.vad import VADSegmenter
 
 
 class FakeVad:

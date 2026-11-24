@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from services.recordings import RecordingStore
-from services.sqlite_connection import get_db, read_only
+from shared.recordings import RecordingStore
+from shared.sqlite_connection import get_db, read_only
 from tools.archive_cleanup import prepare, apply, clean_primary, discard_audio_backup
 
 

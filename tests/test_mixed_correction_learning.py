@@ -7,16 +7,16 @@ import sqlite3
 
 import pytest
 
-from core.callsigns import Callsigns
-from core.word_learning import analyze_word_changes
-from services.word_rule_engine import apply_verified_word_rules
-from services.event_store import save_event
-from services.miniapp_correction_editor import save_edit_draft, decide_learning
-from services.management.common import ManagementConflict
-from services.management.learning import approve_rule, learning_queue
+from shared.callsigns import Callsigns
+from shared.word_learning import analyze_word_changes
+from shared.word_rule_engine import apply_verified_word_rules
+from shared.event_store import save_event
+from shared.miniapp_correction_editor import save_edit_draft, decide_learning
+from shared.management.common import ManagementConflict
+from shared.management.learning import approve_rule, learning_queue
 from services.management.overview import overview as management_overview
-from services.telegram_phrase_store import register_phrase
-from services.word_store import init_word_db, load_active_word_rules
+from shared.telegram_phrase_store import register_phrase
+from shared.word_store import init_word_db, load_active_word_rules
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура)
 from tests.test_web_api import auth_header
 
@@ -99,7 +99,7 @@ def test_insertions_permutations_repeats_and_rewrites_never_vote(before, after):
 
 def test_inserted_word_never_enters_a_rule():
     """Помилка, знайдена при порівнянні з іншим патчем: «пазіцію» → «нашу позицію»."""
-    from services.word_store import _plan
+    from shared.word_store import _plan
     _, auto, review, excluded = _plan("Маяк 68, іду на пазіцію", "Маяк 84, іду на нашу позицію", frozenset())
     assert auto == {} and review == {("пазіцію", "нашу позицію"): "word_count"}
     _, auto, _, _ = _plan("на бат 110", "набат 110", frozenset())
@@ -317,8 +317,8 @@ def test_mixed_correction_trains_rule_that_fixes_next_message_keeping_its_number
     assert rule["status"] == "active" and rule["needs_approval"]
     approve_rule(path, ADMIN, rule["id"], True, rule["version"])
 
-    from core.pipeline import build_text_pipeline
-    from core.analyzer import correction_is_safe
+    from shared.pipeline import build_text_pipeline
+    from shared.analyzer import correction_is_safe
     from unittest.mock import Mock
 
     def learned(text):

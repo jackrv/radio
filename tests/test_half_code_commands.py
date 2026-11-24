@@ -1,9 +1,9 @@
 """Код команди, почутий наполовину: «злива 42» при коді 4242 — команда з позначкою."""
 from unittest.mock import Mock
 
-from core.callsigns import Callsigns, command_dictionary
-from core.analyzer import fmt_spoken
-from core.text_analysis import analyze_text
+from shared.callsigns import Callsigns, command_dictionary
+from shared.analyzer import fmt_spoken
+from shared.text_analysis import analyze_text
 
 COMMANDS = command_dictionary(["злива 4242", "дощ: 2626 777", "грім"])
 
@@ -40,8 +40,8 @@ def test_header_shows_what_was_actually_heard():
 
 def test_zero_without_continuation_is_completed_only_for_unique_zero_code():
     from unittest.mock import Mock
-    from core.callsigns import Callsigns, command_dictionary
-    from core.text_analysis import analyze_text
+    from shared.callsigns import Callsigns, command_dictionary
+    from shared.text_analysis import analyze_text
     cs, watch = Callsigns.from_lines(["клен: 5"]), Callsigns.from_lines([])
     commands = command_dictionary(["буря 0 11", "буря 222", "грім 0 22", "грім 0 33", "град 0", "град 0 44"])
     for raw in ("буряна, прийом", "буря 0, прийом"):

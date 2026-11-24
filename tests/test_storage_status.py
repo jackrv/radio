@@ -3,8 +3,8 @@ import hashlib
 import sqlite3
 from types import SimpleNamespace
 
-from core.diagnostic_history import DiagnosticsHistory
-from services.recordings import RecordingStore
+from shared.diagnostic_history import DiagnosticsHistory
+from shared.recordings import RecordingStore
 from services.storage_status import audio_status, log_status, storage_status
 
 
@@ -31,7 +31,7 @@ def test_readonly_projection_matches_actual_prune_and_preserves_reviewed_materia
     assert hashlib.sha256(index.read_bytes()).digest() == before
     assert all((store.root/f'{i}.wav').exists() for i in range(4))
     from unittest.mock import patch
-    with patch('services.recordings.time.time', return_value=now):
+    with patch('shared.recordings.time.time', return_value=now):
         store.prune()
     after = audio_status(store, now)
     assert after['count'] == 2 and after['bytes'] == 90 and after['protected_count'] == 1

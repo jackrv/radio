@@ -5,9 +5,9 @@ import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from core.callsigns import Callsigns, command_dictionary
-from services import daily_codes
-from services.text_check import check_text
+from shared.callsigns import Callsigns, command_dictionary
+from shared import daily_codes
+from shared.text_check import check_text
 from tests.test_text_check import api  # noqa: F401  (фікстура Mini App API)
 from tests.test_web_api import auth_header
 
@@ -61,13 +61,13 @@ def test_daily_code_hint_is_manual_only():
 
 
 def test_store_by_day_and_event_day(tmp_path):
-    from services.event_store import init_db
+    from shared.event_store import init_db
     db_path = tmp_path / "events.db"
     init_db(db_path)
     assert daily_codes.write(db_path, "2026-11-17", "48 62, 31 05") == ["48 62", "31 05"]
     daily_codes.write(db_path, "2026-11-16", "53 19")
     assert [i["day"] for i in daily_codes.recent(db_path)] == ["2026-11-17", "2026-11-16"]
-    from services.sqlite_connection import get_db
+    from shared.sqlite_connection import get_db
     with get_db(db_path) as db:
         db.execute("INSERT INTO radio_events (id, ts, callsigns, commands, recipient, sender, text) "
                    "VALUES (5, ?, '', '', '', '', 'x')", (
@@ -82,9 +82,9 @@ def test_store_by_day_and_event_day(tmp_path):
 def test_panel_codes_and_hint_by_record_day(tmp_path):
     from api.local_dashboard import create_dashboard
     from tests.test_local_dashboard import KEY, ORIGIN
-    from services.event_store import init_db
-    from services.user_store import init_users_db, bootstrap_admin
-    from services.dictionary_store import init_db as init_dictionary_db
+    from shared.event_store import init_db
+    from shared.user_store import init_users_db, bootstrap_admin
+    from shared.dictionary_store import init_db as init_dictionary_db
     import sqlite3
     db = tmp_path / "events.db"
     init_db(db); init_dictionary_db(db); init_users_db(db); bootstrap_admin(db, 1001)
@@ -110,7 +110,7 @@ def test_panel_codes_and_hint_by_record_day(tmp_path):
 
 def test_miniapp_check_uses_codes_of_the_event_day(api):  # noqa: F811
     db_path, client = api
-    from services.sqlite_connection import get_db
+    from shared.sqlite_connection import get_db
     daily_codes.write(db_path, daily_codes.local_day(), "48 62")
     body = client.put("/api/corrections/check", headers=auth_header(3003), json={"text": "Береза 68, 48, 42"}).json()
     assert any("48 62" in i["message"] for i in body["issues"]), "без fix_id — коди сьогодні"
@@ -134,8 +134,8 @@ def test_code_day_changes_at_configured_hour(monkeypatch):
 
 
 def test_permanent_codes_join_every_day(tmp_path):
-    from services.event_store import init_db
-    from services.sqlite_connection import get_db
+    from shared.event_store import init_db
+    from shared.sqlite_connection import get_db
     db_path = tmp_path / "events.db"
     init_db(db_path)
     daily_codes.write_permanent(db_path, "31 05, 72 59")

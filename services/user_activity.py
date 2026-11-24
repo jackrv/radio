@@ -9,7 +9,7 @@ import json
 import logging
 import time
 
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 
 RETENTION_S = 365 * 24 * 3600
 OPEN_INTERVAL_S = 30 * 60          # «відкрито Mini App» — не частіше, ніж раз на 30 хв
@@ -27,7 +27,7 @@ def panel_details(payload):
         if type(value) in (str,int,bool,float): result[key]=_short(value)
     values=payload.get('values')
     if isinstance(values,dict):
-        from services.runtime_settings import FIELDS
+        from shared.runtime_settings import FIELDS
         from services.management.settings import SETTING_KEYS
         result['values']={key:value for key,value in values.items() if key in FIELDS or key in SETTING_KEYS}
     entries=payload.get('entries')

@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler
 
-from services.asr_protocol import MAX_BODY, PORT, pack_result, unpack_request
+from shared.asr_protocol import MAX_BODY, PORT, pack_result, unpack_request
 
 
 class Paused(Exception):
@@ -161,11 +161,11 @@ def build_transcribe(config, gate):
 
 def main():
     import config
-    from core.instance_lock import acquire_instance_lock
-    from core.recognition import WhisperRecognizer
-    from services.model_exclusion import receiver_model_available
-    from services.model_pause import WORKER_LOCK, ModelPause, model_root
-    from services.radio_stream import TailnetPeers, _QuietServer, client_allowed, tailscale_ipv4
+    from shared.instance_lock import acquire_instance_lock
+    from shared.recognition import WhisperRecognizer
+    from shared.model_exclusion import receiver_model_available
+    from shared.model_pause import WORKER_LOCK, ModelPause, model_root
+    from shared.radio_stream import TailnetPeers, _QuietServer, client_allowed, tailscale_ipv4
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("radio.asr_worker")

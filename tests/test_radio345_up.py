@@ -7,7 +7,7 @@ import time
 import pytest
 
 import radio345
-from core.instance_lock import OWNER_LOCK, acquire_instance_lock
+from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
 from tools import components, profiles
 
 SLEEP = ("-c", "import time; print('up', flush=True); time.sleep(60)")
@@ -146,7 +146,7 @@ def test_model_and_owner_locks_are_independent(tmp_path):
 
 def test_restore_is_refused_while_recognition_service_runs(tmp_path):
     from services.database_lifecycle import restore_database
-    from services.event_store import init_db
+    from shared.event_store import init_db
     init_db(tmp_path / "events.db")
     init_db(tmp_path / "copy.db")
     owner = acquire_instance_lock(tmp_path / OWNER_LOCK)
@@ -208,10 +208,11 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
     """Справжній r345 у копії проєкту: стан, вибірковий перезапуск, зупинка, відмова другому запуску."""
     import shutil
     import subprocess
-    for item in ("radio345.py", "services/process_guard.py", "services/launcher_lifecycle.py"):
+    for item in ("radio345.py", "shared/process_guard.py", "shared/launcher_lifecycle.py"):
         target = tmp_path / item
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radio345.ROOT / item, target)
+    (tmp_path / "services").mkdir(exist_ok=True)
     (tmp_path / "services/__init__.py").touch()
     for name in ("radio_node", "asr_service"):
         (tmp_path / f"services/{name}.py").write_text("import time\ntime.sleep(300)\n")

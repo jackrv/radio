@@ -11,7 +11,7 @@ import requests
 
 
 def test_command_header_and_event_do_not_choose_nearest_number_without_group_anchor():
-    from core.callsigns import Callsigns, command_dictionary
+    from shared.callsigns import Callsigns, command_dictionary
     from core.event_processor import EventProcessor
     bot, save = Mock(), Mock(return_value=1)
     processor = EventProcessor(callsigns=Callsigns.from_lines([]), commands=command_dictionary(['грім 022']),
@@ -26,13 +26,13 @@ def test_command_header_and_event_do_not_choose_nearest_number_without_group_anc
 
 @pytest.mark.parametrize('text', ['у 2026 році', 'код1234', 'код022', '12:3456', '12.3456', '2026-11-20', '20-11-2026'])
 def test_editor_preserves_context_of_numbers(text):
-    from services.text_check import format_text
+    from shared.text_check import format_text
     assert format_text(text) == text
 
 
 def test_late_delivery_inherits_deletion_tombstone(tmp_path):
-    from services.telegram_recall import request_delete, state, process_deletions
-    from services.telegram_sync import remember_delivery
+    from shared.telegram_recall import request_delete, state, process_deletions
+    from shared.telegram_sync import remember_delivery
     path = tmp_path / 'events.db'
     request_delete(path, 'db:1')
     remember_delivery(path, 'db:1', {'chat': {'id': 11}, 'message_id': 5}, 'voice')
@@ -44,8 +44,8 @@ def test_late_delivery_inherits_deletion_tombstone(tmp_path):
 
 
 def test_exhausted_deletion_can_be_retried(tmp_path):
-    from services.telegram_recall import request_delete, state, process_deletions
-    from services.telegram_sync import remember_delivery
+    from shared.telegram_recall import request_delete, state, process_deletions
+    from shared.telegram_sync import remember_delivery
     path = tmp_path / 'events.db'
     remember_delivery(path, 'db:1', {'chat': {'id': 11}, 'message_id': 5}, 'voice')
     request_delete(path, 'db:1', now=1)
@@ -75,7 +75,7 @@ def test_own_delete_does_not_claim_success(payload):
 
 
 def test_files_private_and_transcript_stays_in_console_only(tmp_path):
-    from services.sqlite_connection import get_db
+    from shared.sqlite_connection import get_db
     from core.log_security import TechnicalFileFormatter, RedactingFormatter, PrivateRotatingFileHandler
     path = tmp_path / 'events.db'
     old = os.umask(0o022)
@@ -109,7 +109,7 @@ def test_lab_rejects_unsafe_options(option):
 @pytest.mark.parametrize('retry', ['on', 'off'])
 def test_lab_retry_contract_shared_by_all_segments(retry):
     from lab.asr_lab import Lab
-    from core.recognition import WhisperRecognizer
+    from shared.recognition import WhisperRecognizer
     worker = object.__new__(Lab); worker.args = SimpleNamespace(retry=retry)
     worker.recognizer = SimpleNamespace(prompt='synthetic', extract_text=WhisperRecognizer.extract_text,
         transcribe=Mock(side_effect=[{'segments':[{'text':'loop','compression_ratio':3}]},

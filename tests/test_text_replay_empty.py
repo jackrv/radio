@@ -1,9 +1,9 @@
 """Текстовий повтор не повинен відбирати лише вдалі виходи Whisper."""
 import json
 
-from core.callsigns import Callsigns
-from services.recordings import RecordingStore
-from services.text_replay import load_records, run
+from shared.callsigns import Callsigns
+from shared.recordings import RecordingStore
+from shared.text_replay import load_records, run
 
 
 def test_empty_sources_remain_in_speech_and_negative_denominators(tmp_path):
@@ -23,7 +23,7 @@ def test_empty_sources_remain_in_speech_and_negative_denominators(tmp_path):
 
 
 def test_empty_draft_can_disable_filter_and_report_new_false_text():
-    from services.text_replay import compare
+    from shared.text_replay import compare
     dictionaries=tuple(Callsigns.from_lines([]) for _ in range(3))
     rows=[('noise','','синтетичний шелест','noise')]
     report=compare(rows,dictionaries,{'синтетичний шелест'},before={},after={},after_short_garbage=[])

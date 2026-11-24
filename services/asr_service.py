@@ -112,12 +112,12 @@ def main():
     import config
     from core.cooldown import Cooldown
     from core.recognition_health import RecognitionHealth
-    from core.instance_lock import OWNER_LOCK, acquire_instance_lock
+    from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
     from core.log_security import configure_logging
-    from services.dictionary_loader import load_dictionaries
-    from services.event_store import init_db
+    from shared.dictionary_loader import load_dictionaries
+    from shared.event_store import init_db
     from services.management.settings import apply_startup_settings
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     from services.segment_spool import SegmentSpool
     from services.transcriber_factory import build_transcriber
 
@@ -168,7 +168,7 @@ def main():
                     directory(config) / "state.json", offline_alert_s=offline_s,
                     offline_since=lambda: getattr(worker.recognizer, "down_since", None))
     threading.Thread(target=alerts.run, args=(stop,), name="asr-alerts", daemon=True).start()
-    from services.db_backup import start_backup_scheduler
+    from shared.db_backup import start_backup_scheduler
     backup_stop = start_backup_scheduler(config.DB_PATH, config.BASE_DIR / ".local-backups", log=log)
     try:
         AsrService(SegmentSpool(spool_dir(config)), worker, recorder, log).run(stop, bot.tick if bot else lambda: None)

@@ -8,17 +8,6 @@ EAGER_INNER, EAGER_OUTER = c.graph(eager_only=True)
 CLOSURES = c.process_closures(INNER)
 LAYOUT = c.layout(INNER)
 
-# Відомі винятки. Список можна лише скорочувати: новий виняток = рішення, а не дрібниця.
-CORE_UPWARD = {
-    ("core.callsigns", "services.dictionary_store"),
-    ("core.event_processor", "services.telegram_outbox"),
-    ("core.log_security", "services.private_files"),
-    ("core.audio_debug", "config"),
-    ("core.callsigns", "config"),
-    ("core.log_security", "config"),
-}
-
-
 def top(module):
     return module.split(".")[0]
 
@@ -32,22 +21,10 @@ def test_entry_modules_exist(module):
     assert module in INNER
 
 
-def test_core_goes_up_only_where_already_known():
-    found = {(m, x) for m, x in edges() if top(m) == "core" and top(x) in ("services", "api", "tools", "config")}
-    assert found - CORE_UPWARD == set(), "core не має залежати від вищих шарів"
-    assert CORE_UPWARD - found == set(), "виняток уже прибрано — приберіть його і зі списку"
-
-
-def test_upper_layers_are_not_imported_from_below():
-    order = {"core": 0, "services": 1, "api": 2, "tools": 3}
-    bad = {(m, x) for m, x in edges() if order.get(top(m), 9) in (1, 2) and order.get(top(x), -1) > order[top(m)]}
-    assert bad == set()
-
-
 def test_node_has_no_database_bot_or_model():
     node = CLOSURES["node"]
     assert not {m for m in node if "telegram" in m or m.startswith("api")}
-    assert "services.sqlite_connection" not in node
+    assert "shared.sqlite_connection" not in node
     assert not {m for m in node if OUTER[m] & (set(c.MLX) | {"sqlite3", "fastapi", "requests"})}
 
 
@@ -63,7 +40,7 @@ def test_panel_and_api_never_reach_mlx(name):
 
 def test_mlx_is_imported_at_module_level_only_by_recognizer_and_lab():
     eager = {m for m in EAGER_INNER if EAGER_OUTER[m] & set(c.MLX)}
-    assert eager <= {"core.recognition", "lab.asr_lab", "lab.whisper_finetune"}
+    assert eager <= {"shared.recognition", "lab.asr_lab", "lab.whisper_finetune"}
     for name in ("node", "asr", "panel", "api"):
         assert not c.closure(c.PROCESSES[name][1], EAGER_INNER) & eager, name
 

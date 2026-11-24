@@ -3,11 +3,11 @@ import sqlite3
 
 import pytest
 
-from core.callsigns import Callsigns
-import core.template_text as tt
-from core.template_text import join_split_callsign, template_text, trim_loops
-from services.dictionary_store import init_db
-from services.text_lists import check_list, ensure_tables, load_active, read_lists, sync_aliases, write_list
+from shared.callsigns import Callsigns
+import shared.template_text as tt
+from shared.template_text import join_split_callsign, template_text, trim_loops
+from shared.dictionary_store import init_db
+from shared.text_lists import check_list, ensure_tables, load_active, read_lists, sync_aliases, write_list
 
 
 @pytest.fixture(autouse=True)

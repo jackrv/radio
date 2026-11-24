@@ -36,10 +36,10 @@ import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
-from services.project_python import select_python
+from shared.project_python import select_python
 from services.admin_setup import ensure_admin
 from services.dictionary_setup import ensure_dictionaries, interactive_console
-from services.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_restart, request_stop, send_command
+from shared.launcher_lifecycle import LauncherSession, lock_held, managed_status, request_restart, request_stop, send_command
 
 ROOT = Path(__file__).resolve().parent
 API_PORT = 8765
@@ -55,7 +55,7 @@ _launcher_log.propagate = False
 def start_console():
     global _console
     from core.log_security import PrivateRotatingFileHandler, TechnicalFileFormatter
-    from services.private_files import protect_existing
+    from shared.private_files import protect_existing
     handler = PrivateRotatingFileHandler(ROOT / "launcher.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
     handler.namer = archive_log_name
     formatter = TechnicalFileFormatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S", launcher_setting("TELEGRAM_BOT_TOKEN"))

@@ -1,6 +1,6 @@
 import numpy as np
 
-from core.audio import apply_gain, prepare_audio
+from shared.audio import apply_gain, prepare_audio
 
 
 def test_apply_gain_one_preserves_pcm():

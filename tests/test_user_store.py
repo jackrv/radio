@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from services.user_store import (
+from shared.user_store import (
     bootstrap_admin,
     create_user,
     init_users_db,

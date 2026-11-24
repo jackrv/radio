@@ -53,9 +53,9 @@ def files(name):
             if (ROOT / parent / "__init__.py").is_file():
                 result.add(str(parent / "__init__.py"))
             parent = parent.parent
-    # Файли даних поруч із модулями (core/default_text_lists.txt): за імпортами їх не видно.
+    # Файли даних поруч із модулями (shared/default_text_lists.txt): за імпортами їх не видно.
     folders = {str(Path(p).parent) for p in result}
-    listed = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "--", "core", "services", "api"],
+    listed = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "--", "core", "services", "api", "shared", "server", "worker", "lab"],
                             cwd=ROOT, capture_output=True, text=True, check=True).stdout.split("\n")
     result.update(p for p in listed if p and not p.endswith(".py") and str(Path(p).parent) in folders)
     result.add(data["requirements"])

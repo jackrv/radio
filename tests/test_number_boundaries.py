@@ -1,4 +1,4 @@
-from core.callsigns import Callsigns, to_items
+from shared.callsigns import Callsigns, to_items
 
 
 def test_separate_numbers_after_callsign():

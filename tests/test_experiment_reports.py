@@ -1,8 +1,8 @@
 import json
 
-from services.experiments import compare_runs, report
-from services.lab_results import summarize
-from core.text_metrics import error_rates
+from shared.experiments import compare_runs, report
+from shared.lab_results import summarize
+from shared.text_metrics import error_rates
 
 
 def row(key, reference, hypothesis, label="speech"):

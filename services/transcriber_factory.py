@@ -2,18 +2,18 @@ import os
 import sqlite3
 import time
 
-from core.correction import build_llm_corrector
-from core.pipeline import build_text_pipeline
+from shared.correction import build_llm_corrector
+from shared.pipeline import build_text_pipeline
 from core.event_processor import EventProcessor
 from core.transcriber import Transcriber
-from core.analyzer import correction_is_safe
-from core.notification_templates import load_templates
-from core.notification_spectral import (
+from shared.analyzer import correction_is_safe
+from shared.notification_templates import load_templates
+from shared.notification_spectral import (
     SpectralNotificationMatcher,
 )
 
-from services.event_store import save_event
-from services.word_rule_engine import apply_verified_word_rules
+from shared.event_store import save_event
+from shared.word_rule_engine import apply_verified_word_rules
 
 
 def build_recognizer(config, prompt, log):
@@ -23,7 +23,7 @@ def build_recognizer(config, prompt, log):
     if url:
         from services.remote_recognizer import RemoteRecognizer
         return RemoteRecognizer(url, **common)
-    from core.recognition import WhisperRecognizer
+    from shared.recognition import WhisperRecognizer
     return WhisperRecognizer(model_repo=config.MODEL_REPO, **common)
 
 
@@ -33,8 +33,8 @@ def prompt_codes(db_path):
     18.11.2026 на 475 записах із другим шансом: точних фраз 36 → 39, числа 26 → 30,5 %,
     петель 3 → 2, хибного тексту на шумі не додалося; p90 затримки +1,1 с.
     """
-    from services import daily_codes
-    from services.sqlite_connection import get_db
+    from shared import daily_codes
+    from shared.sqlite_connection import get_db
     with get_db(db_path) as db:
         return tuple(daily_codes.read_day(db, daily_codes.local_day())[-1:])
 
@@ -59,9 +59,9 @@ def build_transcriber(
     """Создаёт компоненты распознавания без запуска рабочего цикла."""
 
     # Фрази-галюцинації, короткий шум і алиаси — з SQLite, оновлюються без перезапуску.
-    from services.text_lists import LiveTextLists, compose_prompt
-    from services.dictionary_loader import LiveDictionaries
-    from services.runtime_settings import LiveRuntimeSettings
+    from shared.text_lists import LiveTextLists, compose_prompt
+    from shared.dictionary_loader import LiveDictionaries
+    from shared.runtime_settings import LiveRuntimeSettings
     text_lists = LiveTextLists(config.DB_PATH, log)
     text_lists.refresh(force=True)
 
@@ -180,8 +180,8 @@ def build_transcriber(
     code_format_cache = {}
 
     def format_confirmed_code_commas(text, recorded_at):
-        from services import daily_codes
-        from services.sqlite_connection import get_db
+        from shared import daily_codes
+        from shared.sqlite_connection import get_db
 
         day = daily_codes.local_day(recorded_at)
         now = time.monotonic()
@@ -228,11 +228,11 @@ def build_transcriber(
     live_settings = LiveRuntimeSettings(config.DB_PATH, apply_settings, log)
     live_settings.refresh(force=True)
     from pathlib import Path
-    from services.dictionary_number_evidence import load_rules
+    from shared.dictionary_number_evidence import load_rules
     def refresh_number_rules():
         archive=getattr(config,'RECORDINGS_DIR',Path(config.DB_PATH).resolve().parent/'.local-recordings')
         callsigns.number_rules=load_rules(archive,callsigns,commands)
-        from core.diagnostics import runtime
+        from shared.diagnostics import runtime
         runtime.gauge('dictionary.number_rules',len(callsigns.number_rules))
     refresh_number_rules()
     # update_prompt — і для коду доби: новий код чи зміна доби о 20:00 потрапляють у підказку самі.
@@ -241,9 +241,9 @@ def build_transcriber(
     worker.live_settings = live_settings
     # Режим «лише запис» (на час тестів лабораторії): прапорець у SQLite, накопичене — в архіві.
     if recorder is not None:
-        from services.receiver_control import capture_state, mark_capture_unloaded
+        from shared.receiver_control import capture_state, mark_capture_unloaded
         from pathlib import Path
-        from services.model_exclusion import receiver_model_available
+        from shared.model_exclusion import receiver_model_available
         worker.capture_only = lambda: (capture_state(config.DB_PATH)["active"]
                                       or not receiver_model_available(Path(config.DB_PATH).resolve().parent))
         worker.on_unloaded = lambda unloaded: mark_capture_unloaded(config.DB_PATH, unloaded)

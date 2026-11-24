@@ -2,9 +2,9 @@
 
 import pytest
 
-import core.callsigns as callsigns
-from core.callsigns import Callsigns
-from core.analyzer import fmt, split_roles
+import shared.callsigns as callsigns
+from shared.callsigns import Callsigns
+from shared.analyzer import fmt, split_roles
 
 CALLSIGNS = Callsigns.from_lines(["дятел: 1 2 3", "береза: 56"])
 
@@ -35,8 +35,8 @@ def test_ordinal_takes_part_in_roles():
 
 def test_number_after_ordinal_is_not_its_callsign_number():
     """«Другий, 18» — це дятел 2 і окреме число 18, а не «дятел 18»."""
-    from core.template_text import template_text
-    from services.text_check import check_text
+    from shared.template_text import template_text
+    from shared.text_check import check_text
     assert template_text("Другий, 18, прийом", CALLSIGNS) == "Другий, 18, прийом"
     issues = check_text("Другий, 18, прийом", CALLSIGNS)["issues"]
     assert not [i for i in issues if "дятел" in i["message"].lower()], issues

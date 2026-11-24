@@ -4,7 +4,7 @@ processes = ["worker"]
 requirements = "requirements-worker.txt"
 bot = false
 extra_modules = ["radio345"]
-extra = ["r345", "services/process_guard.py", "deploy/profiles/mac-worker.toml", ".gitignore"]
+extra = ["r345", "shared/process_guard.py", "deploy/profiles/mac-worker.toml", ".gitignore"]
 
 [env]
 

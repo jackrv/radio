@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from services.recordings import RecordingStore, RecordingArchive, scores
+from shared.recordings import RecordingStore, RecordingArchive, scores
 from api.local_dashboard import create_dashboard
 from tests.test_miniapp_management import setup
 
@@ -99,14 +99,14 @@ def test_recordings_are_local_authenticated_and_reference_only(setup,tmp_path):
         export=client.get('/api/recordings/export')
         assert export.json()['items'][0]['reference']=='слово'
     assert public.get('/api/recordings').status_code==404
-    from services.sqlite_connection import get_db
+    from shared.sqlite_connection import get_db
     with get_db(db) as conn:
         assert conn.execute('SELECT COUNT(*) FROM word_corrections').fetchone()[0]==0
 
 
 def test_transcriber_records_before_low_rms_and_after_corrections():
     from tests.test_transcriber import make_transcriber, make_pcm
-    from core.pipeline import build_text_pipeline
+    from shared.pipeline import build_text_pipeline
     worker,recognizer,_,_=make_transcriber()
     worker.recorder=Mock()
     worker.process_segment(make_pcm(amplitude=1))
@@ -124,7 +124,7 @@ def test_transcriber_records_before_low_rms_and_after_corrections():
 
 
 def test_short_vad_audio_is_saved_before_discard():
-    from core.vad import VADSegmenter
+    from shared.vad import VADSegmenter
     archive = Mock()
     segmenter = VADSegmenter(16000, 30, 2, 90, 60, 500, 20, on_discard=archive)
     segmenter.vad = Mock()
@@ -203,15 +203,15 @@ def test_role_review_api_export_validation_and_no_training(setup,tmp_path):
         assert client.put(f'/api/recordings/{record_id}/review',json=payload,headers=origin).status_code==422
         payload.update(reference_recipient='',reference_sender='')
         assert client.put(f'/api/recordings/{record_id}/review',json=payload,headers=origin).status_code==200
-    from services.sqlite_connection import get_db
+    from shared.sqlite_connection import get_db
     with get_db(db) as conn:
         assert conn.execute('SELECT COUNT(*) FROM word_corrections').fetchone()[0]==0
 
 
 def test_event_processor_captures_actual_role_prediction():
-    from core.recording_trace import _trace
+    from shared.recording_trace import _trace
     from tests.test_event_processor import make_processor
-    from core.callsigns import Callsigns
+    from shared.callsigns import Callsigns
     processor,_,_,_=make_processor(callsigns=Callsigns.from_lines(['Віра: 68', 'Вовк: 3']))
     trace={}
     token=_trace.set(trace)
@@ -272,7 +272,7 @@ def test_filtered_view_is_live_and_has_no_sample_limit(tmp_path):
 
 def test_room_label_and_multiple_messages_flag(tmp_path):
     import sqlite3
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     root = tmp_path / "archive"
     root.mkdir()
     # Старий архів без нового стовпця: міграція лише додає його.
@@ -309,7 +309,7 @@ def test_when_space_runs_out_filtered_noise_goes_first_and_radio_last(tmp_path):
     store.max_bytes = size
     store.prune()
     assert {r['id'] for r in store.listing(view='all', limit=10)['items']} == {radio_old}
-    with patch('services.recordings.time.time', return_value=10**10):
+    with patch('shared.recordings.time.time', return_value=10**10):
         store.prune()
     assert store.listing(view='all', limit=10)['items'] == [], "строк за віком діє для всіх нерозмічених"
 
@@ -328,7 +328,7 @@ def test_quality_by_day_counts_phrases_that_needed_no_edits_and_missed_speech(tm
 
 def test_training_set_readiness_and_local_export(tmp_path):
     import json as _json
-    from services.training_set import export, readiness
+    from shared.training_set import export, readiness
     store = RecordingStore(tmp_path / 'archive')
     for i, (label, reference) in enumerate((('speech', 'Клен 15, прийом / Дуб 4, прийнято'), ('speech', 'Клен 15, прийнято'),
                                             ('noise', ''), ('unclear', 'щось'))):
@@ -375,7 +375,7 @@ def test_summary_counts_phrases_without_edits_and_todays_reviews(tmp_path):
 
 
 def test_summary_skips_unused_number_checks_and_reads_day_boundary_once(tmp_path, monkeypatch):
-    from services import recordings
+    from shared import recordings
     store = RecordingStore(tmp_path / 'archive')
     record_id = store.save(pcm(), 16000, {'status': 'ready', 'raw_text': 'Клен 15', 'final_text': 'Клен 15'})
     store.review(record_id, 'Клен 15', 'speech', 0)

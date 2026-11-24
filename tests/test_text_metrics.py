@@ -1,6 +1,6 @@
 """Одна метрика WER для архіву, повтору тексту й лабораторії."""
-from core.text_metrics import error_rates, metric_words
-from services import recordings, text_replay
+from shared.text_metrics import error_rates, metric_words
+from shared import recordings, text_replay
 from lab import asr_lab
 
 

@@ -12,8 +12,8 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from services.recordings import ID, VIEWS
-from services.sqlite_connection import read_only
+from shared.recordings import ID, VIEWS
+from shared.sqlite_connection import read_only
 
 
 def _write_json(path, value):

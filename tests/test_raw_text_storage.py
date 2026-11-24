@@ -1,6 +1,6 @@
 import sqlite3
 
-from services.event_store import init_db, save_event
+from shared.event_store import init_db, save_event
 
 
 def test_migration_preserves_old_events(tmp_path):

@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.text_lists import check_list, read_lists, write_list
+from shared.text_lists import check_list, read_lists, write_list
 
 
 @pytest.mark.parametrize("kind", ["blacklist", "short_garbage"])

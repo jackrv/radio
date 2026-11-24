@@ -1,5 +1,5 @@
-from core.callsigns import Callsigns, command_dictionary
-from services.text_check import highlight_spans, check_text
+from shared.callsigns import Callsigns, command_dictionary
+from shared.text_check import highlight_spans, check_text
 
 CS = Callsigns.from_lines(['клен: 12'])
 COMMANDS = command_dictionary(['грім 022'])

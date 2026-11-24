@@ -10,11 +10,11 @@ import numpy as np
 import pytest
 
 import radio345
-from core.instance_lock import acquire_instance_lock
-from core.whisper_result import RecognizerUnavailable
-from services import lab_queue
+from shared.instance_lock import acquire_instance_lock
+from shared.whisper_result import RecognizerUnavailable
+from shared import lab_queue
 from worker.asr_worker import ModelGate, Paused, build_transcribe, handler_for
-from services.model_pause import MAX_PAUSE_S, WORKER_LOCK, ModelPause
+from shared.model_pause import MAX_PAUSE_S, WORKER_LOCK, ModelPause
 from services.remote_recognizer import RemoteRecognizer
 
 LOG = logging.getLogger("test")
@@ -78,8 +78,8 @@ def test_model_and_lock_are_given_away_and_returned(node):
 
 
 def test_lab_slot_works_only_while_paused(node):
-    from services.model_exclusion import lab_model_slot
-    from services.event_store import init_db
+    from shared.model_exclusion import lab_model_slot
+    from shared.event_store import init_db
     db = node.root / "events.db"
     init_db(db)
     node.gate.open()
@@ -248,7 +248,7 @@ def test_lab_queue_uses_the_worker_when_it_is_running(node, monkeypatch):
 
 
 def test_r345_removes_stale_old_launcher_state(tmp_path):
-    from services.launcher_lifecycle import managed_status
+    from shared.launcher_lifecycle import managed_status
     control = radio345.Control(tmp_path / ".radio345-launcher")
     control.directory.mkdir()
     (control.directory / "state.json").write_text('{"stopped_services": ["radio"]}')
@@ -273,7 +273,7 @@ def test_pause_is_confirmed_even_if_the_node_was_waiting(node):
 
 
 def test_pause_follows_the_lock_root_of_the_node(tmp_path, monkeypatch):
-    from services.model_pause import model_root
+    from shared.model_pause import model_root
     monkeypatch.setenv("RADIO_ASR_LOCK_ROOT", str(tmp_path))
     assert radio345.lock_root() == tmp_path == model_root("/інше")
     assert model_root("/інше", {}) == radio345.Path("/інше")

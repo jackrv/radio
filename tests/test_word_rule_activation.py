@@ -1,7 +1,7 @@
 import pytest
 
-from services.sqlite_connection import get_db
-from services.word_store import (
+from shared.sqlite_connection import get_db
+from shared.word_store import (
     init_word_db,
     load_active_word_rules,
     refresh_word_rule_statuses,

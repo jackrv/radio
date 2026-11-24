@@ -6,8 +6,8 @@ import sys
 
 import pytest
 
-from services.private_files import protect_existing
-from services.sqlite_connection import get_db
+from shared.private_files import protect_existing
+from shared.sqlite_connection import get_db
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX record locks')
 

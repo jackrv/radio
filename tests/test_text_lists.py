@@ -7,12 +7,12 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import core.callsigns as callsign_module
-import services.text_lists as text_lists
-from core.callsigns import Callsigns, configure_aliases
+import shared.callsigns as callsign_module
+import shared.text_lists as text_lists
+from shared.callsigns import Callsigns, configure_aliases
 from core.transcriber import Transcriber
-from services.dictionary_store import init_db as init_dictionary_db
-from services.text_lists import LiveTextLists, read_lists, write_list, TextListConflict
+from shared.dictionary_store import init_db as init_dictionary_db
+from shared.text_lists import LiveTextLists, read_lists, write_list, TextListConflict
 
 ORIGIN = "http://127.0.0.1:8766"
 KEY = "x" * 43
@@ -153,7 +153,7 @@ def test_blacklist_and_aliases_apply_to_next_segment_without_restart(db_path):
 
 
 def test_short_garbage_view_follows_live_lists(db_path):
-    from core.analyzer import is_short_garbage
+    from shared.analyzer import is_short_garbage
     live = LiveTextLists(db_path)
     live.refresh(force=True)
     view = live.short_garbage_view()
@@ -168,13 +168,13 @@ def test_database_error_keeps_previous_lists(db_path):
     live = LiveTextLists(db_path, log=log)
     live.refresh(force=True)
     before = live.blacklist
-    with patch("services.text_lists.get_db", side_effect=sqlite3.OperationalError("locked")):
+    with patch("shared.text_lists.get_db", side_effect=sqlite3.OperationalError("locked")):
         assert live.refresh(force=True) is False
     assert live.blacklist == before and log.warning.called
 
 
 def test_editor_correction_uses_current_callsign_aliases(db_path):
-    from services.event_store import init_db, save_event, save_correction
+    from shared.event_store import init_db, save_event, save_correction
     init_db(db_path)
     save(db_path, "callsign_aliases", "калина: смайлик")
     event_id = save_event("", "", "", "", "Смайлик 700", db_path=db_path, raw_text="Смайлик 700")
@@ -184,8 +184,8 @@ def test_editor_correction_uses_current_callsign_aliases(db_path):
 
 
 def test_local_panel_reads_and_saves_lists(tmp_path):
-    from services.event_store import init_db
-    from services.user_store import init_users_db, bootstrap_admin
+    from shared.event_store import init_db
+    from shared.user_store import init_users_db, bootstrap_admin
     from api.local_dashboard import create_dashboard
     path = tmp_path / "panel.db"
     init_db(path); init_dictionary_db(path); init_users_db(path); bootstrap_admin(path, 1001)
@@ -206,8 +206,8 @@ def test_local_panel_reads_and_saves_lists(tmp_path):
 
 
 def test_new_database_is_seeded_from_the_single_defaults_file(tmp_path):
-    """Усі початкові списки — з core/default_text_lists.txt; шаблони фраз — вимкнені."""
-    from core import default_text_lists
+    """Усі початкові списки — з shared/default_text_lists.txt; шаблони фраз — вимкнені."""
+    from shared import default_text_lists
     path = tmp_path / "events.db"
     init_dictionary_db(path)
     lists = read_lists(path)["lists"]

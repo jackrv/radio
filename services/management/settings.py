@@ -1,9 +1,9 @@
 """Налаштування розпізнавання, що діють після перезапуску приймача."""
 import json
 import config
-from services.sqlite_connection import get_db
-from services.user_store import _require_permission
-from services.management.common import ManagementConflict
+from shared.sqlite_connection import get_db
+from shared.user_store import _require_permission
+from shared.management.common import ManagementConflict
 
 
 SETTING_KEYS = ("USE_LLM", "VAD_LEVEL", "SILENCE_END_MS", "MIN_SPEECH_MS", "MAX_SEGMENT_S")

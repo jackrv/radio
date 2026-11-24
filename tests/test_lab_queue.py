@@ -1,6 +1,6 @@
 import pytest
 
-from services import lab_queue
+from shared import lab_queue
 
 
 class FakeLauncher:
@@ -300,7 +300,7 @@ def test_clear_removes_only_done_and_interrupted_jobs_can_be_retried(tmp_path):
 
 def test_short_telegram_summary_compares_with_base(tmp_path):
     import json
-    from services import lab_notify
+    from shared import lab_notify
     def run_dir(name, **summary):
         d = tmp_path / name; d.mkdir()
         (d / "metrics.json").write_text(json.dumps({"summary": {"speech_records": 100, **summary}}))

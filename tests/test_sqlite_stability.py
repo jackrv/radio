@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 from tools.check_sqlite_concurrency import run_stress
 
 
@@ -18,9 +18,9 @@ from tools.check_sqlite_concurrency import run_stress
 @pytest.mark.parametrize("fail_backup", [False, True])
 def test_snapshot_connections_close_before_file_reads_and_on_failure(tmp_path, monkeypatch, kind, fail_backup):
     import config
-    from services.archive_learning import learn_saved_archive
-    from services.recordings import RecordingStore
-    from services.user_store import bootstrap_admin, init_users_db
+    from shared.archive_learning import learn_saved_archive
+    from shared.recordings import RecordingStore
+    from shared.user_store import bootstrap_admin, init_users_db
     from lab.asr_lab import snapshot_database
 
     path = tmp_path / "events.db"
@@ -99,7 +99,7 @@ def test_killed_writer_rolls_back_and_next_writer_can_commit(tmp_path):
         db.execute("INSERT INTO synthetic VALUES(1)")
     source = """
 import sys
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 with get_db(sys.argv[1]) as db:
     db.execute('BEGIN IMMEDIATE')
     db.execute('INSERT INTO synthetic VALUES(2)')

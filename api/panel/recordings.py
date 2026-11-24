@@ -1,13 +1,13 @@
 """Аудіоархів: список, розмітка, перевірка тексту, видалення в Telegram, утримання мікрофона."""
 import json
 import re
-from services.archive_event_sync import sync_event_from_reference
+from shared.archive_event_sync import sync_event_from_reference
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import Response
 
 from services.notification_samples import add_sample
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 from api.panel.models import RecordingRestore, RecordingReview, RoleSuggestion, TextCheck, ListeningHold, SampleConfirmation
 
 _RANGE = re.compile(r"bytes=(\d*)-(\d*)\Z")
@@ -42,8 +42,8 @@ def register(app, ctx):
         Для двох різних позивних пропонуються й ролі (перший — кому, другий — від):
         оператор вирішив, що зручність розмітки важливіша за незалежну оцінку ролей.
         """
-        from core.analyzer import fmt
-        from services.text_check import dictionaries_from_db
+        from shared.analyzer import fmt
+        from shared.text_check import dictionaries_from_db
         with get_db(db_path) as db:
             callsigns, _, _ = dictionaries_from_db(db)
         if callsigns is None:
@@ -58,9 +58,9 @@ def register(app, ctx):
         # «я Х» — Х одразу «Від» (скільки б позивних не було), єдиний позивний перед «я» — «Кому»;
         # без «я» — лише для двох різних позивних. Інакше оператор вирішує сам.
         roles = None
-        from services.text_check import has_several_transmissions
+        from shared.text_check import has_several_transmissions
         if items and not has_several_transmissions(payload.text):
-            from core.analyzer import _SELF, split_roles
+            from shared.analyzer import _SELF, split_roles
             to_found, from_found = split_roles(payload.text, callsigns)
             if _SELF.search(payload.text) and len(from_found) == 1:
                 roles = {"recipient": fmt(to_found) if len(to_found) == 1 else None, "sender": fmt(from_found)}
@@ -70,7 +70,7 @@ def register(app, ctx):
                 # Один позивний і сталий зворот (за розміткою оператора 18.11.2026):
                 # «Клен 15, посилку отримав» — говорить сам Клен 15 → «від» (17 із 17 збігів);
                 # «Клен 15, прийнято, прийом» — відповідають Клену 15 → «кому».
-                from core.text_metrics import metric_words
+                from shared.text_metrics import metric_words
                 words, name = " ".join(metric_words(payload.text)), fmt(items[:1])
                 if "посилку отримав" in words:
                     roles = {"recipient": None, "sender": name}
@@ -81,13 +81,13 @@ def register(app, ctx):
     @app.post("/api/text-check")
     def text_check(payload: TextCheck, admin=Depends(actor)):
         """Зауваження до оформлення тексту еталона; нічого не змінює."""
-        from services import daily_codes
-        from services.text_check import check_with_db
+        from shared import daily_codes
+        from shared.text_check import check_with_db
         with get_db(db_path) as db:
             codes = daily_codes.read(db, daily_codes.local_day(payload.at))
             result = check_with_db(db, payload.text, codes, archive=recordings.root)
             if payload.highlights:
-                from services.text_check import highlight_spans, dictionaries_from_db
+                from shared.text_check import highlight_spans, dictionaries_from_db
                 result['highlights'] = highlight_spans(payload.text, *dictionaries_from_db(db)[:2], result['issues'])
             return result
 
@@ -100,7 +100,7 @@ def register(app, ctx):
             raise HTTPException(422, "Некоректні параметри")
         if not re.fullmatch(r"(?:|miniapp|[1-9][0-9]{0,17})", edits):
             raise HTTPException(422, "Некоректні параметри")
-        from services.recordings import VIEWS
+        from shared.recordings import VIEWS
         view = {"recent": "reviewed"}.get(view, view)   # старі посилання на «Нещодавно розмічені»
         if (view not in VIEWS) or any(v is not None and not 0 <= v <= 4e9 for v in (since, until)):
             raise HTTPException(422, "Некоректні параметри")
@@ -113,7 +113,7 @@ def register(app, ctx):
         selected_ids = None
         selection_terms = None
         if selection:
-            from services.mention_selection import load_selection
+            from shared.mention_selection import load_selection
             try:
                 saved_selection = load_selection(db_path, selection)
                 selected_ids = saved_selection['ids']
@@ -132,8 +132,8 @@ def register(app, ctx):
                     item["corrections"] = found[item["data"]["fix_id"]]
         page["editors"] = user_activity.editors(db_path)
         # Зауваження до оформлення еталонів — щоб картки з ними було видно одразу.
-        from services import daily_codes
-        from services.text_check import check_with_db
+        from shared import daily_codes
+        from shared.text_check import check_with_db
         with get_db(db_path) as db:
             codes_by_day = {}
             for item in page["items"]:
@@ -143,7 +143,7 @@ def register(app, ctx):
                         codes_by_day[day] = daily_codes.read(db, day)
                     item["text_check"] = check_with_db(db, item["reference"], codes_by_day[day], archive=recordings.root)
         # Скільки копій фрази лишилося в чатах і чи ще можна видалити їх у всіх.
-        from services import telegram_recall
+        from shared import telegram_recall
         sent = telegram_recall.state(db_path, linked)
         for item in page["items"]:
             fix_id = item["data"].get("fix_id")
@@ -155,8 +155,9 @@ def register(app, ctx):
     @app.post("/api/recordings/{record_id}/telegram-delete")
     def recording_telegram_delete(record_id: str, admin=Depends(actor)):
         """Видалити надіслану фразу в Telegram в усіх отримувачів (протягом 48 год після надсилання)."""
-        from services import telegram_recall, user_activity
-        from services.telegram_media_store import FIX_RE
+        from shared import telegram_recall
+        from services import user_activity
+        from shared.telegram_media_store import FIX_RE
         try:
             record = recordings.get(record_id)
         except (LookupError, ValueError):
@@ -207,9 +208,9 @@ def register(app, ctx):
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
         result["event_sync"] = sync_event_from_reference(db_path, result, admin)
-        from services.archive_learning import sync_archive_learning
+        from shared.archive_learning import sync_archive_learning
         result['learning_sync']=sync_archive_learning(db_path,recordings,record_id,admin)
-        from services.archive_telegram_recall import status as recall_status
+        from shared.archive_telegram_recall import status as recall_status
         result['telegram_recall'] = recall_status(recordings, record_id)
         from services.user_activity import record as record_activity
         record_activity(db_path,admin,'archive_review',record_id,
@@ -228,7 +229,7 @@ def register(app, ctx):
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
         result["event_sync"] = sync_event_from_reference(db_path, result, admin)   # повернутий еталон мовлення — знову текст події
-        from services.archive_learning import sync_archive_learning
+        from shared.archive_learning import sync_archive_learning
         result['learning_sync']=sync_archive_learning(db_path,recordings,record_id,admin)
         return result
 
@@ -250,7 +251,7 @@ def register(app, ctx):
     @app.put("/api/listening-hold")
     def listening_hold(payload: ListeningHold, admin=Depends(actor)):
         """Поки в панелі звучить запис, приймач не слухає мікрофон (без власної луни)."""
-        from services.receiver_control import set_listening_hold
+        from shared.receiver_control import set_listening_hold
         try:
             return set_listening_hold(db_path, payload.seconds)
         except ValueError as exc:

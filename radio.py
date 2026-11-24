@@ -2,7 +2,7 @@ import os
 import sys
 
 # Автоматичний перезапуск через .venv проєкту, якщо запущено іншим Python.
-from services.project_python import select_python
+from shared.project_python import select_python
 
 venv_python = select_python()
 if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.abspath(venv_python):
@@ -14,12 +14,12 @@ import time
 import threading
 from datetime import datetime, timedelta
 from core.log_security import configure_logging
-from core.diagnostics import runtime as diagnostics
+from shared.diagnostics import runtime as diagnostics
 import shutil
 
 from services.transcriber_factory import build_transcriber
 
-from core.audio import apply_gain
+from shared.audio import apply_gain
 from core.segment_timing import capture_frame
 from core.supervisor import ApplicationSupervisor
 from core.pause_gate import PauseGate
@@ -29,22 +29,22 @@ from services.receiver_status import (
     receiver_heartbeat,
     ReceiverRuntimeState,
 )
-from services.receiver_control import reception_request
+from shared.receiver_control import reception_request
 from services.management.settings import apply_startup_settings
 from dotenv import load_dotenv
 
 
 
 
-from services.event_store import init_db as init_event_db
+from shared.event_store import init_db as init_event_db
 
 from services.telegram import TelegramService
-from services.dictionary_loader import load_dictionaries as load_sqlite_dictionaries
+from shared.dictionary_loader import load_dictionaries as load_sqlite_dictionaries
 from services.dictionary_setup import ensure_dictionaries, interactive_console
-from services.user_notify_store import list_recipients
-from services.db_backup import start_backup_scheduler
-from services.model_exclusion import acquire_receiver_slot
-from core.instance_lock import OWNER_LOCK, acquire_instance_lock
+from shared.user_notify_store import list_recipients
+from shared.db_backup import start_backup_scheduler
+from shared.model_exclusion import acquire_receiver_slot
+from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
 from core.recognition_health import RecognitionHealth
 
 import config
@@ -156,7 +156,7 @@ def load_dictionaries():
 
 
 def main():
-    from services.model_exclusion import receiver_model_available
+    from shared.model_exclusion import receiver_model_available
     if not receiver_model_available(config.BASE_DIR):
         raise SystemExit('Лабораторія використовує модель. Дочекайтеся завершення тесту перед запуском приймача.')
     # До створення таблиць: порожні словники пропонуємо імпортувати з dictionaries.txt.
@@ -192,7 +192,7 @@ def main():
     apply_audio_settings(DB_PATH, config)   # звукові пристрої з панелі
     global recording_archive
     if config.RECORD_AUDIO:
-        from services.recordings import RecordingStore, RecordingArchive
+        from shared.recordings import RecordingStore, RecordingArchive
         recording_archive = RecordingArchive(
             RecordingStore(config.RECORDINGS_DIR, retention_days=config.RECORDINGS_RETENTION_DAYS,
                            max_bytes=config.RECORDINGS_MAX_BYTES,
@@ -277,8 +277,8 @@ def main():
     telegram_service.start_maintenance()
 
     global radio_stream
-    from services.audio_devices import configured, input_stream_factory
-    from services.radio_stream import start_radio_stream
+    from shared.audio_devices import configured, input_stream_factory
+    from shared.radio_stream import start_radio_stream
     radio_stream = start_radio_stream(config, log)
 
     supervisor = ApplicationSupervisor(

@@ -10,10 +10,10 @@ import pytest
 
 import config as real_config
 from core.segment_timing import SegmentTiming, TimedSegment
-from services.event_store import init_db
+from shared.event_store import init_db
 from services.node_bridge import NodeBridge
 from services.node_control import NodeControl
-from services.receiver_control import set_listening_hold, set_pause_minutes
+from shared.receiver_control import set_listening_hold, set_pause_minutes
 from services.receiver_status import init_receiver_db, read_receiver_status
 from services.segment_spool import SegmentSpool
 
@@ -85,7 +85,7 @@ def test_far_listening_hold_is_ignored(link):
 
 
 def test_panel_settings_reach_the_node_at_start(link):
-    from services.sqlite_connection import get_db
+    from shared.sqlite_connection import get_db
     with get_db(link.db) as db:
         db.execute("CREATE TABLE recognition_settings (id INTEGER PRIMARY KEY, values_json TEXT, revision INTEGER)")
         db.execute("INSERT INTO recognition_settings VALUES (1, ?, 1)", (json.dumps({"VAD_LEVEL": 1, "SILENCE_END_MS": 750}),))
@@ -160,7 +160,7 @@ NODE = """
 import logging, sys, threading, time
 from types import SimpleNamespace
 sys.path.insert(0, {root!r})
-import services.audio_devices as devices
+import shared.audio_devices as devices
 class Stream:
     def __enter__(self):
         print("open", flush=True)

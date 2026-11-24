@@ -1,10 +1,10 @@
 """Користувачі: перелік і зміна ролі, доступу, імені й режиму сповіщень."""
-from services.sqlite_connection import get_db
-from services.user_store import _require_permission, _valid_id
+from shared.sqlite_connection import get_db
+from shared.user_store import _require_permission, _valid_id
 from services.user_profiles import ensure_table as ensure_profiles, clean_name
-from services.user_notify_store import ensure_table as ensure_notify, effective_mode, allowed_modes
-from services.management.common import ManagementConflict
-from services.management.common import version
+from shared.user_notify_store import ensure_table as ensure_notify, effective_mode, allowed_modes
+from shared.management.common import ManagementConflict
+from shared.management.common import version
 
 
 def list_users(db_path, actor_id):

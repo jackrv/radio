@@ -1,11 +1,11 @@
 """Словники позивних, команд і Telegram: читання, перевірка й збереження з версією."""
 import re
-from core.callsigns import Callsigns
-from services.dictionary_store import DICTIONARY_TYPES
-from services.sqlite_connection import get_db
-from services.user_store import _require_permission
-from services.management.common import ManagementConflict
-from services.management.common import version
+from shared.callsigns import Callsigns
+from shared.dictionary_store import DICTIONARY_TYPES
+from shared.sqlite_connection import get_db
+from shared.user_store import _require_permission
+from shared.management.common import ManagementConflict
+from shared.management.common import version
 
 
 def _dictionary(db, kind):

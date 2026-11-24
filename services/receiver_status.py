@@ -7,8 +7,8 @@ import time
 import uuid
 from contextlib import contextmanager
 
-from services.sqlite_connection import get_db, read_only
-from core.diagnostics import runtime
+from shared.sqlite_connection import get_db, read_only
+from shared.diagnostics import runtime
 
 
 

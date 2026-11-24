@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
 from services.notification_samples import add_sample, delete_sample, list_samples, MAX_UPLOAD_BYTES, validate_wav
-from services import notification_eval
+from shared import notification_eval
 from api.panel.common import spectral_settings, read_diagnostics
 
 def register(app, ctx):
@@ -66,7 +66,7 @@ def register(app, ctx):
         import io
         import logging
         import wave
-        from core.notification_spectral import SpectralNotificationMatcher
+        from shared.notification_spectral import SpectralNotificationMatcher
         try:
             content,_ = validate_wav(content)
         except ValueError as exc:

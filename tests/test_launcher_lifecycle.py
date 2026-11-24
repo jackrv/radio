@@ -14,8 +14,8 @@ import time
 import pytest
 
 import start_radio345 as launcher
-from core.instance_lock import acquire_instance_lock
-from services.launcher_lifecycle import LauncherSession, lock_held, managed_status, read_state, request_stop
+from shared.instance_lock import acquire_instance_lock
+from shared.launcher_lifecycle import LauncherSession, lock_held, managed_status, read_state, request_stop
 
 FIXTURE = Path(__file__).with_name("launcher_fixture.py")
 REPO = Path(__file__).resolve().parents[1]
@@ -232,7 +232,7 @@ def test_stale_stop_token_cannot_stop_the_current_session(environment):
 
 
 def test_restart_command_marks_session_and_stops_it_through_the_same_channel(tmp_path):
-    from services.launcher_lifecycle import request_restart, send_command
+    from shared.launcher_lifecycle import request_restart, send_command
     with pytest.raises(ValueError):
         send_command(tmp_path, "rm")
     assert request_restart(tmp_path) is False, "без запуску перезапускати нічого"
@@ -270,7 +270,7 @@ def test_launcher_runs_services_again_after_restart_request(tmp_path, monkeypatc
 
 
 def test_receiver_alone_is_stopped_and_started_while_other_services_keep_running(tmp_path, monkeypatch):
-    from services.launcher_lifecycle import send_command
+    from shared.launcher_lifecycle import send_command
     monkeypatch.setattr(launcher, "ROOT", tmp_path)
     sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
     with LauncherSession(tmp_path, ["api", "radio"], grace={"api": 0.5, "radio": 0.5}) as session:

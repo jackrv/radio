@@ -5,12 +5,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from services import archive_telegram_recall as recall
-from services.event_store import init_db
-from services.recordings import RecordingStore
+from shared import archive_telegram_recall as recall
+from shared.event_store import init_db
+from shared.recordings import RecordingStore
 from services.telegram import TelegramService
-from services.telegram_recall import MAX_ATTEMPTS, process_deletions, state
-from services.telegram_sync import remember_delivery
+from shared.telegram_recall import MAX_ATTEMPTS, process_deletions, state
+from shared.telegram_sync import remember_delivery
 from tests.test_local_dashboard import local, ORIGIN  # noqa: F401
 from tests.test_miniapp_management import setup  # noqa: F401 — fixture for local
 
@@ -130,8 +130,8 @@ def test_late_delivery_inherits_recall_even_when_initially_no_copies_existed(tmp
 
 
 def test_legacy_delivery_address_is_migrated_before_hiding_phrase(tmp_path):
-    from services.telegram_media_store import ensure_table
-    from services.sqlite_connection import get_db
+    from shared.telegram_media_store import ensure_table
+    from shared.sqlite_connection import get_db
     path, store, rid = make_archive(tmp_path)
     with get_db(path) as db:
         ensure_table(db)
@@ -159,8 +159,8 @@ def test_telegram_refusal_is_not_reported_as_successful_deletion(tmp_path):
 
 
 def test_expired_mem_text_and_list_cleanup_do_not_erase_pending_recall(tmp_path):
-    from services.telegram_phrase_store import register_phrase
-    from services.telegram_sync import sync_corrections
+    from shared.telegram_phrase_store import register_phrase
+    from shared.telegram_sync import sync_corrections
     from services.management.phrases import list_phrases
     fix = 'mem:' + 'b' * 32
     path, store, rid = make_archive(tmp_path, fix)
@@ -183,9 +183,9 @@ def test_expired_mem_text_and_list_cleanup_do_not_erase_pending_recall(tmp_path)
 
 
 def test_expired_mem_keeps_recent_address_without_editing_or_restoring_text(tmp_path):
-    from services.telegram_phrase_store import register_phrase, load_phrase
-    from services.telegram_sync import queue_correction, sync_corrections
-    from services.sqlite_connection import get_db
+    from shared.telegram_phrase_store import register_phrase, load_phrase
+    from shared.telegram_sync import queue_correction, sync_corrections
+    from shared.sqlite_connection import get_db
     fix = 'mem:' + 'c' * 32
     path, store, rid = make_archive(tmp_path, fix)
     register_phrase(path, 'c' * 32, 'синтетичний шелест')

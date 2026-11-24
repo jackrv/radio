@@ -1,5 +1,5 @@
-from core.callsigns import Callsigns
-from services.alias_candidates import collect
+from shared.callsigns import Callsigns
+from shared.alias_candidates import collect
 
 LINES = ["вишня: 210 300", "клен: 300 301", "ясень: *", "береза: 5", "дуб"]
 
@@ -68,8 +68,8 @@ def test_records_already_fixed_by_processing_do_not_count():
 
 def test_final_callsigns_uses_real_processing_and_survives_broken_database(tmp_path):
     import sqlite3
-    from services.alias_candidates import final_callsigns
-    from services.dictionary_store import init_db
+    from shared.alias_candidates import final_callsigns
+    from shared.dictionary_store import init_db
     db = tmp_path / "events.db"
     init_db(db)
     with sqlite3.connect(db) as conn:

@@ -1,4 +1,4 @@
-from core.word_replacements import apply_word_rules
+from shared.word_replacements import apply_word_rules
 
 
 def test_replaces_words_in_different_phrases():

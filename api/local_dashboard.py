@@ -21,9 +21,9 @@ import uvicorn
 
 import config
 from api.app import create_app
-from services.sqlite_connection import get_db
-from services.user_store import PERMISSIONS
-from core.diagnostic_history import DiagnosticsHistory, history_directory
+from shared.sqlite_connection import get_db
+from shared.user_store import PERMISSIONS
+from shared.diagnostic_history import DiagnosticsHistory, history_directory
 from api.panel import jobs, lab, overview, people, recognition, signals, system, mentions
 from api.panel import recordings as recordings_api
 from api.panel.common import session_value
@@ -66,7 +66,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
         max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
-    from services.recordings import RecordingStore
+    from shared.recordings import RecordingStore
     experiments_dir = Path(experiments_dir) if experiments_dir else ROOT / ".local-experiments"
     recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
@@ -75,7 +75,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
     suggestion_worker = None
     if suggestions:
         # Фонова перевірка списків у процесі панелі: приймач не навантажується.
-        from services.suggestions import SuggestionWorker
+        from shared.suggestions import SuggestionWorker
         suggestion_worker = SuggestionWorker(db_path, recordings, logging.getLogger("radio.suggestions")).start()
     # Збережені правки, після яких пропозиції перевіряються знову (перевірки тексту й пауза — ні).
     # Збережені правки панелі — у «Активність» (розмітка записів — ні: її сотні на день).
@@ -252,7 +252,7 @@ def access_url(capability):
 
 def tailnet_access():
     """RADIO345_PANEL_HOST=tailscale: адреса, дозволені імена й перевірка «пристрій власника»."""
-    from services.radio_stream import TailnetPeers, _tailscale_status, client_allowed, tailscale_ipv4
+    from shared.radio_stream import TailnetPeers, _tailscale_status, client_allowed, tailscale_ipv4
     address = tailscale_ipv4()
     if not address:
         raise SystemExit("Tailscale не активний: панель не запущено")

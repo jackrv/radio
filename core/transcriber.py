@@ -5,11 +5,11 @@ import sqlite3
 import time
 import threading
 from core.audio_debug import save_debug_audio
-from core.audio import prepare_audio
-from core.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
-from core.callsigns import normalize
-from core.diagnostics import runtime
-from core.whisper_result import RecognizerUnavailable, is_looped
+from shared.audio import prepare_audio
+from shared.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
+from shared.callsigns import normalize
+from shared.diagnostics import runtime
+from shared.whisper_result import RecognizerUnavailable, is_looped
 
 
 class Transcriber:
@@ -112,7 +112,7 @@ class Transcriber:
         return len(parts) > 1 and all(p in keys for p in parts)
 
     def process_segment(self, pcm, generation=None, deferred_id=None):
-        from core.recording_trace import _trace
+        from shared.recording_trace import _trace
         trace = {"predicted_recipient": "", "predicted_sender": "", "roles_parsed": False} if self.recorder is not None else None
         token = _trace.set(trace)
         span = {}
@@ -128,7 +128,7 @@ class Transcriber:
                 else:
                     self._deferred_idle_until = time.monotonic() + 10
             elif trace is not None and not self.abandon_event.is_set():
-                from core.diagnostics import _ASR_RECORD_FIELDS
+                from shared.diagnostics import _ASR_RECORD_FIELDS
                 trace.update({key: value for key, value in span.items() if key in _ASR_RECORD_FIELDS})
                 with runtime.lock:
                     trace["runtime"] = {key: value for key, value in runtime.gauges.items()
@@ -187,7 +187,7 @@ class Transcriber:
             pcm, self.min_rms, self.normalize_audio
         )
 
-        from core.recording_trace import note
+        from shared.recording_trace import note
         note(prepared_peak=float(abs(audio).max()) if audio.size else 0.0)
         if self.debug_rms:
             self.log.info("rms=%.4f", rms)
@@ -230,7 +230,7 @@ class Transcriber:
             with runtime.timed("asr.whisper"):
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
-            from core.recording_trace import note
+            from shared.recording_trace import note
             if not raw_text and self.retry_without_prompt and getattr(self.recognizer, "prompt", "") and is_looped(result):
                 runtime.count("asr.whisper_retry")
                 with runtime.timed("asr.whisper_retry"):
@@ -337,7 +337,7 @@ class Transcriber:
         if not is_current():
             runtime.asr_status("stale")
             return
-        from core.recording_trace import note
+        from shared.recording_trace import note
         note(final_text=text)
         runtime.asr_text_ready(fallback=fallback)
 

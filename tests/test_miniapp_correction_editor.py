@@ -4,9 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from services.dictionary_store import init_db as init_dictionary_db
-from services.event_store import init_db as init_event_db, save_event
-from services.user_store import init_users_db, bootstrap_admin, create_user
+from shared.dictionary_store import init_db as init_dictionary_db
+from shared.event_store import init_db as init_event_db, save_event
+from shared.user_store import init_users_db, bootstrap_admin, create_user
 from tests.test_web_api import TOKEN, auth_header
 
 

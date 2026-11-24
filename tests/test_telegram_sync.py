@@ -5,12 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from services.event_store import save_event
-from services.miniapp_correction_editor import save_edit_draft, load_edit_draft
+from shared.event_store import save_event
+from shared.miniapp_correction_editor import save_edit_draft, load_edit_draft
 from services.telegram import TelegramService
-from services.telegram_media_store import deletion_intent, deletion_result
-from services.telegram_phrase_store import register_phrase
-from services.telegram_sync import remember_delivery, sync_corrections, clipped
+from shared.telegram_media_store import deletion_intent, deletion_result
+from shared.telegram_phrase_store import register_phrase
+from shared.telegram_sync import remember_delivery, sync_corrections, clipped
 from tests.test_miniapp_management import setup
 
 
@@ -78,7 +78,7 @@ def test_late_delivery_still_gets_current_text(setup):
 def test_failed_job_insert_rolls_back_text_and_learning(setup):
     _,path=setup
     fix=f'db:{save_event("","","","","Вира",path)}'
-    with patch("services.miniapp_correction_editor.queue_correction",side_effect=sqlite3.OperationalError("test")):
+    with patch("shared.miniapp_correction_editor.queue_correction",side_effect=sqlite3.OperationalError("test")):
         with pytest.raises(sqlite3.Error):save_edit_draft(path,fix,"Вира","Віра")
     assert load_edit_draft(path,fix)["current_text"]=="Вира"
     with sqlite3.connect(path) as db:assert db.execute("SELECT COUNT(*) FROM word_correction_votes").fetchone()[0]==0
@@ -146,7 +146,7 @@ def test_recognized_private_command_deleted_without_affecting_mode(setup):
     bot=service(path);bot.send_text=Mock(return_value=True)
     bot.handle_update({"message":{"message_id":1,"text":"/off","from":{"id":1001},"chat":{"id":1001,"type":"private"}}})
     assert bot._request.call_args.args[1]=="deleteMessage"
-    from services.user_notify_store import load_user_mode
+    from shared.user_notify_store import load_user_mode
     assert load_user_mode(path,1001)==("admin","off")
 
 
@@ -177,7 +177,7 @@ def test_actual_send_records_voice_or_fallback_message_id(setup,text_fallback):
 
 
 def test_retries_bounded_and_new_revision_retries_again(setup):
-    from services.telegram_sync import sync_status
+    from shared.telegram_sync import sync_status
     _,path=setup
     fix=f'db:{save_event("","","","","Вира",path)}'
     remember_delivery(path,fix,message(1001),"voice")
@@ -192,7 +192,7 @@ def test_retries_bounded_and_new_revision_retries_again(setup):
 
 @pytest.mark.parametrize('action',['retry','skip'])
 def test_admin_can_resolve_exhausted_edits_without_faking_confirmation(setup,action):
-    from services.telegram_sync import sync_status,resolve_failed_corrections
+    from shared.telegram_sync import sync_status,resolve_failed_corrections
     _,path=setup
     fix=f'db:{save_event("","","","","Вира",path)}'
     remember_delivery(path,fix,message(1001),'voice')
@@ -219,7 +219,7 @@ def test_admin_can_resolve_exhausted_edits_without_faking_confirmation(setup,act
 
 @pytest.mark.parametrize('actor',[2002,3003])
 def test_retry_or_skip_requires_admin_permission(setup,actor):
-    from services.telegram_sync import resolve_failed_corrections
+    from shared.telegram_sync import resolve_failed_corrections
     _,path=setup
     for action in ('retry','skip'):
         with pytest.raises(PermissionError):resolve_failed_corrections(path,actor,action)

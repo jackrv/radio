@@ -12,7 +12,7 @@ import tempfile
 import threading
 import time
 
-from services.private_files import private_open
+from shared.private_files import private_open
 
 _LOCK = threading.RLock()
 WAIT_SECONDS = 24 * 3600

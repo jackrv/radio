@@ -2,7 +2,7 @@ import io
 import signal
 from unittest.mock import Mock
 
-from services import process_guard
+from shared import process_guard
 
 
 def test_guard_logs_original_signal_before_shell_wraps_exit_code(monkeypatch, capsys):

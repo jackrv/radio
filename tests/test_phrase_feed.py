@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from services import phrase_feed as f
-from services import radio_stream as rs
+from shared import radio_stream as rs
 
 LOG = logging.getLogger("test")
 PCM = b"\x01\x00" * 1600

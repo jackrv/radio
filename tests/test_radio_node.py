@@ -5,8 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from services import audio_devices as ad
-from services import ptt_key as pk
+from shared import audio_devices as ad
+from shared import ptt_key as pk
 
 DEVICES = [
     {"name": "Built-in Microphone", "max_input_channels": 1, "max_output_channels": 0},
@@ -97,7 +97,7 @@ def test_guarded_key_force_releases_after_max_hold():
 
 
 def test_transmit_presses_key_around_audio_and_releases_on_error():
-    from services import radio_stream as rs
+    from shared import radio_stream as rs
     order = []
 
     class Player:

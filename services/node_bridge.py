@@ -6,9 +6,9 @@ import time
 import uuid
 
 from services.node_control import DEVICE_KEYS, STATES, VAD_KEYS, read_json, write_json
-from services.receiver_control import ensure_hold_table, ensure_table
+from shared.receiver_control import ensure_hold_table, ensure_table
 from services.receiver_status import init_receiver_db, record_heartbeat
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 
 FRESH_S = 10.0
 

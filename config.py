@@ -6,7 +6,7 @@
 
 - Без перезапуску («Обробка без перезапуску»): COOLDOWN_S, LOG_CALLSIGNS_ONLY,
   GARBAGE_*, LOW_CONFIDENCE_*, MIN_RMS, WHISPER_RETRY_WITHOUT_PROMPT,
-  WHISPER_PROMPT_DAILY_CODE, SPECTRAL_NOTIFICATION_* (services/runtime_settings.py).
+  WHISPER_PROMPT_DAILY_CODE, SPECTRAL_NOTIFICATION_* (shared/runtime_settings.py).
 - Після перезапуску приймача («Розпізнавання»): USE_LLM, VAD_LEVEL, SILENCE_END_MS,
   MIN_SPEECH_MS, MAX_SEGMENT_S (services/management/settings.py).
 - Решта — лише тут, діє після перезапуску. Секрети й адреси — у .env.
@@ -67,10 +67,10 @@ RADIO_STREAM_MODE = "watch"
 # на час передачі приймач не слухає мікрофон (напівдуплекс), див. docs/iphone-radio.md.
 RADIO_STREAM_TRANSMIT = True
 # Звукові пристрої за частиною назви (USB-карта рації); порожньо — системні.
-# Список: .venv/bin/python -m services.audio_devices. .env має пріоритет.
+# Список: .venv/bin/python -m shared.audio_devices. .env має пріоритет.
 RADIO_INPUT_DEVICE = ""
 RADIO_OUTPUT_DEVICE = ""
-# Ключ PTT: none | gpio:17 | gpio:gpiochip0:17 | serial:/dev/ttyUSB0:rts (див. services/ptt_key.py).
+# Ключ PTT: none | gpio:17 | gpio:gpiochip0:17 | serial:/dev/ttyUSB0:rts (див. shared/ptt_key.py).
 RADIO_PTT = "none"
 RADIO_PTT_LEAD_MS = 150   # від натискання ключа до звуку
 RADIO_PTT_TAIL_MS = 200   # ключ ще тримається після останнього звуку
@@ -98,7 +98,7 @@ WHISPER_PROMPT_DAILY_CODE = True
 
 # Чувствительность аудио
 GAIN = 1.0
-# Коди доби (services/daily_codes.py) змінюються о цій годині місцевого часу:
+# Коди доби (shared/daily_codes.py) змінюються о цій годині місцевого часу:
 # коди «17.11» діють з 16.11 20:00 до 17.11 20:00.
 DAILY_CODES_CHANGE_HOUR = 20
 MIN_RMS = 0.02
@@ -117,7 +117,7 @@ PREROLL_MS = 500
 VAD_LEVEL = 2
 
 # Фільтри тексту (чорний список, короткий шум, алиаси, шаблони) живуть у SQLite й
-# редагуються в панелі; початкові значення для нової бази — core/default_text_lists.txt.
+# редагуються в панелі; початкові значення для нової бази — shared/default_text_lists.txt.
 
 # Локальний перевірочний корпус: WAV + тексти + метрики, без Telegram.
 RECORD_AUDIO = True

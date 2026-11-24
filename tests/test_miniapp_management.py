@@ -8,16 +8,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from services.dictionary_store import init_db
-from services.event_store import init_db as init_events, save_event
-from services.management.common import ManagementConflict
+from shared.dictionary_store import init_db
+from shared.event_store import init_db as init_events, save_event
+from shared.management.common import ManagementConflict
 from services.management.dictionaries import read_dictionary, write_dictionary
 from services.management.phrases import list_phrases
 from services.management.settings import apply_startup_settings, read_settings, write_settings
 from services.management.users import list_users, write_user
-from services.telegram_phrase_store import register_phrase
-from services.user_store import init_users_db, bootstrap_admin, create_user
-from services.word_store import save_word_feedback, load_active_word_rules
+from shared.telegram_phrase_store import register_phrase
+from shared.user_store import init_users_db, bootstrap_admin, create_user
+from shared.word_store import save_word_feedback, load_active_word_rules
 from tests.test_web_api import TOKEN, auth_header
 
 
@@ -83,7 +83,7 @@ def test_dictionary_edit_preserves_order_disabled_rows_and_conflicts(panel):
     assert response.status_code == 200
     assert response.json()["entries"] == entries
     import sqlite3
-    from services.dictionary_loader import read_dictionary_lines
+    from shared.dictionary_loader import read_dictionary_lines
     with sqlite3.connect(db) as conn:
         assert read_dictionary_lines(conn)["callsigns"] == ["Віра: 68 69", "Вовк: *"]
     assert client.put("/api/dictionaries/callsigns", headers=WRITE, json=payload).status_code == 409
@@ -93,7 +93,7 @@ def test_dictionary_edit_preserves_order_disabled_rows_and_conflicts(panel):
                                           ('грім 0 22','грім','022'),
                                           ('злива 4242','злива','4242')])
 def test_command_groups_pass_editor_check_and_save_without_losing_spaces(panel, line, name, code):
-    from services.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
+    from shared.dictionary_loader import dictionaries_from_lines, read_dictionary_lines
     client, path = panel
     entries = [{'raw_line':line,'enabled':True}]
     checked = client.put('/api/dictionaries/commands/check', headers=WRITE, json={'entries':entries})
@@ -192,7 +192,7 @@ def test_phrases_unifies_db_and_mem_and_excludes_expired(setup):
 
 
 def _rule(path):
-    from services.management.learning import learning_queue
+    from shared.management.learning import learning_queue
     return learning_queue(path)["items"][0]
 
 
@@ -213,7 +213,7 @@ def test_rules_disable_and_reenable_respect_confirmations(panel):
 
 def test_rule_toggle_forbidden_to_viewer(setup):
     _, db = setup
-    from services.management.learning import toggle_rule
+    from shared.management.learning import toggle_rule
     save_word_feedback(db, "first", "Вира 68", "Віра 68")
     item = _rule(db)
     with pytest.raises(PermissionError):

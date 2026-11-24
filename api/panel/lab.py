@@ -45,7 +45,7 @@ def validated_windows(windows, now):
 
 
 def register(app, ctx):
-    from services import lab_queue
+    from shared import lab_queue
     actor, root, launcher_root = ctx.actor, ctx.experiments_dir, ctx.launcher_root
 
     def labelled_records():
@@ -58,7 +58,7 @@ def register(app, ctx):
     def state():
         data = lab_queue.read(root)
         records = labelled_records()
-        from services.receiver_control import capture_state
+        from shared.receiver_control import capture_state
         capture = capture_state(ctx.db_path)
         capture["pending_records"] = ctx.recordings.count_status("deferred")
         capture["archive"] = ctx.recordings.capture_summary()

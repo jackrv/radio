@@ -1,10 +1,10 @@
 import pytest
 
-from services.word_store import (
+from shared.word_store import (
     init_word_db,
     save_word_feedback,
 )
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 
 
 @pytest.fixture

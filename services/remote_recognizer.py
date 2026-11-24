@@ -3,9 +3,9 @@ import http.client
 import time
 from urllib.parse import urlsplit
 
-from core.diagnostics import runtime
-from core.whisper_result import RecognizerUnavailable, extract_text
-from services.asr_protocol import PORT, pack_request, unpack_result
+from shared.diagnostics import runtime
+from shared.whisper_result import RecognizerUnavailable, extract_text
+from shared.asr_protocol import PORT, pack_request, unpack_result
 
 
 class RemoteModelError(Exception):

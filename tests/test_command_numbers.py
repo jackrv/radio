@@ -1,6 +1,6 @@
 """Кодові команди «слово 42 42»: склеювання номера й упізнавання за номером."""
 
-from core.callsigns import COMMAND_ANCHORED_THRESHOLD, Callsigns, command_dictionary
+from shared.callsigns import COMMAND_ANCHORED_THRESHOLD, Callsigns, command_dictionary
 
 
 def pairs(found):

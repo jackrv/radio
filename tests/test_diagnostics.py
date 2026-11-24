@@ -6,15 +6,15 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from core.diagnostics import RuntimeDiagnostics, error_kind
+from shared.diagnostics import RuntimeDiagnostics, error_kind
 from diagnose_radio345 import audit_database, audit_logs
-from services.dictionary_store import init_db as init_dictionaries
-from services.event_store import init_db
-from services.sqlite_connection import get_db
-from services.user_store import init_users_db, bootstrap_admin
+from shared.dictionary_store import init_db as init_dictionaries
+from shared.event_store import init_db
+from shared.sqlite_connection import get_db
+from shared.user_store import init_users_db, bootstrap_admin
 from tests.test_telegram_outbox import RECIPIENTS, make_service
-import services.telegram_common as telegram_common
-import services.telegram_outbox as telegram_outbox
+import shared.telegram_common as telegram_common
+import shared.telegram_outbox as telegram_outbox
 
 
 def test_nested_reset_is_classified_without_serializing_exception():

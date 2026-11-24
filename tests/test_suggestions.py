@@ -1,10 +1,10 @@
 """Пропозиції з розмітки: збір у всіх списках, нові позначаються, застосовані зникають."""
 import sqlite3
 
-from services.dictionary_store import init_db
-from services.recordings import RecordingStore
-from services.suggestions import collect, overview, refresh
-from services.text_lists import read_lists, write_list
+from shared.dictionary_store import init_db
+from shared.recordings import RecordingStore
+from shared.suggestions import collect, overview, refresh
+from shared.text_lists import read_lists, write_list
 from tests.audio_helpers import pcm, segment
 
 
@@ -25,7 +25,7 @@ def base_db(tmp_path):
 
 
 def test_repeated_findings_become_suggestions_and_disappear_once_applied(tmp_path, monkeypatch):
-    import services.suggestions as suggestions_module
+    import shared.suggestions as suggestions_module
     # Ефект алиаса на еталонах перевіряє окремий тест; тут — що кандидат доходить до пропозицій.
     monkeypatch.setattr(suggestions_module, "_alias_effects", lambda db, store, cs: [(c, "+1 знайдених позивних") for c in cs])
     path = base_db(tmp_path)
@@ -53,7 +53,7 @@ def test_repeated_findings_become_suggestions_and_disappear_once_applied(tmp_pat
 
 def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path, monkeypatch):
     # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
-    monkeypatch.setattr('core.template_text.CLOSING_TURN', False)
+    monkeypatch.setattr('shared.template_text.CLOSING_TURN', False)
     path = base_db(tmp_path)
     store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])
     data = read_lists(path)
@@ -68,8 +68,8 @@ def test_disabled_phrase_patterns_that_only_help_are_suggested(tmp_path, monkeyp
 
 def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path, monkeypatch):
     # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
-    monkeypatch.setattr('core.template_text.CLOSING_TURN', False)
-    from services.text_replay import countercheck
+    monkeypatch.setattr('shared.template_text.CLOSING_TURN', False)
+    from shared.text_replay import countercheck
     path = base_db(tmp_path)
     store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])
     data = read_lists(path)
@@ -85,7 +85,7 @@ def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path, monkeyp
 
 
 def test_text_countercheck_measures_active_blacklist_entries(tmp_path):
-    from services.text_replay import countercheck
+    from shared.text_replay import countercheck
     path = base_db(tmp_path)
     store = archive(tmp_path, [
         ("дякую за перегляд", "Клен 15, прийом", "speech"),
@@ -102,9 +102,9 @@ def test_text_countercheck_measures_active_blacklist_entries(tmp_path):
 
 
 def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):
-    import core.callsigns as callsigns
-    from services.event_store import init_db as init_events, save_event
-    from services.suggestions import dictionary_conflicts, reference_checks
+    import shared.callsigns as callsigns
+    from shared.event_store import init_db as init_events, save_event
+    from shared.suggestions import dictionary_conflicts, reference_checks
     path = base_db(tmp_path)
     init_events(path)
     with sqlite3.connect(path) as db:
@@ -129,12 +129,12 @@ def test_reference_recheck_finds_label_role_event_and_text_conflicts(tmp_path):
 
 
 def test_ordinal_role_is_understood_through_the_dictionary(tmp_path, monkeypatch):
-    import core.callsigns as callsigns
-    from services.suggestions import reference_checks
+    import shared.callsigns as callsigns
+    from shared.suggestions import reference_checks
     path = base_db(tmp_path)
     with sqlite3.connect(path) as db:
         db.execute("INSERT INTO dictionary_entries (dictionary_type, line_number, raw_line) VALUES ('callsigns', 2, 'Дуб: 1 2 3 4')")
-    from services.text_lists import read_lists, write_list
+    from shared.text_lists import read_lists, write_list
     data = read_lists(path)
     write_list(path, "callsign_aliases", [{"raw_line": "дуб: четвертий", "enabled": True}], data["revision"])
     store = RecordingStore(tmp_path / "recordings")
@@ -144,8 +144,8 @@ def test_ordinal_role_is_understood_through_the_dictionary(tmp_path, monkeypatch
 
 
 def test_reference_text_check_ignores_codes_and_names_outside_the_dictionary(tmp_path):
-    from services import daily_codes
-    from services.suggestions import reference_checks
+    from shared import daily_codes
+    from shared.suggestions import reference_checks
     path = base_db(tmp_path)
     daily_codes.write(path, daily_codes.local_day(), "48 62")
     store = RecordingStore(tmp_path / "recordings")
@@ -157,7 +157,7 @@ def test_reference_text_check_ignores_codes_and_names_outside_the_dictionary(tmp
 
 
 def test_done_hides_current_suggestions_until_a_new_one_appears(tmp_path):
-    from services.suggestions import dismiss, restore
+    from shared.suggestions import dismiss, restore
     path = base_db(tmp_path)
     store = archive(tmp_path, [("та па", "", "room"), ("та па", "", "noise")])
     refresh(path, store)
@@ -189,7 +189,7 @@ def test_enabled_pattern_disappears_without_deep_check(tmp_path):
 def test_worker_rechecks_soon_after_a_poke(tmp_path):
     import logging
     import time
-    from services.suggestions import SuggestionWorker
+    from shared.suggestions import SuggestionWorker
     calls = []
     worker = SuggestionWorker(tmp_path / "x.db", None, logging.getLogger("t"), interval=3600, poke_delay=0.05)
     worker._refresh = lambda: calls.append(1)
@@ -210,8 +210,8 @@ def test_worker_rechecks_soon_after_a_poke(tmp_path):
 
 
 def test_alias_is_suggested_only_when_it_changes_something_on_the_references(tmp_path, monkeypatch):
-    import services.text_replay as replay
-    import services.suggestions as suggestions_module
+    import shared.text_replay as replay
+    import shared.suggestions as suggestions_module
     path = base_db(tmp_path)
     store = archive(tmp_path, [("кльон 15, прийом", "Клен 15, прийом", "speech")])
     outcomes = iter([

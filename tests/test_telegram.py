@@ -5,8 +5,8 @@ from unittest.mock import Mock
 import pytest
 
 from services.telegram import TelegramService
-from services.user_notify_store import load_user_mode
-from services.user_store import bootstrap_admin, init_users_db
+from shared.user_notify_store import load_user_mode
+from shared.user_store import bootstrap_admin, init_users_db
 
 
 @pytest.fixture(autouse=True)

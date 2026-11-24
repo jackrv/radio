@@ -10,8 +10,8 @@ import pytest
 from services.telegram import TelegramService
 from services import telegram_wishlist as module
 from services.telegram_wishlist import WishlistInbox
-from services.user_notify_store import load_user_mode
-from services.user_store import bootstrap_admin, create_user, init_users_db
+from shared.user_notify_store import load_user_mode
+from shared.user_store import bootstrap_admin, create_user, init_users_db
 
 
 @pytest.fixture

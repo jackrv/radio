@@ -7,9 +7,9 @@ Telegram ID — ідентичність для авторизації; ім’�
 import secrets
 import time
 
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 from services.user_profiles import ensure_table as ensure_profiles
-from services.user_store import _require_permission, _valid_id, init_users_db
+from shared.user_store import _require_permission, _valid_id, init_users_db
 
 # Повторне сповіщення про той самий запит або новий запит після відмови.
 REQUEST_RETRY_SECONDS = 24 * 3600

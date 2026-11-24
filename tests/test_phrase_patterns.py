@@ -3,11 +3,11 @@ import sqlite3
 
 import pytest
 
-from core.callsigns import Callsigns
-import core.phrase_patterns as pp
-from core.phrase_patterns import apply_patterns, parse_pattern
-from services.dictionary_store import init_db
-from services.text_lists import load_active, read_lists
+from shared.callsigns import Callsigns
+import shared.phrase_patterns as pp
+from shared.phrase_patterns import apply_patterns, parse_pattern
+from shared.dictionary_store import init_db
+from shared.text_lists import load_active, read_lists
 
 CALLSIGNS = Callsigns.from_lines(["калина: 700 936", "набат: 100-114", "дуб", "ліна: 13 63"])
 COMMANDS = ("перевірка",)

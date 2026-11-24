@@ -18,10 +18,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.receiver_control import reception_request, set_listening_hold, set_pause_minutes
+from shared.receiver_control import reception_request, set_listening_hold, set_pause_minutes
 from services.receiver_status import init_receiver_db, record_heartbeat
-from services.recordings import RecordingStore
-from services.sqlite_connection import get_db
+from shared.recordings import RecordingStore
+from shared.sqlite_connection import get_db
 
 ROLES = ("hold", "receiver", "review", "read")
 

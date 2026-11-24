@@ -4,14 +4,14 @@ import logging
 import sqlite3
 from unittest.mock import Mock
 
-from core.callsigns import Callsigns, command_dictionary
-from core.analyzer import canonical_text, fmt_spoken, spoken_number
+from shared.callsigns import Callsigns, command_dictionary
+from shared.analyzer import canonical_text, fmt_spoken, spoken_number
 from core.event_processor import EventProcessor
-from services.event_store import save_event
-from services.miniapp_correction_editor import save_edit_draft
+from shared.event_store import save_event
+from shared.miniapp_correction_editor import save_edit_draft
 from services.telegram import TelegramService
-from services.telegram_outbox import build_caption
-from services.telegram_sync import remember_delivery, sync_corrections
+from shared.telegram_outbox import build_caption
+from shared.telegram_sync import remember_delivery, sync_corrections
 from tests.test_miniapp_management import setup  # noqa: F401  (фікстура)
 
 COMMANDS = command_dictionary(["злива 4242", "грім 022", "сніг"])
@@ -31,7 +31,7 @@ def test_callsign_with_exact_number_and_case():
 
 def test_alias_rewrites_unknown_word_but_keeps_dictionary_word(monkeypatch):
     # Алиас «сніг -> дуб» (сніг — сама назва словника) і «дубок -> дуб».
-    import core.callsigns as callsigns
+    import shared.callsigns as callsigns
     monkeypatch.setattr(callsigns, "CALLSIGN_ALIASES", {"сніг": "дуб", "дубок": "дуб"})
     assert canonical_text("Сніг, 77, прийом", DICTIONARIES) == "Сніг, 77, прийом"
     assert canonical_text("Дубок 77, прийом", DICTIONARIES) == "Дуб 77, прийом"

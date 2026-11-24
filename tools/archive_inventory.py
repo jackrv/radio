@@ -3,7 +3,7 @@ import argparse
 import json
 
 import config
-from services.archive_inventory import inventory
+from shared.archive_inventory import inventory
 
 
 def main(argv=None):

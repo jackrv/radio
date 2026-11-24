@@ -1,4 +1,4 @@
-from core.llm_safety import is_conservative_llm_rewrite
+from shared.llm_safety import is_conservative_llm_rewrite
 
 
 def test_rejects_direction_change():

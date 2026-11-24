@@ -152,7 +152,7 @@ def target_sequence(tokenizer, text, label, max_context):
 
 def train(args):
     import config
-    from services.model_exclusion import lab_model_slot
+    from shared.model_exclusion import lab_model_slot
     # До імпорту MLX/виділення Metal-пам'яті перевіряємо взаємне виключення.
     with lab_model_slot(config.DB_PATH):
         return _train(args)
@@ -167,7 +167,7 @@ def _train(args):
     from mlx_whisper.load_models import load_model
     from mlx_whisper.tokenizer import get_tokenizer
     from mlx_whisper.audio import log_mel_spectrogram, pad_or_trim, N_SAMPLES, N_FRAMES
-    from core.audio import prepare_audio
+    from shared.audio import prepare_audio
     from lab.asr_lab import keep_awake
 
     base, dataset, output = Path(args.base_model).resolve(), Path(args.dataset).resolve(), Path(args.output).resolve()

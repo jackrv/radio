@@ -1,11 +1,11 @@
 import pytest
 
-from core.callsigns import Callsigns
-from services.word_store import (
+from shared.callsigns import Callsigns
+from shared.word_store import (
     init_word_db,
     save_word_feedback,
 )
-from services.word_rule_engine import apply_verified_word_rules
+from shared.word_rule_engine import apply_verified_word_rules
 
 
 @pytest.fixture

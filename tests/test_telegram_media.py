@@ -5,9 +5,9 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from services.event_store import save_event
+from shared.event_store import save_event
 from services.management.phrases import list_phrases
-from services.telegram_media_store import (
+from shared.telegram_media_store import (
     remember_voice, is_hidden, audio_file_id, deletion_intent, deletion_result,
 )
 from services.telegram_audio import download_voice, AudioUnavailable, MAX_AUDIO_BYTES
@@ -50,7 +50,7 @@ def test_metadata_failure_never_retries_successful_send(setup):
     response = Mock()
     response.json.return_value = {"ok": True, "result": {"message_id": 777}}
     with patch("requests.post", return_value=response) as post:
-        with patch("services.telegram_outbox.remember_voice", side_effect=sqlite3.OperationalError("test")):
+        with patch("shared.telegram_outbox.remember_voice", side_effect=sqlite3.OperationalError("test")):
             s.send_voice(b"\0\0", "test", "db:1", RECIPIENTS)
     assert post.call_count == 1
 

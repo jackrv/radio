@@ -1,15 +1,15 @@
 """Звукові пристрої приймача, вибрані в панелі; діють після перезапуску приймача.
 
 Зберігається лише відмінне від config.py. Змінна в ``.env`` (оточенні процесу)
-має пріоритет над панеллю — так само, як над config.py (services/audio_devices.py).
+має пріоритет над панеллю — так само, як над config.py (shared/audio_devices.py).
 """
 import json
 import os
 
 import config
-from services.management.common import ManagementConflict
-from services.sqlite_connection import get_db
-from services.user_store import _require_permission
+from shared.management.common import ManagementConflict
+from shared.sqlite_connection import get_db
+from shared.user_store import _require_permission
 
 KEYS = ("RADIO_INPUT_DEVICE", "RADIO_OUTPUT_DEVICE")
 MAX_NAME = 200

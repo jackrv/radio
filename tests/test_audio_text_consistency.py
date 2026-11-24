@@ -6,7 +6,7 @@ import wave
 import numpy as np
 import pytest
 
-from core.audio_text_consistency import capacity_checks, measure_audio, word_count
+from shared.audio_text_consistency import capacity_checks, measure_audio, word_count
 from tools.audio_text_audit import audit
 
 
@@ -117,7 +117,7 @@ def test_missing_or_corrupt_wav_is_counted_not_classified_as_silence(tmp_path):
 
 
 def test_silence_alignment_recipe_is_opt_in_and_parses_both_whisper_options():
-    from services.lab_queue import BASE, PRESETS
+    from shared.lab_queue import BASE, PRESETS
     from lab.asr_lab import parse_whisper_options
     args = PRESETS['word-silence']['args']
     options = [args[i + 1] for i, value in enumerate(args[:-1]) if value == '--whisper-option']

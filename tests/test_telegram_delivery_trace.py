@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 import requests
 
-from core.diagnostics import RuntimeDiagnostics
-import services.telegram_common as common
-import services.telegram_outbox as outbox
+from shared.diagnostics import RuntimeDiagnostics
+import shared.telegram_common as common
+import shared.telegram_outbox as outbox
 from tests.test_telegram_outbox import RECIPIENTS, make_service
 
 

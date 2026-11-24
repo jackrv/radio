@@ -1,14 +1,14 @@
 ---
 paths:
-  - "services/recordings.py"
+  - "shared/recordings.py"
   - "services/archive_*.py"
   - "services/telegram*.py"
-  - "services/event_store.py"
+  - "shared/event_store.py"
   - "services/receiver_*.py"
   - "services/storage_status.py"
-  - "core/recording_trace.py"
-  - "core/diagnostics.py"
-  - "core/audio.py"
+  - "shared/recording_trace.py"
+  - "shared/diagnostics.py"
+  - "shared/audio.py"
   - "api/**"
 ---
 

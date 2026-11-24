@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 import config as project_config
-from core.callsigns import Callsigns, command_dictionary
-from services import daily_codes
+from shared.callsigns import Callsigns, command_dictionary
+from shared import daily_codes
 from services.transcriber_factory import build_transcriber
 
 config = None
@@ -38,7 +38,7 @@ def make_dependencies():
 
 
 @patch("services.transcriber_factory.Transcriber")
-@patch("core.recognition.WhisperRecognizer")
+@patch("shared.recognition.WhisperRecognizer")
 @patch("services.transcriber_factory.EventProcessor")
 @patch("services.transcriber_factory.build_text_pipeline")
 @patch("services.transcriber_factory.build_llm_corrector")
@@ -101,7 +101,7 @@ def test_factory_does_not_start_models():
     deps = make_dependencies()
 
     with (
-        patch("core.recognition.WhisperRecognizer") as whisper,
+        patch("shared.recognition.WhisperRecognizer") as whisper,
         patch("services.transcriber_factory.build_llm_corrector") as llm,
         patch("services.transcriber_factory.Transcriber") as worker,
     ):
@@ -123,7 +123,7 @@ def test_recognition_formatter_uses_confirmed_codes_for_the_recording_day():
 
     with (
         patch("services.transcriber_factory.Transcriber") as transcriber,
-        patch("core.recognition.WhisperRecognizer"),
+        patch("shared.recognition.WhisperRecognizer"),
         patch("services.transcriber_factory.EventProcessor"),
         patch("services.transcriber_factory.build_text_pipeline"),
         patch("services.transcriber_factory.build_llm_corrector"),
@@ -139,14 +139,14 @@ def test_recognition_formatter_uses_confirmed_codes_for_the_recording_day():
 def test_receiver_loads_number_evidence_and_refreshes_it_without_model_calls(monkeypatch):
     import sqlite3
     from tests.test_dictionary_blocks import feedback,make_archive
-    from core.dictionary_blocks import constrain_dictionary_text
-    from services import dictionary_number_evidence as evidence
+    from shared.dictionary_blocks import constrain_dictionary_text
+    from shared import dictionary_number_evidence as evidence
     make_archive(config.RECORDINGS_DIR,[feedback(i) for i in range(3)])
     deps=make_dependencies()
     deps.update(callsigns=Callsigns.from_lines(['клен: 600 609']),
                 commands=command_dictionary([]),watch=Callsigns.from_lines([]))
     with (patch('services.transcriber_factory.Transcriber') as transcriber,
-          patch('core.recognition.WhisperRecognizer') as whisper,
+          patch('shared.recognition.WhisperRecognizer') as whisper,
           patch('services.transcriber_factory.EventProcessor') as processor,
           patch('services.transcriber_factory.build_text_pipeline'),
           patch('services.transcriber_factory.build_llm_corrector')):

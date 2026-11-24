@@ -1,5 +1,5 @@
 import time
-from core.diagnostics import runtime
+from shared.diagnostics import runtime
 
 
 class QueueDropMonitor:

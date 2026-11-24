@@ -9,7 +9,7 @@
 import argparse
 from pathlib import Path
 
-from services.text_replay import compare, load_records, load_setup
+from shared.text_replay import compare, load_records, load_setup
 
 ROOT = Path(__file__).resolve().parents[1]
 OLD_PHRASES = ("прийом", "прийнято", "прийняв", "посилку отримав", "на звʼязку", "на звʼязок",
@@ -45,14 +45,14 @@ def main():
     current = {"phrases": values.get("phrase_templates", ()), "patterns": values.get("phrase_patterns", ()),
                "aliases": (values.get("aliases", {}), values.get("callsign_aliases", {}))}
     if not args.patterns:
-        import core.template_text as tt
+        import shared.template_text as tt
         saved = tt.join_split_callsign, tt.trim_loops
 
         def old_rules(on):
             tt.join_split_callsign, tt.trim_loops = ((lambda text, _c: text), (lambda text: text)) if on else saved
         old_rules(True)
         try:
-            from services.text_replay import run, templates
+            from shared.text_replay import run, templates
             with templates(**{**current, "phrases": OLD_PHRASES, "patterns": ()}):
                 before, _ = run(rows, dictionaries, short_garbage)
         finally:

@@ -1,4 +1,4 @@
-from core.callsigns import Callsigns, to_items
+from shared.callsigns import Callsigns, to_items
 
 
 def test_whisper_number_typo():

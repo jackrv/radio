@@ -1,6 +1,6 @@
 import sys
 
-from services.project_python import select_python
+from shared.project_python import select_python
 
 
 def interpreter(root, folder):

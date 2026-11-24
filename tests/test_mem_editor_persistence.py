@@ -10,15 +10,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from services.event_store import init_db as init_event_db
+from shared.event_store import init_db as init_event_db
 from services.telegram import TelegramService
-from services.telegram_phrase_store import (
+from shared.telegram_phrase_store import (
     RETENTION_SECONDS, load_phrase, register_phrase,
 )
-from services.miniapp_correction_editor import (
+from shared.miniapp_correction_editor import (
     CorrectionConflict, save_edit_draft,
 )
-from services.user_store import init_users_db, bootstrap_admin, create_user
+from shared.user_store import init_users_db, bootstrap_admin, create_user
 from tests.test_web_api import TOKEN, auth_header
 
 
@@ -201,12 +201,12 @@ def test_successive_edits_replace_votes(setup):
 
 def test_expiry_boundary_and_edits_do_not_extend_lifetime(setup):
     db, _ = setup
-    with patch("services.telegram_phrase_store.time.time", return_value=100000):
+    with patch("shared.telegram_phrase_store.time.time", return_value=100000):
         _, fix_id = new_phrase(db)
-    with patch("services.telegram_phrase_store.time.time", return_value=186399):
+    with patch("shared.telegram_phrase_store.time.time", return_value=186399):
         save_edit_draft(db, fix_id, "Вира 68", "Віра 68")
         assert load_phrase(db, fix_id[4:]) is not None
-    with patch("services.telegram_phrase_store.time.time", return_value=186400):
+    with patch("shared.telegram_phrase_store.time.time", return_value=186400):
         assert load_phrase(db, fix_id[4:]) is None
         with pytest.raises(LookupError):
             save_edit_draft(db, fix_id, "Віра 68", "Віро 68")
@@ -214,9 +214,9 @@ def test_expiry_boundary_and_edits_do_not_extend_lifetime(setup):
 
 def test_registration_prunes_expired_rows_and_enforces_200_limit(setup):
     db, _ = setup
-    with patch("services.telegram_phrase_store.time.time", return_value=100000):
+    with patch("shared.telegram_phrase_store.time.time", return_value=100000):
         _, expired = new_phrase(db)
-    with patch("services.telegram_phrase_store.time.time", return_value=200000):
+    with patch("shared.telegram_phrase_store.time.time", return_value=200000):
         s = service(db)
         ids = [s.register_phrase_for_fix(f"Фраза {i}", None) for i in range(201)]
         assert load_phrase(db, expired[4:]) is None
@@ -274,7 +274,7 @@ def test_phrase_update_failure_rolls_back_votes(setup):
 def test_sqlite_registration_failure_leaves_only_delete_button(setup):
     db, _ = setup
     s = service(db)
-    with patch("services.telegram_outbox.register_phrase", side_effect=sqlite3.OperationalError("test")):
+    with patch("shared.telegram_outbox.register_phrase", side_effect=sqlite3.OperationalError("test")):
         fix_id = s.register_phrase_for_fix("Вира 68", None)
     assert fix_id is None
     rows = json.loads(s.get_keyboard(fix_id))["inline_keyboard"]
@@ -309,7 +309,7 @@ def test_parallel_registration_respects_limit(setup):
 def test_sqlite_read_failure_returns_503(setup):
     db, client = setup
     _, fix_id = new_phrase(db)
-    with patch("services.miniapp_correction_editor.load_phrase",
+    with patch("shared.miniapp_correction_editor.load_phrase",
                side_effect=sqlite3.OperationalError("test")):
         assert client.get(
             "/api/corrections/draft", params={"fix_id": fix_id},

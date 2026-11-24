@@ -13,7 +13,7 @@ import platform
 import shutil
 import tempfile
 import time
-from services.sqlite_connection import read_only
+from shared.sqlite_connection import read_only
 
 ROOT = Path(__file__).resolve().parent
 

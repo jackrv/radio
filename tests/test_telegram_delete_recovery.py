@@ -9,10 +9,11 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from core.diagnostics import RuntimeDiagnostics
-from services import telegram_common, telegram_updates
+from shared.diagnostics import RuntimeDiagnostics
+from shared import telegram_common
+from services import telegram_updates
 from services.telegram import TelegramService
-from services.telegram_media_store import audio_file_id, is_hidden
+from shared.telegram_media_store import audio_file_id, is_hidden
 from tests.test_miniapp_management import setup
 from tests.test_telegram_media import phrase
 

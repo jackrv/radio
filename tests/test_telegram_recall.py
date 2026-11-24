@@ -1,11 +1,11 @@
 """Видалення надісланої фрази в Telegram в усіх отримувачів (з «Аудіоархіву» панелі)."""
 import time
 
-from services.event_store import save_event
-from services.miniapp_correction_editor import save_edit_draft
-from services.telegram_media_store import is_hidden
-from services.telegram_recall import deletable, process_deletions, request_delete, state
-from services.telegram_sync import remember_delivery, sync_corrections
+from shared.event_store import save_event
+from shared.miniapp_correction_editor import save_edit_draft
+from shared.telegram_media_store import is_hidden
+from shared.telegram_recall import deletable, process_deletions, request_delete, state
+from shared.telegram_sync import remember_delivery, sync_corrections
 from tests.test_miniapp_management import setup  # noqa: F401 — фікстура
 from tests.test_telegram_sync import message, response, service
 

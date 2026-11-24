@@ -105,7 +105,7 @@ class Child:
         watch_read, self.watch = os.pipe()   # EOF тут = наглядача немає, служба має зупинитися
         self.done, done_write = os.pipe()
         fds = [watch_read, done_write]
-        command = [sys.executable, "-u", str(ROOT / "services" / "process_guard.py"), "--watch", str(watch_read),
+        command = [sys.executable, "-u", str(ROOT / "shared" / "process_guard.py"), "--watch", str(watch_read),
                    "--done", str(done_write), "--grace", str(GRACE_S), "--signal", str(int(signal.SIGTERM))]
         if self.lease is not None:
             command += ["--lease", str(self.lease)]
@@ -207,7 +207,7 @@ class Control:
             old.unlink(missing_ok=True)
 
     def held(self):
-        from services.launcher_lifecycle import lock_held
+        from shared.launcher_lifecycle import lock_held
         return lock_held(self.lock_path)
 
     def save(self, profile, children):
@@ -317,12 +317,12 @@ def restart(control, names, timeout=GRACE_S + 20):
 
 
 def lock_root():
-    from services.model_pause import model_root
+    from shared.model_pause import model_root
     return model_root(ROOT, base_environment({}))
 
 
 def pause_model(minutes, root=ROOT, timeout=90.0):
-    from services.model_pause import MAX_PAUSE_S, ModelPause
+    from shared.model_pause import MAX_PAUSE_S, ModelPause
     pause = ModelPause(root)
     if not pause.worker_running():
         print("Вузол розшифровки не запущено: модель у ньому не тримається")
@@ -343,7 +343,7 @@ def pause_model(minutes, root=ROOT, timeout=90.0):
 
 
 def resume_model(root=ROOT, timeout=120.0):
-    from services.model_pause import ModelPause
+    from shared.model_pause import ModelPause
     pause = ModelPause(root)
     pause.stop()
     if not pause.worker_running():

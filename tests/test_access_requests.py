@@ -11,9 +11,9 @@ import pytest
 from services.access_requests import (
     MAX_PENDING_REQUESTS, REQUEST_RETRY_SECONDS, register_request, request_token, resolve_request,
 )
-from services.sqlite_connection import get_db
+from shared.sqlite_connection import get_db
 from services.telegram import TelegramService
-from services.user_store import bootstrap_admin, init_users_db
+from shared.user_store import bootstrap_admin, init_users_db
 
 ADMIN = 1001
 ADMIN_CHAT = "1001"

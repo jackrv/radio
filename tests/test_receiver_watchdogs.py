@@ -7,11 +7,11 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from core.diagnostics import runtime
+from shared.diagnostics import runtime
 from core.pause_gate import PauseGate
 from core.supervisor import ApplicationSupervisor
 from core.transcriber import Transcriber
-from core.vad import VADSegmenter
+from shared.vad import VADSegmenter
 
 
 class Stream:
@@ -331,7 +331,7 @@ def test_long_intentional_pause_with_a_responsive_loop_is_not_a_loop_gap(monkeyp
 
 
 def test_global_pause_with_playback_and_release_never_alerts_or_resumes_early(tmp_path, monkeypatch):
-    from services.receiver_control import reception_request, set_listening_hold, set_pause_minutes
+    from shared.receiver_control import reception_request, set_listening_hold, set_pause_minutes
 
     db_path = tmp_path / "events.db"
     wall, sleeps = [1000.0], []

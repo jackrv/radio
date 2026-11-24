@@ -3,13 +3,13 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.callsigns import Callsigns,command_dictionary
-from core.dictionary_blocks import constrain_dictionary_text
-from core.text_analysis import analyze_text
-from core.transcript_format import tidy_text
-from services.dictionary_number_evidence import build_rules
-from services.text_replay import templates
-from services.text_check import check_text
+from shared.callsigns import Callsigns,command_dictionary
+from shared.dictionary_blocks import constrain_dictionary_text
+from shared.text_analysis import analyze_text
+from shared.transcript_format import tidy_text
+from shared.dictionary_number_evidence import build_rules
+from shared.text_replay import templates
+from shared.text_check import check_text
 
 
 def dictionaries():
@@ -118,7 +118,7 @@ def make_archive(path, rows):
 
 def test_readonly_archive_rules_restart_cache_refresh_and_independent_sources(tmp_path,monkeypatch):
     import sqlite3
-    from services import dictionary_number_evidence as evidence
+    from shared import dictionary_number_evidence as evidence
     cs,commands=dictionaries()
     rows=[feedback(i) for i in range(3)]
     make_archive(tmp_path,rows)
@@ -137,7 +137,7 @@ def test_readonly_archive_rules_restart_cache_refresh_and_independent_sources(tm
 
 
 def test_unreadable_archive_disables_number_changes(tmp_path,caplog):
-    from services.dictionary_number_evidence import load_rules
+    from shared.dictionary_number_evidence import load_rules
     cs,commands=dictionaries()
     assert load_rules(tmp_path,cs,commands)=={}
     (tmp_path/'index.sqlite3').write_text('not sqlite')
@@ -148,9 +148,9 @@ def test_unreadable_archive_disables_number_changes(tmp_path,caplog):
 
 def test_editor_loads_evidence_from_explicit_archive_without_cross_database_leak(tmp_path):
     import sqlite3
-    from services.dictionary_store import init_db
-    from services.text_check import check_with_db
-    from services.text_replay import load_setup
+    from shared.dictionary_store import init_db
+    from shared.text_check import check_with_db
+    from shared.text_replay import load_setup
     archive=tmp_path/'archive'
     make_archive(archive,[feedback(i) for i in range(3)])
     db_path=tmp_path/'events.db'
@@ -164,8 +164,8 @@ def test_editor_loads_evidence_from_explicit_archive_without_cross_database_leak
 
 
 def test_whisper_codes_prompt_is_opt_in_and_uses_dictionary_grouping():
-    from services.dictionary_loader import build_prompt
-    from services.lab_queue import PRESETS
+    from shared.dictionary_loader import build_prompt
+    from shared.lab_queue import PRESETS
     cs,commands=dictionaries();watch=Callsigns.from_lines([])
     default=build_prompt(cs,commands,watch)
     assert not any(char.isdigit() for char in default)
@@ -178,7 +178,7 @@ def test_whisper_codes_prompt_is_opt_in_and_uses_dictionary_grouping():
 
 def test_lab_cannot_learn_callsign_number_from_holdout_references(tmp_path):
     import sqlite3
-    from services.dictionary_store import init_db
+    from shared.dictionary_store import init_db
     from lab.asr_lab import dictionaries_from,split_of
     times={kind:[i*1200 for i in range(50) if split_of(i*1200)==kind] for kind in ('tune','holdout')}
     rows=[dict(feedback(i),created=times['tune'][i]) for i in range(2)]

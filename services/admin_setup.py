@@ -17,8 +17,8 @@ import urllib.request
 
 from services.dictionary_setup import has_active_admin
 from services.user_profiles import remember_verified_profile
-from services.user_store import bootstrap_admin, init_users_db
-from services.sqlite_connection import read_only
+from shared.user_store import bootstrap_admin, init_users_db
+from shared.sqlite_connection import read_only
 
 YES_ANSWERS = {"y", "yes"}
 

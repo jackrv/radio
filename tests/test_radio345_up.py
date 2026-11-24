@@ -391,3 +391,13 @@ def test_update_order_and_stop_on_failure(monkeypatch):
     assert radio345.update() == 1 and done == ["mac"], "Pi не оновлюємо, якщо Mac не вдалося"
     done.clear()
     assert radio345.update("pi") == 0 and done == ["pi"]
+
+
+def test_named_sets_expand_and_unknown_name_lists_them():
+    profile = radio345.load_profile("mac-all")
+    assert set(radio345.selected(profile, ["whisper"])) == {"worker", "panel"}
+    assert "tunnel" in radio345.selected(profile, ["home-miniapp"]) and "tunnel" not in radio345.selected(profile, ["home"])
+    for name in profile["sets"]:
+        assert "panel" in radio345.selected(profile, [name])
+    with pytest.raises(SystemExit, match="whisper"):
+        radio345.selected(profile, ["невідомий"])

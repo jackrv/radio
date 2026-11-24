@@ -67,9 +67,11 @@ def process_environment(name, profile, env):
 
 def selected(profile, only=()):
     names = [p for p in COMMANDS if p in profile["processes"]]
+    sets = profile.get("sets", {})
+    only = [p for word in only for p in sets.get(word, (word,))]   # назва набору або служба
     unknown = set(only) - set(names)
     if unknown:
-        raise SystemExit(f"Профіль не має процесів: {', '.join(sorted(unknown))}")
+        raise SystemExit(f"Профіль не має: {', '.join(sorted(unknown))}. Набори: {', '.join(sets) or 'немає'}")
     # manual (напр. публічний тунель) — лише коли назвали явно.
     return [p for p in names if (p in only if only else p not in profile.get("manual", ()))]
 
@@ -521,7 +523,7 @@ def main(argv=None):
     for name, text in (("up", "запустити"), ("check", "що запуститься й чого бракує")):
         one = sub.add_parser(name, help=text)
         one.add_argument("--profile", help="типово RADIO345_PROFILE з .env")
-        one.add_argument("--only", nargs="+", default=(), metavar="ПРОЦЕС")
+        one.add_argument("--only", nargs="+", default=(), metavar="НАБІР|ПРОЦЕС")
     sub.add_parser("status", help="стан процесів")
     sub.add_parser("stop", help="зупинити все")
     sub.add_parser("restart", help="перезапустити все або вибране").add_argument("names", nargs="*", metavar="ПРОЦЕС")
@@ -572,6 +574,8 @@ def main(argv=None):
         print(f"{name}: {profile['description']}")
         for process in names:
             print(f"  {process}: python {' '.join(COMMANDS[process])}")
+        for key, processes in profile.get("sets", {}).items():
+            print(f"  набір {key}: {' '.join(processes)}")
         print(f"  бот: {'так' if profile.get('bot') else 'ні'}")
         for key in missing:
             print(f"  бракує в .env: {key} — {profile['required_env'][key]}")

@@ -13,4 +13,11 @@ RADIO_PTT = "none"
 RADIO_ASR_HOST = "127.0.0.1,tailscale"   # Pi користується вузлом, коли дім на ній
 RADIO_ASR_URL = "http://127.0.0.1:8347"
 
+# Готові набори: RADIO345_ONLY=<назва> у .env або ./r345 up --only <назва>
+[sets]
+home = ["worker", "node", "asr", "api", "panel"]                        # усе на Mac
+home-miniapp = ["worker", "node", "asr", "api", "panel", "tunnel"]      # і публічна адреса Mini App
+whisper = ["worker", "panel"]                                           # дім на Pi, Mac розпізнає
+panel = ["panel"]                                                       # лише панель
+
 [required_env]

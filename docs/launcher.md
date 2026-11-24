@@ -8,6 +8,17 @@
 `mac-all` (усе на Mac з ботом і Mini App, замість Pi), `pi`. Перед `mac-all` на Pi: `sudo sh deploy/hub/install.sh --no-miniapp` і
 `sudo systemctl disable --now radio345-asr`.
 
+Набори `mac-all` для `RADIO345_ONLY` (замість переліку служб; перелік теж працює):
+
+| Набір | Що запускає Mac |
+| --- | --- |
+| `home` | усе: Whisper, ефір, бот, API, панель |
+| `home-miniapp` | те саме й публічна адреса Mini App |
+| `whisper` | Whisper і панель (дім на Pi) |
+| `panel` | лише панель |
+
+Коли дім на Pi, `up` без параметрів однаково запускає лише Whisper і панель.
+
 | Команда | Дія |
 | --- | --- |
 | `./r345 up` | `RADIO345_PROFILE` і `RADIO345_ONLY` з `.env`; `--profile`, `--only worker node` — явно |

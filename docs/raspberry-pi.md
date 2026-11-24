@@ -2,21 +2,13 @@
 
 [← Вікі](README.md) · [Рація на iPhone](iphone-radio.md)
 
-Pi поруч із рацією знімає звук, віддає потоки на iPhone і передає з iPhone в ефір із ключем PTT.
-Розпізнавання тут немає: «Відібрані» порожні, а сегменти поки відкидаються (див. [ідеї](ideas.md)).
-Код: [server/radio_node.py](../server/radio_node.py).
+Pi — дім системи: ефір і передача для iPhone, розпізнавання через Whisper на Mac, бот, панель, API Mini App.
+Без USB-карти ефір не запускається, решта працює. Вузол ефіру: [server/radio_node.py](../server/radio_node.py).
 
 ## Що потрапляє на Pi
 
-Лише файли з [deploy/pi-files.txt](../deploy/pi-files.txt): код вузла, залежності,
-служба й ця інструкція. Список не редагують вручну. Після змін коду:
-
-```bash
-.venv/bin/python -m tools.pi_files --write
-```
-
-`pytest` (`tests/test_pi_files.py`) падає, якщо вузол імпортує файл, якого немає в списку.
-Приватне (`.env`, зразки сигналів) у git не потрапляє, на Pi його копіюють окремо.
+Лише файли зі списку [deploy/profiles/pi.files](../deploy/profiles/pi.files); його будує `.venv/bin/python -m tools.profiles --write`
+за імпортами процесів, повноту перевіряє `pytest`. Приватне (`.env`, база, зразки сигналів) копіюється окремо.
 
 ## Система
 
@@ -27,7 +19,7 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
 
 Монітор не потрібен. У Raspberry Pi Imager перед записом карти («Edit settings»):
 
-- ім’я хоста, наприклад `radio345`; користувач `pi` (його очікує служба);
+- ім’я хоста, наприклад `radio345`; користувач — будь-який звичайний;
 - SSH за ключем. Якщо ключа на Mac немає:
   `ssh-keygen -t ed25519 -C radio345`, потім `ssh-add --apple-use-keychain ~/.ssh/id_ed25519`.
   В Imager вставляйте лише `.pub`;
@@ -59,59 +51,31 @@ Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої 
 - overlay FS (лише читання) — пізніше, після налагодження: захищає карту від
   раптового вимкнення живлення, але заважає оновленням.
 
-## Встановлення
+## Встановлення й оновлення
 
-Команди можна повторювати: вже зроблене пропускається.
+На Pi один раз: `sudo apt install -y git ffmpeg libportaudio2 python3-venv`, Tailscale (`sudo tailscale up --ssh`).
+Код і залежності передає Mac:
 
 ```bash
-sudo apt install -y git ffmpeg libportaudio2 python3-venv
-# Tailscale: https://tailscale.com/download/linux, потім sudo tailscale up --ssh
+cd ~/Documents/Projects/radio
+L=$(mktemp); grep -v '^#' deploy/profiles/pi.files | sed 's#^/##' > $L
+rsync -ar --files-from=$L ./ <користувач>@radio345:radio345-hub/
+```
 
-[ -d ~/radio345/.git ] || git clone --filter=blob:none --sparse https://github.com/jackrv/radio.git ~/radio345
-cd ~/radio345
-git sparse-checkout set --no-cone --stdin < <(git show HEAD:deploy/pi-files.txt)
+На Pi:
+
+```bash
+cd ~/radio345-hub
 [ -d .venv ] || python3 -m venv .venv
-.venv/bin/pip install -r requirements-pi.txt
-.venv/bin/python -m shared.audio_devices        # знайти назву USB-карти
+.venv/bin/pip install -q -r requirements-hub.txt
+sudo sh deploy/hub/install.sh            # і після оновлення коду: змінюються команди служб
 ```
 
-Для приватного репозиторію потрібен deploy key лише на читання (GitHub → Settings → Deploy keys).
-
-`.env` на Pi — лише налаштування вузла, без токена Telegram:
-
-```
-RADIO_INPUT_DEVICE=USB
-RADIO_OUTPUT_DEVICE=USB
-RADIO_PTT=gpio:17
-```
-
-Зразки сигналів (за бажанням) — з Mac: `scp .local-notification-sounds/*.wav <користувач>@radio345:radio345/.local-notification-sounds/`.
-
-Пробний запуск вручну (Ctrl+C — вихід): `.venv/bin/python -m server.radio_node`.
-Без USB-карти вхід не відкриється (у Pi 5 немає мікрофонного входу), але потік і доступ з iPhone
-вже можна перевірити.
-
-Служба — під поточним користувачем (у файлі зразок для `pi`):
-
-```bash
-sed "s/^User=.*/User=$USER/; s|/home/pi/|$HOME/|g" deploy/radio345-node.service \
-  | sudo tee /etc/systemd/system/radio345-node.service >/dev/null
-sudo systemctl daemon-reload
-sudo systemctl enable --now radio345-node
-journalctl -u radio345-node -f
-```
-
-Токена немає: Pi пускає лише пристрої вашого облікового запису Tailscale (не ставте Pi тег).
+`.env` на Pi: `RADIO_ASR_URL` (вузол Whisper на Mac), `RADIO_INPUT_DEVICE=USB`, `RADIO_PTT`, токен бота. Бот має працювати
+лише на одному пристрої. Бази з Mac — `deploy/hub/import.sh`.
+Стан: `systemctl is-active radio345-node radio345-panel radio345-asr`, журнал: `journalctl -u radio345-asr -f`.
+Pi пускає лише пристрої вашого облікового запису Tailscale (не ставте Pi тег).
 У застосунку: Налаштування → «Pi», адреса — ім'я Pi в Tailscale (напр. `radio345`).
-
-## Оновлення
-
-```bash
-cd ~/radio345 && git pull
-git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt   # якщо список змінився
-.venv/bin/pip install -r requirements-pi.txt
-sudo systemctl restart radio345-node   # якщо змінився deploy/radio345-node.service — повторіть sed … | tee вище
-```
 
 ## Перевірено на Pi
 

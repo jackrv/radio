@@ -67,9 +67,6 @@ diagnostics-report.json
 radio345.code-workspace
 .asr-lab.lock
 
-# Локальний індекс claudeSearch та службові файли SQLite
-/claudeSearch/code_graph.sqlite
-/claudeSearch/code_graph.sqlite-*
 .local-segment-spool/
 .import/
 .local-node/

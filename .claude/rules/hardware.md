@@ -2,7 +2,6 @@
 paths:
   - "apps/ios/**"
   - "deploy/**"
-  - "tools/pi_files.py"
   - "tools/ios_*"
   - "server/radio_node.py"
   - "shared/radio_stream.py"

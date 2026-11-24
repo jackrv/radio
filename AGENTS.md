@@ -75,12 +75,5 @@ Claude Code підвантажує їх сам за `paths`; інші агент
   `node tools/check_panel_ui.cjs`; перевірка парсера не замінює API check → save → read.
 - Тести: `.venv/bin/python -m pytest -q`, `node --test tests/*.cjs`, `git diff --check`.
   Обирайте перевірки за зміною; явно зазначайте недоступні MLX/PortAudio/браузерні прогони.
-- Код читайте спершу через claudeSearch: для `.py`/`.js`
-  `outline <файл>` → `method <файл> Class::name`; цілий файл — лише коли потрібен.
-  Відсутність у графі не доводить невикористання — перевіряйте `grep`.
-- claudeSearch: `bash claudeSearch/cs.sh raw <текст>` / `sql <таблиця>`; граф JS і Python:
-  `graph usages|callers|methods|files <ім’я>`, `outline <файл>`, `method <файл> Class::name`
-  (маршрути — `graph files "GET /api/…"`). Граф — підказка, не AST. `.claudeignore` обов’язковий.
-  [Налаштування й обмеження](docs/reports/2026-11-21-claudesearch-setup.md).
 
 Деталі й історія — у тематичних звітах та [архіві старої пам’ятки](docs/agent-reference-2026-11-21.md).

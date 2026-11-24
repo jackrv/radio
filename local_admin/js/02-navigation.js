@@ -92,9 +92,10 @@
     tabs.hidden = list.length < 2;
     for (const tab of list) {
       const b = el("button", tab === name ? "tab active" : "tab", titles[tab]);
-      b.type = "button"; b.setAttribute("aria-current", tab === name ? "page" : "false");
+      b.type = "button"; b.setAttribute("aria-current", tab === name ? "page" : "false"); b.setAttribute("data-view", tab);
       b.addEventListener("click", () => show(tab));
       tabs.append(b);
+      if (tab === name) tabs.scrollLeft = Math.max(0, (b.offsetLeft || 0) - 40);   // телефон: вкладки — стрічка
     }
     if (!loaded.has(name) || ALWAYS_RELOAD.has(name)) {
       let pending = loadingViews.get(name);

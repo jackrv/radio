@@ -9,6 +9,7 @@ from pathlib import Path
 import sqlite3
 
 import config
+from shared.paths import place
 from server.database_lifecycle import (
     initialize_database, export_dictionaries, reset_database, restore_database,
 )
@@ -26,7 +27,7 @@ def main():
     parser.add_argument("--db", type=Path, default=Path(config.DB_PATH))
     parser.add_argument("--file", type=Path, default=config.DICTIONARIES_PATH,
                         help="Єдиний файл словників (типово dictionaries.txt у корені)")
-    parser.add_argument("--backup-dir", type=Path, default=config.BASE_DIR / ".local-backups")
+    parser.add_argument("--backup-dir", type=Path, default=place(config.BASE_DIR, ".local-backups"))
     parser.add_argument("--delete-source", action="store_true", help="Видалити файл словників після успішного імпорту")
     parser.add_argument("--confirm-reset", action="store_true", help="Явно дозволити очищення даних із попередньою резервною копією")
     parser.add_argument("--from", dest="backup", type=Path,

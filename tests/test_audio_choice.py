@@ -7,6 +7,7 @@ import pytest
 
 from server import devices as d
 from shared import audio_choice as a
+from shared.paths import place
 
 VALUES = {"RADIO_INPUT_DEVICE": "USB", "RADIO_OUTPUT_DEVICE": ""}
 
@@ -14,7 +15,7 @@ VALUES = {"RADIO_INPUT_DEVICE": "USB", "RADIO_OUTPUT_DEVICE": ""}
 @pytest.mark.parametrize("bad", ["{", "[]", '{"values": 1, "revision": 1}', '{"values": {"RADIO_INPUT_DEVICE": "a\\nb"}, "revision": 1}',
                                  '{"values": {}, "revision": "1"}'])
 def test_damaged_file_means_defaults(tmp_path, bad):
-    (tmp_path / a.NAME).write_text(bad)
+    (place(tmp_path, a.NAME)).write_text(bad)
     target = SimpleNamespace()
     a.apply(tmp_path, target)
     assert vars(target) == {} and a.read(tmp_path)["revision"] == 0
@@ -63,7 +64,7 @@ def test_pi_save_reports_conflict_and_rejects_bad_names(monkeypatch, tmp_path):
 def test_command_line_reads_and_writes(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(a, "ROOT", tmp_path)
     assert a.main(["write", json.dumps({"values": VALUES, "revision": 0})]) == 0
-    assert json.loads((tmp_path / a.NAME).read_text())["revision"] == 1
+    assert json.loads((place(tmp_path, a.NAME)).read_text())["revision"] == 1
     a.main(["write", json.dumps({"values": VALUES, "revision": 0})])
     assert "conflict" in json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert a.main(["x"]) == 2

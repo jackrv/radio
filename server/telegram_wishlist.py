@@ -13,6 +13,7 @@ import threading
 import time
 
 from shared.private_files import private_open
+from shared.paths import place, root_of
 
 _LOCK = threading.RLock()
 WAIT_SECONDS = 24 * 3600
@@ -47,7 +48,7 @@ class WishlistInbox:
     def __init__(self, root):
         self.root = Path(root)
         self.path = self.root / ".wishlist"
-        self.directory = self.root / ".local-telegram-wishlist"
+        self.directory = place(self.root, ".local-telegram-wishlist")
         self.state_path = self.directory / "state.json"
 
     @contextmanager
@@ -129,7 +130,7 @@ class WishlistMixin:
         if state is None or state[0] != "admin":
             return False
         # Події можуть бути в іншому каталозі в тестах/окремій інсталяції.
-        inbox = WishlistInbox(Path(self.db_path).resolve().parent)
+        inbox = WishlistInbox(root_of(self.db_path))
         try:
             result = inbox.accept(actor, msg.get("message_id"), text)
         except (OSError, ValueError, TypeError, KeyError) as exc:

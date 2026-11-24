@@ -3,7 +3,7 @@ description = "Mac: уся система"
 processes = ["node", "asr", "panel", "api", "worker", "tunnel"]
 # Публічна адреса — лише явно: ./r345 up --only worker node asr panel api tunnel
 manual = ["tunnel"]
-requirements = "requirements-dev.txt"
+requirements = "deploy/requirements/dev.txt"
 bot = true
 full_checkout = true
 

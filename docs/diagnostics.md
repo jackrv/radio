@@ -27,7 +27,7 @@
 ## Перевірка без зупинки приймача
 
 ```bash
-.venv/bin/python diagnose_radio345.py --verify-backup --network
+.venv/bin/python -m tools.diagnose --verify-backup --network
 ```
 
 | Частина | Що робить |

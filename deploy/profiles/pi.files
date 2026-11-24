@@ -24,7 +24,9 @@
 /deploy/hub/radio345-tunnel.service
 /deploy/profiles/pi.files
 /deploy/profiles/pi.toml
-/dictionaries.example.txt
+/deploy/requirements/hub.txt
+/deploy/requirements/pi.txt
+/deploy/templates/dictionaries.example.txt
 /docs/raspberry-pi.md
 /local_admin/index.html
 /local_admin/js/00-api.js
@@ -44,11 +46,8 @@
 /local_admin/js/13-refresh-login.js
 /local_admin/js/14-mentions.js
 /local_admin/styles.css
-/manage_database.py
 /r345
 /radio345.py
-/requirements-hub.txt
-/requirements-pi.txt
 /server/__init__.py
 /server/access_requests.py
 /server/admin_setup.py
@@ -154,12 +153,14 @@
 /shared/mention_selection.py
 /shared/miniapp_correction_editor.py
 /shared/model_pause.py
+/shared/move_data.py
 /shared/noise_candidates.py
 /shared/notification_eval.py
 /shared/notification_spectral.py
 /shared/notification_templates.py
 /shared/panel_jobs.py
 /shared/panel_tasks.py
+/shared/paths.py
 /shared/phrase_patterns.py
 /shared/pipeline.py
 /shared/private_files.py
@@ -200,3 +201,5 @@
 /shared/word_rule_engine.py
 /shared/word_rule_validation.py
 /shared/word_store.py
+/tools/__init__.py
+/tools/manage_database.py

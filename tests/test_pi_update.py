@@ -14,8 +14,8 @@ from server import devices, pi_update as u
 @pytest.fixture
 def pi(tmp_path):
     root = tmp_path / u.FOLDER
-    for path, text in (("deploy/profiles/pi.files", "# x\n/deploy/profiles/pi.files\n/server/a.py\n/server/old.py\n/requirements-hub.txt\n"),
-                       ("server/a.py", "old"), ("server/old.py", "old"), ("requirements-hub.txt", "x"), (".env", "SECRET=1"),
+    for path, text in (("deploy/profiles/pi.files", "# x\n/deploy/profiles/pi.files\n/server/a.py\n/server/old.py\n/deploy/requirements/hub.txt\n"),
+                       ("server/a.py", "old"), ("server/old.py", "old"), ("deploy/requirements/hub.txt", "x"), (".env", "SECRET=1"),
                        ("events.db", "db"), ("notes.txt", "чуже")):
         (root / path).parent.mkdir(parents=True, exist_ok=True)
         (root / path).write_text(text)
@@ -34,7 +34,7 @@ def pi(tmp_path):
                               env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin", "USER": "pi"})
 
     def deliver():
-        (root / "deploy/profiles/pi.files").write_text("/deploy/profiles/pi.files\n/server/a.py\n/server/new.py\n/requirements-hub.txt\n")
+        (root / "deploy/profiles/pi.files").write_text("/deploy/profiles/pi.files\n/server/a.py\n/server/new.py\n/deploy/requirements/hub.txt\n")
         (root / "server/a.py").write_text("new")
         (root / "server/new.py").write_text("new")
     return SimpleNamespace(root=root, step=step, deliver=deliver, python=python)
@@ -46,7 +46,7 @@ def test_update_replaces_code_and_removes_only_dropped_files(pi):
     done = pi.step("finish")
     assert done.returncode == 0 and json.loads(done.stdout)["units"] == [], done.stderr
     assert (pi.root / "server/a.py").read_text() == "new" and not (pi.root / "server/old.py").exists()
-    assert (pi.root / ".local-commit").read_text() == "c" * 40
+    assert (pi.root / ".local-data/commit").read_text() == "c" * 40
     for name in (".env", "events.db", "notes.txt"):
         assert (pi.root / name).exists()
     assert not (pi.root / "pip-called").exists(), "залежності не змінилися"
@@ -65,14 +65,14 @@ def test_broken_code_is_rolled_back(pi):
 def test_changed_requirements_are_installed(pi):
     pi.step("prepare")
     pi.deliver()
-    (pi.root / "requirements-hub.txt").write_text("y")
+    (pi.root / "deploy/requirements/hub.txt").write_text("y")
     assert pi.step("finish").returncode == 0 and (pi.root / "pip-called").exists()
 
 
 def test_manifest_cannot_reach_private_or_outside_files(pi):
     outside = pi.root.parent / "outside.txt"
     outside.write_text("x")
-    (pi.root / "deploy/profiles/pi.files").write_text("/deploy/profiles/pi.files\n/.env\n/../outside.txt\n/.local-recordings/a\n/server/a.py\n/requirements-hub.txt\n")
+    (pi.root / "deploy/profiles/pi.files").write_text("/deploy/profiles/pi.files\n/.env\n/../outside.txt\n/.local-recordings/a\n/server/a.py\n/deploy/requirements/hub.txt\n")
     pi.step("prepare")
     pi.deliver()
     pi.step("finish")
@@ -95,7 +95,8 @@ def github(tmp_path):
         (repo / "deploy/profiles").mkdir(parents=True, exist_ok=True)
         (repo / "server").mkdir(exist_ok=True)
         (repo / "deploy/profiles/pi.files").write_text("\n".join(manifest) + "\n")
-        (repo / "requirements-hub.txt").write_text("x")
+        (repo / "deploy/requirements").mkdir(parents=True, exist_ok=True)
+        (repo / "deploy/requirements/hub.txt").write_text("x")
         (repo / "private-lab.txt").write_text("не для Pi")
         for name, text in files.items():
             (repo / f"server/{name}.py").write_text(text)
@@ -105,7 +106,7 @@ def github(tmp_path):
     return SimpleNamespace(url=f"file://{repo}", commit=commit)
 
 
-BASE = ["/deploy/profiles/pi.files", "/server/a.py", "/requirements-hub.txt"]
+BASE = ["/deploy/profiles/pi.files", "/server/a.py", "/deploy/requirements/hub.txt"]
 
 
 def test_exact_commit_is_taken_not_the_newest(pi, github):
@@ -116,7 +117,7 @@ def test_exact_commit_is_taken_not_the_newest(pi, github):
     assert pi.step("finish", wanted).returncode == 0
     assert (pi.root / "server/a.py").read_text() == "wanted" and (pi.root / "server/new.py").exists()
     assert not (pi.root / "private-lab.txt").exists() and not (pi.root / ".git").exists()
-    assert (pi.root / ".local-commit").read_text() == wanted and (pi.root / ".env").read_text() == "SECRET=1"
+    assert (pi.root / ".local-data/commit").read_text() == wanted and (pi.root / ".env").read_text() == "SECRET=1"
 
 
 def test_unavailable_github_changes_nothing(pi, tmp_path):

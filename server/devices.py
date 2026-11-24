@@ -12,6 +12,8 @@ import threading
 import time
 from pathlib import Path
 
+from shared.paths import REMOTE_PLACE, place
+
 ROOT = Path(__file__).resolve().parent.parent
 UNITS = ("node", "asr", "panel", "api", "tunnel")
 HOME_PROCESSES = ("asr",)      # хто веде базу й бота — той «дім»
@@ -19,7 +21,7 @@ FRESH_S = 10.0
 SSH_TIMEOUT_S = 12
 
 # Виконується стандартним python3 на Pi зі stdin; виводить один рядок JSON.
-REMOTE = r'''
+REMOTE = REMOTE_PLACE + r'''
 import hashlib, json, os, shutil, sqlite3, subprocess, sys, time
 root = os.path.expanduser("~/" + sys.argv[1])
 out = {"processes": {}}
@@ -31,13 +33,13 @@ for name in sys.argv[2].split(","):
                               "restarts": int(p.get("NRestarts") or 0),
                               "blocked": p.get("ActiveState") != "active" and p.get("ExecMainStatus") == "75"}
 try:
-    d = sqlite3.connect("file:%s?mode=ro" % os.path.join(root, "events.db"), uri=True, timeout=3)
+    d = sqlite3.connect("file:%s?mode=ro" % place(root, "events.db"), uri=True, timeout=3)
     out["events"], out["last_event"] = d.execute("SELECT COUNT(*), MAX(CAST(strftime('%s', ts) AS INTEGER)) FROM radio_events").fetchone()
     d.close()
 except sqlite3.Error:
     out["events"] = None
 try:
-    out["queue"] = sum(n.endswith(".seg") for n in os.listdir(os.path.join(root, ".local-segment-spool")))
+    out["queue"] = sum(n.endswith(".seg") for n in os.listdir(place(root, ".local-segment-spool")))
 except OSError:
     out["queue"] = 0
 digest = hashlib.sha256()
@@ -60,7 +62,7 @@ try:
 except OSError:
     out["audio"] = False
 try:
-    with open(os.path.join(root, ".local-commit")) as f:
+    with open(place(root, ".local-commit")) as f:
         out["commit"] = f.read(40)
 except OSError:
     out["commit"] = None
@@ -101,13 +103,13 @@ def local(db_path, root=ROOT):
     from shared.event_store import get_db
     from shared.model_pause import ModelPause, model_root
     from shared.r345_control import Control
-    running = Control(root / ".radio345-launcher").read()
+    running = Control(place(root, ".radio345-launcher")).read()
     processes = {n: {"alive": bool(p.get("alive")), "enabled": p.get("wanted", True), "restarts": p.get("restarts", 0),
                      "blocked": bool(p.get("blocked"))}
                  for n, p in (running or {}).get("processes", {}).items()}
     with get_db(db_path) as db:
         events, last = db.execute("SELECT COUNT(*), MAX(CAST(strftime('%s', ts) AS INTEGER)) FROM radio_events").fetchone()
-    spool = Path(os.environ.get("RADIO_SPOOL_DIR", "").strip() or root / ".local-segment-spool")
+    spool = Path(os.environ.get("RADIO_SPOOL_DIR", "").strip() or place(root, ".local-segment-spool"))
     return {"reachable": True, "profile": (running or {}).get("profile"), "processes": processes,
             "model": ModelPause(model_root(root)).state(), "events": events, "last_event": last,
             "queue": sum(1 for _ in spool.glob("*.seg")) if spool.is_dir() else 0,
@@ -166,7 +168,7 @@ def control_mac(process, verb, root=ROOT):
     from shared.r345_control import VERBS, Control
     if process not in MAC_CONTROLLED or verb not in VERBS:
         raise Refused("Невідома дія")
-    control = Control(root / ".radio345-launcher")
+    control = Control(place(root, ".radio345-launcher"))
     running = control.read()
     if running is None:
         raise Refused("Службами на Mac керує не r345")

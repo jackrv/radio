@@ -8,6 +8,7 @@ from shared.diagnostics import RuntimeDiagnostics
 from tests.test_local_dashboard import local
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
+from shared.paths import place
 
 
 def test_local_panel_lists_and_reads_previous_sessions(local):
@@ -43,7 +44,7 @@ def test_local_history_requires_session_auth_and_rejects_invalid_ids(local):
 def test_history_read_does_not_create_directory(local):
     client, _, tmp = local
     assert client.get("/api/diagnostics/history").json()["items"] == []
-    assert not (tmp / ".local-diagnostics").exists()
+    assert not (place(tmp, ".local-diagnostics")).exists()
 
 
 def test_history_is_not_exposed_on_telegram_api(setup):

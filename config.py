@@ -27,15 +27,19 @@ USE_LLM = False
 LANGUAGE = "uk"
 BASE_DIR = Path(__file__).resolve().parent
 
-DB_PATH = str(BASE_DIR / "events.db")
+from shared.paths import DATA, place
+
+DB_PATH = str(place(BASE_DIR, "events.db"))
 DICTIONARIES_PATH = BASE_DIR / "dictionaries.txt"
-LOG_PATH = BASE_DIR / "radio.log"
+LOG_PATH = place(BASE_DIR, "radio.log")
+DIAGNOSTICS_PATH = place(BASE_DIR, "diagnostics.json")
+(BASE_DIR / DATA).mkdir(mode=0o700, exist_ok=True)
 DEBUG_AUDIO_DIR = BASE_DIR / "debug_audio"
 # Приватні знімки кожної сесії: до 14 днів, 100 сесій і 50 МіБ.
 DIAGNOSTICS_HISTORY_DAYS = 14
 DIAGNOSTICS_HISTORY_MAX_SESSIONS = 100
 DIAGNOSTICS_HISTORY_MAX_BYTES = 50 * 1024 * 1024
-NOTIFICATION_SOUNDS_DIR = BASE_DIR / ".local-notification-sounds"
+NOTIFICATION_SOUNDS_DIR = place(BASE_DIR, ".local-notification-sounds")
 # Спектральний фільтр сповіщень: "shadow" — лише оцінює кожен сегмент і показує
 # оцінки в локальній панелі, нічого не відкидає; "active" — відкидає кандидатів;
 # "off" — вимкнено. Поріг обирається в панелі за розміченими записами «Аудіоархіву».
@@ -121,7 +125,7 @@ VAD_LEVEL = 2
 
 # Локальний перевірочний корпус: WAV + тексти + метрики, без Telegram.
 RECORD_AUDIO = True
-RECORDINGS_DIR = BASE_DIR / ".local-recordings"
+RECORDINGS_DIR = place(BASE_DIR, ".local-recordings")
 RECORDINGS_RETENTION_DAYS = 7
 RECORDINGS_LOW_RMS_RETENTION_SECONDS = 60 * 60
 RECORDINGS_MAX_BYTES = 5 * 1024 * 1024 * 1024
@@ -130,4 +134,4 @@ RECORDINGS_MAX_BYTES = 5 * 1024 * 1024 * 1024
 RECORDINGS_SAVE_VAD_SHORT = False
 # Frozen sample for offline experiments (python -m lab.asr_lab queue).
 # The audio archive UI uses live queues from SQLite, independently of this file.
-REVIEW_QUEUE_PATH = BASE_DIR / ".local-experiments" / "review-queue.json"
+REVIEW_QUEUE_PATH = place(BASE_DIR, ".local-experiments") / "review-queue.json"

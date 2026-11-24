@@ -114,14 +114,16 @@
     if (CONTROLLED[name].includes(process) && (name === "pi" || serviceMode === "r345")) for (const verb of p.alive ? ["restart", "stop"] : ["start"]) {
       const b = el("button", "ghost icon-button", VERB_ICON[verb]); b.type = "button";
       b.title = VERB_TEXT[verb]; b.setAttribute("aria-label", `${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}`);
-      b.addEventListener("click", () => action(async () => {
-        const open = process === "tunnel" && verb === "start" ? " Відкриється публічна адреса API Mini App." : "";
-        if (!confirm(`${VERB_TEXT[verb]}: ${PROCESS_NAMES[process]} на ${deviceTitle(name)}?${open}`)) return;
+      const run = async () => {
         b.disabled = true;
         await request(`/api/devices/${name}/${process}/${verb}`, "POST");
         note(`${PROCESS_NAMES[process]} на ${deviceTitle(name)}: команду надіслано.`);
         setTimeout(devices, 3000);
-      }));
+      };
+      // Запуск і перезапуск — одразу; зупинка й відкриття публічної адреси — другим натисканням.
+      if (verb === "stop") armed(b, "Точно?", run);
+      else if (process === "tunnel" && verb === "start") armed(b, "Відкрити?", run);
+      else b.addEventListener("click", () => action(run));
       buttons.append(b);
     }
     row.append(el("span", p.alive ? "service-dot on" : "service-dot", ""), el("span", "", PROCESS_NAMES[process] || process), el("span", "muted small", state), buttons);
@@ -187,7 +189,6 @@
     box.append(el("p", "alert small", `Код на Pi інший${d.pi.commit ? `: ${d.pi.commit.slice(0, 7)}` : ""}, на Mac ${(d.mac.commit || "—").slice(0, 7)}.`));
     const b = el("button", "ghost small-button", "Оновити код Pi"); b.type = "button"; b.disabled = moving;
     b.addEventListener("click", () => action(async () => {
-      if (!confirm("Pi візьме з GitHub код, що на Mac. Запущені служби Pi перезапустяться; база й налаштування не зміняться.")) return;
       await request("/api/devices/pi/update", "POST"); await devices();
     }));
     box.append(b);
@@ -218,9 +219,12 @@
       parts.push(el("p", "alert small", "Змінилися файли служб: на Pi один раз sudo sh deploy/hub/install.sh --units"));
     // «Перенести сюди» — лише на пристрої, який зараз не дім. Недоступна Pi не може прийняти дім, але Mac може забрати.
     if (d.configured && !home && d.home !== "both" && device.reachable && !moving && !updateState.active) {
-      const b = el("button", "", "Перенести сюди"); b.type = "button"; b.className = "device-move";
-      b.addEventListener("click", () => action(() => moveHome(name)));
-      parts.push(b);
+      if (moveAsk?.target === name) parts.push(moveQuestion(name));
+      else {
+        const b = el("button", "", "Перенести сюди"); b.type = "button"; b.className = "device-move";
+        b.addEventListener("click", () => action(() => moveHome(name)));
+        parts.push(b);
+      }
     }
     box.replaceChildren(...parts);
   }
@@ -238,12 +242,26 @@
     if (m.active) moveTimer = setTimeout(() => devices().catch(() => {}), 2000);
     return !!m.active || !!m.interrupted;
   }
+  let moveAsk = null;
+  function moveQuestion(name) {
+    const box = el("div", "device-ask"), yes = el("button", "", "Перенести"), no = el("button", "ghost", "Скасувати"), bar = el("div", "toolbar");
+    yes.type = no.type = "button";
+    yes.addEventListener("click", () => action(async () => {
+      moveAsk = null;
+      await request("/api/home-move", "POST", { target: name, accept_warnings: true });
+      await devices();
+    }));
+    no.addEventListener("click", () => { moveAsk = null; action(devices); });
+    bar.append(yes, no);
+    const list = el("ul", "small");
+    for (const w of moveAsk.warnings) list.append(el("li", "", w));
+    box.append(el("p", "", `Перенести все на ${deviceTitle(name)}? Бот, Mini App та ефір кілька хвилин не працюватимуть.`), ...(moveAsk.warnings.length ? [list] : []), bar);
+    return box;
+  }
   async function moveHome(target) {
     const check = await request(`/api/home-move/check?target=${target}`);
     if (check.problems.length) { note(check.problems.join(" ")); return; }
-    if (!confirm([`Перенести все на ${deviceTitle(target)}? Бот, Mini App та ефір кілька хвилин не працюватимуть.`, ...check.warnings.map(w => `• ${w}`)].join("\n"))) return;
-    await request("/api/home-move", "POST", { target, accept_warnings: true });
-    note("Перенесення почалося.");
+    moveAsk = { target, warnings: check.warnings };   // питання — у самій картці
     await devices();
   }
   async function devices() {
@@ -256,10 +274,7 @@
     deviceCard("pi", $("device-pi"), d, moving);
   }
   $("devices-refresh")?.addEventListener?.("click", () => action(devices));
-  $("move-rollback")?.addEventListener?.("click", () => action(async () => {
-    if (!confirm("Повернути все туди, звідки переносили?")) return;
-    await request("/api/home-move/rollback", "POST"); await devices();
-  }));
+  if ($("move-rollback") && typeof armed === "function") armed($("move-rollback"), "Повернути? Ще раз", async () => { await request("/api/home-move/rollback", "POST"); await devices(); });
 
   async function system() {
     if (!backupTask) backupJob().resume();

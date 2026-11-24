@@ -17,6 +17,7 @@ from unittest.mock import Mock
 # WER — та сама метрика, що в архіві й лабораторії (без алиасів і виправлень).
 from shared.text_metrics import edit_distance as distance, metric_words as words  # noqa: E402
 from shared.sqlite_connection import read_only
+from shared.paths import place, root_of
 
 
 def load_records(archive, *, include_non_speech=False):
@@ -57,8 +58,8 @@ def load_setup(db_path, archive=None):
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='text_list_entries'").fetchone():
             _, values = load_active(db)
         from shared.dictionary_number_evidence import load_rules
-        parent=Path(db_path).resolve().parent
-        if archive is None:archive=parent if (parent/'index.sqlite3').is_file() else parent/'.local-recordings'
+        parent=root_of(db_path)
+        if archive is None:archive=parent if (parent/'index.sqlite3').is_file() else place(parent, ".local-recordings")
         with templates(aliases=(values.get('aliases',{}),values.get('callsign_aliases',{}))):
             dictionaries[0].number_rules=load_rules(archive,dictionaries[0],dictionaries[1])
         return dictionaries, set(values.get("short_garbage", ())), values

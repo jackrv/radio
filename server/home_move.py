@@ -7,6 +7,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -19,8 +20,9 @@ from pathlib import Path
 from server import devices
 from shared import home_marker
 from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
+from shared.paths import REMOTE_PLACE, place
 
-FILES = {"events.db": "events.db", "index.sqlite3": ".local-recordings/index.sqlite3"}
+FILES = ("events.db", "index.sqlite3")
 STOP_ORDER = ("node", "asr", "tunnel", "api")
 START_ORDER = ("api", "asr", "tunnel", "node")
 DRAIN_S, STOP_S, START_S, STABLE_S = 90.0, 60.0, 90.0, 25.0
@@ -29,6 +31,10 @@ STAGING = ".import-move"
 
 class MoveError(Exception):
     """Текст показується оператору."""
+
+
+def live_path(root, name):
+    return place(root, name) if name == "events.db" else place(root, ".local-recordings") / name
 
 
 def sha256(path):
@@ -58,10 +64,10 @@ def copy_database(source, target):
 
 def install_local(root, folder, stamp):
     """Виконується на цілі (Mac напряму, Pi — цим самим текстом через ssh, див. REMOTE_INSTALL)."""
-    backup = root / ".local-backups" / f"before-move-{stamp}"
+    backup = place(root, ".local-backups") / f"before-move-{stamp}"
     backup.mkdir(mode=0o700, parents=True)
-    for name, relative in FILES.items():
-        live = root / relative
+    for name in FILES:
+        live = live_path(root, name)
         if live.exists():
             copy_database(live, backup / name)
         live.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -69,12 +75,13 @@ def install_local(root, folder, stamp):
     return backup
 
 
-REMOTE_INSTALL = r'''
+REMOTE_INSTALL = REMOTE_PLACE + r'''
 import fcntl, hashlib, json, os, shutil, sqlite3, sys, tempfile
 root = os.path.join(os.path.expanduser("~"), sys.argv[1])
+os.makedirs(os.path.join(root, ".local-data"), 0o700, exist_ok=True)
 stamp, epoch, sums = sys.argv[2], int(sys.argv[3]), json.loads(sys.argv[4])
-staging = os.path.join(root, ".import-move", stamp)
-files = {"events.db": "events.db", "index.sqlite3": ".local-recordings/index.sqlite3"}
+staging = os.path.join(place(root, ".import-move"), stamp)
+files = {"events.db": place(root, "events.db"), "index.sqlite3": os.path.join(place(root, ".local-recordings"), "index.sqlite3")}
 def digest(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -94,15 +101,15 @@ def copy(source, target):
 for name in files:
     if digest(os.path.join(staging, name)) != sums[name]:
         sys.exit("checksum")
-lock = os.open(os.path.join(root, ".radio345-owner.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+lock = os.open(place(root, ".radio345-owner.lock"), os.O_RDWR | os.O_CREAT, 0o600)
 try:
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except BlockingIOError:
     sys.exit("busy")
-backup = os.path.join(root, ".local-backups", "before-move-" + stamp)
+backup = os.path.join(place(root, ".local-backups"), "before-move-" + stamp)
 os.makedirs(backup, 0o700)
 for name, relative in files.items():
-    live = os.path.join(root, relative)
+    live = relative
     if os.path.exists(live):
         copy(live, os.path.join(backup, name))
     os.makedirs(os.path.dirname(live), 0o700, exist_ok=True)
@@ -111,17 +118,18 @@ shutil.rmtree(staging)
 fd, temp = tempfile.mkstemp(dir=root)
 with os.fdopen(fd, "w") as out:
     json.dump({"home": "pi", "epoch": epoch}, out)
-os.replace(temp, os.path.join(root, ".local-home.json"))
+os.replace(temp, place(root, ".local-home.json"))
 print("installed")
 '''
 
-REMOTE_MARK = r'''
+REMOTE_MARK = REMOTE_PLACE + r'''
 import json, os, sys, tempfile
 root = os.path.join(os.path.expanduser("~"), sys.argv[1])
+os.makedirs(os.path.join(root, ".local-data"), 0o700, exist_ok=True)
 fd, temp = tempfile.mkstemp(dir=root)
 with os.fdopen(fd, "w") as out:
     json.dump({"home": sys.argv[2], "epoch": int(sys.argv[3])}, out)
-os.replace(temp, os.path.join(root, ".local-home.json"))
+os.replace(temp, place(root, ".local-home.json"))
 print("marked")
 '''
 
@@ -134,10 +142,10 @@ class MacSide:
 
     def state(self):
         from shared.r345_control import Control
-        running = Control(self.root / ".radio345-launcher").read()
+        running = Control(place(self.root, ".radio345-launcher")).read()
         if running is None:
             return {"reachable": False, "error": "На Mac не працює r345"}
-        spool = self.root / ".local-segment-spool"
+        spool = place(self.root, ".local-segment-spool")
         return {"reachable": True, "processes": running["processes"],
                 "queue": sum(1 for _ in spool.glob("*.seg")) if spool.is_dir() else 0, "audio": True,
                 "disk_free": shutil.disk_usage(self.root).free}
@@ -146,11 +154,11 @@ class MacSide:
         devices.control_mac(process, verb, self.root)
 
     def snapshot(self, folder):
-        for name, relative in FILES.items():
-            copy_database(self.root / relative, folder / name)
+        for name in FILES:
+            copy_database(live_path(self.root, name), folder / name)
 
     def install(self, folder, stamp, epoch):
-        lock = acquire_instance_lock(self.root / OWNER_LOCK)
+        lock = acquire_instance_lock(place(self.root, OWNER_LOCK))
         if lock is None:
             raise MoveError("Розпізнавання на Mac ще тримає базу")
         try:
@@ -192,6 +200,14 @@ class PiSide:
             raise MoveError(reason or "Pi не виконала дію")
         return done.stdout
 
+    def _where(self, name):
+        """Абсолютний шлях на Pi: там старе або нове розташування."""
+        out = self._python(REMOTE_PLACE + "import os,sys\nprint(place(os.path.join(os.path.expanduser('~'), sys.argv[1]), sys.argv[2]))\n",
+                           name, timeout=60).strip()
+        if not re.fullmatch(r"/[\w./-]+", out):
+            raise MoveError("Незрозумілий шлях на Pi")
+        return out
+
     def _rsync(self, *args, timeout=1800):
         try:
             done = self.run(["rsync", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=10", *args],
@@ -211,12 +227,12 @@ class PiSide:
             os.chmod(folder / name, 0o600)
         # Звук, записаний на Pi; наявні файли Mac не перезаписуються.
         self._rsync("-a", "--ignore-existing", "--include=*.wav", "--exclude=*",
-                    f"{self.host}:{self.folder}/.local-recordings/", str(self.mac_root / ".local-recordings") + "/")
+                    f"{self.host}:{self._where('.local-recordings')}/", str(place(self.mac_root, ".local-recordings")) + "/")
 
     def install(self, folder, stamp, epoch):
-        self._python("import os,sys\nos.makedirs(os.path.join(os.path.expanduser('~'), sys.argv[1], sys.argv[2], sys.argv[3]), 0o700)\n",
-                     STAGING, stamp)
-        self._rsync("-a", *(str(folder / name) for name in FILES), f"{self.host}:{self.folder}/{STAGING}/{stamp}/")
+        staging = f"{self._where(STAGING)}/{stamp}"
+        self._python("import os,sys\nos.makedirs(sys.argv[2], 0o700)\n", staging)
+        self._rsync("-a", *(str(folder / name) for name in FILES), f"{self.host}:{staging}/")
         self._python(REMOTE_INSTALL, stamp, str(epoch), json.dumps({n: sha256(folder / n) for n in FILES}))
 
     def mark(self, home, epoch):
@@ -229,7 +245,7 @@ class HomeMove:
     def __init__(self, root, mac, pi, sleep=time.sleep, clock=time.monotonic, backups=None):
         self.root, self.sides = Path(root), {"mac": mac, "pi": pi}
         self.sleep, self.clock, self.backups = sleep, clock, backups
-        self.directory = self.root / ".local-move"
+        self.directory = place(self.root, ".local-move")
         self.state_path = self.directory / "state.json"
         self.thread, self.guard = None, threading.Lock()
 
@@ -277,7 +293,7 @@ class HomeMove:
             marker = home_marker.read(self.root)
             if marker and marker["home"] != source:
                 problems.append(f"Позначка каже, що дім уже на {'Pi' if marker['home'] == 'pi' else 'Mac'}")
-        need = sum(p.stat().st_size for p in (self.root / r for r in FILES.values()) if p.exists()) * 3
+        need = sum(p.stat().st_size for p in (live_path(self.root, n) for n in FILES) if p.exists()) * 3
         for name in ("mac", "pi"):
             free = states[name].get("disk_free")
             if states[name].get("reachable") and free is not None and free < need + 500 * 1024 ** 2:
@@ -347,7 +363,8 @@ class HomeMove:
                 a.mark(target, epoch)   # джерело більше не дім: розпізнавання там не стартує
             self._save(phase="starting")
             audio = b.state().get("audio") is not False
-            wanted = [p for p in START_ORDER if (p in running or p in ("asr", "api")) and (p != "node" or audio)]
+            # Ефір — завжди, якщо цілі є чим слухати: на Pi без карти він не працював, та на Mac має повернутися.
+            wanted = [p for p in START_ORDER if (p in running or p in ("asr", "api", "node")) and (p != "node" or audio)]
             self._start(b, wanted)
             self._save(phase="done")
         except Exception as exc:

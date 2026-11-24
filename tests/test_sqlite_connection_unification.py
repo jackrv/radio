@@ -78,10 +78,8 @@ def test_default_paths_are_project_absolute(
 ):
     monkeypatch.chdir(tmp_path)
 
-    expected = str(
-        Path(config.__file__).resolve().parent
-        / "events.db"
-    )
+    from shared.paths import place
+    expected = str(place(Path(config.__file__).resolve().parent, "events.db"))
 
     assert config.DB_PATH == expected
 

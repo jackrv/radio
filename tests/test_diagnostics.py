@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from shared.diagnostics import RuntimeDiagnostics, error_kind
-from diagnose_radio345 import audit_database, audit_logs
+from tools.diagnose import audit_database, audit_logs
 from shared.dictionary_store import init_db as init_dictionaries
 from shared.event_store import init_db
 from shared.sqlite_connection import get_db

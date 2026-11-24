@@ -6,6 +6,7 @@ from typing import Literal
 import config
 from server.api.panel.models import AudioDevicesUpdate, HomeMoveStart, PauseUpdate
 from server.api.panel.common import backups_overview, read_diagnostics, diagnostics_view
+from shared.paths import root_of
 
 def register(app, ctx):
     db_path = ctx.db_path
@@ -42,7 +43,7 @@ def register(app, ctx):
     import sys
     from pathlib import Path
     from server import devices
-    device_state = devices.Devices(db_path, Path(db_path).resolve().parent, host=devices.pi_host()) if sys.platform == "darwin" else None
+    device_state = devices.Devices(db_path, root_of(db_path), host=devices.pi_host()) if sys.platform == "darwin" else None
 
     @app.get("/api/devices")
     def device_list(admin=Depends(actor)):
@@ -52,7 +53,7 @@ def register(app, ctx):
     mover = None
     if device_state is not None:
         from server import home_move
-        root = Path(db_path).resolve().parent
+        root = root_of(db_path)
         mover = home_move.HomeMove(root, home_move.MacSide(root),
                                    home_move.PiSide(device_state.host, root) if device_state.host else None)
 

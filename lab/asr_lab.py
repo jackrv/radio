@@ -33,10 +33,11 @@ from pathlib import Path
 
 import numpy as np
 from shared.sqlite_connection import read_only
+from shared.paths import place, root_of
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCHIVE = ROOT / ".local-recordings"
-OUTPUT = ROOT / ".local-experiments"
+ARCHIVE = place(ROOT, ".local-recordings")
+OUTPUT = place(ROOT, ".local-experiments")
 
 # Короткий контекст із підтверджених оператором оборотів (docs/recognition.md).
 # Без номерів і без підписів на кшталт «Позивні:» — вони самі потрапляли в галюцинації.
@@ -235,7 +236,7 @@ def dictionaries_from(db_path, archive=None):
             blacklist, short_garbage = list(enabled("blacklist")), list(enabled("short_garbage"))
     callsigns, commands, watch = dictionaries_from_lines(lines)
     from shared.dictionary_number_evidence import load_rules
-    archive=Path(archive) if archive is not None else Path(db_path).resolve().parent/'.local-recordings'
+    archive=Path(archive) if archive is not None else place(root_of(db_path), ".local-recordings")
     # Еталони контрольної частини не можуть навчати правило, що їх оцінює.
     allowed_ids=set()
     if (archive/'index.sqlite3').is_file():

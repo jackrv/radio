@@ -99,7 +99,7 @@ def test_import_failure_rolls_back_all_categories_and_preserves_sources(tmp_path
 
 
 def test_shipped_template_cannot_initialize_receiver(tmp_path):
-    template = Path(__file__).resolve().parent.parent / "dictionaries.example.txt"
+    template = Path(__file__).resolve().parent.parent / "deploy/templates/dictionaries.example.txt"
     source = tmp_path / "dictionaries.txt"
     source.write_bytes(template.read_bytes())
     with pytest.raises(ValueError, match="callsigns"):

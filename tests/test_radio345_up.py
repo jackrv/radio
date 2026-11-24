@@ -9,6 +9,7 @@ import pytest
 import radio345
 from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
 from tools import components, profiles
+from shared.paths import place
 
 SLEEP = ("-c", "import time; print('up', flush=True); time.sleep(60)")
 CRASH = ("-c", "import sys; sys.exit(3)")
@@ -134,11 +135,11 @@ def test_unknown_profile_process_and_missing_env():
 
 
 def test_model_and_owner_locks_are_independent(tmp_path):
-    model = acquire_instance_lock(tmp_path / ".radio345.lock")
-    owner = acquire_instance_lock(tmp_path / OWNER_LOCK)
+    model = acquire_instance_lock(place(tmp_path, ".radio345.lock"))
+    owner = acquire_instance_lock(place(tmp_path, OWNER_LOCK))
     try:
         assert model is not None and owner is not None
-        assert acquire_instance_lock(tmp_path / OWNER_LOCK) is None
+        assert acquire_instance_lock(place(tmp_path, OWNER_LOCK)) is None
     finally:
         os.close(model)
         os.close(owner)
@@ -149,13 +150,13 @@ def test_restore_is_refused_while_recognition_service_runs(tmp_path):
     from shared.event_store import init_db
     init_db(tmp_path / "events.db")
     init_db(tmp_path / "copy.db")
-    owner = acquire_instance_lock(tmp_path / OWNER_LOCK)
+    owner = acquire_instance_lock(place(tmp_path, OWNER_LOCK))
     try:
         with pytest.raises(RuntimeError, match="службу розпізнавання"):
             restore_database(tmp_path / "events.db", tmp_path / "copy.db", tmp_path / "b")
     finally:
         os.close(owner)
-    assert (fd := acquire_instance_lock(tmp_path / ".radio345.lock")) is not None
+    assert (fd := acquire_instance_lock(place(tmp_path, ".radio345.lock"))) is not None
     os.close(fd)
 
 
@@ -208,7 +209,7 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
     """Справжній r345 у копії проєкту: стан, вибірковий перезапуск, зупинка, відмова другому запуску."""
     import shutil
     import subprocess
-    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/conflict.py", "shared/instance_lock.py", "shared/__init__.py"):
+    for item in ("radio345.py", "shared/process_guard.py", "shared/r345_control.py", "shared/conflict.py", "shared/paths.py", "shared/instance_lock.py", "shared/__init__.py"):
         target = tmp_path / item
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radio345.ROOT / item, target)
@@ -232,7 +233,7 @@ def test_status_restart_and_stop_of_real_supervisor(tmp_path, monkeypatch):
         assert wait(lambda: r345("status").returncode == 0, 20)
         second = r345("up")
         assert second.returncode != 0 and "уже запущено" in second.stderr
-        control = radio345.Control(tmp_path / ".radio345-launcher")
+        control = radio345.Control(place(tmp_path, ".radio345-launcher"))
         before = control.read()["processes"]
         done = r345("restart", "asr")
         assert done.returncode == 0, done.stdout

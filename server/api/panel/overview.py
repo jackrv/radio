@@ -16,6 +16,7 @@ from shared.user_store import PERMISSIONS
 from shared.telegram_sync import sync_status
 from server.api.panel.models import SuggestionDismiss, SuggestionMute, SuggestionRestore
 from server.api.panel.common import ROOT, spectral_settings, events_by_hour, users_overview, backups_overview, read_diagnostics
+from shared.paths import place
 
 def register(app, ctx):
     db_path = ctx.db_path
@@ -196,7 +197,7 @@ def register(app, ctx):
         """Хто веде служби: r345 (є кнопки), systemd на Pi або ніхто."""
         import os
         from shared.r345_control import Control
-        running = Control((launcher_root or ROOT) / ".radio345-launcher").read()
+        running = Control(place((launcher_root or ROOT), ".radio345-launcher")).read()
         if running:
             return {"mode": "r345", "profile": running.get("profile"),
                     "stopped": sorted(n for n, p in running.get("processes", {}).items() if not p.get("alive") and p.get("wanted", True))}
@@ -206,7 +207,7 @@ def register(app, ctx):
     def launcher_command(command: Literal["restart", "stop"], admin=Depends(actor)):
         """Відповідь — одразу: панель працює під r345 і зупиниться разом з усіма службами."""
         from shared.r345_control import Control
-        control = Control((launcher_root or ROOT) / ".radio345-launcher")
+        control = Control(place((launcher_root or ROOT), ".radio345-launcher"))
         running = control.read()
         if running is None:
             raise HTTPException(409, "Службами керує не r345")

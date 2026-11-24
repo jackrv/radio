@@ -6,12 +6,13 @@ from shared.dictionary_store import init_db as init_dictionary_db
 from shared.event_store import init_db as init_event_db, save_event
 from shared.miniapp_correction_editor import save_edit_draft
 from shared.recordings import RecordingStore, label_archive_from_correction
+from shared.paths import place
 
 PCM = b"\0\0" * 1600
 
 
 def archive(tmp_path):
-    return RecordingStore(tmp_path / ".local-recordings")
+    return RecordingStore(place(tmp_path, ".local-recordings"))
 
 
 def saved(store, fix_id, raw="Вишня, 15, кісті"):
@@ -63,7 +64,7 @@ def test_case_only_or_unchanged_edit_is_not_a_reference(tmp_path):
 
 def test_missing_archive_is_not_created(tmp_path):
     assert label_archive_from_correction(tmp_path / "events.db", "db:1", "а", "б") == []
-    assert not (tmp_path / ".local-recordings").exists()
+    assert not (place(tmp_path, ".local-recordings")).exists()
 
 
 def test_mini_app_edit_reaches_archive(tmp_path):

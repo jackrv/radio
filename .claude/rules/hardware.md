@@ -6,7 +6,7 @@ paths:
   - "server/radio_node.py"
   - "shared/radio_stream.py"
   - "shared/ptt_key.py"
-  - "requirements-pi.txt"
+  - "deploy/requirements/pi.txt"
 ---
 
 # Залізо: iOS, Raspberry Pi, радіовузол

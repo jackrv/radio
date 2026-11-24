@@ -26,6 +26,7 @@ from pathlib import Path
 import config
 from shared import error_analysis
 from shared.recordings import RecordingStore
+from shared.paths import place
 
 KINDS = tuple(error_analysis.CATEGORIES) + ("one_word", "edit_free", "worse", "better", "doubtful")
 
@@ -172,7 +173,7 @@ def checks(args):
 
 def runs(args):
     from shared.experiments import list_runs
-    items = list_runs(Path(config.BASE_DIR) / ".local-experiments", limit=args.limit)
+    items = list_runs(place(Path(config.BASE_DIR), ".local-experiments"), limit=args.limit)
     for run in items:
         s = run.get("summary") or {}
         run["no_edits"] = s.get("exact_phrases") / s["speech_records"] if s.get("speech_records") and s.get("exact_phrases") is not None else None
@@ -189,7 +190,7 @@ def runs(args):
 
 def compare(args):
     from shared.experiments import compare_runs
-    r = compare_runs(Path(config.BASE_DIR) / ".local-experiments", args.a, args.b)
+    r = compare_runs(place(Path(config.BASE_DIR), ".local-experiments"), args.a, args.b)
     if args.json:
         return r
     print(f"Спільних записів: {r['common']}")
@@ -199,7 +200,7 @@ def compare(args):
 
 def queue(args):
     from shared import lab_queue
-    state = lab_queue.read(Path(config.BASE_DIR) / ".local-experiments")
+    state = lab_queue.read(place(Path(config.BASE_DIR), ".local-experiments"))
     state["runner"]["active"] = lab_queue.runner_active(state)
     if args.json:
         return state

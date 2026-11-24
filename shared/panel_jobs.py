@@ -10,6 +10,7 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
+from shared.paths import place, root_of
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = ("queued", "running")
@@ -23,7 +24,7 @@ class QueueFull(ValueError):
 
 
 def directory(db_path):
-    root = Path(db_path).resolve().parent / ".local-text-checks"
+    root = place(root_of(db_path), ".local-text-checks")
     root.mkdir(mode=0o700, exist_ok=True)
     return root
 

@@ -9,6 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from shared.paths import place
+
 NAME = ".local-home.json"
 DEVICES = ("mac", "pi")
 
@@ -19,7 +21,7 @@ def this_device():
 
 def read(root):
     try:
-        data = json.loads((Path(root) / NAME).read_text(encoding="utf-8"))
+        data = json.loads(place(root, NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if isinstance(data, dict) and data.get("home") in DEVICES and type(data.get("epoch")) is int:
@@ -35,7 +37,7 @@ def write(root, home, epoch):
         json.dump({"home": home, "epoch": int(epoch)}, out)
         out.flush()
         os.fsync(out.fileno())
-    os.replace(temp, Path(root) / NAME)
+    os.replace(temp, place(root, NAME))
 
 
 def foreign(root, device=None):

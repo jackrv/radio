@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from shared.instance_lock import lock_held
+from shared.paths import place
 
 ROOT = Path(__file__).resolve().parent.parent
 VERBS = {"restart": "перезапуск", "stop": "зупинка", "start": "запуск"}
@@ -17,7 +18,7 @@ class Control:
     """Замок, стан і запити в .radio345-launcher/ (права 0700)."""
 
     def __init__(self, directory=None):
-        self.directory = Path(directory or ROOT / ".radio345-launcher")
+        self.directory = Path(directory or place(ROOT, ".radio345-launcher"))
         self.lock_path = self.directory / "lock"
         self.state_path = self.directory / "r345.json"
         self.lock_fd, self._last = None, None

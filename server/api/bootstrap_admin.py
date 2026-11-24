@@ -20,7 +20,7 @@ def main():
     if not db_path.is_file():
         raise SystemExit(
             "Робочу SQLite не знайдено. Спочатку імпортуйте словники: "
-            "manage_database.py init"
+            "python -m tools.manage_database init"
         )
     if has_active_admin(db_path):
         print("Адміністратора вже зареєстровано.")

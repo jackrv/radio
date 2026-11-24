@@ -11,6 +11,7 @@ from contextlib import closing
 from shared.text_metrics import metric_words
 from shared.sqlite_connection import read_only
 from shared.private_files import private_open
+from shared.paths import place, root_of
 
 # Вихід ASR на позначеному шумі зберігається для оцінки хибного тексту,
 # але це не почуте мовлення й не має потрапляти до робочої вибірки. Так само
@@ -72,7 +73,7 @@ def find(root, terms, since, until, *, order='old', offset=0, limit=100):
 
 
 def save_selection(db_path, result):
-    root = Path(db_path).resolve().parent/'.local-selections'
+    root = place(root_of(db_path), ".local-selections")
     root.mkdir(mode=0o700, exist_ok=True)
     if root.is_symlink(): raise ValueError('Каталог вибірок не може бути посиланням')
     root.chmod(0o700)
@@ -100,7 +101,7 @@ def save_selection(db_path, result):
 
 def load_selection(db_path, token):
     if not re.fullmatch('[0-9a-f]{32}', token): raise ValueError('Некоректний ID вибірки')
-    path = Path(db_path).resolve().parent/'.local-selections'/(token+'.json')
+    path = place(root_of(db_path), ".local-selections")/(token+'.json')
     try:
         with os.fdopen(os.open(path, os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))) as src: value=json.load(src)
     except FileNotFoundError: raise ValueError('Вибірку не знайдено; повторіть пошук') from None

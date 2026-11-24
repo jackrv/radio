@@ -4,17 +4,16 @@
 
 ## Де що лежить
 
-| Шлях | Що | У Git |
-| --- | --- | --- |
-| `events.db` | події, словники, списки, навчання, користувачі | ❌ |
-| `.local-recordings/` | аудіоархів і його індекс | ❌ |
-| `.local-backups/` | копії бази | ❌ |
-| `.local-selections/` | приватні знімки вибірок (до 24 год, 200 файлів і 50 MiB) | ❌ |
-| `.local-diagnostics/`, `diagnostics.json` | знімки метрик | ❌ |
-| `.local-notification-sounds/` | зразки сигналів | ❌ |
-| `.local-experiments/` | результати лабораторії | ❌ |
-| `.radio345-local-admin/` | ключ панелі | ❌ |
-| `.env`, `dictionaries.txt`, `*.log` | секрети, словники, журнали | ❌ |
+| `.local-data/…` | Що |
+| --- | --- |
+| `events.db` | події, словники, списки, навчання, користувачі |
+| `recordings/` | аудіоархів і його індекс |
+| `backups/` | копії бази |
+| `diagnostics/`, `diagnostics.json`, `radio.log` | метрики й журнал |
+| `notification-sounds/`, `experiments/`, `selections/`, `text-checks/` | зразки сигналів, лабораторія, дані панелі |
+| `panel-key/`, `*.lock`, `run/` | ключ панелі, замки, стан `r345` |
+
+До `./r345 move-data` усе це лежить у корені під старими іменами (`.local-recordings` тощо). Секрети — `.env`. У Git нічого з цього немає.
 
 Публікуються лише код, документація й шаблони з вигаданими назвами. Тести не
 можуть відкрити робочу `events.db` — `tests/conftest.py` зупиняє таку спробу.
@@ -40,19 +39,19 @@
 Лише командою, не копіюванням файлу, і **при зупинених службах** (`./r345 stop` або systemd):
 
 ```bash
-.venv/bin/python manage_database.py restore --from .local-backups/events-auto-….db
+.venv/bin/python -m tools.manage_database restore --from .local-backups/events-auto-….db
 ```
 
 Поточна база спершу зберігається як `events-before-restore-…`. Лічильник ID
 подій і позиція опитування Telegram не опускаються нижче поточних — старі кнопки
 не відкриють нових подій, старі команди не виконаються вдруге. Після
-відновлення: `diagnose_radio345.py`, потім запуск.
+відновлення: `python -m tools.diagnose`, потім запуск.
 
 ## Експорт і новий початок
 
 ```bash
-.venv/bin/python manage_database.py export                  # словники → dictionaries.txt
-.venv/bin/python manage_database.py reset --confirm-reset   # очистити дані
+.venv/bin/python -m tools.manage_database export                  # словники → dictionaries.txt
+.venv/bin/python -m tools.manage_database reset --confirm-reset   # очистити дані
 ```
 
 `reset` робить перевірену копію й експорт словників, зберігає активних

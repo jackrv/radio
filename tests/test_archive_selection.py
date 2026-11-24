@@ -10,6 +10,7 @@ import pytest
 from shared.recordings import RecordingStore
 from shared.archive_inventory import inventory
 from shared.mention_selection import find, save_selection, load_selection
+from shared.paths import place
 
 
 def corpus(tmp_path):
@@ -74,7 +75,7 @@ def test_expired_selections_are_pruned_without_touching_other_files(tmp_path):
     store,_,_=corpus(tmp_path)
     result=find(store.root,'клен',0,300)
     token=save_selection(tmp_path/'events.db',result)
-    path=tmp_path/'.local-selections'/(token+'.json');os.utime(path,(1,1))
+    path=place(tmp_path, ".local-selections")/(token+'.json');os.utime(path,(1,1))
     other=path.parent/'notes.json';other.write_text('synthetic')
     save_selection(tmp_path/'events.db',result)
     assert not path.exists() and other.exists()
@@ -108,7 +109,7 @@ def test_model_slot_blocks_competing_receivers_and_labs(tmp_path):
     from shared.model_exclusion import lab_model_slot,receiver_model_available
     path=tmp_path/'events.db'
     with sqlite3.connect(path) as db:db.execute('create table synthetic(id int)')
-    receiver=acquire_instance_lock(tmp_path/'.radio345.lock')
+    receiver=acquire_instance_lock(place(tmp_path, ".radio345.lock"))
     try:
         with pytest.raises(RuntimeError):
             with lab_model_slot(path): pytest.fail('модель не має завантажитися')

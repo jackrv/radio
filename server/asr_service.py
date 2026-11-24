@@ -11,6 +11,7 @@ import signal
 import threading
 import time
 from pathlib import Path
+from shared.paths import place
 
 FRESH_S = 300
 MAX_ATTEMPTS = 5
@@ -100,6 +101,9 @@ class Bot:
     def __init__(self, service, log):
         self.service, self.log, self.thread, self.next_start = service, log, None, 0.0
 
+    def alive(self):
+        return self.thread is not None and self.thread.is_alive()
+
     def tick(self):
         if getattr(self.service, "bot_conflict", False) is True:
             raise BotConflict
@@ -138,9 +142,12 @@ def main():
     if other:
         conflict.stop(f"Дім на іншому пристрої ({other}): розпізнавання й бота тут не запущено")
     # Не замок моделі: на Mac її поруч тримає worker.asr_worker.
-    lock = acquire_instance_lock(Path(config.BASE_DIR) / OWNER_LOCK)
+    lock = acquire_instance_lock(place(Path(config.BASE_DIR), OWNER_LOCK))
     if lock is None:
         conflict.stop("Інший приймач уже працює з цією базою")
+    from shared.diagnostics import runtime
+    runtime.configure(config.DIAGNOSTICS_PATH, retention_days=config.DIAGNOSTICS_HISTORY_DAYS,
+                      max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS, max_history_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES)
     init_db(config.DB_PATH)
     apply_startup_settings(config.DB_PATH, config)
     store = RecordingStore(config.RECORDINGS_DIR, retention_days=config.RECORDINGS_RETENTION_DAYS,
@@ -182,16 +189,26 @@ def main():
                     offline_since=lambda: getattr(worker.recognizer, "down_since", None))
     threading.Thread(target=alerts.run, args=(stop,), name="asr-alerts", daemon=True).start()
     from shared.db_backup import start_backup_scheduler
-    backup_stop = start_backup_scheduler(config.DB_PATH, config.BASE_DIR / ".local-backups", log=log)
+    backup_stop = start_backup_scheduler(config.DB_PATH, place(config.BASE_DIR, ".local-backups"), log=log)
     try:
-        AsrService(SegmentSpool(spool_dir(config)), worker, recorder, log).run(stop, bot.tick if bot else lambda: None)
+        AsrService(SegmentSpool(spool_dir(config)), worker, recorder, log).run(stop, lambda: tick(bot, runtime))
     except BotConflict:
         conflict.stop("Бот працює на іншому пристрої; службу зупинено")
     finally:
         backup_stop.set()
         if bot:
             telegram.shutdown(timeout=10.0)
+        runtime.finish()
         os.close(lock)
+
+
+def tick(bot, runtime):
+    """Кожен оберт циклу: бот і знімок діагностики (не частіше 30 с)."""
+    if bot:
+        bot.tick()
+        runtime.gauge("workers.telegram_alive", bot.alive())
+    runtime.gauge("workers.transcriber_alive", True)
+    runtime.flush()
 
 
 def poll_bot(token):
@@ -217,7 +234,7 @@ def phrase_outbox(config, recorder, log):
 
 
 def spool_dir(config):
-    return os.environ.get("RADIO_SPOOL_DIR", "").strip() or Path(config.BASE_DIR) / ".local-segment-spool"
+    return os.environ.get("RADIO_SPOOL_DIR", "").strip() or place(Path(config.BASE_DIR), ".local-segment-spool")
 
 
 if __name__ == "__main__":

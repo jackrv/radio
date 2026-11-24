@@ -14,6 +14,7 @@ from shared.notification_spectral import (
 
 from shared.event_store import save_event
 from shared.word_rule_engine import apply_verified_word_rules
+from shared.paths import place, root_of
 
 
 def build_recognizer(config, prompt, log):
@@ -226,7 +227,7 @@ def build_transcriber(
     from pathlib import Path
     from shared.dictionary_number_evidence import load_rules
     def refresh_number_rules():
-        archive=getattr(config,'RECORDINGS_DIR',Path(config.DB_PATH).resolve().parent/'.local-recordings')
+        archive=getattr(config,'RECORDINGS_DIR',place(root_of(config.DB_PATH), ".local-recordings"))
         callsigns.number_rules=load_rules(archive,callsigns,commands)
         from shared.diagnostics import runtime
         runtime.gauge('dictionary.number_rules',len(callsigns.number_rules))

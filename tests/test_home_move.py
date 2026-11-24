@@ -13,11 +13,15 @@ import pytest
 from server import devices, home_move as hm
 from shared import home_marker
 from shared.instance_lock import OWNER_LOCK, acquire_instance_lock
+from shared.paths import place
+
+
+RELATIVE = {"events.db": "events.db", "index.sqlite3": ".local-recordings/index.sqlite3"}   # старе місце бази
 
 
 def database(root, value):
     (root / ".local-recordings").mkdir(parents=True, exist_ok=True)
-    for relative in hm.FILES.values():
+    for relative in RELATIVE.values():
         db = sqlite3.connect(root / relative)
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("CREATE TABLE t(v)")
@@ -60,7 +64,7 @@ class Side:
     def snapshot(self, folder):
         if "snapshot" in self.fail:
             raise hm.MoveError("знімок")
-        for name, relative in hm.FILES.items():
+        for name, relative in RELATIVE.items():
             hm.copy_database(self.root / relative, folder / name)
 
     def install(self, folder, stamp, epoch):
@@ -99,10 +103,10 @@ def run(world, target, emergency=False):
 
 def test_mac_to_pi_moves_database_services_and_marks(world):
     assert run(world, "pi")["phase"] == "done"
-    assert value(world.pi_root) == ["mac"] and value(world.pi_root, hm.FILES["index.sqlite3"]) == ["mac"]
+    assert value(world.pi_root) == ["mac"] and value(world.pi_root, RELATIVE["index.sqlite3"]) == ["mac"]
     assert world.mac.alive == {"panel"} and world.pi.alive == {"panel", "node", "asr", "api", "tunnel"}
     assert home_marker.read(world.mac_root)["home"] == home_marker.read(world.pi_root)["home"] == "pi"
-    saved, = (world.pi_root / ".local-backups").glob("before-move-*")
+    saved, = (place(world.pi_root, ".local-backups")).glob("before-move-*")
     assert value(saved) == ["pi-old"], "стару базу цілі збережено"
 
 
@@ -126,6 +130,14 @@ def test_open_panel_connection_survives_install(world):
     run(world, "pi")
     assert panel.execute("SELECT v FROM t").fetchall() == [("mac",)]
     panel.close()
+
+
+def test_air_returns_to_mac_after_pi_without_audio(world):
+    world.pi.audio = False
+    run(world, "pi")
+    assert "node" not in world.mac.alive
+    time.sleep(1.1)
+    assert run(world, "mac")["phase"] == "done" and "node" in world.mac.alive
 
 
 def test_pi_without_audio_does_not_start_air(world):
@@ -196,7 +208,7 @@ def copy_of_pi(world, hours):
     from datetime import datetime, timedelta, timezone
     folder = world.copies / (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y%m%dT%H%M%SZ")
     folder.mkdir(parents=True)
-    for name, relative in hm.FILES.items():
+    for name, relative in RELATIVE.items():
         hm.copy_database(world.pi_root / relative, folder / name)
 
 
@@ -235,7 +247,7 @@ def test_interrupted_move_is_seen_and_can_be_returned(world):
 
 def test_install_waits_for_recognition_to_release_database(tmp_path):
     database(tmp_path, "mac")
-    lock = acquire_instance_lock(tmp_path / OWNER_LOCK)
+    lock = acquire_instance_lock(place(tmp_path, OWNER_LOCK))
     try:
         with pytest.raises(hm.MoveError, match="тримає базу"):
             hm.MacSide(tmp_path).install(tmp_path, "x", 1)
@@ -254,19 +266,19 @@ def test_remote_install_script(tmp_path):
     database(root, "pi-old")
     source = tmp_path / "src"
     database(source, "mac")
-    staging = root / hm.STAGING / "S1"
+    staging = place(root, hm.STAGING) / "S1"
     staging.mkdir(parents=True)
-    for name, relative in hm.FILES.items():
+    for name, relative in RELATIVE.items():
         hm.copy_database(source / relative, staging / name)
     sums = json.dumps({n: hm.sha256(staging / n) for n in hm.FILES})
     assert remote(hm.REMOTE_INSTALL, tmp_path, "S1", "4", json.dumps({n: "0" for n in hm.FILES})).stderr.strip() == "checksum"
-    lock = acquire_instance_lock(root / OWNER_LOCK)
+    lock = acquire_instance_lock(place(root, OWNER_LOCK))
     assert remote(hm.REMOTE_INSTALL, tmp_path, "S1", "4", sums).stderr.strip() == "busy"
     os.close(lock)
     assert value(root) == ["pi-old"]
     done = remote(hm.REMOTE_INSTALL, tmp_path, "S1", "4", sums)
     assert done.returncode == 0, done.stderr
-    assert value(root) == ["mac"] and value(root / ".local-backups/before-move-S1") == ["pi-old"]
+    assert value(root) == ["mac"] and value(place(root, ".local-backups") / "before-move-S1") == ["pi-old"]
     assert home_marker.read(root) == {"home": "pi", "epoch": 4} and not staging.exists()
     assert remote(hm.REMOTE_MARK, tmp_path, "mac", "5").returncode == 0
     assert home_marker.read(root) == {"home": "mac", "epoch": 5}
@@ -284,8 +296,8 @@ def test_pi_errors_are_explained():
 def test_marker_is_validated(tmp_path):
     assert home_marker.read(tmp_path) is None and home_marker.foreign(tmp_path, "mac") is None
     for bad in ("{", '{"home":"x","epoch":1}', '{"home":"pi","epoch":"1"}', "[]"):
-        (tmp_path / home_marker.NAME).write_text(bad)
+        (place(tmp_path, home_marker.NAME)).write_text(bad)
         assert home_marker.foreign(tmp_path, "mac") is None
     home_marker.write(tmp_path, "pi", 2)
     assert home_marker.foreign(tmp_path, "mac") == "pi" and home_marker.foreign(tmp_path, "pi") is None
-    assert (tmp_path / home_marker.NAME).stat().st_mode & 0o777 == 0o600
+    assert (place(tmp_path, home_marker.NAME)).stat().st_mode & 0o777 == 0o600

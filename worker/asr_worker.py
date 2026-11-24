@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler
 
 from shared.asr_protocol import MAX_BODY, PORT, pack_result, unpack_request
+from shared.paths import place
 
 
 class Paused(Exception):
@@ -177,12 +178,12 @@ def main():
     hosts = list(dict.fromkeys(h for h in hosts if h))
     if not hosts or any(h in ("0.0.0.0", "::") for h in hosts):
         raise SystemExit("Потрібна адреса Tailscale (або RADIO_ASR_HOST)")
-    worker_lock = acquire_instance_lock(root / WORKER_LOCK)
+    worker_lock = acquire_instance_lock(place(root, WORKER_LOCK))
     if worker_lock is None:
         raise SystemExit("Інший вузол розшифровки вже працює")
 
     def acquire():
-        return acquire_instance_lock(root / ".radio345.lock") if receiver_model_available(root) else None
+        return acquire_instance_lock(place(root, ".radio345.lock")) if receiver_model_available(root) else None
 
     model = WhisperRecognizer(model_repo=config.MODEL_REPO, language=config.LANGUAGE,
                               sample_rate=config.SR, prompt="", log=log)

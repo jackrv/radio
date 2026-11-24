@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from shared import pull_backup as b
+from shared.paths import place
 
 START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

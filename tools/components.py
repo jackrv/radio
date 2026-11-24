@@ -22,7 +22,7 @@ PROCESSES = {
     "lab": ("lab", ("lab.asr_lab", "lab.whisper_finetune", "lab.text_replay", "lab.analysis")),
 }
 # Не входять до жодного нового процесу: нинішній моноліт Mac, обслуговування, разові інструменти.
-LEGACY_ENTRIES = ("radio345", "manage_database", "diagnose_radio345")
+LEGACY_ENTRIES = ("radio345", "tools.manage_database", "tools.diagnose")
 FOLDERS = ("shared", "server", "worker", "lab")
 MLX = ("mlx", "mlx_whisper", "mlx_lm")
 

@@ -73,8 +73,6 @@ Mini App чи локальній панелі, і система вчиться 
 
 ```text
 config.py                 базові параметри
-manage_database.py        імпорт, експорт, скидання й відновлення бази
-diagnose_radio345.py      перевірка без зупинки приймача
 r345, radio345.py         запуск процесів за профілем пристрою (deploy/profiles)
 shared/                   спільне: аудіо, VAD, розбір тексту, словники, архів, SQLite
 server/                   ефір, розпізнавання з ботом, панель, API
@@ -85,7 +83,7 @@ server/api/               FastAPI для Mini App; local_dashboard.py — вхі
 server/api/panel/         ендпоінти панелі за розділами (огляд, архів, розпізнавання, сигнали, люди, система)
 local_admin/              сторінка панелі; js/ — скрипт за розділами (сервер склеює їх в один /admin.js)
 apps/miniapp/             Mini App (HTML/CSS/JS без збирання, GitHub Pages)
-tools/                    обслуговування: профілі, бекап Pi, перевірки
+tools/                    обслуговування: база (manage_database), diagnose, профілі, бекап Pi
 tests/                    pytest і node-тести на тимчасових даних
 docs/                     вікі
 ```

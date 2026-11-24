@@ -4,9 +4,9 @@
 /config.py
 /deploy/profiles/mac-worker.files
 /deploy/profiles/mac-worker.toml
+/deploy/requirements/worker.txt
 /r345
 /radio345.py
-/requirements-worker.txt
 /shared/__init__.py
 /shared/asr_protocol.py
 /shared/audio_devices.py
@@ -17,8 +17,10 @@
 /shared/instance_lock.py
 /shared/model_exclusion.py
 /shared/model_pause.py
+/shared/move_data.py
 /shared/notification_spectral.py
 /shared/notification_templates.py
+/shared/paths.py
 /shared/process_guard.py
 /shared/ptt_key.py
 /shared/r345_control.py

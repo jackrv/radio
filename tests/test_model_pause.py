@@ -16,6 +16,7 @@ from shared import lab_queue
 from worker.asr_worker import ModelGate, Paused, build_transcribe, handler_for
 from shared.model_pause import MAX_PAUSE_S, WORKER_LOCK, ModelPause
 from server.remote_recognizer import RemoteRecognizer
+from shared.paths import place
 
 LOG = logging.getLogger("test")
 AUDIO = np.zeros(1600, dtype=np.float32)
@@ -46,16 +47,16 @@ class Model:
 
 @pytest.fixture
 def node(tmp_path):
-    worker = acquire_instance_lock(tmp_path / WORKER_LOCK)
+    worker = acquire_instance_lock(place(tmp_path, WORKER_LOCK))
     pause, model = ModelPause(tmp_path), Model()
-    gate = ModelGate(model, pause, lambda: acquire_instance_lock(tmp_path / ".radio345.lock"), LOG)
+    gate = ModelGate(model, pause, lambda: acquire_instance_lock(place(tmp_path, ".radio345.lock")), LOG)
     yield SimpleNamespace(root=tmp_path, pause=pause, model=model, gate=gate)
     gate.finish()
     os.close(worker)
 
 
 def model_lock_free(root):
-    fd = acquire_instance_lock(root / ".radio345.lock")
+    fd = acquire_instance_lock(place(root, ".radio345.lock"))
     if fd is None:
         return False
     os.close(fd)
@@ -161,7 +162,7 @@ def test_node_starts_paused_without_loading_the_model(node):
 
 
 def test_node_does_not_start_over_a_running_receiver(node):
-    receiver = acquire_instance_lock(node.root / ".radio345.lock")
+    receiver = acquire_instance_lock(place(node.root, ".radio345.lock"))
     try:
         assert node.gate.open() is False and node.model.events == []
     finally:
@@ -213,7 +214,7 @@ def test_cli_pause_and_resume(node, capsys):
 
 def test_cli_without_worker(tmp_path):
     assert radio345.pause_model(5, tmp_path, 1) == 3 and radio345.resume_model(tmp_path, 1) == 3
-    assert not (tmp_path / ".radio345-launcher/model-pause.json").exists()
+    assert not (place(tmp_path, ".radio345-launcher") / "model-pause.json").exists()
 
 
 def test_lab_queue_uses_the_worker_when_it_is_running(node, monkeypatch):
@@ -266,7 +267,7 @@ def test_stale_paused_state_is_not_trusted_after_worker_start(tmp_path, monkeypa
 
 
 def test_pause_is_confirmed_even_if_the_node_was_waiting(node):
-    other = acquire_instance_lock(node.root / ".radio345.lock")
+    other = acquire_instance_lock(place(node.root, ".radio345.lock"))
     node.gate.tick()
     assert node.gate.state == "waiting"
     node.pause.start(time.time() + 60)

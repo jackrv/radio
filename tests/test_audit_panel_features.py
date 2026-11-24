@@ -3,6 +3,7 @@ import sqlite3
 from tests.test_local_dashboard import local, no_background_spawn, finish_job, ORIGIN
 from tests.test_miniapp_management import setup
 from shared.recordings import RecordingStore
+from shared.paths import place
 
 
 def test_telegram_sync_resolution_requires_local_origin(local):
@@ -139,7 +140,7 @@ def test_saved_archive_learning_is_idempotent_and_creates_backup(local):
     for _ in range(2):
         result=finish_job(client,path,client.post('/api/learning/archive',headers={'Origin':ORIGIN}))
         assert result['synced']==1 and result['failed']==0
-        assert (tmp/'.local-backups'/result['backup']).exists()
+        assert (place(tmp, ".local-backups")/result['backup']).exists()
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT confirmations FROM word_corrections WHERE original='позицю' AND corrected='позицію'").fetchone()[0]==1
 

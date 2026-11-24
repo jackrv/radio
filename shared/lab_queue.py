@@ -27,6 +27,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from shared.paths import place
 
 ROOT = Path(__file__).resolve().parent.parent
 COOLDOWN_S = 300          # пауза між важкими тестами (перегрів Mac)
@@ -77,7 +78,7 @@ _NOTE = re.compile(r"[\w\s.,:;!?()«»'’ʼ\"/+-]{0,200}\Z")
 
 def queue_dir(root=None):
     """Тека експериментів (там і черга); без аргументу — .local-experiments проєкту."""
-    path = Path(root) if root else ROOT / ".local-experiments"
+    path = Path(root) if root else place(ROOT, ".local-experiments")
     path.mkdir(mode=0o700, exist_ok=True)
     return path
 

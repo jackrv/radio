@@ -18,7 +18,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-STATE="$ROOT/.local-ios"
+STATE="$ROOT/.local-ios"   # або .local-data/ios після r345 move-data
+if [[ ! -d "$STATE" && -d "$ROOT/.local-data" ]]; then STATE="$ROOT/.local-data/ios"; fi
 MIN_AGE_DAYS="${MIN_AGE_DAYS:-5}"   # лише коли строк підпису невідомий (встановлено старим скриптом)
 RENEW_DAYS="${RENEW_DAYS:-2}"
 HOUR="${HOUR:-5}"

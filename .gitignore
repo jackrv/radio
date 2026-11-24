@@ -10,7 +10,6 @@ __pycache__/
 # Секреты
 .env
 .env.*
-!.env.example
 .wishlist
 .local-telegram-wishlist/
 .local-wishlist-*
@@ -71,8 +70,8 @@ radio345.code-workspace
 .import/
 .local-node/
 .local-move/
-.import-move/
 .local-home.json
 .local-audio.json
 .local-code.git/
 .local-commit
+.local-data/

@@ -15,6 +15,7 @@ import uuid
 import pytest
 
 from shared.diagnostics import RuntimeDiagnostics
+from shared.paths import place
 from shared.diagnostic_history import (
     DiagnosticsHistory, atomic_write, history_directory, snapshot_filename,
 )
@@ -91,7 +92,7 @@ def test_unavailable_archive_does_not_destroy_the_only_previous_snapshot(tmp_pat
     path = tmp_path / "diagnostics.json"
     previous = snapshot()
     path.write_text(json.dumps(previous))
-    blocked = tmp_path / ".local-diagnostics"
+    blocked = place(tmp_path, ".local-diagnostics")
     blocked.write_text("not a directory")
     metrics = RuntimeDiagnostics()
     metrics.configure(path)
@@ -107,7 +108,7 @@ def test_unavailable_archive_does_not_destroy_the_only_previous_snapshot(tmp_pat
 
 def test_new_session_keeps_latest_available_when_history_write_fails(tmp_path):
     path = tmp_path / "diagnostics.json"
-    (tmp_path / ".local-diagnostics").write_text("not a directory")
+    (place(tmp_path, ".local-diagnostics")).write_text("not a directory")
     metrics = RuntimeDiagnostics()
     metrics.configure(path)
     metrics.count("still_running")

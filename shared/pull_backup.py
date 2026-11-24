@@ -44,7 +44,7 @@ work = tempfile.mkdtemp(prefix="r345-backup-", dir=root)
 os.chmod(work, 0o700)
 try:
     info = {}
-    for name, source in (("events.db", "events.db"), ("index.sqlite3", ".local-recordings/index.sqlite3")):
+    for name, source in (("events.db", next((p for p in (".local-data/events.db", "events.db") if os.path.isfile(os.path.join(root, p))), ".local-data/events.db")), ("index.sqlite3", next((p for p in (".local-data/recordings/index.sqlite3", ".local-recordings/index.sqlite3") if os.path.isfile(os.path.join(root, p))), ".local-recordings/index.sqlite3"))):
         path = os.path.join(root, source)
         if not os.path.isfile(path):
             if name == "events.db":

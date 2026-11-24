@@ -1,6 +1,7 @@
 """Доменні операції панелі. Виконуються лише серверним фоновим виконавцем."""
 from pathlib import Path
 import tempfile
+from shared.paths import place, root_of
 
 
 def execute(job, progress):
@@ -31,7 +32,7 @@ def execute(job, progress):
         return {"name": path.name}
     if job["kind"] == "training_export":
         from shared.training_set import export
-        return export(store, Path(job["db_path"]).resolve().parent / ".local-training", progress=progress)
+        return export(store, place(root_of(job["db_path"]), ".local-training"), progress=progress)
     if job["kind"] == "notification_evaluation":
         from shared.notification_eval import evaluate
         return evaluate(store, options["samples_dir"], progress=progress, **options["limits"])
@@ -56,7 +57,7 @@ def execute(job, progress):
         progress(1, 1)
         return {"total": len(current), "new": len(fresh)}
     # Незмінні знімки: оператор може продовжувати розмітку й редагувати словники.
-    with tempfile.TemporaryDirectory(prefix="snapshot-", dir=Path(job["db_path"]).parent / ".local-text-checks") as tmp:
+    with tempfile.TemporaryDirectory(prefix="snapshot-", dir=place(root_of(job["db_path"]), ".local-text-checks")) as tmp:
         import sqlite3
         root = Path(tmp)
         for source, name in ((job["db_path"], "events.db"), (Path(job["archive"]) / "index.sqlite3", "index.sqlite3")):

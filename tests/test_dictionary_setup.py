@@ -24,7 +24,7 @@ def write_sources(folder, callsigns="вишня: 700\n"):
 
 
 def real_init(command, cwd):
-    """Виконує справжній manage_database.py init поточним інтерпретатором."""
+    """Виконує справжній tools.manage_database init поточним інтерпретатором."""
     return subprocess.run([sys.executable, *command[1:]], cwd=cwd, capture_output=True)
 
 
@@ -106,7 +106,7 @@ def test_non_interactive_console_only_explains(tmp_path):
     assert ok is False
     ask.assert_not_called()
     run.assert_not_called()
-    assert any("manage_database.py init" in line for line in messages)
+    assert any("tools.manage_database init" in line for line in messages)
 
 
 def test_missing_source_is_reported(tmp_path):

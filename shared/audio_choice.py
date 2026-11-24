@@ -10,6 +10,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from shared.paths import place
+
 ROOT = Path(__file__).resolve().parent.parent
 NAME = ".local-audio.json"
 KEYS = ("RADIO_INPUT_DEVICE", "RADIO_OUTPUT_DEVICE")
@@ -31,7 +33,7 @@ def clean_name(value):
 
 def _stored(root):
     try:
-        data = json.loads((Path(root) / NAME).read_text(encoding="utf-8"))
+        data = json.loads(place(root, NAME).read_text(encoding="utf-8"))
         values = {k: clean_name(v) for k, v in data["values"].items() if k in KEYS}
         revision = data["revision"]
         if type(revision) is not int or revision < 0:
@@ -61,7 +63,7 @@ def write(root, values, revision):
     fd, temp = tempfile.mkstemp(dir=root)   # 0600
     with os.fdopen(fd, "w", encoding="utf-8") as out:
         json.dump({"values": values, "revision": revision + 1}, out, ensure_ascii=False)
-    os.replace(temp, Path(root) / NAME)
+    os.replace(temp, place(root, NAME))
     return read(root)
 
 

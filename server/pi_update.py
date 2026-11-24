@@ -12,15 +12,17 @@ import time
 from pathlib import Path
 
 from server import devices
+from shared.paths import REMOTE_PLACE
 
 FOLDER = "radio345-hub"
 
 # Виконується на Pi стандартним python3. prepare: копія чинного коду; fetch: коміт із GitHub; finish: зайве, залежності, імпорт, юніти.
-REMOTE = r'''
+REMOTE = REMOTE_PLACE + r'''
 import hashlib, json, os, subprocess, sys, tarfile
 root = os.path.join(os.path.expanduser("~"), sys.argv[1])
 os.chdir(root)
-backup = ".local-backups/code-before-update.tar.gz"
+os.makedirs(".local-data", 0o700, exist_ok=True)
+backup = os.path.join(place(".", ".local-backups"), "code-before-update.tar.gz")
 def names(path):
     try:
         with open(path) as f:
@@ -45,7 +47,7 @@ def restore():
         tar.extractall(".", filter="data") if hasattr(tarfile, "data_filter") else tar.extractall(".")
 step = sys.argv[2]
 if step == "prepare":
-    os.makedirs(".local-backups", 0o700, exist_ok=True)
+    os.makedirs(os.path.dirname(backup), 0o700, exist_ok=True)
     have = [n for n in names("deploy/profiles/pi.files") if safe(n) and os.path.isfile(n)]
     with tarfile.open(backup + ".tmp", "w:gz") as tar:
         for n in have:
@@ -53,11 +55,11 @@ if step == "prepare":
     os.chmod(backup + ".tmp", 0o600)
     os.replace(backup + ".tmp", backup)
     with open(backup + ".json", "w") as f:
-        json.dump({"names": have, "requirements": digest("requirements-hub.txt")}, f)
+        json.dump({"names": have, "requirements": digest("deploy/requirements/hub.txt")}, f)
     print(json.dumps({"ok": True}))
 elif step == "fetch":
     url, commit = sys.argv[3], sys.argv[4]
-    cache, env = ".local-code.git", dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    cache, env = place(".", ".local-code.git"), dict(os.environ, GIT_TERMINAL_PROMPT="0")
     def git(*args, **kw):
         return subprocess.run(["git", "--git-dir", cache, *args], env=env, stdin=subprocess.DEVNULL, capture_output=True, **kw)
     if not os.path.isdir(cache) and subprocess.run(["git", "init", "-q", "--bare", cache], capture_output=True).returncode:
@@ -90,8 +92,8 @@ else:
     new = set(names("deploy/profiles/pi.files"))
     if not new:
         sys.exit("manifest")
-    if digest("requirements-hub.txt") != old["requirements"]:
-        if subprocess.run([".venv/bin/pip", "install", "-q", "-r", "requirements-hub.txt"], stdin=subprocess.DEVNULL, capture_output=True).returncode:
+    if digest("deploy/requirements/hub.txt") != old["requirements"]:
+        if subprocess.run([".venv/bin/pip", "install", "-q", "-r", "deploy/requirements/hub.txt"], stdin=subprocess.DEVNULL, capture_output=True).returncode:
             restore(); sys.exit("pip")
     modules = "server.radio_node,server.asr_service,server.api.local_dashboard,server.api.local_server,server.miniapp_tunnel"
     check = subprocess.run([".venv/bin/python", "-c", "import " + modules], capture_output=True, stdin=subprocess.DEVNULL)
@@ -100,7 +102,7 @@ else:
     for name in old["names"]:
         if name not in new and safe(name) and os.path.isfile(name):
             os.unlink(name)
-    with open(".local-commit", "w") as f:
+    with open(place(".", ".local-commit"), "w") as f:
         f.write(sys.argv[3])
     user, units = os.environ.get("USER", ""), []
     for unit in ("node", "asr", "panel", "api", "tunnel"):

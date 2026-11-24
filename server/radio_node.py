@@ -17,6 +17,7 @@ import logging
 import os
 import queue
 import threading
+from shared.paths import place
 
 
 def build_node(config, log, *, segment_sink=None, stream_starter=None, supervisor_cls=None, control=None):
@@ -114,7 +115,7 @@ def main():
     sink = None
     if os.environ.get("RADIO_SPOOL", "").strip() in ("1", "true", "yes", "on"):
         from server.segment_spool import SegmentSpool
-        spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or config.BASE_DIR / ".local-segment-spool")
+        spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or place(config.BASE_DIR, ".local-segment-spool"))
         sink = lambda item: spool.put(item, config.SR)
     from server.node_control import NodeControl, directory
     from server.phrase_feed import PhraseInbox, feed_dir

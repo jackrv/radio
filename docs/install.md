@@ -6,10 +6,10 @@ Mac на Apple Silicon (16 ГБ), Python 3.12, `ffmpeg`, Tailscale. Pi — [ок
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-cp .env.example .env
-cp dictionaries.example.txt dictionaries.txt      # позивні, команди, список спостереження
-.venv/bin/python manage_database.py init --delete-source
+.venv/bin/python -m pip install -r deploy/requirements/dev.txt
+cp deploy/templates/env.example .env
+cp deploy/templates/dictionaries.example.txt dictionaries.txt      # позивні, команди, список спостереження
+.venv/bin/python -m tools.manage_database init --delete-source
 .venv/bin/python -m server.api.bootstrap_admin    # перший адміністратор: TELEGRAM_CHAT_ID у .env
 ```
 
@@ -26,7 +26,7 @@ cp dictionaries.example.txt dictionaries.txt      # позивні, команд
 ## Формат словників
 
 `слово` — без номера; `слово: 68 69`, `слово: 300-310` — номери; `слово: *` — будь-який; `слово 4242` — номер без двокрапки;
-`#` — коментар. Розділи `[callsigns]`, `[commands]`, `[telegram]`. Далі словники редагуються в панелі; назад у файл — `manage_database.py export`.
+`#` — коментар. Розділи `[callsigns]`, `[commands]`, `[telegram]`. Далі словники редагуються в панелі; назад у файл — `tools.manage_database export`.
 
 ## Звук
 

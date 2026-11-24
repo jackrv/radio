@@ -14,6 +14,7 @@ from contextlib import contextmanager
 
 import numpy as np
 from shared.text_metrics import error_rates, metric_words
+from shared.paths import place, root_of
 
 UNSET = object()
 # Звук із кімнати (клавіатура, кроки) — не радіоефір: окремо від шуму ефіру в метриках.
@@ -651,7 +652,7 @@ def label_archive_from_correction(db_path, fix_id, original, corrected):
     from shared.callsigns import basic_normalize
     if basic_normalize(original or "") == basic_normalize(corrected):
         return []
-    root = Path(db_path).resolve().parent / ".local-recordings"
+    root = place(root_of(db_path), ".local-recordings")
     if not (root / "index.sqlite3").is_file():
         return []
     return RecordingStore(root).label_from_correction(fix_id, corrected)

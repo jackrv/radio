@@ -13,6 +13,7 @@ from server.notification_samples import add_sample, delete_sample, list_samples
 from tests.test_miniapp_management import setup
 from tests.test_web_api import auth_header
 from tests.audio_helpers import segment, pcm
+from shared.paths import place
 
 ORIGIN="http://127.0.0.1:8766"
 KEY="x"*43
@@ -513,7 +514,7 @@ def test_service_buttons_work_only_under_r345(setup, tmp_path, monkeypatch):
     from shared import r345_control
     _, path = setup
     root = tmp_path / "launcher"
-    folder = root / ".radio345-launcher"
+    folder = place(root, ".radio345-launcher")
     folder.mkdir(parents=True)
     app = create_dashboard(path, KEY, samples_dir=tmp_path / "samples", diagnostics_path=tmp_path / "d.json",
                            recordings_dir=tmp_path / "recordings", launcher_root=root)
@@ -1067,7 +1068,7 @@ def test_audio_choice_belongs_to_the_machine(local, monkeypatch):
     target = SimpleNamespace()
     audio_choice.apply(path.parent, target)
     assert target.RADIO_INPUT_DEVICE == "Synthetic USB Codec"
-    assert (path.parent / audio_choice.NAME).stat().st_mode & 0o777 == 0o600
+    assert (place(path.parent, audio_choice.NAME)).stat().st_mode & 0o777 == 0o600
     assert client.get("/api/devices/pi/audio").status_code == 409, "Pi не налаштовано"
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
     data = client.get(url).json()

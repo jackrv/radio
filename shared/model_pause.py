@@ -9,6 +9,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from shared.paths import place
 
 MAX_PAUSE_S = 4 * 60 * 60
 WORKER_LOCK = ".radio345-worker.lock"   # вузол тримає весь час життя, навіть коли модель віддано
@@ -24,7 +25,7 @@ class ModelPause:
 
     def __init__(self, root):
         self.root = Path(root)
-        self.directory = self.root / ".radio345-launcher"
+        self.directory = place(self.root, ".radio345-launcher")
         self.request_path = self.directory / "model-pause.json"
         self.state_path = self.directory / "model-state.json"
 
@@ -48,7 +49,7 @@ class ModelPause:
     # ---------- з боку лабораторії й r345 ----------
     def worker_running(self):
         from shared.instance_lock import lock_held
-        return lock_held(self.root / WORKER_LOCK)
+        return lock_held(place(self.root, WORKER_LOCK))
 
     def start(self, until):
         if not time.time() < until <= time.time() + MAX_PAUSE_S:

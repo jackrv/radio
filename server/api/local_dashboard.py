@@ -29,10 +29,11 @@ from server.api.panel import jobs, lab, overview, people, recognition, signals, 
 from server.api.panel import recordings as recordings_api
 from server.api.panel.common import session_value
 from server.api.panel.models import SessionInput
+from shared.paths import place, root_of
 
 PORT = 8766
 ROOT = Path(__file__).resolve().parents[2]
-ACCESS_DIR = config.BASE_DIR / ".radio345-local-admin"
+ACCESS_DIR = place(config.BASE_DIR, ".radio345-local-admin")
 SESSION_DAYS = 30
 PANEL_JS = ROOT / "local_admin/js"
 
@@ -61,15 +62,15 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
                 suggestion_worker.thread.join(timeout=5)
     app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None, lifespan=lifespan)
     samples_dir = Path(samples_dir or config.NOTIFICATION_SOUNDS_DIR)
-    diagnostics_path = Path(diagnostics_path or config.BASE_DIR/"diagnostics.json")
+    diagnostics_path = Path(diagnostics_path or config.DIAGNOSTICS_PATH)
     diagnostic_history = DiagnosticsHistory(
         history_directory(diagnostics_path), retention_days=config.DIAGNOSTICS_HISTORY_DAYS,
         max_sessions=config.DIAGNOSTICS_HISTORY_MAX_SESSIONS,
         max_bytes=config.DIAGNOSTICS_HISTORY_MAX_BYTES,
     )
     from shared.recordings import RecordingStore
-    experiments_dir = Path(experiments_dir) if experiments_dir else ROOT / ".local-experiments"
-    recordings = RecordingStore(recordings_dir or Path(db_path).resolve().parent / ".local-recordings",
+    experiments_dir = Path(experiments_dir) if experiments_dir else place(ROOT, ".local-experiments")
+    recordings = RecordingStore(recordings_dir or place(root_of(db_path), ".local-recordings"),
                                 retention_days=config.RECORDINGS_RETENTION_DAYS,
                                 max_bytes=config.RECORDINGS_MAX_BYTES,
                                 low_rms_retention_seconds=config.RECORDINGS_LOW_RMS_RETENTION_SECONDS)
@@ -116,7 +117,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
 
     recheck_after = re.compile(r"/api/(recordings/[^/]+/review|text-lists/[a-z_]+|dictionaries/[a-z_]+|learning/.+|daily-codes/.+)")
     # Копії лежать поруч із самою базою: для робочої — .local-backups проєкту.
-    backup_dir = Path(backup_dir) if backup_dir else Path(db_path).resolve().parent / ".local-backups"
+    backup_dir = Path(backup_dir) if backup_dir else place(root_of(db_path), ".local-backups")
     # hosts/client_ok задає лише режим Tailscale; типово — тільки цей комп'ютер.
     allowed_hosts = {f"{name}:{port}" for name in (hosts or ("127.0.0.1",))}
     allowed_origins = {"http://"+value for value in allowed_hosts}
@@ -141,7 +142,7 @@ def create_dashboard(db_path, capability, *, port=PORT, diagnostics_path=None, s
             return Response(status_code=401)
         if (request.method not in ("GET","HEAD") and request.url.path.startswith("/api/")
                 and not re.match(r"/api/(devices|home-move|launcher)(/|$)", request.url.path)
-                and home_marker.foreign(Path(db_path).resolve().parent)):
+                and home_marker.foreign(root_of(db_path))):
             return Response('{"detail":"Дім на іншому пристрої: дані змінюйте там"}',status_code=409,media_type="application/json")
         activity_payload=None
         if request.method not in ('GET','HEAD') and any(p.fullmatch(request.url.path) for p,_ in panel_actions):

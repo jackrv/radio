@@ -53,7 +53,7 @@ def test_format_round_trip_keeps_order_and_disabled_state():
 
 
 def test_shipped_template_has_all_sections_but_no_entries():
-    text = (ROOT / "dictionaries.example.txt").read_text(encoding="utf-8")
+    text = (ROOT / "deploy/templates/dictionaries.example.txt").read_text(encoding="utf-8")
     for section in ("[callsigns]", "[commands]", "[telegram]"):
         assert section in text
     assert parse_dictionary_file(text) == {"callsigns": [], "commands": [], "telegram": []}

@@ -10,6 +10,7 @@ import re
 import stat
 import tempfile
 import time
+from shared.paths import place, root_of
 
 DEFAULT_RETENTION_DAYS = 14
 DEFAULT_MAX_SESSIONS = 100
@@ -24,7 +25,7 @@ FIELDS = frozenset({
 
 
 def history_directory(latest_path):
-    return Path(latest_path).parent / ".local-diagnostics"
+    return place(root_of(latest_path), ".local-diagnostics")
 
 
 def _timestamp(value):

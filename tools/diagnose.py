@@ -15,7 +15,9 @@ import tempfile
 import time
 from shared.sqlite_connection import read_only
 
-ROOT = Path(__file__).resolve().parent
+import config
+
+ROOT = Path(config.BASE_DIR)
 
 
 def audit_database(path, *, verify_backup=False):
@@ -159,12 +161,32 @@ def probe_network():
     return checks
 
 
+def summary(report):
+    """Кілька рядків людині; повний звіт — --json."""
+    database, runtime = report["database"], report["runtime"]
+    checks, age = database.get("checks", {}), runtime.get("age_s")
+    if database.get("error"):
+        state = database["error"]
+    else:
+        state = "ціла" if checks.get("integrity_ok") else "ПОШКОДЖЕНА"
+    lines = [f"База: {state}", "Діагностика служби: " + (runtime.get("note") or runtime.get("error") if age is None else
+             f"оновлено {age:.0f} с тому" if age < 120 else f"застаріла, {age / 3600:.1f} год тому: служба розпізнавання її не пише")]
+    receiver = (database.get("counts") or {}).get("receiver") or database.get("receiver")
+    if isinstance(receiver, dict):
+        lines.append(f"Ефір: {receiver.get('state')}, сигнал {receiver.get('heartbeat_age_s')} с тому")
+    for name, item in (report.get("network") or {}).items():
+        if isinstance(item, dict):
+            lines.append(f"{name}: {'пропущено' if 'skipped' in item else 'OK' if item.get('ok') else 'НЕ ПРАЦЮЄ'}")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=ROOT / "events.db")
+    parser.add_argument("--db", type=Path, default=Path(config.DB_PATH))
     parser.add_argument("--verify-backup", action="store_true")
     parser.add_argument("--logs", type=Path, nargs="*")
     parser.add_argument("--network", action="store_true", help="GET-перевірки getMe та доступності API без зміни даних")
+    parser.add_argument("--json", action="store_true", help="увесь звіт")
     args = parser.parse_args()
     report = {"generated_at": time.time(), "environment": environment_report()}
     if args.network:
@@ -174,10 +196,10 @@ def main():
     except (sqlite3.Error, OSError):
         report["database"] = {"error": "База недоступна або несумісна; дані не змінено."}
     try:
-        report["logs"] = audit_logs(args.logs if args.logs is not None else sorted(ROOT.glob("radio*.log")))
+        report["logs"] = audit_logs(args.logs if args.logs is not None else sorted(Path(config.LOG_PATH).parent.glob("radio*.log")))
     except OSError:
         report["logs"] = {"error": "Журнал недоступний"}
-    snapshot = ROOT / "diagnostics.json"
+    snapshot = Path(config.DIAGNOSTICS_PATH)
     if snapshot.is_file():
         try:
             data = json.loads(snapshot.read_text())
@@ -186,7 +208,7 @@ def main():
             report["runtime"] = {"error": "Некоректний знімок робочих метрик"}
     else:
         report["runtime"] = {"note": "Вимірювання будуть доступні після перезапуску оновленого приймача."}
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else summary(report))
     checks = report["database"].get("checks", {})
     errors = (report["database"].get("error") or not checks.get("integrity_ok")
               or any(checks.get(key) for key in ("missing_required_tables", "foreign_key_violations", "confirmation_mismatches",

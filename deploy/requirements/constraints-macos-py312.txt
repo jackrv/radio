@@ -1,5 +1,5 @@
 # Перевірене локальне середовище: macOS arm64, Python 3.12, 20.11.2026.
-# Не є lock із хешами. Застосовувати явно: pip install -c constraints-macos-py312.txt -r requirements-dev.txt
+# Не є lock із хешами. Застосовувати явно: pip install -c deploy/requirements/constraints-macos-py312.txt -r deploy/requirements/dev.txt
 # Моделі та приватні URL сюди не входять; чисте встановлення з цим знімком ще не перевірене.
 annotated-doc==0.0.6
 annotated-types==0.8.0

@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 
 import config
+from shared.paths import place
 import server.audio_debug as audio_debug
 import server.log_security as log_security
 import server.transcriber_factory as factory
@@ -16,8 +17,8 @@ def test_project_paths_independent_of_cwd(tmp_path, monkeypatch):
     root = Path(config.__file__).resolve().parent
 
     assert config.BASE_DIR == root
-    assert config.DB_PATH == str(root / "events.db")
-    assert config.LOG_PATH == root / "radio.log"
+    assert config.DB_PATH == str(place(root, "events.db"))
+    assert config.LOG_PATH == place(root, "radio.log")
     assert config.DEBUG_AUDIO_DIR == root / "debug_audio"
     assert Path(config.DB_PATH).is_absolute()
 

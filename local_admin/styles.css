@@ -1742,3 +1742,6 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .device-audio select { width: 100%; }
 .device-audio button { justify-self: start; }
 .device-update { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b; width: auto; padding: 0 10px; white-space: nowrap; }
+.device-ask { margin-top: auto; padding: 12px; border: 1px solid #4f7359; border-radius: 10px; display: grid; gap: 8px; }
+.device-ask ul { margin: 0; padding-left: 18px; }

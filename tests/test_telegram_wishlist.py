@@ -12,6 +12,7 @@ from server import telegram_wishlist as module
 from server.telegram_wishlist import WishlistInbox
 from shared.user_notify_store import load_user_mode
 from shared.user_store import bootstrap_admin, create_user, init_users_db
+from shared.paths import place
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def test_inline_and_replayed_message_do_not_duplicate(bot, tmp_path, prefix):
 def test_only_current_admin_in_own_private_chat_can_write(bot, tmp_path, actor, chat, kind):
     bot.handle_update(update("Идея: Не зберігати", actor=actor, chat=chat, kind=kind))
     assert not (tmp_path / ".wishlist").exists()
-    assert not (tmp_path / ".local-telegram-wishlist").exists()
+    assert not (place(tmp_path, ".local-telegram-wishlist")).exists()
     bot.send_text.assert_not_called()
 
 
@@ -174,7 +175,7 @@ def test_symlinks_are_rejected_without_touching_target(bot, tmp_path, target):
 
 @pytest.mark.parametrize("state", ["not json", "[]", '{"1001":{}}'])
 def test_corrupted_state_is_not_silently_overwritten(bot, tmp_path, state):
-    directory = tmp_path / ".local-telegram-wishlist"
+    directory = place(tmp_path, ".local-telegram-wishlist")
     directory.mkdir()
     (directory / "state.json").write_text(state)
     bot.handle_update(update("Идея: Текст"))

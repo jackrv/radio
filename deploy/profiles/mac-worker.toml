@@ -1,7 +1,7 @@
 # Mac як вузол розшифровки: лише Whisper, без бази, бота й панелі.
 description = "Mac: вузол Whisper"
 processes = ["worker"]
-requirements = "requirements-worker.txt"
+requirements = "deploy/requirements/worker.txt"
 bot = false
 extra_modules = ["radio345"]
 extra = ["r345", "shared/process_guard.py", "deploy/profiles/mac-worker.toml", ".gitignore"]

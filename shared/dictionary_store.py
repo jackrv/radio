@@ -8,7 +8,7 @@ DICTIONARY_TYPES = ("callsigns", "commands", "telegram")
 DISABLED_PREFIX = "# @radio345-disabled: "
 
 _FILE_HEADER = """\
-# Словники Radio 345. Повний опис формату й приклади: dictionaries.example.txt
+# Словники Radio 345. Повний опис формату й приклади: deploy/templates/dictionaries.example.txt
 # Розділи: [callsigns] — позивні, [commands] — команди, [telegram] — спостереження.
 # Рядок «# @radio345-disabled: ...» — вимкнений запис; решта рядків із # — коментарі.
 """

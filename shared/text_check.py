@@ -21,6 +21,7 @@ from shared.callsigns import FOLD, NUMBER_WORDS, basic_normalize
 from shared.template_text import _TOKEN, _CODE_PAIR, template_text
 from shared.daily_codes import remove_confirmed_code_commas
 from shared.transcript_format import tidy_text, has_several_transmissions, TRANSMISSION_SEPARATOR, TRANSMISSION_SPLIT
+from shared.paths import place, root_of
 
 # Слова з апострофом, які часто пишуть без нього (ключ — без апострофа).
 APOSTROPHE_WORDS = {w.replace("ʼ", ""): w for w in (
@@ -370,7 +371,7 @@ def dictionaries_from_db(db, archive=None):
     sync_aliases(db)
     from pathlib import Path
     location=db.execute('PRAGMA database_list').fetchone()[2]
-    if archive is None and location:archive=Path(location).parent/'.local-recordings'
+    if archive is None and location:archive=place(root_of(location), ".local-recordings")
     try:
         key = (location,str(archive),dictionary_fingerprint(db), id(callsign_module.ALIASES))
     except sqlite3.OperationalError:

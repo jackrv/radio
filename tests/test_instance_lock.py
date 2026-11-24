@@ -5,10 +5,11 @@ import subprocess
 import sys
 
 from shared.instance_lock import acquire_instance_lock
+from shared.paths import place
 
 
 def test_second_holder_is_refused_and_lock_released_on_close(tmp_path):
-    path = tmp_path / ".radio345.lock"
+    path = place(tmp_path, ".radio345.lock")
     first = acquire_instance_lock(path)
     assert first is not None
     assert acquire_instance_lock(path) is None
@@ -19,7 +20,7 @@ def test_second_holder_is_refused_and_lock_released_on_close(tmp_path):
 
 
 def test_lock_held_by_another_process_and_freed_when_it_dies(tmp_path):
-    path = tmp_path / ".radio345.lock"
+    path = place(tmp_path, ".radio345.lock")
     holder = subprocess.Popen(
         [sys.executable, "-c",
          "import sys,time; from shared.instance_lock import acquire_instance_lock as a;"

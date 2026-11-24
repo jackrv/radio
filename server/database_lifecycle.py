@@ -16,6 +16,7 @@ from shared.event_store import init_db as init_events
 from server.management.dictionaries import validate_dictionary
 from shared.sqlite_connection import get_db, read_only
 from shared.user_store import init_users_db
+from shared.paths import place, root_of
 
 
 def validate_sections(sections, filename):
@@ -159,10 +160,10 @@ def restore_database(db_path, backup_path, backup_dir, *, lock_path=None, now=No
     if backup_path == db_path:
         raise ValueError("Копія і робоча база — той самий файл")
 
-    lock = acquire_instance_lock(lock_path or db_path.parent / ".radio345.lock")
+    lock = acquire_instance_lock(lock_path or place(root_of(db_path), ".radio345.lock"))
     if lock is None:
         raise RuntimeError("Спочатку зупиніть приймач: відновлення під час роботи заборонено")
-    owner = acquire_instance_lock(db_path.parent / OWNER_LOCK)
+    owner = acquire_instance_lock(place(root_of(db_path), OWNER_LOCK))
     if owner is None:
         os.close(lock)
         raise RuntimeError("Спочатку зупиніть службу розпізнавання: відновлення під час роботи заборонено")

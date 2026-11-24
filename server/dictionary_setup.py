@@ -1,7 +1,7 @@
 """Перевірка словників перед запуском і імпорт із dictionaries.txt за згодою оператора.
 
 Модуль використовує лише стандартну бібліотеку: лаунчер може працювати
-на системному Python. Сам імпорт виконує ``manage_database.py init``
+на системному Python. Сам імпорт виконує ``tools.manage_database init``
 інтерпретатором проєкту, тож правила імпорту залишаються в одному місці.
 """
 
@@ -75,16 +75,16 @@ def ensure_dictionaries(
         # import_dictionaries відмовляє, якщо будь-яка категорія вже має рядки.
         out("Помилка: у базі немає увімкнених позивних, але інші словники вже заповнені.")
         out("  Автоматичний імпорт файлу словників неможливий: додайте позивні в Mini App")
-        out("  або виконайте manage_database.py reset --confirm-reset і повторіть init.")
+        out("  або виконайте tools.manage_database reset --confirm-reset і повторіть init.")
         return False
 
-    command_hint = f"{python} manage_database.py init"
+    command_hint = f"{python} -m tools.manage_database init"
     db_exists = Path(db_path).is_file()
     out("⚠️ Словники в events.db порожні." if db_exists
         else "⚠️ Робочої events.db немає — її буде створено під час імпорту.")
 
     if not source_path.is_file():
-        out(f"  Не знайдено {source_path.name}. Скопіюйте dictionaries.example.txt у")
+        out(f"  Не знайдено {source_path.name}. Скопіюйте deploy/templates/dictionaries.example.txt у")
         out(f"  {source_path.name}, заповніть розділи (або відновіть експорт), потім:")
         out(f"  {command_hint}")
         return False
@@ -118,7 +118,7 @@ def ensure_dictionaries(
 
     root = Path(__file__).resolve().parent.parent
     # Після імпорту словники живуть у базі; файл потрібен лише для порожнього проєкту.
-    result = run([python, str(root / "manage_database.py"), "init", "--delete-source",
+    result = run([python, "-m", "tools.manage_database", "init", "--delete-source",
                   "--db", str(db_path), "--file", str(source_path)], cwd=root)
     if result.returncode != 0:
         out("Помилка: імпорт не виконано (подробиці вище). Запуск зупинено.")

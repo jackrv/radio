@@ -15,7 +15,7 @@ Pi — дім системи: ефір і передача для iPhone, роз
 **Raspberry Pi OS Lite (64-bit) на Debian 13 Trixie** — без робочого столу.
 Без PipeWire/PulseAudio звук іде напряму через ALSA, ніхто не перехоплює USB-карту.
 Trixie має Python 3.13 і libgpiod 2. На Python 3.11 зі старішої Bookworm numpy з
-`requirements-pi.txt` може не встановитися.
+`deploy/requirements/pi.txt` може не встановитися.
 
 Монітор не потрібен. У Raspberry Pi Imager перед записом карти («Edit settings»):
 
@@ -67,7 +67,7 @@ rsync -ar --files-from=$L ./ <користувач>@radio345:radio345-hub/
 ```bash
 cd ~/radio345-hub
 [ -d .venv ] || python3 -m venv .venv
-.venv/bin/pip install -q -r requirements-hub.txt
+.venv/bin/pip install -q -r deploy/requirements/hub.txt
 sudo sh deploy/hub/install.sh            # і після оновлення коду: змінюються команди служб
 ```
 

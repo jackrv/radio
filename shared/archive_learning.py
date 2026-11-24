@@ -8,6 +8,7 @@ from contextlib import closing
 from shared.sqlite_connection import get_db,read_only
 from shared.word_store import init_word_db,save_word_feedback_report
 from shared.user_store import _require_permission
+from shared.paths import place, root_of
 
 
 def sync_archive_learning(db_path, store, record_id, actor):
@@ -57,7 +58,7 @@ def learn_saved_archive(db_path, store, actor, *, progress=lambda *_:None):
     from pathlib import Path
     from shared.private_files import private_open
     with get_db(db_path) as db: _require_permission(db,actor,'dictionaries.write')
-    backups=Path(db_path).resolve().parent/'.local-backups';backups.mkdir(mode=0o700,exist_ok=True)
+    backups=place(root_of(db_path), ".local-backups");backups.mkdir(mode=0o700,exist_ok=True)
     backup=backups/('events-before-archive-learning-'+uuid.uuid4().hex+'.db')
     os.close(private_open(backup,os.O_CREAT|os.O_EXCL|os.O_WRONLY))
     try:

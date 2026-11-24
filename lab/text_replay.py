@@ -9,6 +9,7 @@
 import argparse
 from pathlib import Path
 
+from shared.paths import place
 from shared.text_replay import compare, load_records, load_setup
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,8 +35,8 @@ def show(result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--archive", default=str(ROOT / ".local-recordings"))
-    parser.add_argument("--db", default=str(ROOT / "events.db"))
+    parser.add_argument("--archive", default=str(place(ROOT, ".local-recordings")))
+    parser.add_argument("--db", default=str(place(ROOT, "events.db")))
     parser.add_argument("--patterns", help="файл із шаблонами фраз для перевірки")
     parser.add_argument("--each", action="store_true", help="перевірити кожен шаблон окремо")
     parser.add_argument("--show", type=int, default=8, help="скільки змінених фраз показати")

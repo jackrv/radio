@@ -3,7 +3,9 @@
 import sqlite3
 from pathlib import Path
 
-LIVE_DATABASES = {Path(__file__).resolve().parents[1] / "events.db"}
+_ROOT = Path(__file__).resolve().parents[1]
+LIVE_DATABASES = {_ROOT / "events.db", _ROOT / ".local-data" / "events.db",
+                  _ROOT / ".local-recordings" / "index.sqlite3", _ROOT / ".local-data" / "recordings" / "index.sqlite3"}
 _connect = sqlite3.connect
 
 

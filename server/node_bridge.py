@@ -8,6 +8,7 @@ import uuid
 from server.node_control import STATES, VAD_KEYS, read_json, write_json
 from shared.receiver_control import ensure_hold_table, ensure_table
 from server.receiver_status import init_receiver_db, record_heartbeat
+from shared.diagnostics import runtime
 from shared.sqlite_connection import get_db
 
 FRESH_S = 10.0
@@ -45,6 +46,11 @@ class NodeBridge:
         at = state.get("at")
         if (state.get("state") in STATES and type(at) in (int, float) and at != self._heartbeat_at
                 and -5 <= self.clock() - at <= FRESH_S):
+            dropped = state.get("dropped")
+            for key in ("frames", "segments"):   # лічильники ефіру — в діагностику панелі
+                value = dropped.get(key) if isinstance(dropped, dict) else None
+                if type(value) in (int, float):
+                    runtime.gauge(f"audio.{key}_dropped", value)
             record_heartbeat(self.db_path, self.instance, now=at, state=state["state"])
             self._heartbeat_at = at
 

@@ -13,6 +13,7 @@ import argparse
 import os
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -315,11 +316,24 @@ def main(argv=None):
     sub.add_parser("restart", help="перезапустити все або вибране").add_argument("names", nargs="*", metavar="ПРОЦЕС")
     sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
     sub.add_parser("resume-model", help="повернути модель вузлу")
+    sub.add_parser("move-data", help="перенести робочі дані в .local-data (служби зупинено)")
     args = parser.parse_args(argv)
     if args.action == "pause-model":
         return pause_model(args.minutes, lock_root())
     if args.action == "resume-model":
         return resume_model(lock_root())
+    if args.action == "move-data":
+        from shared import move_data
+        if any(state in ("active", "activating") for state in systemd_units().values()):
+            print("Спершу: sudo systemctl stop " + " ".join(systemd_units()))
+            return 1
+        try:
+            done = move_data.move(ROOT)
+        except (RuntimeError, OSError, sqlite3.Error) as exc:
+            print(f"Не перенесено: {exc}")
+            return 1
+        print(f"Перенесено: {len(done)}" if done else "Переносити нічого")
+        return 0
     control = Control()
     if args.action == "status":
         return show_status(control)

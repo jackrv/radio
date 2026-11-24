@@ -12,13 +12,16 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from shared.diagnostics import runtime
+from shared.paths import place
+
 VAD_KEYS = {"VAD_LEVEL": (0, 3), "SILENCE_END_MS": (100, 5000), "MIN_SPEECH_MS": (50, 5000), "MAX_SEGMENT_S": (1, 60)}
 MAX_HOLD_S = 130.0
 STATES = ("listening", "paused", "stopped")
 
 
 def directory(config):
-    return Path(os.environ.get("RADIO_NODE_DIR", "").strip() or Path(config.BASE_DIR) / ".local-node")
+    return Path(os.environ.get("RADIO_NODE_DIR", "").strip() or place(Path(config.BASE_DIR), ".local-node"))
 
 
 def write_json(path, data):
@@ -90,7 +93,9 @@ class NodeControl:
         self._gap = {"seconds": float(seconds), "at": self.clock()}
 
     def publish(self):
+        gauges = runtime.snapshot()["gauges"]
         write_json(self.state_path, {"state": self._state, "at": self.clock(),
+                                     "dropped": {k: gauges.get(f"audio.{k}_dropped", 0) for k in ("frames", "segments")},
                                      **({"gap": self._gap} if self._gap else {})})
 
     @contextmanager

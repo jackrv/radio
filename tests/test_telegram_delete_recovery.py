@@ -203,7 +203,7 @@ def test_unexpected_programming_error_still_has_traceback(deletion,monkeypatch,c
 
 
 def test_log_audit_counts_reset_from_diagnostic_without_needing_traceback(tmp_path):
-    from diagnose_radio345 import audit_logs
+    from tools.diagnose import audit_logs
     path=tmp_path/"radio.log"
     path.write_text("2026-11-15 12:20:00 [INFO] TG_DIAG operation=deleteMessage outcome=connection_reset elapsed_s=0.100\n"
                     "2026-11-15 12:20:00 [WARNING] Telegram недоступний (обрив з’єднання); повтор через 5 с, спроба 1/3\n")

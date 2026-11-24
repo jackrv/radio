@@ -79,7 +79,7 @@ Telegram polling бот не обробить команду до наступн
 
 ## Mini App
 
-Статичний HTML/CSS/JS ([`miniapp/`](../miniapp/)), публікується GitHub Pages і
+Статичний HTML/CSS/JS ([`apps/miniapp/`](../apps/miniapp/)), публікується GitHub Pages і
 працює з локальним API через ngrok. Кожен запит перевіряє підпис і строк
 Telegram `initData` та актуальні права в SQLite.
 

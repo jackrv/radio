@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'miniapp/**'
+      - 'apps/miniapp/**'
       - '.github/workflows/miniapp-pages.yml'
   workflow_dispatch:
 
@@ -32,17 +32,17 @@ jobs:
       - name: Prepare Mini App
         run: |
           mkdir -p _site
-          cp miniapp/index.html _site/
-          cp miniapp/styles.css _site/
-          cp miniapp/app.js _site/
-          cp miniapp/api.js _site/
-          cp miniapp/notifications.js _site/
-          cp miniapp/receiver-controls.js _site/
-          cp miniapp/correction-editor.js _site/
-          cp miniapp/client.js _site/
-          cp miniapp/service-gate.js _site/
-          cp miniapp/phrases.js _site/
-          cp miniapp/keyboard.js _site/
+          cp apps/miniapp/index.html _site/
+          cp apps/miniapp/styles.css _site/
+          cp apps/miniapp/app.js _site/
+          cp apps/miniapp/api.js _site/
+          cp apps/miniapp/notifications.js _site/
+          cp apps/miniapp/receiver-controls.js _site/
+          cp apps/miniapp/correction-editor.js _site/
+          cp apps/miniapp/client.js _site/
+          cp apps/miniapp/service-gate.js _site/
+          cp apps/miniapp/phrases.js _site/
+          cp apps/miniapp/keyboard.js _site/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5

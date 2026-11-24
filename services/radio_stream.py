@@ -82,6 +82,12 @@ def client_allowed(address):
     return bool(ip) and (ip.is_loopback or ip in TAILNET or ip in TAILNET6)
 
 
+# Контракт застосунків (docs/app-api.md). Нові необов'язкові поля версію не змінюють;
+# несумісна зміна — API_VERSION + 1, попередня версія працює, доки є в API_SUPPORTED.
+API_VERSION = 1
+API_SUPPORTED = (1,)
+
+
 class ClipMixer:
     """Черга фраз → безперервний PCM у реальному часі (тиша між фразами)."""
 
@@ -525,6 +531,7 @@ class RadioStream:
         self._history = collections.deque(maxlen=HISTORY)
         self._history_lock = threading.Lock()
         self._ids = itertools.count(1)
+        self.session = os.urandom(6).hex()   # нумерація фраз починається знову з кожним запуском
         self._stop = threading.Event()
         self._server = None
         self._threads = []
@@ -535,21 +542,29 @@ class RadioStream:
         """``wants(mode)`` — той самий предикат, що для режимів Telegram."""
         return bool(wants(self.mode))
 
-    def publish(self, pcm, caption):
+    def publish(self, pcm, caption, *, clip_id=None, at=None, play=True):
         if self._stop.is_set():
             return None
         pcm = bytes(pcm)
-        clip_id = next(self._ids)
+        if clip_id is None:
+            clip_id = next(self._ids)
         with self._history_lock:
             self._history.append({
                 "id": clip_id,
-                "at": time.time(),
+                "at": time.time() if at is None else at,
                 "caption": caption,
                 "duration_s": round(len(pcm) / 2 / self.sample_rate, 1),
                 "pcm": pcm,
             })
-        self.mixer.add(pcm)
+        if play:
+            self.mixer.add(pcm)
         return clip_id
+
+    def reset_history(self, session):
+        """Нумерація належить іншому джерелу (services/phrase_feed.py)."""
+        with self._history_lock:
+            self._history.clear()
+            self.session = session
 
     def live_audio(self, pcm, phase="frame"):
         """Кадри мовлення з VAD у реальному часі; викликається з потоку захоплення.
@@ -564,6 +579,10 @@ class RadioStream:
             self._gate_queue.put_nowait((pcm, phase))
         except queue.Full:
             runtime_count("radio_stream.gate_overflow")
+
+    def features(self):
+        """Що вміє саме цей вузол: застосунок ховає недоступне, а не вгадує за адресою."""
+        return ["live", "live_clean", "selected", "events", "clips", *(("transmit",) if self.transmit_enabled else ())]
 
     def input_muted(self):
         """Напівдуплекс: True під час передачі з iPhone і TX_TAIL_S після неї."""
@@ -692,6 +711,7 @@ def _handler_for(stream):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Radio345-Api", str(API_VERSION))
             for k, v in extra:
                 self.send_header(k, v)
             self.end_headers()
@@ -706,6 +726,15 @@ def _handler_for(stream):
                 return self._send(403, b"not your tailscale device")
             url = urlsplit(self.path)
             query = parse_qs(url.query)
+            if url.path == "/version":
+                body = json.dumps({"api": API_VERSION, "supported": list(API_SUPPORTED),
+                                   "features": stream.features()}).encode()
+                return self._send(200, body, "application/json; charset=utf-8")
+            wanted = (query.get("api") or [self.headers.get("X-Radio345-Api") or ""])[0]
+            if wanted and wanted not in {str(v) for v in API_SUPPORTED}:
+                body = json.dumps({"error": "unsupported_api", "api": API_VERSION,
+                                   "supported": list(API_SUPPORTED)}).encode()
+                return self._send(426, body, "application/json; charset=utf-8")
             if url.path == "/stream.mp3":
                 return self._stream(stream.channels["selected"])
             if url.path == "/live.mp3":
@@ -721,6 +750,7 @@ def _handler_for(stream):
                     after = 0
                 body = json.dumps({
                     "clips": stream.history(after),
+                    "session": stream.session,
                     "listeners": stream.listeners,
                     "live_listeners": stream.channels["live"].listeners + stream.channels["live_clean"].listeners,
                     "at_home": stream.peers.is_home(self.client_address[0]),

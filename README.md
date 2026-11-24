@@ -107,7 +107,7 @@ services/management/      керування з панелі й Mini App: сло
 api/                      FastAPI для Mini App; local_dashboard.py — вхід і безпека панелі
 api/panel/                ендпоінти панелі за розділами (огляд, архів, розпізнавання, сигнали, люди, система)
 local_admin/              сторінка панелі; js/ — скрипт за розділами (сервер склеює їх в один /admin.js)
-miniapp/                  Mini App (HTML/CSS/JS без збирання, GitHub Pages)
+apps/miniapp/             Mini App (HTML/CSS/JS без збирання, GitHub Pages)
 tools/                    лабораторія: asr_lab, text_replay
 tests/                    pytest і node-тести на тимчасових даних
 docs/                     вікі

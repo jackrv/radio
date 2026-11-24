@@ -61,6 +61,10 @@ def managed_status(root):
             os.close(fd)
         except OSError:
             pass
+    if active and (Path(root) / ".radio345-launcher/r345.json").is_file():
+        # Процеси веде r345: канал старого лаунчера не діє, кнопки панелі недоступні.
+        return {"managed": True, "launcher_pid": None, "launcher_reachable": False, "state": "r345",
+                "controllers": {}, "stopped_services": []}
     return {"managed": active, "launcher_pid": state.get("pid") if active else None,
             "launcher_reachable": reachable,
             "state": (state.get("state", "unknown") if reachable else "cleanup_pending") if active else "inactive",

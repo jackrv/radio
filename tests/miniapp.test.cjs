@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
-const root = path.join(__dirname, "..", "miniapp");
+const root = path.join(__dirname, "..", "apps", "miniapp");
 const source = name => fs.readFileSync(path.join(root, name), "utf8");
 const tick = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)); };
 

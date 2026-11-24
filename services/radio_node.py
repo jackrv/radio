@@ -3,7 +3,7 @@
 Те, що переїде на Raspberry Pi 5 поруч із рацією: не потрібні Mac, Whisper,
 база подій і Telegram. Працюють «Наживо», «Наживо без сигналів» (фільтр сигналів —
 numpy), передача з iPhone на вихід звуку з ключем PTT і напівдуплекс.
-Канал «Відібрані» потребує тексту, тому тут порожній.
+«Відібрані» й тексти приходять файлами від services.asr_service (phrase_feed); без неї канал порожній.
 
 Розпізнавання підключається через ``segment_sink`` (готовий VAD-сегмент PCM16):
 зараз сегменти відкидаються; далі — надсилання на Mac (черга з підтвердженням)
@@ -14,11 +14,12 @@ radio.py на тому самому Mac: обидва захоплюють мі�
 """
 
 import logging
+import os
 import queue
 import threading
 
 
-def build_node(config, log, *, segment_sink=None, stream_starter=None, supervisor_cls=None):
+def build_node(config, log, *, segment_sink=None, stream_starter=None, supervisor_cls=None, control=None):
     """Збирає вузол; повертає (supervisor, stream) або (None, None), якщо потік не стартував."""
     from core.audio import apply_gain
     from core.bounded_queue import DropOldestQueue
@@ -54,7 +55,7 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
                 continue
             if segment_sink is not None:
                 try:
-                    segment_sink(bytes(item))
+                    segment_sink(item)
                 except Exception:
                     log.exception("Радіовузол: помилка передачі сегмента на розпізнавання")
 
@@ -78,6 +79,9 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
         input_muted=stream.input_muted,
         transcriber_stop=stop.set,
         transcriber_abandon=stop.set,
+        **({} if control is None else {"pause_checker": control.request, "runtime_state": control,
+                                       "on_suspension": control.record_gap,
+                                       "heartbeat_context": lambda: control.heartbeat(log=log)}),
     )
     return supervisor, stream
 
@@ -107,15 +111,29 @@ def main():
     load_dotenv(config.BASE_DIR / ".env")
     configure_logging("", starting_message="Радіовузол без розпізнавання; чекаємо аудіовхід (USB-карта).")
     log = logging.getLogger("radio.node")
-    supervisor, stream = build_node(config, log)
+    sink = None
+    if os.environ.get("RADIO_SPOOL", "").strip() in ("1", "true", "yes", "on"):
+        from services.segment_spool import SegmentSpool
+        spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or config.BASE_DIR / ".local-segment-spool")
+        sink = lambda item: spool.put(item, config.SR)
+    from services.node_control import NodeControl, directory
+    from services.phrase_feed import PhraseInbox, feed_dir
+    hold = os.environ.get("RADIO_LISTENING_HOLD", "1").strip().lower() not in ("0", "false", "no", "off")
+    control = NodeControl(directory(config), listening_hold=hold)
+    control.apply_startup(config)
+    supervisor, stream = build_node(config, log, segment_sink=sink, control=control)
     if supervisor is None:
         log.error("Радіовузол не запущено: потік недоступний (Tailscale? порт зайнятий?)",
                   extra={"console": True})
         raise SystemExit(1)
+    texts_stop = threading.Event()
+    texts = PhraseInbox(feed_dir(directory(config)), stream, log).start(texts_stop)
     log.info("Радіовузол працює без розпізнавання (Ctrl+C — вихід)", extra={"console": True})
     try:
         supervisor.run()
     finally:
+        texts_stop.set()
+        texts.join(2)
         stream.stop()
 
 

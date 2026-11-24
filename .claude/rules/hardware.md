@@ -1,6 +1,6 @@
 ---
 paths:
-  - "ios/**"
+  - "apps/ios/**"
   - "deploy/**"
   - "tools/pi_files.py"
   - "tools/ios_*"

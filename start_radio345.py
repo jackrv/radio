@@ -133,7 +133,7 @@ def get_python() -> str:
 
 
 def read_expected_api_url() -> str | None:
-    path = ROOT / "miniapp" / "index.html"
+    path = ROOT / "apps" / "miniapp" / "index.html"
     if not path.is_file():
         return None
     html = path.read_text(encoding="utf-8")
@@ -169,14 +169,14 @@ def valid_https_endpoint(url: str) -> str:
 def update_miniapp_api_url(actual_url: str) -> bool:
     """Change only the local HTML meta tag; keep all other text unchanged."""
     actual_url = valid_https_endpoint(actual_url)
-    path = ROOT / "miniapp" / "index.html"
+    path = ROOT / "apps" / "miniapp" / "index.html"
     html = path.read_text(encoding="utf-8")
     pattern = re.compile(
         r'(<meta\s+name=["\']radio345-api["\']\s+content=["\'])([^"\']+)(["\'])'
     )
     matches = list(pattern.finditer(html))
     if len(matches) != 1:
-        raise RuntimeError("У miniapp/index.html має бути рівно один meta radio345-api")
+        raise RuntimeError("У apps/miniapp/index.html має бути рівно один meta radio345-api")
     old_url = matches[0].group(2).rstrip("/")
     if old_url == actual_url:
         return False
@@ -228,11 +228,11 @@ def check_pages_publish_ready() -> None:
     if git("diff", "--cached", "--name-only"):
         raise RuntimeError("Є staged-зміни; автоматичну публікацію скасовано")
     changed_paths = git("diff", "--name-only").splitlines()
-    if changed_paths and changed_paths != ["miniapp/index.html"]:
+    if changed_paths and changed_paths != ["apps/miniapp/index.html"]:
         raise RuntimeError("Є зміни, крім URL Mini App; автоматичну публікацію скасовано")
     if changed_paths:
-        from_head = git("show", "HEAD:miniapp/index.html")
-        current = (ROOT / "miniapp" / "index.html").read_text(encoding="utf-8")
+        from_head = git("show", "HEAD:apps/miniapp/index.html")
+        current = (ROOT / "apps" / "miniapp" / "index.html").read_text(encoding="utf-8")
         meta_pattern = re.compile(
             r'(<meta\s+name=["\']radio345-api["\']\s+content=["\'])([^"\']+)(["\'])'
         )
@@ -249,9 +249,9 @@ def check_pages_publish_ready() -> None:
 
 def publish_miniapp_url() -> None:
     """Commit & push only the HTML file, then GitHub Pages workflow deploys it."""
-    git("add", "--", "miniapp/index.html")
+    git("add", "--", "apps/miniapp/index.html")
     # --only prevents accidental inclusion of other staged files.
-    git("commit", "--only", "-m", "Radio 345: sync public API endpoint", "--", "miniapp/index.html")
+    git("commit", "--only", "-m", "Radio 345: sync public API endpoint", "--", "apps/miniapp/index.html")
     git("push", "origin", "main", timeout=90)
     output("Новий URL надіслано в GitHub. GitHub Actions опублікує оновлення Mini App")
 
@@ -629,7 +629,7 @@ def run_services(args, session):
         # GitHub Pages untouched. Publish that single pending URL edit too.
         pending_local_url = False
         if args.publish_pages:
-            pending_local_url = "miniapp/index.html" in git("diff", "--name-only").splitlines()
+            pending_local_url = "apps/miniapp/index.html" in git("diff", "--name-only").splitlines()
             if expected_url != actual_url or pending_local_url:
                 check_pages_publish_ready()
 
@@ -653,7 +653,7 @@ def run_services(args, session):
             preview = ManagedProcess(
                 "miniapp", [
                     py, "-u", "-m", "http.server", str(MINIAPP_PORT),
-                    "--bind", "127.0.0.1", "--directory", str(ROOT / "miniapp"),
+                    "--bind", "127.0.0.1", "--directory", str(ROOT / "apps" / "miniapp"),
                 ], session=session,
             )
             processes.append(preview)

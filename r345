@@ -1,0 +1,7 @@
+#!/bin/sh
+# Radio 345: ./r345 up | status | stop | restart | check
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+python="$root/.venv/bin/python"
+[ -x "$python" ] || python="${RADIO345_PYTHON:-}"
+[ -n "$python" ] && [ -x "$python" ] || { echo "Немає $root/.venv (або задайте RADIO345_PYTHON)" >&2; exit 1; }
+cd "$root" && exec "$python" -m radio345 "$@"

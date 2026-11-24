@@ -24,11 +24,11 @@ class Assets(HTMLParser):
 
 def test_all_referenced_assets_are_published_and_ids_unique():
     html = Assets()
-    html.feed((ROOT / "miniapp/index.html").read_text())
+    html.feed((ROOT / "apps/miniapp/index.html").read_text())
     workflow = (ROOT / ".github/workflows/miniapp-pages.yml").read_text()
     for filename in html.files:
-        assert (ROOT / "miniapp" / filename).is_file()
-        assert f"cp miniapp/{filename} _site/" in workflow
+        assert (ROOT / "apps/miniapp" / filename).is_file()
+        assert f"cp apps/miniapp/{filename} _site/" in workflow
     assert len(html.ids) == len(set(html.ids))
     assert html.files.index("client.js") < html.files.index("api.js")
     assert html.files.index("client.js") < html.files.index("correction-editor.js")

@@ -38,7 +38,7 @@ def make_dependencies():
 
 
 @patch("services.transcriber_factory.Transcriber")
-@patch("services.transcriber_factory.WhisperRecognizer")
+@patch("core.recognition.WhisperRecognizer")
 @patch("services.transcriber_factory.EventProcessor")
 @patch("services.transcriber_factory.build_text_pipeline")
 @patch("services.transcriber_factory.build_llm_corrector")
@@ -101,7 +101,7 @@ def test_factory_does_not_start_models():
     deps = make_dependencies()
 
     with (
-        patch("services.transcriber_factory.WhisperRecognizer") as whisper,
+        patch("core.recognition.WhisperRecognizer") as whisper,
         patch("services.transcriber_factory.build_llm_corrector") as llm,
         patch("services.transcriber_factory.Transcriber") as worker,
     ):
@@ -123,7 +123,7 @@ def test_recognition_formatter_uses_confirmed_codes_for_the_recording_day():
 
     with (
         patch("services.transcriber_factory.Transcriber") as transcriber,
-        patch("services.transcriber_factory.WhisperRecognizer"),
+        patch("core.recognition.WhisperRecognizer"),
         patch("services.transcriber_factory.EventProcessor"),
         patch("services.transcriber_factory.build_text_pipeline"),
         patch("services.transcriber_factory.build_llm_corrector"),
@@ -146,7 +146,7 @@ def test_receiver_loads_number_evidence_and_refreshes_it_without_model_calls(mon
     deps.update(callsigns=Callsigns.from_lines(['клен: 600 609']),
                 commands=command_dictionary([]),watch=Callsigns.from_lines([]))
     with (patch('services.transcriber_factory.Transcriber') as transcriber,
-          patch('services.transcriber_factory.WhisperRecognizer') as whisper,
+          patch('core.recognition.WhisperRecognizer') as whisper,
           patch('services.transcriber_factory.EventProcessor') as processor,
           patch('services.transcriber_factory.build_text_pipeline'),
           patch('services.transcriber_factory.build_llm_corrector')):

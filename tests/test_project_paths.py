@@ -123,8 +123,7 @@ def test_factory_uses_configured_db_for_word_corrections(
     )
 
     monkeypatch.setattr(
-        factory,
-        "WhisperRecognizer",
+        "core.recognition.WhisperRecognizer",
         Mock(),
     )
 

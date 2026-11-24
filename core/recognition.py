@@ -1,14 +1,7 @@
 import numpy as np
 import mlx_whisper
 from core.diagnostics import runtime
-
-COMPRESSION_LIMIT = 2.4   # вище — Whisper зациклився («Грозу, Грозу, Грозу…»): сегмент відкидається
-
-
-def is_looped(result):
-    """Whisper зациклився хоча б в одному сегменті (після всіх температур)."""
-    return isinstance(result, dict) and any(
-        isinstance(s, dict) and (s.get("compression_ratio") or 0) > COMPRESSION_LIMIT for s in result.get("segments", ()))
+from core.whisper_result import COMPRESSION_LIMIT, extract_text, is_looped  # noqa: F401 — старі імпорти
 
 
 class WhisperRecognizer:
@@ -79,16 +72,4 @@ class WhisperRecognizer:
         mx.clear_cache()
         runtime.gauge("models.whisper", "unloaded")
 
-    @staticmethod
-    def extract_text(result):
-        """Отбирает пригодные для дальнейшей обработки фрагменты."""
-        parts = [
-            segment["text"].strip()
-            for segment in result.get("segments", [])
-            if not (
-                segment.get("no_speech_prob", 0.0) > 0.6
-                and segment.get("avg_logprob", 0.0) < -0.8
-            )
-            and segment.get("compression_ratio", 0) <= COMPRESSION_LIMIT
-        ]
-        return " ".join(parts).strip()
+    extract_text = staticmethod(extract_text)

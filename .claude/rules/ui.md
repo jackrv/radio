@@ -1,7 +1,7 @@
 ---
 paths:
   - "local_admin/**"
-  - "miniapp/**"
+  - "apps/miniapp/**"
   - "api/panel/**"
   - "services/mention_selection.py"
   - "services/miniapp_*.py"

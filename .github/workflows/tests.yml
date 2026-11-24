@@ -65,7 +65,7 @@ jobs:
       - name: Syntax check
         # Скрипт панелі збирається з local_admin/js/*.js (як його віддає api/local_dashboard.py).
         run: |
-          for file in miniapp/*.js; do node --check "$file"; done
+          for file in apps/miniapp/*.js; do node --check "$file"; done
           node -e "new (require('vm').Script)(require('./tests/panel_source.cjs'))"
 
       - name: JavaScript tests

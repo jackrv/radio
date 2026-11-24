@@ -6,7 +6,7 @@
 
 > ⚠️ Модель Whisper — лише одна на Mac (16 ГБ). Ручний `tools.asr_lab` чи
 > `tools.whisper_finetune train`: спершу `start_radio345.py --receiver-stop`,
-> після роботи/помилки — `--receiver-start`. Панельна черга керує цим сама
+> після роботи/помилки — `--receiver-start` (під `r345`: `./r345 pause-model` і `resume-model`). Панельна черга керує цим сама
 > (режим «лише запис», запобіжник до 4 год). MacBook Air без вентилятора
 > перегрівається від годин Whisper поспіль (18.11, «Thermal Emergency Sleep»):
 > довгі серії — з перервами, на живленні.

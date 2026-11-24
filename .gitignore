@@ -50,6 +50,8 @@ diagnostics-report.json
 .local-models/
 .local-notification-sounds/
 .radio345.lock
+.radio345-owner.lock
+.radio345-worker.lock
 .radio345-launcher/
 
 .radio345-local-admin/
@@ -68,3 +70,6 @@ radio345.code-workspace
 # Локальний індекс claudeSearch та службові файли SQLite
 /claudeSearch/code_graph.sqlite
 /claudeSearch/code_graph.sqlite-*
+.local-segment-spool/
+.import/
+.local-node/

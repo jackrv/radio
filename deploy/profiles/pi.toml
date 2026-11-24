@@ -1,0 +1,22 @@
+# Raspberry Pi: ефір, розпізнавання через Mac, бот, панель, API Mini App. Секрети — лише в .env пристрою.
+description = "Pi: дім системи"
+processes = ["node", "asr", "panel", "api", "tunnel"]
+# Публічна адреса — лише явно: sudo sh deploy/hub/install.sh --miniapp
+manual = ["api", "tunnel"]
+requirements = "requirements-hub.txt"
+bot = true
+# Запускаються за іменем: фонові завдання панелі, створення бази й адміністратора.
+extra_modules = ["services.panel_jobs", "manage_database", "api.bootstrap_admin", "radio345"]
+extra = ["r345", "services/process_guard.py", "local_admin", "apps/miniapp", "deploy/hub", "deploy/profiles/pi.toml", "requirements-pi.txt",
+         "docs/raspberry-pi.md", "dictionaries.example.txt", ".gitignore"]
+exclude_modules = ["core.recognition"]    # MLX: вибір робить RADIO_ASR_URL
+
+[env]
+RADIO_INPUT_DEVICE = "USB"
+RADIO_PTT = "none"
+RADIO_SPOOL = "1"
+RADIO_LISTENING_HOLD = "0"   # лінійний вхід: луни з динаміків немає
+RADIO345_PANEL_HOST = "tailscale"
+
+[required_env]
+RADIO_ASR_URL = "адреса вузла Mac, http://…:8347"

@@ -22,6 +22,9 @@ ENTRY_MODULES = (
     "services.radio_stream",
     "services.audio_devices",
     "services.ptt_key",
+    "services.segment_spool",
+    "services.phrase_feed",
+    "services.node_control",
     "core.supervisor",
     "core.notification_spectral",
     "core.notification_templates",
@@ -83,7 +86,7 @@ def write_manifest(files, path=MANIFEST):
         "# Файли для Raspberry Pi: git sparse-checkout set --no-cone --stdin < deploy/pi-files.txt\n"
         "# Не редагуйте вручну: .venv/bin/python -m tools.pi_files --write (повноту перевіряє pytest).\n"
         "# Шляхи з «/» на початку: без нього шаблон no-cone збігається на будь-якій глибині\n"
-        "# (.gitignore тягнув ios/.gitignore і claudeSearch/.gitignore).\n"
+        "# (.gitignore тягнув apps/ios/.gitignore і claudeSearch/.gitignore).\n"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(header + "".join(f"/{f}\n" for f in sorted(files)), encoding="utf-8")

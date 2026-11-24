@@ -1,0 +1,17 @@
+# Mac для розробки: увесь репозиторій; бот вимкнено, щоб не подвоїти бота Pi.
+description = "Mac: розробка й лабораторія"
+processes = ["node", "asr", "panel", "api", "worker", "lab", "tunnel"]
+# Публічна адреса API відкривається лише явно: ./r345 up --only api tunnel
+manual = ["tunnel"]
+requirements = "requirements-dev.txt"
+bot = false
+full_checkout = true
+
+[env]
+# Увесь ланцюжок на одному Mac: вузол Whisper лише на loopback.
+RADIO_SPOOL = "1"
+RADIO_PTT = "none"
+RADIO_ASR_HOST = "127.0.0.1"
+RADIO_ASR_URL = "http://127.0.0.1:8347"
+
+[required_env]

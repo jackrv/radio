@@ -9,6 +9,7 @@ from core.audio import prepare_audio
 from core.analyzer import is_low_confidence_short, looks_like_garbage, strip_dictionary_echo
 from core.callsigns import normalize
 from core.diagnostics import runtime
+from core.whisper_result import RecognizerUnavailable, is_looped
 
 
 class Transcriber:
@@ -56,6 +57,7 @@ class Transcriber:
         self.retry_without_prompt = False
         self._whisper_called = False
         self._whisper_failed = False
+        self._unavailable = False
         self.recognizer = recognizer
         self.process_text = process_text
         self.event_processor = event_processor
@@ -114,12 +116,18 @@ class Transcriber:
         trace = {"predicted_recipient": "", "predicted_sender": "", "roles_parsed": False} if self.recorder is not None else None
         token = _trace.set(trace)
         span = {}
+        self._unavailable = False
         try:
             with runtime.asr_segment(pcm, self.sample_rate, self.segments) as span:
                 self._process_segment(pcm, generation, deferred_id)
         finally:
             _trace.reset(token)
-            if trace is not None and not self.abandon_event.is_set():
+            if self._unavailable:
+                if deferred_id is None:
+                    self._store_deferred(pcm)   # накопичений запис і так лишається deferred
+                else:
+                    self._deferred_idle_until = time.monotonic() + 10
+            elif trace is not None and not self.abandon_event.is_set():
                 from core.diagnostics import _ASR_RECORD_FIELDS
                 trace.update({key: value for key, value in span.items() if key in _ASR_RECORD_FIELDS})
                 with runtime.lock:
@@ -223,7 +231,6 @@ class Transcriber:
                 result = self.recognizer.transcribe(audio)
             raw_text = self.recognizer.extract_text(result)
             from core.recording_trace import note
-            from core.recognition import is_looped
             if not raw_text and self.retry_without_prompt and getattr(self.recognizer, "prompt", "") and is_looped(result):
                 runtime.count("asr.whisper_retry")
                 with runtime.timed("asr.whisper_retry"):
@@ -237,6 +244,12 @@ class Transcriber:
                 "start", "end", "text", "avg_logprob", "no_speech_prob", "compression_ratio", "temperature") if k in segment}
                 for segment in (result.get("segments", []) if isinstance(result, dict) else [])]
             note(raw_text=raw_text, whisper_segments=whisper_segments)
+        except RecognizerUnavailable:
+            # Вузол розшифровки (Mac) спить чи зайнятий: це не помилка моделі, фразу відкладаємо.
+            self._whisper_called = False
+            self._unavailable = True
+            runtime.count("asr.recognizer_unavailable")
+            return
         except Exception:
             self._whisper_failed = True
             runtime.asr_status("whisper_error")
@@ -466,7 +479,8 @@ class Transcriber:
         self._dry = True
         try:
             self.process_segment(pcm, deferred_id=record_id)
-            runtime.count("asr.deferred_done")
+            if not self._unavailable:
+                runtime.count("asr.deferred_done")
         except sqlite3.Error:
             # Запис звуку лишається deferred: збій індексу не є помилкою Whisper.
             runtime.count("asr.deferred_store_error")

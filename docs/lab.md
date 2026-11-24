@@ -1,6 +1,6 @@
 # 🧪 Лабораторія
 
-[← Вікі](README.md) · [Подробиці: черги, SQLite, рецепти, історія результатів](lab-details.md)
+[← Вікі](README.md) · [Результати дослідів і правила прогонів](lab-details.md)
 
 Перевірка змін на **ваших розмічених записах** до того, як вони потраплять у приймач.
 
@@ -21,19 +21,19 @@
 ```
 
 Те саме в панелі: «Перевірити на моїх еталонах» у фільтрах тексту та
-«Аналіз → Вплив правил» (фонова черга, стан у `.local-text-checks/`).
+«Аналіз → Вплив правил» (фонова черга, стан у `.local-data/text-checks/`).
 
 ## Повний прогін — з Whisper
 
 `lab/asr_lab` відтворює обробку записів архіву поза приймачем. Результати —
-`.local-experiments/<час>_<назва>/` (`params.json`, `results.jsonl`, `metrics.json`);
+`.local-data/experiments/<час>_<назва>/` (`params.json`, `results.jsonl`, `metrics.json`);
 перегляд — **Аналіз → Експерименти**, порівняння з `q-base` лише на спільних ID
 з однаковими еталонами й ролями.
 
 ```bash
 .venv/bin/python -m lab.asr_lab run --name base  --variant whisper --ids ids.txt --prompt receiver
 .venv/bin/python -m lab.asr_lab run --name codes --variant whisper --ids ids.txt --prompt receiver --daily-codes latest
-.venv/bin/python -m lab.asr_lab compare .local-experiments/<A> .local-experiments/<B>
+.venv/bin/python -m lab.asr_lab compare .local-data/experiments/<A> .local-data/experiments/<B>
 ```
 
 | Параметр | Що змінює |
@@ -77,7 +77,7 @@
 ## Дообучення Whisper
 
 Набір: **Аналіз → Якість по днях → Набір для дообучення** →
-`.local-training/<час>/` (`audio/*.wav`, `metadata.jsonl`; останні ≈10 % днів — `test`).
+`.local-data/training/<час>/` (`audio/*.wav`, `metadata.jsonl`; останні ≈10 % днів — `test`).
 Пілот tiny: `python -m lab.whisper_finetune prepare --help` / `train --help`.
 Підготовка може йти під час ефіру, навчання — лише з вільним model slot.
 Ваги не вмикаються автоматично, resume оптимізатора немає.

@@ -94,3 +94,18 @@ def test_level_meter_matches_the_threshold_metric():
     now[0] = 9.0
     assert meter.read()["rms"] is None, "мікрофон закрито"
     meter.add(b"x")   # непарні байти не валять захоплення
+
+
+def test_last_passed_phrase_survives_later_quiet_ones():
+    import numpy as np
+    from server.level_meter import LevelMeter
+    now = [0.0]
+    meter = LevelMeter(clock=lambda: now[0])
+    sizes = (2000, 900, 1500, 300, 200, 250)
+    for n, value in enumerate(sizes):
+        now[0] = float(n)
+        meter.segment(np.full(480, value, np.int16).tobytes())
+    louder = meter.read()["louder"]
+    for threshold in (0.0, 0.0062, 0.009, 0.03, 0.05):
+        want = [n for n, v in enumerate(sizes) if v / 32768 >= threshold][-1]
+        assert [r for r in louder if r[0] >= threshold][-1][1] == now[0] - want

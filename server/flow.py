@@ -79,6 +79,7 @@ for _ in range(1800):
             if isinstance(level, dict):
                 out["level"] = {k: level[k] for k in ("rms", "peak", "phrase_rms", "phrase_age_s")
                                 if isinstance(level.get(k), (int, float))}
+                out["level"]["louder"] = level.get("louder") or []
     except (OSError, ValueError, TypeError):
         pass
     print(json.dumps(out), flush=True)

@@ -44,6 +44,8 @@ test('level bar follows RMS, threshold and clipping',()=>{
  assert.equal(l(.01).tone,'');assert.equal(l(.03).tone,'above');assert.equal(l(.03,.99).tone,'clip');
  assert.ok(l(.01).part<l(.01).mark&&l(.03).part>l(.03).mark);
  assert.match(l(.0107).now,/0\.0107 · -39 дБ/);assert.match(l(.01,.1,.0231).phrase,/0\.0231 ✓/);assert.match(l(.01,.1,.011).phrase,/тихо/);
+ const p=c.lv({min_rms:.02,level:{rms:.01,phrase_rms:.011,louder:[[.05,90],[.03,40],[.011,2]]}});
+ assert.match(p.passed,/0\.0300 · 40/);assert.match(p.phrase,/тихо/);assert.match(l(.01).passed,/ще не/);
  assert.equal(c.lv(null).tone,'off');assert.equal(c.lv({level:{}}).tone,'off');
 });
 test('service command is finished only by the observed state',()=>{

@@ -48,9 +48,11 @@
   function flowLevel(live) {
     const level = live?.level, rms = level?.rms, min = live?.min_rms;
     const db = v => 20 * Math.log10(Math.max(v, 1e-5)), part = v => Math.min(1, Math.max(0, (db(v) + 60) / 50));
-    if (typeof rms !== "number") return { tone: "off", now: "рівня немає", phrase: "", part: 0, mark: 0 };
+    if (typeof rms !== "number") return { tone: "off", now: "рівня немає", phrase: "", passed: "", part: 0, mark: 0 };
     const over = typeof min === "number" && rms >= min;
-    return { tone: level.peak >= 0.985 ? "clip" : over ? "above" : "", part: part(rms), mark: typeof min === "number" ? part(min) : 0,
+    const passed = typeof min === "number" ? (level.louder || []).findLast(p => p[0] >= min) : null;
+    return { passed: passed ? `✓ ${passed[0].toFixed(4)} · ${ago(passed[1])} тому` : "ще не проходила",
+      tone: level.peak >= 0.985 ? "clip" : over ? "above" : "", part: part(rms), mark: typeof min === "number" ? part(min) : 0,
       now: `RMS ${rms.toFixed(4)} · ${Math.round(db(rms))} дБ`,
       phrase: typeof level.phrase_rms !== "number" ? (typeof min === "number" ? `поріг ${min}` : "")
         : `фраза ${level.phrase_rms.toFixed(4)}${typeof min !== "number" ? "" : level.phrase_rms >= min ? " ✓" : " тихо"}` };
@@ -78,7 +80,8 @@
     const level = flowLevel(m.live ? flow.data : null), meter = $("flow-level");
     meter.setAttribute("class", `flow-level ${level.tone}`);
     meter.querySelector(".flow-level-now").textContent = level.now;
-    meter.querySelector(".flow-sub").textContent = level.phrase;
+    meter.querySelector(".flow-level-phrase").textContent = level.phrase;
+    meter.querySelector(".flow-level-passed").textContent = level.passed;
     $("flow-level-bar").setAttribute("width", String(Math.round(130 * level.part)));
     $("flow-level-mark").setAttribute("transform", `translate(${20 + Math.round(130 * level.mark)} 0)`);
     for (const [name, on] of Object.entries(m.edges)) $(`flow-edge-${name}`).classList.toggle("on", on);

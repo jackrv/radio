@@ -394,6 +394,14 @@ final class RadioModel {
         center.togglePlayPauseCommand.addTarget { [weak self] _ in self?.toggle(); return .success }
     }
 
+    /// Емблема на екрані блокування. MediaPlayer просить зображення не з головного потоку,
+    /// тому замикання створюється поза @MainActor.
+    private static let artwork = UIImage(named: "NowPlaying").map(makeArtwork)
+
+    private nonisolated static func makeArtwork(_ image: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }
+
     private func updateNowPlaying() {
         guard isListening else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -405,6 +413,7 @@ final class RadioModel {
             MPNowPlayingInfoPropertyPlaybackRate: 1.0,
         ]
         info[MPMediaItemPropertyTitle] = clips.first?.text ?? "Ефір"
+        if let artwork = Self.artwork { info[MPMediaItemPropertyArtwork] = artwork }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 

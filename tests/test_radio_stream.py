@@ -371,6 +371,8 @@ def test_null_output_transmits_into_nothing_and_never_presses_key(monkeypatch):
         def start(self):
             return self
     monkeypatch.setattr(rs, "RadioStream", Stream)
+    # Кодувальник тут не запускається: тест не має залежати від ffmpeg (у CI його немає).
+    monkeypatch.setattr(rs.shutil, "which", lambda name: f"/usr/bin/{name}")
     original = ptt_key.make_key
     monkeypatch.setattr(ptt_key, "make_key", lambda spec: (specs.append(spec), original("none"))[1])
     monkeypatch.setenv("RADIO_OUTPUT_DEVICE", "null")

@@ -1,0 +1,363 @@
+<title>Кабель DM4600e ↔ Pi</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: one column of drawing sheets, each with a schematic and its notes; a title block like an engineering drawing */
+:root {
+  --paper: #eef1ef;
+  --sheet: #f9faf9;
+  --ink: #1d2623;
+  --muted: #5b6863;
+  --rule: #c9d1cd;
+  --rx: #1f8a5b;
+  --tx: #2364b8;
+  --ptt: #c56a0f;
+  --busy: #7b4bb3;
+  --gnd: #1d2623;
+  --danger: #c23b2e;
+  --danger-bg: #f8e3df;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #121715; --sheet: #192120; --ink: #e3ebe7; --muted: #94a39d; --rule: #33403b;
+  --rx: #4cc58f; --tx: #6ea4f0; --ptt: #f0a050; --busy: #b590e8; --gnd: #e3ebe7;
+  --danger: #f07a6c; --danger-bg: #3a1f1b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #121715; --sheet: #192120; --ink: #e3ebe7; --muted: #94a39d; --rule: #33403b;
+  --rx: #4cc58f; --tx: #6ea4f0; --ptt: #f0a050; --busy: #b590e8; --gnd: #e3ebe7;
+  --danger: #f07a6c; --danger-bg: #3a1f1b; color-scheme: dark }
+
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: .01em; }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1; }
+h2 { font-size: 22px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+h2 .tag { font-family: var(--f-mono); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--f-mono); font-size: .92em; }
+
+.titleblock { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 16px; }
+.titleblock .lead { color: var(--muted); margin-top: 8px; }
+.stamp { font-family: var(--f-mono); font-size: 12px; border: 1.5px solid var(--ink); display: grid; grid-template-columns: auto auto; }
+.stamp span { padding: 4px 10px; border-bottom: 1px solid var(--rule); }
+.stamp span:nth-child(odd) { color: var(--muted); border-right: 1px solid var(--rule); }
+.stamp span:nth-last-child(-n+2) { border-bottom: 0; }
+@media (max-width: 640px) { .titleblock { grid-template-columns: 1fr; } }
+
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.sheet.signal { border-left: 5px solid var(--c); }
+.drawing { overflow-x: auto; }
+.drawing svg { display: block; width: 100%; min-width: 640px; height: auto; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 24px; }
+.notes p { font-size: 14px; }
+.notes b { font-weight: 600; }
+
+.warn { background: var(--danger-bg); color: var(--ink); border: 1px solid var(--danger); border-radius: 4px; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.warn strong { color: var(--danger); font-family: var(--f-display); font-size: 17px; }
+.warn ul { margin: 0; padding-left: 20px; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tablewrap { overflow-x: auto; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); margin-right: 6px; vertical-align: 0; }
+
+ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
+.two > * { min-width: 0; }
+
+/* svg classes */
+.w { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.c-rx { stroke: var(--rx); } .c-tx { stroke: var(--tx); } .c-ptt { stroke: var(--ptt); } .c-busy { stroke: var(--busy); } .c-gnd { stroke: var(--gnd); }
+.f-rx { fill: var(--rx); } .f-tx { fill: var(--tx); } .f-ptt { fill: var(--ptt); } .f-busy { fill: var(--busy); } .f-gnd { fill: var(--gnd); }
+.part { fill: var(--sheet); stroke: var(--ink); stroke-width: 2; }
+.sym { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.symf { fill: var(--ink); }
+.box { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
+.iso { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.t { fill: var(--ink); font-family: var(--f-mono); font-size: 13px; }
+.tb { fill: var(--ink); font-family: var(--f-display); font-size: 15px; font-weight: 700; letter-spacing: .03em; }
+.ts { fill: var(--muted); font-family: var(--f-mono); font-size: 11.5px; }
+.tv { fill: var(--ink); font-family: var(--f-mono); font-size: 13px; font-weight: 600; }
+.pin { stroke: var(--ink); stroke-width: 1.2; }
+.pin.off { fill: var(--sheet); stroke: var(--rule); }
+.pin.bad { fill: var(--danger-bg); stroke: var(--danger); stroke-width: 2; }
+.pnum { font-family: var(--f-mono); font-size: 13px; font-weight: 600; text-anchor: middle; }
+.pnum.on { fill: #fff; } .pnum.off { fill: var(--muted); } .pnum.bad { fill: var(--danger); }
+</style>
+
+<div class="wrap">
+
+<header class="titleblock">
+  <div>
+    <h1>Кабель Motorola DM4600e ↔ Raspberry Pi</h1>
+    <p class="lead">Прийом з лінійного виходу рації, передача у вхід заднього мікрофона, PTT через оптопару. Окремі гільзи на задній 26-контактний роз'єм; живлення рації й Pi — від різних джерел.</p>
+  </div>
+  <div class="stamp" aria-label="Відомості про креслення">
+    <span>Джерело</span><span>Motorola 6816814H01, табл. 3-1</span>
+    <span>Карта</span><span>USB, mic + phones 3,5 мм</span>
+    <span>Стан</span><span>розрахунок, наживо не перевірено</span>
+    <span>Дата</span><span>25.11.2026</span>
+  </div>
+</header>
+
+<div class="warn" role="note">
+  <strong>Не чіпати контакти 9 і 10</strong>
+  <ul>
+    <li>Вихід динаміка мостовий: замикання 9 чи 10 на землю може спалити підсилювач рації. Вони стоять поруч з 11 і 12, тож кожну гільзу — в термоусадку.</li>
+    <li>Контакти 16 і 18 (земля рації) <b>не з'єднувати</b> із землею Pi. Єдина спільна точка — аудіоземля 12.</li>
+    <li>CPS недоступний: призначення контактів 17 і 21 спершу перевірити мультиметром (план унизу).</li>
+  </ul>
+</div>
+
+<section class="sheet">
+  <h2>Задній роз'єм рації <span class="tag">вигляд як у документі Motorola</span></h2>
+  <div class="drawing" id="conn"></div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Конт.</th><th>Сигнал</th><th>Що там</th><th>Куди</th></tr></thead>
+    <tbody>
+      <tr><td class="num"><span class="sw" style="--c:var(--rx)"></span>14</td><td>Rx Audio</td><td>Фіксований рівень, ≈330 мВ rms на 1 кГц девіації; не залежить від гучності. Тут же тони рації.</td><td>Прийом → MIC</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--tx)"></span>11</td><td>Tx Audio</td><td>Задній мікрофон: 80 мВ rms на 60 % девіації, AC 560 Ом / DC 660 Ом. Активний лише при PTT з контакту 17.</td><td>Передача ← PHONES</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--gnd)"></span>12</td><td>Audio GND</td><td>Аудіоземля.</td><td>Обидва аудіокола</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--ptt)"></span>17</td><td>GP5-1 (PTT)</td><td>5 В GPIO; замикання на землю вмикає передачу.</td><td>Оптопара U1</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--ptt)"></span>16</td><td>GND</td><td>Земля рації.</td><td>Емітер U1</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--busy)"></span>21</td><td>GP5-3</td><td>5 В GPIO, Channel Activity (якщо не перепрограмовано).</td><td>Етап 2, оптопара U2</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--busy)"></span>18</td><td>GND</td><td>Земля рації.</td><td>Катод U2</td></tr>
+      <tr><td class="num">7 · 8</td><td>SW B+ · PWRGND</td><td>≈13 В і силова земля — лише для перевірки орієнтації мультиметром.</td><td>нікуди</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sheet signal" style="--c:var(--rx)">
+  <h2>1 · Прийом <span class="tag">контакт 14 → MIC IN карти</span></h2>
+  <div class="drawing" id="rx"></div>
+  <div class="notes">
+    <p><b>Навіщо дільник.</b> Мова з девіацією 2–3 кГц дає на 14 близько 0,7–1 В rms, а мікрофонний вхід розрахований на десятки мВ. R1/R2 ділять у ≈23 рази.</p>
+    <p><b>Конденсатори.</b> C1 відсікає можливу постійну складову рації, C2 — живлення електретного мікрофона, яке подає карта. Плівкові, полярність не важлива.</p>
+    <p><b>Підбір.</b> Підсилення запису в <code>alsamixer</code>, AGC вимкнути. Якщо пики обрізаються — R2 470 Ом. Якщо тихо — R2 2,2 кОм.</p>
+    <p><b>Штекер MIC.</b> Лише кінчик (tip) і гільза (sleeve); кільце не підключати.</p>
+  </div>
+</section>
+
+<section class="sheet signal" style="--c:var(--tx)">
+  <h2>2 · Передача <span class="tag">PHONES карти → контакт 11</span></h2>
+  <div class="drawing" id="tx"></div>
+  <div class="notes">
+    <p><b>Рівень.</b> R4 паралельно входу рації (560 Ом) дає ≈255 Ом; разом з R3 це ділення ≈20 разів: 1 В з виходу карти → ≈50 мВ. Номінал рації 80 мВ, далі — гучністю відтворення.</p>
+    <p><b>C3 обов'язковий.</b> Опір входу по постійному струму 660 Ом натякає на зміщення всередині рації.</p>
+    <p><b>Канал.</b> Тільки лівий (tip). Правий (ring) не підключати.</p>
+    <p><b>Перевірка.</b> Слухати на другій рації; рівень підняти до чистого звуку без перевантаження.</p>
+  </div>
+</section>
+
+<section class="sheet signal" style="--c:var(--ptt)">
+  <h2>3 · PTT <span class="tag">GPIO17 → оптопара → контакт 17</span></h2>
+  <div class="drawing" id="ptt"></div>
+  <div class="notes">
+    <p><b>Струм світлодіода.</b> (3,3 − 1,2) В / 330 Ом ≈ 6 мА — безпечно для GPIO Pi.</p>
+    <p><b>Полярність виходу.</b> Колектор (4) — на 17, де в спокої ~5 В, емітер (3) — на 16.</p>
+    <p><b>Після ввімкнення Pi</b> GPIO17 підтягнутий до землі, тож рація сама в передачу не піде.</p>
+    <p><b>Налаштування.</b> <code>.env</code> на Pi: <code>RADIO_PTT=gpio:17</code>. Тайм-аут утримання в коді — єдиний захист: TOT рації без CPS не перевірити.</p>
+  </div>
+</section>
+
+<section class="sheet signal" style="--c:var(--busy)">
+  <h2>4 · Канал зайнятий <span class="tag">етап 2 · контакт 21 → GPIO27</span></h2>
+  <div class="drawing" id="busy"></div>
+  <div class="notes">
+    <p><b>Чому оптопара.</b> Вихід рації 5 В, а GPIO Pi витримує 3,3 В. Заодно зберігається розв'язка земель.</p>
+    <p><b>Струм.</b> (5 − 1,2) В / 2,2 кОм ≈ 1,7 мА — мале навантаження на GPIO рації.</p>
+    <p><b>На Pi</b> GPIO27 з внутрішньою підтяжкою вгору: «канал зайнятий» читається як 0 або 1 залежно від полярності, яку задали в рації.</p>
+    <p><b>У коді цього ще немає.</b> Лише як експеримент з перевіркою на еталонах.</p>
+  </div>
+</section>
+
+<div class="two">
+<section class="sheet">
+  <h2>Гребінка Pi <span class="tag">40 pin</span></h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Фіз. пін</th><th>Сигнал</th><th>Куди</th></tr></thead>
+    <tbody>
+      <tr><td class="num"><span class="sw" style="--c:var(--ptt)"></span>11</td><td>GPIO17</td><td>R5 → U1 анод (1)</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--ptt)"></span>9</td><td>GND</td><td>U1 катод (2)</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--busy)"></span>13</td><td>GPIO27</td><td>U2 колектор (4)</td></tr>
+      <tr><td class="num"><span class="sw" style="--c:var(--busy)"></span>14</td><td>GND</td><td>U2 емітер (3)</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="mono" style="font-size:13px;color:var(--muted)">PC817: 1 анод · 2 катод · 3 емітер · 4 колектор (крапка на корпусі — пін 1).</p>
+</section>
+
+<section class="sheet">
+  <h2>Деталі <span class="tag">0,25 Вт, плівкові конденсатори</span></h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Позиція</th><th>Номінал</th><th>К-сть</th></tr></thead>
+    <tbody>
+      <tr><td>R1</td><td class="num">22 кОм</td><td class="num">1</td></tr>
+      <tr><td>R2</td><td class="num">1 кОм (+ 470 Ом, 2,2 кОм про запас)</td><td class="num">1</td></tr>
+      <tr><td>R3</td><td class="num">4,7 кОм</td><td class="num">1</td></tr>
+      <tr><td>R4</td><td class="num">470 Ом</td><td class="num">1</td></tr>
+      <tr><td>R5</td><td class="num">330 Ом</td><td class="num">1</td></tr>
+      <tr><td>R6 (етап 2)</td><td class="num">2,2 кОм</td><td class="num">1</td></tr>
+      <tr><td>C1, C2</td><td class="num">1 мкФ плівка</td><td class="num">2</td></tr>
+      <tr><td>C3</td><td class="num">2,2 мкФ плівка</td><td class="num">1</td></tr>
+      <tr><td>U1, U2</td><td class="num">PC817</td><td class="num">2</td></tr>
+      <tr><td>Штекери</td><td class="num">3,5 мм ×2</td><td class="num">2</td></tr>
+      <tr><td>Гільзи на роз'єм рації</td><td>за кроком штирів</td><td class="num">5–7</td></tr>
+      <tr><td>Провід</td><td>екранований для аудіо</td><td class="num">≈1 м</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+</div>
+
+<section class="sheet">
+  <h2>Перед підключенням <span class="tag">мультиметр, рація ввімкнена</span></h2>
+  <ol class="steps">
+    <li><b>Орієнтація.</b> Між 7 і 8 — напруга живлення (≈13 В). Контакти 8, 12, 16, 18 дзвоняться на мінус живлення рації. Якщо так — нумерацію на схемі читаєш правильно.</li>
+    <li><b>PTT (17).</b> Напруга 17 → 16 у спокої ≈3–5 В. Потім на секунду замкнути 17 на 16 через резистор 1 кОм, на дозволеному каналі, на малій потужності або в еквівалент навантаження. Рація пішла в передачу — контакт працює як PTT.</li>
+    <li><b>Канал зайнятий (21).</b> Напруга 21 → 16 у тиші й під час прийому. Змінюється — сигнал працює, запиши полярність. Не змінюється — етап 4 відпадає.</li>
+    <li><b>Прийом (14).</b> У режимі ~V під час прийому — сотні мВ, ручка гучності на них не впливає.</li>
+    <li><b>Порядок збирання:</b> спершу тільки коло 1 (14 і 12) і кілька записів фраз для підбору рівня; потім коло 3; коло 2 — разом з PTT; коло 4 — після результату кроку 3.</li>
+  </ol>
+</section>
+
+<p style="color:var(--muted);font-size:13px">Номінали — розрахунок за таблицею 3-1 Motorola; наживо не перевірено. Сигнали й тони рації без CPS не вимкнути — вони потраплятимуть у запис.</p>
+</div>
+
+<script>
+(function () {
+  const W = 760, H = 210;
+  const L = (pts, cls) => `<polyline class="w ${cls}" points="${pts.map(p => p.join(',')).join(' ')}"/>`;
+  const dot = (x, y, f) => `<circle cx="${x}" cy="${y}" r="4.2" class="${f}"/>`;
+  const txt = (x, y, s, cls = 't', anchor = 'middle') => `<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${s}</text>`;
+  const resH = (cx, y, name, val) => `<rect class="part" x="${cx - 28}" y="${y - 9}" width="56" height="18" rx="1"/>` + txt(cx, y - 18, name, 'ts') + txt(cx, y + 30, val, 'tv');
+  const resV = (x, cy, name, val) => `<rect class="part" x="${x - 9}" y="${cy - 28}" width="18" height="56" rx="1"/>` + txt(x + 18, cy - 4, name, 'ts', 'start') + txt(x + 18, cy + 13, val, 'tv', 'start');
+  const cap = (cx, y, name, val) => `<line class="sym" x1="${cx - 5}" y1="${y - 15}" x2="${cx - 5}" y2="${y + 15}" style="stroke-width:3"/><line class="sym" x1="${cx + 5}" y1="${y - 15}" x2="${cx + 5}" y2="${y + 15}" style="stroke-width:3"/>` + txt(cx, y - 24, name, 'ts') + txt(cx, y + 36, val, 'tv');
+  const block = (x, w, title, sub, pins) => {
+    let s = `<rect class="box" x="${x}" y="18" width="${w}" height="${H - 30}" rx="3"/>` + txt(x + w / 2, 40, title, 'tb') + txt(x + w / 2, 56, sub, 'ts');
+    pins.forEach(p => {
+      const px = p.side === 'r' ? x + w : x;
+      s += `<circle cx="${px}" cy="${p.y}" r="5" class="part"/>`;
+      s += txt(p.side === 'r' ? x + w - 10 : x + 10, p.y + 4, p.label, 't', p.side === 'r' ? 'end' : 'start');
+    });
+    return s;
+  };
+  const RADIO = (pins) => block(8, 150, 'РАЦІЯ', 'задній роз\'єм', pins.map(p => ({ ...p, side: 'r' })));
+  const PI = (title, sub, pins) => block(W - 168, 160, title, sub, pins.map(p => ({ ...p, side: 'l' })));
+  const T = 88, B = 176; // signal and ground rails
+
+  function opto(x0, ledRight, name) {
+    const w = 120, top = 66, bot = 196;
+    const yA = T, yB = B - 10;
+    let g = '';
+    // body drawn as if LED is on the right
+    g += `<line class="sym" x1="0" y1="${yA}" x2="30" y2="${yA}"/><line class="sym" x1="30" y1="${yA}" x2="30" y2="${yA + 22}"/><line class="sym" x1="30" y1="${yA + 22}" x2="44" y2="${yA + 36}"/>`;
+    g += `<line class="sym" x1="44" y1="${yA + 28}" x2="44" y2="${yB - 28}" style="stroke-width:3"/>`;
+    g += `<line class="sym" x1="44" y1="${yB - 36}" x2="30" y2="${yB - 22}"/><line class="sym" x1="30" y1="${yB - 22}" x2="30" y2="${yB}"/><line class="sym" x1="0" y1="${yB}" x2="30" y2="${yB}"/>`;
+    g += `<polygon class="symf" points="${30},${yB - 22} ${33},${yB - 31} ${39},${yB - 25}"/>`;
+    // LED
+    const lx = 92, ly1 = (yA + yB) / 2 - 12, ly2 = ly1 + 22;
+    g += `<line class="sym" x1="${w}" y1="${yA}" x2="${lx}" y2="${yA}"/><line class="sym" x1="${lx}" y1="${yA}" x2="${lx}" y2="${ly1}"/>`;
+    g += `<polygon class="part" points="${lx - 11},${ly1} ${lx + 11},${ly1} ${lx},${ly2}"/><line class="sym" x1="${lx - 11}" y1="${ly2}" x2="${lx + 11}" y2="${ly2}"/>`;
+    g += `<line class="sym" x1="${lx}" y1="${ly2}" x2="${lx}" y2="${yB}"/><line class="sym" x1="${lx}" y1="${yB}" x2="${w}" y2="${yB}"/>`;
+    // light arrows
+    [-6, 8].forEach(d => {
+      const y = (ly1 + ly2) / 2 + d;
+      g += `<line class="sym" x1="${lx - 18}" y1="${y}" x2="${56}" y2="${y}" style="stroke-width:1.5"/><polygon class="symf" points="54,${y} 62,${y - 4} 62,${y + 4}"/>`;
+    });
+    const tr = ledRight ? `translate(${x0},0)` : `translate(${x0 + w},0) scale(-1,1)`;
+    let s = `<rect class="box" x="${x0}" y="${top - 6}" width="${w}" height="${bot - top - 4}" rx="3" style="fill:none"/>`;
+    s += `<g transform="${tr}">${g}</g>`;
+    s += `<line class="iso" x1="${x0 + w / 2}" y1="${top - 22}" x2="${x0 + w / 2}" y2="${bot + 4}"/>`;
+    s += txt(x0 + w / 2, top - 28, name + ' · PC817', 'tv');
+    const lp = ledRight ? ['4 C', '3 E'] : ['1 A', '2 K'];
+    const rp = ledRight ? ['1 A', '2 K'] : ['4 C', '3 E'];
+    s += txt(x0 + 4, yA - 7, lp[0], 'ts', 'start') + txt(x0 + 4, yB + 16, lp[1], 'ts', 'start');
+    s += txt(x0 + w - 4, yA - 7, rp[0], 'ts', 'end') + txt(x0 + w - 4, yB + 16, rp[1], 'ts', 'end');
+    return s;
+  }
+
+  const svg = (body, h = H) => `<svg viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" role="img">${body}</svg>`;
+
+  // RX
+  (function () {
+    let s = RADIO([{ y: T, label: '14 Rx' }, { y: B, label: '12 AGND' }]);
+    s += PI('USB-КАРТА', 'гніздо MIC', [{ y: T, label: 'tip' }, { y: B, label: 'sleeve' }]);
+    s += L([[158, T], [215, T]], 'c-rx') + cap(220, T, 'C1', '1 мкФ') + L([[225, T], [262, T]], 'c-rx');
+    s += resH(290, T, 'R1', '22 кОм') + L([[318, T], [485, T]], 'c-rx');
+    s += L([[400, T], [400, 104]], 'c-rx') + resV(400, 132, 'R2', '1 кОм') + L([[400, 160], [400, B]], 'c-gnd');
+    s += cap(490, T, 'C2', '1 мкФ') + L([[495, T], [592, T]], 'c-rx');
+    s += L([[158, B], [592, B]], 'c-gnd') + dot(400, T, 'f-rx') + dot(400, B, 'f-gnd');
+    s += txt(168, T - 34, '≈0,7–1 В rms', 'ts', 'start') + txt(585, T - 34, '≈30–45 мВ', 'ts', 'end');
+    document.getElementById('rx').innerHTML = svg(s);
+  })();
+
+  // TX
+  (function () {
+    let s = RADIO([{ y: T, label: '11 Tx' }, { y: B, label: '12 AGND' }]);
+    s += PI('USB-КАРТА', 'гніздо PHONES', [{ y: T, label: 'tip (L)' }, { y: B, label: 'sleeve' }]);
+    s += L([[158, T], [362, T]], 'c-tx');
+    s += L([[300, T], [300, 104]], 'c-tx') + resV(300, 132, 'R4', '470 Ом') + L([[300, 160], [300, B]], 'c-gnd');
+    s += resH(390, T, 'R3', '4,7 кОм') + L([[418, T], [495, T]], 'c-tx') + cap(500, T, 'C3', '2,2 мкФ') + L([[505, T], [592, T]], 'c-tx');
+    s += L([[158, B], [592, B]], 'c-gnd') + dot(300, T, 'f-tx') + dot(300, B, 'f-gnd');
+    s += txt(168, T - 34, '≈50 мВ (ном. 80)', 'ts', 'start') + txt(585, T - 34, 'до ≈1 В', 'ts', 'end');
+    document.getElementById('tx').innerHTML = svg(s);
+  })();
+
+  // PTT
+  (function () {
+    let s = RADIO([{ y: T, label: '17 PTT' }, { y: B - 10, label: '16 GND' }]);
+    s += PI('RASPBERRY PI', 'гребінка 40 pin', [{ y: T, label: 'GPIO17 · 11' }, { y: B - 10, label: 'GND · 9' }]);
+    s += L([[158, T], [280, T]], 'c-ptt') + L([[158, B - 10], [280, B - 10]], 'c-gnd');
+    s += opto(280, true, 'U1');
+    s += L([[400, T], [462, T]], 'c-ptt') + resH(490, T, 'R5', '330 Ом') + L([[518, T], [592, T]], 'c-ptt');
+    s += L([[400, B - 10], [592, B - 10]], 'c-gnd');
+    s += txt(219, B + 26, 'земля рації', 'ts') + txt(496, B + 26, 'земля Pi', 'ts');
+    document.getElementById('ptt').innerHTML = svg(s, H + 6);
+  })();
+
+  // BUSY
+  (function () {
+    let s = RADIO([{ y: T, label: '21 GP5-3' }, { y: B - 10, label: '18 GND' }]);
+    s += PI('RASPBERRY PI', 'гребінка 40 pin', [{ y: T, label: 'GPIO27 · 13' }, { y: B - 10, label: 'GND · 14' }]);
+    s += L([[158, T], [222, T]], 'c-busy') + resH(250, T, 'R6', '2,2 кОм') + L([[278, T], [330, T]], 'c-busy');
+    s += L([[158, B - 10], [330, B - 10]], 'c-gnd');
+    s += opto(330, false, 'U2');
+    s += L([[450, T], [592, T]], 'c-busy') + L([[450, B - 10], [592, B - 10]], 'c-gnd');
+    s += txt(530, T - 34, 'pull-up у Pi', 'ts');
+    s += txt(244, B + 26, 'земля рації', 'ts') + txt(521, B + 26, 'земля Pi', 'ts');
+    document.getElementById('busy').innerHTML = svg(s, H + 6);
+  })();
+
+  // Connector map
+  (function () {
+    const used = { 14: 'rx', 11: 'tx', 12: 'gnd', 17: 'ptt', 16: 'ptt', 21: 'busy', 18: 'busy' };
+    const bad = { 9: 1, 10: 1 };
+    const names = {1:'D+',2:'D−',3:'Vbus',4:'USB GND',5:'MAP2',6:'MAP1',7:'SW B+',8:'PWRGND',9:'SPKR−',10:'SPKR+',11:'Tx Aud',12:'Aud GND',13:'Aux 1',14:'Rx Aud',15:'Aux 2',16:'GND',17:'PTT',18:'GND',19:'Monitor',20:'GP5-6',21:'Ch Act',22:'GP5-7',23:'Emerg',24:'GP5-8',25:'Ign',26:'VIP-1'};
+    const cw = 54, x0 = 24, yTop = 52, yBot = 112, sz = 40;
+    let s = `<rect class="box" x="${x0 - 12}" y="${yTop - 12}" width="${13 * cw + 24 - (cw - sz)}" height="${yBot - yTop + sz + 24}" rx="4"/>`;
+    for (let i = 0; i < 13; i++) {
+      const x = x0 + i * cw;
+      [[2 * i + 2, yTop, yTop - 20], [2 * i + 1, yBot, yBot + sz + 30]].forEach(([n, y, ly]) => {
+        const u = used[n], b = bad[n];
+        const cls = u ? '' : b ? 'bad' : 'off';
+        const fill = u ? `style="fill:var(--${u === 'gnd' ? 'gnd' : u})"` : '';
+        s += `<rect class="pin ${cls}" x="${x}" y="${y}" width="${sz}" height="${sz}" rx="3" ${fill}/>`;
+        s += `<text x="${x + sz / 2}" y="${y + 26}" class="pnum ${u ? 'on' : b ? 'bad' : 'off'}" ${u === 'gnd' ? 'style="fill:var(--sheet)"' : ''}>${n}</text>`;
+        s += `<text x="${x + sz / 2}" y="${ly}" class="ts" text-anchor="middle" ${u ? 'style="fill:var(--ink);font-weight:600"' : b ? 'style="fill:var(--danger);font-weight:600"' : ''}>${names[n]}</text>`;
+      });
+    }
+    document.getElementById('conn').innerHTML = `<svg viewBox="0 0 ${x0 * 2 + 12 * cw + sz} 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Карта 26 контактів заднього роз'єму">${s}</svg>`;
+  })();
+})();
+</script>

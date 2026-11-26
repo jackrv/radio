@@ -958,12 +958,17 @@
       // поставила підстановка. Ручне перемикання вимикає підстановку в цій картці.
       let multiAuto = false, multiTouched = false;
       multiBox.addEventListener("change", () => { multiTouched = true; multiAuto = false; renderChips(); suggest(); });
-      input.addEventListener("input", () => {
+      // Текст вставляє і програма (початковий текст, «Виправити», «Повернути почуте») — без події input,
+      // тому відмітку звіряють і в updateDirty, і одразу для нової картки.
+      function syncMulti() {
         if (multiTouched) return;
         const split = /[|/]/.test(input.value);
         if (split && !multiBox.checked) { multiBox.checked = true; multiAuto = true; renderChips(); }
         else if (!split && multiAuto) { multiBox.checked = false; multiAuto = false; renderChips(); }
-      });
+      }
+      input.addEventListener("input", syncMulti);
+      // Збережене явне «одна передача» не перекриваємо.
+      if (item.multiple_messages === 0) multiTouched = true; else syncMulti();
       multi.title = "Кілька людей або передач у одному записі (злиття сегментів)";
       const save = el("button", "", item.reference === null ? "Зберегти еталон" : "Оновити еталон");
       save.addEventListener("pointerdown", () => { savePointerDown = true; });
@@ -1009,6 +1014,7 @@
       const snapshot = () => JSON.stringify({reference:input.value, label:category.value,
         reference_recipient:recipient.read(), reference_sender:sender.read(), multiple_messages:multiBox.checked});
       function updateDirty() {
+        syncMulti();
         if (savedSnapshot === undefined) return;
         controller.dirty = snapshot() !== savedSnapshot;
         dirtyBadge.hidden = !controller.dirty;

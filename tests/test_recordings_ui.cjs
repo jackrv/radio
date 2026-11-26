@@ -571,3 +571,23 @@ test('refreshing archive disposes old audio before replacing cards',async()=>{
  const old=ui.cards()[0].audio;let stopped=0;old.pause=()=>stopped++;
  await ui.load();assert.equal(stopped,1);assert.notEqual(ui.cards()[0].audio,old);
 });
+
+test('a "/" the program put into the text marks several transmissions without typing', async () => {
+  const sent = [];
+  const merged = {...item, id:'m'.repeat(32), reference:null, revision:0, label:null, reference_recipient:null, reference_sender:null, multiple_messages:null,
+                  data:{raw_text:'клен 48, прийом клен 48', final_text:'клен 48, прийом / клен 48'}};
+  const ui = harness({items:[merged], total:1}, {}, {review: body => { sent.push(body); return {...body, revision:1}; }});
+  await ui.load();
+  const badge = () => descendants(ui.$('recordings')).some(n => n.className === 'multi-badge');
+  assert.equal(badge(), true);
+  await ui.save();
+  assert.equal(sent[0].multiple_messages, true);
+});
+
+test('a saved "one transmission" choice is kept even when the text has "/"', async () => {
+  const saved = {...item, id:'s'.repeat(32), reference:'клен 48 / клен 48', label:'speech', multiple_messages:0, revision:1,
+                 data:{final_text:'клен 48 / клен 48'}};
+  const ui = harness({items:[saved], total:1});
+  await ui.load();
+  assert.equal(descendants(ui.$('recordings')).some(n => n.className === 'multi-badge'), false);
+});

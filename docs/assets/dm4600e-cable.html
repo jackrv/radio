@@ -155,7 +155,7 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
   <div class="drawing" id="tx"></div>
   <div class="notes">
     <p><b>Рівень.</b> Нижнє плече — сам вхід рації 560 Ом; з R4 ділення ≈1/13: 0,5 В → 38 мВ, 1 В → 76 мВ (номінал), максимум 1,4 В → ≈106 мВ.</p>
-    <p><b>Без конденсатора.</b> Вихід уже розв'язаний C8/C9 на платі карти. Для перестраховки можна послідовно 0,1–1 мкФ.</p>
+    <p><b>C2.</b> Перестраховка: вихід уже розв'язаний C8/C9 на платі, C2 ще раз відсікає зміщення входу рації. 0,1 мкФ (104) дає зріз ≈215 Гц — рація сама ріже мікрофон нижче ~300 Гц; 1 мкФ — ≈20 Гц. Порядок C2 і R4 не важливий.</p>
     <p><b>Канал.</b> Пятак L або R (дзвониться на C8 чи C9); другий не підключати. R4 виміряти: допустимо 4,7–10 кОм.</p>
     <p><b>Перевірка.</b> Слухати на другій рації; рівень підняти до чистого звуку без перевантаження.</p>
   </div>
@@ -213,6 +213,7 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
       <tr><td>R5</td><td class="num">330 Ом</td><td class="num">1</td></tr>
       <tr><td>R6 (етап 2)</td><td class="num">2,2 кОм</td><td class="num">1</td></tr>
       <tr><td>C1</td><td class="num">104K, 0,1 мкФ кераміка</td><td class="num">1</td></tr>
+      <tr><td>C2</td><td class="num">0,1–1 мкФ (104 чи 105)</td><td class="num">1</td></tr>
       <tr><td>U1, U2</td><td class="num">PC817</td><td class="num">2</td></tr>
       <tr><td>Гільзи на роз'єм рації</td><td>за кроком штирів</td><td class="num">5–7</td></tr>
       <tr><td>Провід</td><td>вита пара, багатожильна</td><td class="num">≈1 м</td></tr>
@@ -308,7 +309,7 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
   (function () {
     let s = RADIO([{ y: T, label: '11 Tx' }, { y: B, label: '12 AGND' }]);
     s += PI('USB-КАРТА', 'пятаки J3 (AUDIO)', [{ y: T, label: 'L або R' }, { y: B, label: 'земля' }]);
-    s += L([[158, T], [362, T]], 'c-tx') + resH(390, T, 'R4', '6,8 кОм') + L([[418, T], [592, T]], 'c-tx');
+    s += L([[158, T], [362, T]], 'c-tx') + resH(390, T, 'R4', '6,8 кОм') + L([[418, T], [485, T]], 'c-tx') + cap(490, T, 'C2', '0,1–1 мкФ') + L([[495, T], [592, T]], 'c-tx');
     s += L([[158, B], [592, B]], 'c-gnd') + txt(168, (T + B) / 2 + 4, 'вхід рації 560 Ом', 'ts', 'start');
     s += txt(168, T - 34, '≈38–106 мВ (ном. 80)', 'ts', 'start') + txt(585, T - 34, '0,5–1,4 В', 'ts', 'end');
     document.getElementById('tx').innerHTML = svg(s);

@@ -1338,7 +1338,7 @@
   try { holdBox.checked = localStorage.getItem(HOLD_KEY) !== "off"; } catch (_) { /* лишаємо типово */ }
   holdBox.addEventListener("change", () => {
     try { localStorage.setItem(HOLD_KEY, holdBox.checked ? "on" : "off"); } catch (_) { /* лише поточна сесія */ }
-    if (!holdBox.checked && playing.size) sendHold(0);
+    if (!holdBox.checked && playing.size) { playing.clear(); clearInterval(holdTimer); holdTimer = null; sendHold(0); }
   });
   const playing = new Set();
   let holdTimer = null;
@@ -1346,10 +1346,16 @@
   const showHold = () => holdBox.closest?.(".mic-square")?.classList.toggle("holding", holdBox.checked && playing.size > 0);
   holdBox.addEventListener("change", showHold);
 
-  function sendHold(seconds) {
-    return fetch("/api/listening-hold", { method: "PUT", credentials: "same-origin", cache: "no-store",
+  // Запити — строго по черзі: «ще 10 с», відправлене перед паузою, не має прийти пізніше
+  // відпускання й знову закрити мікрофон на 10 с.
+  let holdChain = Promise.resolve();
+  function sendHold(seconds, now = false) {
+    const put = () => fetch("/api/listening-hold", { method: "PUT", credentials: "same-origin", cache: "no-store", keepalive: true,
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seconds: Math.max(0, Math.min(120, seconds)) }) })
       .catch(() => { /* приймач не зупиняємо через збій панелі */ });
+    if (now) return put();   // закриття сторінки: не чекаємо черги
+    holdChain = holdChain.then(put);
+    return holdChain;
   }
   // Одночасно грає лише один запис у всій панелі: новий зупиняє попередній.
   document.addEventListener("play", event => {
@@ -1363,18 +1369,26 @@
     playing.add(media); showHold();
     const left = Number.isFinite(media.duration) ? media.duration - media.currentTime : 10;
     sendHold(Math.min(120, left + 1.5));
-    if (!holdTimer) holdTimer = setInterval(() => { if (playing.size) sendHold(10); }, 4000);
+    if (!holdTimer) holdTimer = setInterval(() => {
+      // Плеєр, прибраний зі сторінки (оновлення переліку), уже не надсилає «pause» до document:
+      // без цієї перевірки утримання продовжувалося б, доки відкрито панель.
+      for (const m of playing) if (m.paused || !m.isConnected) playing.delete(m);
+      if (playing.size && holdBox.checked) sendHold(10); else releaseHold();
+    }, 4000);
   }, true);
   // Плеєр, що грає, підсвічено (фартушок над карткою).
   for (const [name, on] of [["play", true], ["pause", false], ["ended", false]])
     document.addEventListener(name, event => event.target?.closest?.(".recording-deck")?.classList.toggle("playing", on), true);
-  function stopped(event) {
-    if (!playing.delete(event.target) || playing.size) return;
+  function releaseHold() {
     showHold();
     clearInterval(holdTimer); holdTimer = null;
     sendHold(1);  // 1 с на відлуння кімнати, потім мікрофон відкривається
   }
+  function stopped(event) {
+    if (!playing.delete(event.target) || playing.size) return;
+    releaseHold();
+  }
   document.addEventListener("pause", stopped, true);
   document.addEventListener("ended", stopped, true);
-  window.addEventListener("pagehide", () => { if (playing.size) sendHold(0); });
+  window.addEventListener("pagehide", () => { if (playing.size) sendHold(0, true); });
 

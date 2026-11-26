@@ -104,9 +104,9 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
   </div>
   <div class="stamp" aria-label="Відомості про креслення">
     <span>Джерело</span><span>Motorola 6816814H01, табл. 3-1</span>
-    <span>Карта</span><span>USB, mic + phones 3,5 мм</span>
-    <span>Стан</span><span>розрахунок, наживо не перевірено</span>
-    <span>Дата</span><span>25.11.2026</span>
+    <span>Карта</span><span>USB HF002C, гнізда знято</span>
+    <span>Стан</span><span>прийом зібрано й виміряно; з рацією не перевірено</span>
+    <span>Дата</span><span>26.11.2026</span>
   </div>
 </header>
 
@@ -140,23 +140,23 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
 </section>
 
 <section class="sheet signal" style="--c:var(--rx)">
-  <h2>1 · Прийом <span class="tag">контакт 14 → MIC IN карти</span></h2>
+  <h2>1 · Прийом <span class="tag">контакт 14 → пятаки MIC (J1) на карті</span></h2>
   <div class="drawing" id="rx"></div>
   <div class="notes">
-    <p><b>Навіщо дільник.</b> Мова з девіацією 2–3 кГц дає на 14 близько 0,7–1 В rms, а мікрофонний вхід розрахований на десятки мВ. R1/R2 ділять у ≈23 рази.</p>
-    <p><b>Конденсатори.</b> C1 відсікає можливу постійну складову рації, C2 — живлення електретного мікрофона, яке подає карта. Плівкові, полярність не важлива.</p>
-    <p><b>Підбір.</b> Підсилення запису в <code>alsamixer</code>, AGC вимкнути. Якщо пики обрізаються — R2 470 Ом. Якщо тихо — R2 2,2 кОм.</p>
-    <p><b>Штекер MIC.</b> Лише кінчик (tip) і гільза (sleeve); кільце не підключати.</p>
+    <p><b>Рівень.</b> Дільник 20k / 1k; паралельно R3 стоїть вхід карти (≈3 кОм через її R2 «302»), нижнє плече ≈750 Ом, ділення ≈1/28: з 0,7–1 В на 14 — ≈25–36 мВ на вході.</p>
+    <p><b>Один конденсатор.</b> C1 не пускає зміщення входу (2–3 В) у рацію, а постійну складову рації — в карту. Зміщення стікає через R3 (&lt;1 мА); розділовий конденсатор перед чипом уже є на платі (C6/C7).</p>
+    <p><b>Виміряно.</b> C1 — 115 нФ, R1+R2 — 20 кОм, R3 — 0,982 кОм. R2 — три по 15 кОм паралельно (скрутку пропаяти). Порядок C1, R1, R2 не важливий.</p>
+    <p><b>Підбір.</b> Підсилення запису в <code>alsamixer</code>, AGC вимкнути. Задовго — зверху ще 3,9 кОм або паралельно R3 680 чи 470 Ом.</p>
   </div>
 </section>
 
 <section class="sheet signal" style="--c:var(--tx)">
-  <h2>2 · Передача <span class="tag">PHONES карти → контакт 11</span></h2>
+  <h2>2 · Передача <span class="tag">вихід навушників (J3) → контакт 11</span></h2>
   <div class="drawing" id="tx"></div>
   <div class="notes">
-    <p><b>Рівень.</b> R4 паралельно входу рації (560 Ом) дає ≈255 Ом; разом з R3 це ділення ≈20 разів: 1 В з виходу карти → ≈50 мВ. Номінал рації 80 мВ, далі — гучністю відтворення.</p>
-    <p><b>C3 обов'язковий.</b> Опір входу по постійному струму 660 Ом натякає на зміщення всередині рації.</p>
-    <p><b>Канал.</b> Тільки лівий (tip). Правий (ring) не підключати.</p>
+    <p><b>Рівень.</b> Нижнє плече — сам вхід рації 560 Ом; з R4 ділення ≈1/13: 0,5 В → 38 мВ, 1 В → 76 мВ (номінал), максимум 1,4 В → ≈106 мВ.</p>
+    <p><b>Без конденсатора.</b> Вихід уже розв'язаний C8/C9 на платі карти. Для перестраховки можна послідовно 0,1–1 мкФ.</p>
+    <p><b>Канал.</b> Пятак L або R (дзвониться на C8 чи C9); другий не підключати. R4 виміряти: допустимо 4,7–10 кОм.</p>
     <p><b>Перевірка.</b> Слухати на другій рації; рівень підняти до чистого звуку без перевантаження.</p>
   </div>
 </section>
@@ -201,23 +201,21 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
 </section>
 
 <section class="sheet">
-  <h2>Деталі <span class="tag">0,25 Вт, плівкові конденсатори</span></h2>
+  <h2>Деталі <span class="tag">фактична збірка</span></h2>
   <div class="tablewrap">
   <table>
     <thead><tr><th>Позиція</th><th>Номінал</th><th>К-сть</th></tr></thead>
     <tbody>
-      <tr><td>R1</td><td class="num">22 кОм</td><td class="num">1</td></tr>
-      <tr><td>R2</td><td class="num">1 кОм (+ 470 Ом, 2,2 кОм про запас)</td><td class="num">1</td></tr>
-      <tr><td>R3</td><td class="num">4,7 кОм</td><td class="num">1</td></tr>
-      <tr><td>R4</td><td class="num">470 Ом</td><td class="num">1</td></tr>
+      <tr><td>R1</td><td class="num">15 кОм</td><td class="num">1</td></tr>
+      <tr><td>R2</td><td class="num">3 × 15 кОм ∥ = 5 кОм</td><td class="num">3</td></tr>
+      <tr><td>R3</td><td class="num">1 кОм</td><td class="num">1</td></tr>
+      <tr><td>R4</td><td class="num">6,8 кОм</td><td class="num">1</td></tr>
       <tr><td>R5</td><td class="num">330 Ом</td><td class="num">1</td></tr>
       <tr><td>R6 (етап 2)</td><td class="num">2,2 кОм</td><td class="num">1</td></tr>
-      <tr><td>C1, C2</td><td class="num">1 мкФ плівка</td><td class="num">2</td></tr>
-      <tr><td>C3</td><td class="num">2,2 мкФ плівка</td><td class="num">1</td></tr>
+      <tr><td>C1</td><td class="num">104K, 0,1 мкФ кераміка</td><td class="num">1</td></tr>
       <tr><td>U1, U2</td><td class="num">PC817</td><td class="num">2</td></tr>
-      <tr><td>Штекери</td><td class="num">3,5 мм ×2</td><td class="num">2</td></tr>
       <tr><td>Гільзи на роз'єм рації</td><td>за кроком штирів</td><td class="num">5–7</td></tr>
-      <tr><td>Провід</td><td>екранований для аудіо</td><td class="num">≈1 м</td></tr>
+      <tr><td>Провід</td><td>вита пара, багатожильна</td><td class="num">≈1 м</td></tr>
     </tbody>
   </table>
   </div>
@@ -296,25 +294,23 @@ ol.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column;
   // RX
   (function () {
     let s = RADIO([{ y: T, label: '14 Rx' }, { y: B, label: '12 AGND' }]);
-    s += PI('USB-КАРТА', 'гніздо MIC', [{ y: T, label: 'tip' }, { y: B, label: 'sleeve' }]);
-    s += L([[158, T], [215, T]], 'c-rx') + cap(220, T, 'C1', '1 мкФ') + L([[225, T], [262, T]], 'c-rx');
-    s += resH(290, T, 'R1', '22 кОм') + L([[318, T], [485, T]], 'c-rx');
-    s += L([[400, T], [400, 104]], 'c-rx') + resV(400, 132, 'R2', '1 кОм') + L([[400, 160], [400, B]], 'c-gnd');
-    s += cap(490, T, 'C2', '1 мкФ') + L([[495, T], [592, T]], 'c-rx');
-    s += L([[158, B], [592, B]], 'c-gnd') + dot(400, T, 'f-rx') + dot(400, B, 'f-gnd');
-    s += txt(168, T - 34, '≈0,7–1 В rms', 'ts', 'start') + txt(585, T - 34, '≈30–45 мВ', 'ts', 'end');
+    s += PI('USB-КАРТА', 'пятаки J1 (MIC)', [{ y: T, label: 'сигнал' }, { y: B, label: 'земля' }]);
+    s += L([[158, T], [205, T]], 'c-rx') + cap(210, T, 'C1', '0,1 мкФ') + L([[215, T], [252, T]], 'c-rx');
+    s += resH(280, T, 'R1', '15 кОм') + L([[308, T], [342, T]], 'c-rx');
+    s += resH(370, T, 'R2', '5 кОм') + L([[398, T], [592, T]], 'c-rx');
+    s += L([[480, T], [480, 104]], 'c-rx') + resV(480, 132, 'R3', '1 кОм') + L([[480, 160], [480, B]], 'c-gnd');
+    s += L([[158, B], [592, B]], 'c-gnd') + dot(480, T, 'f-rx') + dot(480, B, 'f-gnd');
+    s += txt(168, T - 34, '≈0,7–1 В rms', 'ts', 'start') + txt(585, T - 34, '≈25–36 мВ', 'ts', 'end');
     document.getElementById('rx').innerHTML = svg(s);
   })();
 
   // TX
   (function () {
     let s = RADIO([{ y: T, label: '11 Tx' }, { y: B, label: '12 AGND' }]);
-    s += PI('USB-КАРТА', 'гніздо PHONES', [{ y: T, label: 'tip (L)' }, { y: B, label: 'sleeve' }]);
-    s += L([[158, T], [362, T]], 'c-tx');
-    s += L([[300, T], [300, 104]], 'c-tx') + resV(300, 132, 'R4', '470 Ом') + L([[300, 160], [300, B]], 'c-gnd');
-    s += resH(390, T, 'R3', '4,7 кОм') + L([[418, T], [495, T]], 'c-tx') + cap(500, T, 'C3', '2,2 мкФ') + L([[505, T], [592, T]], 'c-tx');
-    s += L([[158, B], [592, B]], 'c-gnd') + dot(300, T, 'f-tx') + dot(300, B, 'f-gnd');
-    s += txt(168, T - 34, '≈50 мВ (ном. 80)', 'ts', 'start') + txt(585, T - 34, 'до ≈1 В', 'ts', 'end');
+    s += PI('USB-КАРТА', 'пятаки J3 (AUDIO)', [{ y: T, label: 'L або R' }, { y: B, label: 'земля' }]);
+    s += L([[158, T], [362, T]], 'c-tx') + resH(390, T, 'R4', '6,8 кОм') + L([[418, T], [592, T]], 'c-tx');
+    s += L([[158, B], [592, B]], 'c-gnd') + txt(168, (T + B) / 2 + 4, 'вхід рації 560 Ом', 'ts', 'start');
+    s += txt(168, T - 34, '≈38–106 мВ (ном. 80)', 'ts', 'start') + txt(585, T - 34, '0,5–1,4 В', 'ts', 'end');
     document.getElementById('tx').innerHTML = svg(s);
   })();
 

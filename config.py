@@ -51,7 +51,7 @@ NOTIFICATION_SOUNDS_DIR = place(BASE_DIR, ".local-notification-sounds")
 # 0,74 / 0,6 с / 0,15 знаходять 101 сигнал проти 45 і не зачіпають мовлення (0 з 252):
 # мовлення відсікає «звук поза збігом» — у нього 2–3 с.
 SPECTRAL_NOTIFICATION_MODE = "active"
-SPECTRAL_NOTIFICATION_THRESHOLD = 0.74
+SPECTRAL_NOTIFICATION_THRESHOLD = 0.90
 SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S = 0.6
 SPECTRAL_NOTIFICATION_MAX_EXTRA = 0.15
 # Видалення лише нових копій фраз у Telegram; 0 — вимкнено. WAV і розмітка лишаються.

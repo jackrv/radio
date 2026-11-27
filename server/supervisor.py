@@ -4,6 +4,7 @@ import time
 from contextlib import ExitStack, contextmanager, nullcontext
 import threading
 
+import shared.audio_devices  # noqa: F401 — PA_ALSA_PLUGHW до ініціалізації PortAudio
 import sounddevice as sd
 
 from shared.vad import VADSegmenter

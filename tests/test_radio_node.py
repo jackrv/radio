@@ -26,6 +26,12 @@ def test_find_device_by_name_and_kind():
         ad.find_device("pro", "input", DEVICES)
 
 
+def test_saved_hw_name_finds_plughw_device():
+    devices = [{"name": "Test USB Audio: - (plughw:0,0)", "max_input_channels": 2, "max_output_channels": 2}]
+    assert ad.find_device("Test USB Audio: - (hw:0,0)", "input", devices) == 0
+    assert ad.find_device("test usb audio: - (plughw:0,0)", "input", devices) == 0
+
+
 def test_rechunking_callback_emits_equal_frames_with_shifted_adc_time():
     got = []
     cb = ad.rechunking_callback(lambda d, n, t, s: got.append((d, n, t.inputBufferAdcTime, s)), 4, 1000)

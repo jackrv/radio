@@ -16,6 +16,12 @@ import sys
 from pathlib import Path
 
 
+# ALSA hw: віддає лише рідні частоти пристрою (USB-аудіо AB17X — 44,1/48 кГц стерео),
+# а приймач просить 16 кГц моно → paInvalidSampleRate. З plughw частоту й канали
+# перетворює ALSA. Має стояти до першого імпорту sounddevice (ініціалізація PortAudio).
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("PA_ALSA_PLUGHW", "1")
+
 NULL_OUTPUT = "null"   # RADIO_OUTPUT_DEVICE: передача у порожнечу, без звукового виходу
 
 
@@ -39,13 +45,18 @@ def find_device(name, kind, devices=None):
         import sounddevice as sd
         devices = sd.query_devices()
     key = "max_input_channels" if kind == "input" else "max_output_channels"
-    wanted = name.casefold()
-    matches = [i for i, d in enumerate(devices) if d.get(key, 0) > 0 and wanted in d["name"].casefold()]
+    wanted = _alsa_name(name)
+    matches = [i for i, d in enumerate(devices) if d.get(key, 0) > 0 and wanted in _alsa_name(d["name"])]
     if not matches:
         raise DeviceNotFound(f"Звуковий пристрій «{name}» ({'вхід' if kind == 'input' else 'вихід'}) не знайдено")
     # Точний збіг назви важливіший за перший частковий.
-    exact = [i for i in matches if devices[i]["name"].casefold() == wanted]
+    exact = [i for i in matches if _alsa_name(devices[i]["name"]) == wanted]
     return (exact or matches)[0]
+
+
+def _alsa_name(name):
+    """Назва без регістру; «(plughw:0,0)» = «(hw:0,0)»: збережений вибір лишається дійсним."""
+    return name.casefold().replace("(plughw:", "(hw:")
 
 
 _current_input = {"name": None}

@@ -7,8 +7,9 @@
 
 MAC_MIC = "mac-mic"
 PI_WEBCAM = "pi-webcam"
+PI_USB_AUDIO = "pi-usb-audio"   # USB-аудіо AB17X з мікрофоном, з 27.11.2026
 
-TITLES = {MAC_MIC: "мікрофон Mac", PI_WEBCAM: "вебкамера на Pi"}
+TITLES = {MAC_MIC: "мікрофон Mac", PI_WEBCAM: "вебкамера на Pi", PI_USB_AUDIO: "USB-аудіо на Pi"}
 
 
 def profile_of(data):

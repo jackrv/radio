@@ -1089,6 +1089,13 @@ def test_audio_choice_belongs_to_the_machine(local, monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
     data = client.get(url).json()
     assert data["devices"] is None and data["error"] and data["settings"]["revision"] == 1
+    # Зріз гулу — галочка; на Mac мікшера ALSA немає, регулятора не знайдено.
+    hp = "/api/devices/mac/highpass"
+    assert data["highpass"] is False and data["mixer"]["controls"] == []
+    assert client.put(hp, headers=h, json={"enabled": True}).json() == {"highpass": True}
+    assert client.put(hp, headers=h, json={"enabled": "yes"}).status_code == 422
+    assert client.get(url).json()["highpass"] is True and audio_choice.read(path.parent)["revision"] == 1
+    assert client.put("/api/devices/mac/mixer", headers=h, json={"name": "Capture", "value": 5}).status_code == 422
 
 
 def test_settings_form_saves_everything_it_shows(local):

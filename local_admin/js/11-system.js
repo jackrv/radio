@@ -237,24 +237,69 @@
         finally { save.disabled = false; save.textContent = "Зберегти"; }
         for (const [k, s] of Object.entries(selects)) s.dataset.saved = values[k];
         save.hidden = !changed();
-        result.textContent = "Збережено. ";
+        offerRestart(result, "Збережено. ");
+      });
+      function offerRestart(target, text) {
+        target.textContent = text;
         if (state.alive && (name === "pi" || serviceMode === "r345")) {
           const b = el("button", "ghost small-button", "Перезапустити ефір"); b.type = "button";
           b.addEventListener("click", async () => {
-            result.textContent = "Ефір перезапускається…";
-            try { result.textContent = await runService(name, "node", "restart") ? "Ефір працює з новим звуком." : "Перезапуск не підтверджено, перевірте стан."; }
-            catch (error) { result.textContent = error.message; }
+            target.textContent = "Ефір перезапускається…";
+            try { target.textContent = await runService(name, "node", "restart") ? "Ефір працює з новим звуком." : "Перезапуск не підтверджено, перевірте стан."; }
+            catch (error) { target.textContent = error.message; }
           });
-          result.append(b);
-        } else result.textContent += "Діятиме з наступного запуску ефіру.";
+          target.append(b);
+        } else target.textContent += "Діятиме з наступного запуску ефіру.";
+      }
+      // Підсилення: регулятори запису мікшера карти входу, діють одразу.
+      const gain = el("div", "audio-gain"), gainNote = el("p", "muted small", "");
+      const mixerRows = mixer => {
+        gain.replaceChildren();
+        if (mixer?.error) gain.append(el("p", "alert small", mixer.error));
+        else if (!(mixer?.controls || []).length) gain.append(el("p", "muted small", "Підсилення: у цього входу регуляторів немає."));
+        for (const c of mixer?.controls || []) {
+          const row = el("div", "audio-gain-row"), title = el("span", "audio-gain-name", `Підсилення · ${c.name}`);
+          row.append(title);
+          const send = async body => {
+            gainNote.textContent = "Застосовую…";
+            try { mixerRows(await request(`/api/devices/${name}/mixer`, "PUT", { name: c.name, index: c.index, value: null, switch: null, ...body })); gainNote.textContent = "Діє одразу й лишиться після перезапуску."; }
+            catch (error) { gainNote.textContent = error.message; }
+          };
+          if (c.max != null) {
+            const range = el("input"), out = el("output", "audio-gain-value");
+            range.type = "range"; range.min = c.min; range.max = c.max; range.step = 1; range.value = c.value;
+            range.setAttribute("aria-label", `Підсилення ${c.name}`);
+            const show = () => { const pct = Math.round((range.value - c.min) / ((c.max - c.min) || 1) * 100); out.textContent = `${pct}%${range.value == c.value && c.db != null ? ` · ${c.db} дБ` : ""}`; };
+            range.addEventListener("input", show);
+            range.addEventListener("change", () => send({ value: Number(range.value) }));
+            show(); row.append(range, out);
+          }
+          if (c.switch != null) {
+            const toggle = el("label", "switch"), box = el("input"); box.type = "checkbox"; box.checked = c.switch;
+            toggle.append(box, c.switch ? "Запис увімк." : "Запис вимк.");
+            box.addEventListener("change", () => send({ switch: box.checked }));
+            row.append(toggle);
+          }
+          gain.append(row);
+        }
+      };
+      mixerRows(data.mixer);
+      const humNote = el("p", "muted small", "");
+      const hum = el("label", "switch"), humBox = el("input"); humBox.type = "checkbox"; humBox.checked = !!data.highpass;
+      hum.append(humBox, "Зрізати гул нижче 200 Гц (мережа 50 Гц)");
+      humBox.addEventListener("change", async () => {
+        humBox.disabled = true;
+        try { await request(`/api/devices/${name}/highpass`, "PUT", { enabled: humBox.checked }); offerRestart(humNote, humBox.checked ? "Увімкнено. " : "Вимкнено. "); }
+        catch (error) { humBox.checked = !humBox.checked; humNote.textContent = error.message; }
+        finally { humBox.disabled = false; }
       });
       const notes = [];
       if (error) notes.push(el("p", "alert small", error));
       else if (!(found?.inputs || []).length) notes.push(el("p", "alert small", "Звукових входів немає: ефір тут не запрацює."));
-      body.replaceChildren(...notes, input, output, save, result);
+      body.replaceChildren(...notes, input, output, save, result, gain, gainNote, hum, humNote);
     };
     details.addEventListener("toggle", () => { if (details.open) load(); });
-    details.append(el("summary", "", "Звук"), body);
+    details.append(el("summary", "", "Звук: вхід, підсилення, гул"), body);
     return details;
   }
   const UPDATE_PHASE = { copying: "беру з GitHub", sending: "передаю на Pi", checking: "перевіряю", restarting: "перезапускаю служби" };

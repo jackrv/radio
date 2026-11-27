@@ -283,6 +283,18 @@ class ThisPi:
             raise Refused("Ця панель керує лише звуком Pi")
         return audio_choice.write(self.root, values, revision)
 
+    def save_mixer(self, device, payload):
+        from shared import audio_choice
+        if device != "pi":
+            raise Refused("Ця панель керує лише звуком Pi")
+        return audio_choice.set_mixer(self.root, payload["name"], payload["index"], payload["value"], payload["switch"])
+
+    def save_highpass(self, device, enabled):
+        from shared import audio_choice
+        if device != "pi":
+            raise Refused("Ця панель керує лише звуком Pi")
+        return audio_choice.set_highpass(self.root, enabled)
+
 
 class Devices:
     """Кеш на FRESH_S: відкрита вкладка не має постійно ходити на Pi."""
@@ -369,6 +381,30 @@ class Devices:
         if "settings" not in data:
             raise Refused("Pi відхилила налаштування звуку")
         return data["settings"]
+
+    def save_mixer(self, device, payload):
+        from shared import audio_choice
+        if device == "mac":
+            return audio_choice.set_mixer(self.root, payload["name"], payload["index"], payload["value"], payload["switch"])
+        if not self.host:
+            raise Refused("Не налаштовано RADIO345_PI_SSH")
+        data = audio_pi(self.host, "mixer", json.dumps(payload, ensure_ascii=False))
+        if "invalid" in data:
+            raise ValueError(data["invalid"])
+        if "mixer" not in data:
+            raise Refused("Pi відхилила підсилення")
+        return data["mixer"]
+
+    def save_highpass(self, device, enabled):
+        from shared import audio_choice
+        if device == "mac":
+            return audio_choice.set_highpass(self.root, enabled)
+        if not self.host:
+            raise Refused("Не налаштовано RADIO345_PI_SSH")
+        data = audio_pi(self.host, "highpass", json.dumps({"enabled": enabled}))
+        if "highpass" not in data:
+            raise Refused("Pi відхилила зріз гулу")
+        return data
 
     def read(self, fresh=False):
         with self.lock:

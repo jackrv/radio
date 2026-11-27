@@ -85,7 +85,8 @@ def build_node(config, log, *, segment_sink=None, stream_starter=None, superviso
         min_speech_ms=config.MIN_SPEECH_MS,
         max_segment_s=config.MAX_SEGMENT_S,
         log=log,
-        stream_factory=input_stream_factory(configured("RADIO_INPUT_DEVICE", config), log),
+        stream_factory=input_stream_factory(configured("RADIO_INPUT_DEVICE", config), log,
+                                            highpass=getattr(config, "RADIO_HIGHPASS", False)),
         on_live_audio=live_audio,
         input_muted=stream.input_muted,
         transcriber_stop=stop.set,
@@ -128,7 +129,14 @@ def main():
         spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or place(config.BASE_DIR, ".local-segment-spool"))
         from shared.audio_devices import configured, current_input
         profile = configured("RADIO_CAPTURE_PROFILE", config)
-        sink = lambda item: spool.put(item, config.SR, {"device": current_input(), "profile": profile})
+        def source():
+            # Зріз гулу змінює звук: записи несуть позначку, щоб аналіз їх розрізняв.
+            data = {"device": current_input(), "profile": profile}
+            if getattr(config, "RADIO_HIGHPASS", False):
+                from shared.highpass import CUTOFF_HZ
+                data["highpass_hz"] = CUTOFF_HZ
+            return data
+        sink = lambda item: spool.put(item, config.SR, source())
     from server.node_control import NodeControl, directory
     from server.phrase_feed import PhraseInbox, feed_dir
     hold = os.environ.get("RADIO_LISTENING_HOLD", "1").strip().lower() not in ("0", "false", "no", "off")
@@ -136,6 +144,11 @@ def main():
     control.apply_startup(config)
     from shared import audio_choice
     audio_choice.apply(config.BASE_DIR, config)
+    from shared.audio_devices import configured as configured_device
+    audio_choice.apply_mixer(config.BASE_DIR, configured_device("RADIO_INPUT_DEVICE", config), log)
+    config.RADIO_HIGHPASS = audio_choice.highpass(config.BASE_DIR)
+    if config.RADIO_HIGHPASS:
+        log.info("Зріз гулу нижче 200 Гц увімкнено", extra={"console": True})
     supervisor, stream = build_node(config, log, segment_sink=sink, control=control)
     if supervisor is None:
         log.error("Радіовузол не запущено: потік недоступний (Tailscale? порт зайнятий?)",

@@ -125,6 +125,17 @@ class AudioDevicesUpdate(BaseModel):
     expected_revision: int = Field(ge=0, strict=True)
 
 
+class HighpassUpdate(BaseModel):
+    enabled: bool = Field(strict=True)
+
+
+class MixerUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    index: int = Field(default=0, ge=0, le=64, strict=True)
+    value: int | None = Field(default=None, strict=True)
+    switch: bool | None = Field(default=None, strict=True)
+
+
 class SettingsUpdate(BaseModel):
     values: RecognitionValues
     expected_revision: int = Field(ge=0, strict=True)

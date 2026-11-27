@@ -67,7 +67,7 @@ def current_input():
     return _current_input["name"]
 
 
-def input_stream_factory(name, log=None):
+def input_stream_factory(name, log=None, highpass=False):
     """Фабрика для ApplicationSupervisor: пристрій шукається при кожному (пере)відкритті."""
     import sounddevice as sd
 
@@ -89,6 +89,9 @@ def input_stream_factory(name, log=None):
             label = _current_input["name"] if device is not None else "системний"
             log.info("Вхід звуку: %s", label, extra={"console": True})
             state["reported"] = device
+        if highpass:
+            from shared.highpass import wrap
+            kwargs["callback"] = wrap(kwargs["callback"], kwargs["samplerate"])   # новий стан на кожне відкриття
         if rechunk_on_this_platform() and kwargs.get("blocksize"):
             # PortAudio/ALSA з фіксованим блоком на Pi віддавав ~40 % кадрів (input overflow),
             # зі змінним — повний потік; VAD потрібні рівні кадри, тож ріжемо самі.

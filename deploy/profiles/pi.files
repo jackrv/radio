@@ -148,6 +148,7 @@
 /shared/error_analysis.py
 /shared/event_store.py
 /shared/experiments.py
+/shared/highpass.py
 /shared/home_marker.py
 /shared/instance_lock.py
 /shared/lab_notify.py
@@ -160,6 +161,7 @@
 /shared/management/learning.py
 /shared/mention_selection.py
 /shared/miniapp_correction_editor.py
+/shared/mixer.py
 /shared/model_pause.py
 /shared/move_data.py
 /shared/noise_candidates.py

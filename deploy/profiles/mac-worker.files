@@ -26,9 +26,11 @@
 /shared/diagnostics.py
 /shared/dictionary_store.py
 /shared/event_store.py
+/shared/highpass.py
 /shared/home_marker.py
 /shared/instance_lock.py
 /shared/mac_service.py
+/shared/mixer.py
 /shared/model_exclusion.py
 /shared/model_pause.py
 /shared/move_data.py

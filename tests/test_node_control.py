@@ -172,7 +172,7 @@ class Stream:
     def __exit__(self, *a):
         self.stop.set()
         print("close", flush=True)
-def factory(name, log=None):
+def factory(name, log=None, highpass=False):
     def open_stream(**kw):
         s = Stream(); s.callback = kw["callback"]; return s
     return open_stream

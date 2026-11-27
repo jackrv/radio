@@ -67,10 +67,17 @@ sudo sh deploy/hub/install.sh            # і після оновлення ко
 ```
 
 `.env` на Pi: `RADIO_ASR_URL` (вузол Whisper на Mac), `RADIO_INPUT_DEVICE=USB`,
-`RADIO_CAPTURE_PROFILE` ([канал запису](data.md#канал-запису-профіль), зараз `pi-webcam`), `RADIO_PTT`, токен бота. Бот має працювати
+`RADIO_CAPTURE_PROFILE` ([канал запису](data.md#канал-запису-профіль), зараз `pi-usb-audio`), `RADIO_PTT`, токен бота. Бот має працювати
 лише на одному пристрої. Бази з Mac — `deploy/hub/import.sh`.
 Стан: `systemctl is-active radio345-node radio345-panel radio345-asr`, журнал: `journalctl -u radio345-asr -f`.
 Доступ і Tailscale (не ставте Pi тег) — [безпека](iphone-radio.md#безпека).
+
+Панель → «Пристрої» → Pi → «Звук: вхід, підсилення, гул»:
+- **Підсилення** — регулятори запису мікшера ALSA карти входу ([shared/mixer.py](../shared/mixer.py)); діють одразу,
+  ефір повторює їх при старті (лише для того самого входу).
+- **Зрізати гул нижче 200 Гц** — FIR [shared/highpass.py](../shared/highpass.py) до VAD, ефіру й архіву: 50/100/150 Гц
+  −55…−70 дБ, від 300 Гц без змін, ~1 % CPU Pi. Типово вимкнено; діє після перезапуску ефіру. Записи з ним мають
+  `input.highpass_hz` — порівнюйте «без правок» до/після на тому ж профілі.
 
 ## Перевірено на Pi
 

@@ -73,6 +73,9 @@ RADIO_STREAM_TRANSMIT = True
 # Звукові пристрої за частиною назви (USB-карта рації); порожньо — системні.
 # Список: .venv/bin/python -m shared.audio_devices. .env має пріоритет.
 RADIO_INPUT_DEVICE = ""
+# Профіль каналу запису в архіві (напр. pi-webcam, pi-cable): межа між різним звуком
+# для статистики й навчання. Порожньо — назва вхідного пристрою. .env має пріоритет.
+RADIO_CAPTURE_PROFILE = ""
 RADIO_OUTPUT_DEVICE = ""
 # Ключ PTT: none | gpio:17 | gpio:gpiochip0:17 | serial:/dev/ttyUSB0:rts (див. shared/ptt_key.py).
 RADIO_PTT = "none"

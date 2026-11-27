@@ -83,5 +83,5 @@ model slot. Ваги не вмикаються автоматично, resume о
 .venv/bin/python -m lab.analysis records callsigns -n 10
 ```
 
-`--json` — сирі дані; також `conditions`, `callsigns`, `checks`, `runs`,
+`--profile pi-webcam` — лише один [канал запису](data.md#канал-запису-профіль). `--json` — сирі дані; також `conditions`, `callsigns`, `checks`, `runs`,
 `compare`, `queue`. Повний перелік — `.venv/bin/python -m lab.analysis -h`.

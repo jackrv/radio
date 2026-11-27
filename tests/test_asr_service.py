@@ -146,3 +146,14 @@ def test_bot_listener_is_restarted_after_it_dies():
     bot.tick()
     bot.thread.join(2)
     assert len(started) == 2
+
+
+def test_input_device_reaches_the_archive_record(system):
+    import json
+    from shared.capture_profiles import profile_of
+    system.spool.put(phrase(), 16000, {"device": "USB Audio Device", "profile": "test-cable"})
+    assert system.service.step()
+    with system.store.connect() as db:
+        data = json.loads(db.execute("SELECT data FROM recordings").fetchone()[0])
+    assert data["input"] == {"device": "USB Audio Device", "profile": "test-cable"}
+    assert profile_of(data) == "test-cable"

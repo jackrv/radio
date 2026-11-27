@@ -47,8 +47,8 @@ def _pct(value):
     return "—" if value is None else f"{value * 100:.0f} %"
 
 
-def _analyse(days):
-    return error_analysis.analyse(error_analysis.load_records(_store(), days), _names())
+def _analyse(days, profile=None):
+    return error_analysis.analyse(error_analysis.load_records(_store(), days, profile), _names())
 
 
 def summary(args):
@@ -77,7 +77,7 @@ def summary(args):
 
 
 def errors(args):
-    e = _analyse(args.days)
+    e = _analyse(args.days, args.profile)
     if args.json:
         return {k: v for k, v in e.items() if k not in ("conditions", "callsigns", "invented_only")}
     print(f"{e['with_edits']} з {e['records']} фраз потребували правок (одна фраза може мати кілька причин):")
@@ -99,10 +99,11 @@ def errors(args):
 
 
 def conditions(args):
-    c = _analyse(args.days)["conditions"]
+    c = _analyse(args.days, args.profile)["conditions"]
     if args.json:
         return c
-    for key, title in (("duration", "Тривалість"), ("loudness", "Гучність"), ("confidence", "Упевненість Whisper")):
+    for key, title in (("profile", "Канал запису"), ("duration", "Тривалість"), ("loudness", "Гучність"),
+                       ("confidence", "Упевненість Whisper")):
         print(title + ":")
         for g in c[key]:
             extra = f"  ({g['range'][0]:.2f}…{g['range'][1]:.2f})" if g.get("range") else ""
@@ -113,7 +114,7 @@ def conditions(args):
 
 
 def callsigns(args):
-    e = _analyse(args.days)
+    e = _analyse(args.days, args.profile)
     if args.json:
         return {"callsigns": e["callsigns"], "invented_only": e["invented_only"]}
     for c in e["callsigns"]:
@@ -129,7 +130,7 @@ def records(args):
     store, names = _store(), _names()
     threshold = store.confidence_threshold() if args.kind == "doubtful" else None
     out = []
-    for item in error_analysis.load_records(store, args.days):
+    for item in error_analysis.load_records(store, args.days, args.profile):
         found, _ = error_analysis.record_errors(item["reference"], item["final_text"], names)
         raw_errors = error_analysis.Levenshtein.distance(error_analysis.metric_words(item["reference"]), error_analysis.metric_words(item["raw_text"]))
         final_errors = error_analysis.Levenshtein.distance(error_analysis.metric_words(item["reference"]), error_analysis.metric_words(item["final_text"]))
@@ -220,9 +221,11 @@ def main(argv=None):
                            ("callsigns", "точність по позивних і вигадані позивні")):
         p = sub.add_parser(name, parents=[common], help=helptext)
         p.add_argument("--days", type=int, default=0, help="лише останні N діб (0 — увесь архів)")
+        p.add_argument("--profile", help="лише цей канал запису: mac-mic, pi-webcam… (docs/data.md)")
     p = sub.add_parser("records", parents=[common], help="фрази певного виду з еталоном і результатом")
     p.add_argument("kind", choices=KINDS)
     p.add_argument("--days", type=int, default=0)
+    p.add_argument("--profile")
     p.add_argument("-n", "--limit", type=int, default=20)
     p = sub.add_parser("checks", parents=[common], help="можливі помилки у вашій розмітці")
     p.add_argument("-n", "--limit", type=int, default=10)

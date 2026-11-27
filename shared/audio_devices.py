@@ -48,6 +48,14 @@ def find_device(name, kind, devices=None):
     return (exact or matches)[0]
 
 
+_current_input = {"name": None}
+
+
+def current_input():
+    """Назва відкритого вхідного пристрою (для профілю запису) або None."""
+    return _current_input["name"]
+
+
 def input_stream_factory(name, log=None):
     """Фабрика для ApplicationSupervisor: пристрій шукається при кожному (пере)відкритті."""
     import sounddevice as sd
@@ -62,8 +70,12 @@ def input_stream_factory(name, log=None):
                 log.error("%s; повторюю спробу", e, extra={"console": True})
             state["reported"] = "missing"
             raise
+        try:
+            _current_input["name"] = sd.query_devices(device, "input")["name"]
+        except Exception:
+            _current_input["name"] = None
         if log and state["reported"] != device:
-            label = sd.query_devices(device)["name"] if device is not None else "системний"
+            label = _current_input["name"] if device is not None else "системний"
             log.info("Вхід звуку: %s", label, extra={"console": True})
             state["reported"] = device
         if rechunk_on_this_platform() and kwargs.get("blocksize"):

@@ -126,7 +126,9 @@ def main():
     if os.environ.get("RADIO_SPOOL", "").strip() in ("1", "true", "yes", "on"):
         from server.segment_spool import SegmentSpool
         spool = SegmentSpool(os.environ.get("RADIO_SPOOL_DIR", "").strip() or place(config.BASE_DIR, ".local-segment-spool"))
-        sink = lambda item: spool.put(item, config.SR)
+        from shared.audio_devices import configured, current_input
+        profile = configured("RADIO_CAPTURE_PROFILE", config)
+        sink = lambda item: spool.put(item, config.SR, {"device": current_input(), "profile": profile})
     from server.node_control import NodeControl, directory
     from server.phrase_feed import PhraseInbox, feed_dir
     hold = os.environ.get("RADIO_LISTENING_HOLD", "1").strip().lower() not in ("0", "false", "no", "off")

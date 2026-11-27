@@ -29,11 +29,13 @@ CATEGORIES = {
 }
 
 
-def load_records(store, days=0):
+def load_records(store, days=0, profile=None):
     """Розмічене мовлення з архіву для analyse(): тексти, тривалість, гучність, упевненість Whisper.
 
-    days=0 — увесь архів; інакше — записи за останні days діб. Лише читає.
+    days=0 — увесь архів; інакше — записи за останні days діб. profile — лише цей канал
+    запису (shared.capture_profiles). Лише читає.
     """
+    from shared.capture_profiles import profile_of
     import json
     import time
     since = time.time() - max(1, min(days, 365)) * 86400 if days else 0
@@ -43,9 +45,12 @@ def load_records(store, days=0):
     records = []
     for record_id, created, reference, data in rows:
         data = json.loads(data)
+        source = profile_of(data)
+        if profile and source != profile:
+            continue
         signal = data.get("signal") or {}
         segments = [s for s in data.get("whisper_segments") or [] if s.get("avg_logprob") is not None]
-        records.append({"id": record_id, "created": created, "reference": reference,
+        records.append({"id": record_id, "created": created, "reference": reference, "profile": source,
                         "raw_text": data.get("raw_text", ""), "final_text": data.get("final_text", ""),
                         "duration": signal.get("duration_s"), "loudness": signal.get("rms_dbfs"),
                         # Упевненість Whisper — середня ймовірність слів по сегментах (ближче до 0 — упевненіше).
@@ -140,7 +145,7 @@ def _stats(rows):
 
 
 def conditions(rows):
-    """«Без правок» за тривалістю, гучністю й упевненістю Whisper (чверті за впевненістю)."""
+    """«Без правок» за каналом запису, тривалістю, гучністю й упевненістю Whisper (чверті за впевненістю)."""
     confident = sorted((r for r in rows if r["confidence"] is not None), key=lambda r: r["confidence"])
     quarters = []
     if len(confident) >= 8:
@@ -151,7 +156,10 @@ def conditions(rows):
             quarters.append({"title": title, "range": [part[0]["confidence"], part[-1]["confidence"]], **_stats(part)})
     # Чи передбачає впевненість правки: різниця «без правок» між найвпевненішою й найменш упевненою чвертю.
     separation = quarters[-1]["share"] - quarters[0]["share"] if quarters else None
-    return {"duration": _group(rows, "duration", DURATION), "loudness": _group(rows, "loudness", LOUDNESS),
+    from shared.capture_profiles import title
+    profiles = sorted({r["profile"] for r in rows if r.get("profile")})
+    by_profile = [{"profile": p, "title": title(p), **_stats([r for r in rows if r.get("profile") == p])} for p in profiles]
+    return {"profile": by_profile, "duration": _group(rows, "duration", DURATION), "loudness": _group(rows, "loudness", LOUDNESS),
             "confidence": quarters, "separation": separation}
 
 
@@ -247,7 +255,8 @@ def analyse(records, names):
            for (a, b), n in substitutions.most_common(15) if n >= 2]
     # Помилки в словах на фразу (як у WER) — для «майже без правок» і умов запису.
     rows = [{"id": item["id"], "errors": Levenshtein.distance(metric_words(item["reference"]), metric_words(item.get("final_text"))),
-             "duration": item.get("duration"), "loudness": item.get("loudness"), "confidence": item.get("confidence")}
+             "duration": item.get("duration"), "loudness": item.get("loudness"), "confidence": item.get("confidence"),
+             "profile": item.get("profile")}
             for item in records]
     one = [r["id"] for r in rows if r["errors"] == 1]
     effort = {"no_edits": sum(r["errors"] == 0 for r in rows), "one_word": len(one), "one_word_ids": one[:EXAMPLES],

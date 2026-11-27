@@ -118,6 +118,8 @@ class Transcriber:
                                         if key in ("dictionaries.revision", "text_lists.revision", "runtime_settings.revision",
                                                    "audio.frames_dropped", "audio.segments_dropped")}
                 trace["vad"] = getattr(pcm, "vad", None)
+                if getattr(pcm, "input", None) is not None:   # відкладене з архіву: вхід уже збережено
+                    trace["input"] = pcm.input
                 trace.update(session=runtime.session, min_rms=self.min_rms, normalize=self.normalize_audio,
                              garbage_limits=dict(self.garbage_limits))
                 if deferred_id is not None:
@@ -360,7 +362,8 @@ class Transcriber:
             captured_at = getattr(getattr(pcm, "timing", None), "audio_end_unix_s", None) or time.time()
             self.recorder.submit(pcm, self.sample_rate, {"status": "deferred", "capture_only": True,
                                                          "captured_at": captured_at, "session": runtime.session,
-                                                         "vad": getattr(pcm, "vad", None)})
+                                                         "vad": getattr(pcm, "vad", None),
+                                                         "input": getattr(pcm, "input", None)})
 
     def _process_one_deferred(self):
         """У вільну хвилину — одну накопичену фразу: текст в архів, без подій і Telegram."""

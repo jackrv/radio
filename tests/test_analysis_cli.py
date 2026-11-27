@@ -33,6 +33,11 @@ def test_cli_reads_the_same_analysis_as_the_panel(setup, tmp_path, monkeypatch, 
     rows = json.loads(capsys.readouterr().out)
     assert [r["id"] for r in rows] == [bad] and rows[0]["reference"] == "Клен 48, прийом"
 
+    analysis.main(["errors", "--json", "--profile", "pi-webcam"])
+    assert json.loads(capsys.readouterr().out)["records"] == 0, "записи без джерела — мікрофон Mac"
+    analysis.main(["conditions", "--profile", "mac-mic"])
+    assert "мікрофон Mac" in capsys.readouterr().out
+
     analysis.main(["records", "edit_free"])
     assert good[:8] in capsys.readouterr().out
 

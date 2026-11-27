@@ -66,7 +66,8 @@ cd ~/radio345-hub
 sudo sh deploy/hub/install.sh            # і після оновлення коду: змінюються команди служб
 ```
 
-`.env` на Pi: `RADIO_ASR_URL` (вузол Whisper на Mac), `RADIO_INPUT_DEVICE=USB`, `RADIO_PTT`, токен бота. Бот має працювати
+`.env` на Pi: `RADIO_ASR_URL` (вузол Whisper на Mac), `RADIO_INPUT_DEVICE=USB`,
+`RADIO_CAPTURE_PROFILE` ([канал запису](data.md#канал-запису-профіль), зараз `pi-webcam`), `RADIO_PTT`, токен бота. Бот має працювати
 лише на одному пристрої. Бази з Mac — `deploy/hub/import.sh`.
 Стан: `systemctl is-active radio345-node radio345-panel radio345-asr`, журнал: `journalctl -u radio345-asr -f`.
 Доступ і Tailscale (не ставте Pi тег) — [безпека](iphone-radio.md#безпека).

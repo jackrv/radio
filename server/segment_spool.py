@@ -24,11 +24,12 @@ class SegmentSpool:
     def files(self):
         return sorted(self.root.glob("*.seg"))
 
-    def put(self, pcm, sample_rate):
+    def put(self, pcm, sample_rate, source=None):
+        """``source`` — {"device", "profile"}: яким входом записано (shared.capture_profiles)."""
         timing = getattr(pcm, "timing", None)
         ended = getattr(timing, "audio_end_unix_s", None) or time.time()
         head = json.dumps({"sample_rate": sample_rate, "audio_end_unix_s": ended,
-                           "vad": getattr(pcm, "vad", None)}).encode()
+                           "vad": getattr(pcm, "vad", None), "input": source}).encode()
         name = f"{int(ended * 1000):015d}-{uuid.uuid4().hex}"
         temp = self.root / (name + ".tmp")
         with open(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as out:
@@ -69,6 +70,7 @@ class SegmentSpool:
         segment = TimedSegment(pcm, SegmentTiming(
             enqueued_at=time.perf_counter(), enqueued_unix_s=time.time(), audio_end_unix_s=ended))
         segment.vad = head.get("vad") if isinstance(head.get("vad"), dict) else None
+        segment.input = head.get("input") if isinstance(head.get("input"), dict) else None
         return Path(path).stem.split("-", 1)[1], segment, rate, ended
 
     def quarantine(self, path):

@@ -131,6 +131,7 @@
 /shared/audio_devices.py
 /shared/busy.py
 /shared/callsigns.py
+/shared/capture_profiles.py
 /shared/command_completion.py
 /shared/conflict.py
 /shared/correction.py

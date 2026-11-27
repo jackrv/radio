@@ -15,6 +15,7 @@ from shared.paths import place, root_of
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = ("queued", "running")
 LISTS = ("phrase_templates", "phrase_patterns", "callsign_aliases", "aliases", "blacklist", "short_garbage")
+KEEP_FINISHED = 5   # завершених завдань кожного виду
 KINDS = ("impact", "evaluate", "suggestions", "notification_evaluation", "backup", "archive_inventory", "archive_learning", "training_export", "sync_events")
 NON_CANCELLABLE = ("backup", "archive_learning", "training_export", "sync_events")
 
@@ -87,9 +88,14 @@ def submit(db_path, archive, kind, *, list_type=None, entries=None, deep=False, 
                    db_path=str(Path(db_path).resolve()), archive=str(Path(archive).resolve()),
                    deep=deep, options=options, actor_id=actor_id, status="queued", created=time.time(), progress={"done": 0, "total": None})
         _write(_path(root, job["id"]), job)
-        for old in [j for j in jobs if j["status"] not in ACTIVE][19:]:
-            _path(root, old["id"]).unlink(missing_ok=True)
-            (root / (old["id"] + ".result")).unlink(missing_ok=True)
+        # Ліміт — для кожного виду окремо: автоматичні «suggestions» щопівгодини не мають
+        # витісняти за ніч результат довгої ручної перевірки (контр-перевірки тощо).
+        kept = {}
+        for old in [j for j in jobs if j["status"] not in ACTIVE]:
+            kept[old["kind"]] = kept.get(old["kind"], 0) + 1
+            if kept[old["kind"]] > KEEP_FINISHED:
+                _path(root, old["id"]).unlink(missing_ok=True)
+                (root / (old["id"] + ".result")).unlink(missing_ok=True)
     _launch(root)
     return public(job)
 

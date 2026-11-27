@@ -140,3 +140,17 @@ def test_started_side_effect_job_cannot_be_cancelled_and_needs_a_current_admin(t
     text_jobs.work(text_jobs.directory(db))
     assert text_jobs.read(db,job['id'])['status'] == 'failed'
     assert not (tmp_path/'backups').exists()
+
+
+def test_frequent_automatic_jobs_do_not_evict_other_kinds_result(tmp_path, monkeypatch):
+    db, archive = setup_job(tmp_path, monkeypatch)
+    root = text_jobs.directory(db)
+    impact = text_jobs.submit(db, archive, "impact")
+    finish = lambda job_id: text_jobs._write(text_jobs._path(root, job_id),
+                                            {**json.loads(text_jobs._path(root, job_id).read_text()), "status": "done", "finished": time.time()})
+    finish(impact["id"])
+    for _ in range(30):   # ніч автоматичних перевірок
+        finish(text_jobs.submit(db, archive, "suggestions")["id"])
+    kinds = [j["kind"] for j in text_jobs.read(db)]
+    assert impact["id"] in [j["id"] for j in text_jobs.read(db)]
+    assert kinds.count("suggestions") <= text_jobs.KEEP_FINISHED + 1

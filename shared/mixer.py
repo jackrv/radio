@@ -1,9 +1,12 @@
-"""Підсилення входу ефіру: регулятори запису мікшера ALSA (amixer), лише Linux.
+"""Регулятори запису мікшера ALSA карти входу (amixer), лише Linux — тільки читання.
+
+Панель попереджає, якщо запис на карті вимкнено (ефір глухий). Підсилення з панелі
+прибрано 27.11.2026: USB-карта AB17X приймала «Headset Capture Volume», але рівень
+запису не змінювався (100 % → 20 %: ті самі гучність і піки). Перевантаження
+виникає в АЦП карти, тож програмне підсилення після нього його не прибирає.
 
 Карта — з назви вибраного входу «… (hw:N,M)» / «(plughw:N,M)»; для системного входу —
-перша карта з регуляторами запису. Панель змінює значення одразу; вибране зберігає
-shared/audio_choice.py, а ефір застосовує його при старті (після перезавантаження Pi
-мікшер інакше повертається до збереженого системою).
+перша карта з регуляторами запису.
 """
 import re
 import subprocess
@@ -106,29 +109,3 @@ def read(device, run=subprocess.run):
         return {"card": card, "controls": parse(_amixer("-c", str(card), run=run)), "error": None}
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"card": card, "controls": [], "error": f"Мікшер недоступний: {exc}"}
-
-
-def set_control(card, name, index=0, value=None, switch=None, run=subprocess.run):
-    args = ["-c", str(card), "-q", "sset", f"{name},{int(index)}"]
-    if value is not None:
-        args.append(str(int(value)))
-    if switch is not None:
-        args.append("cap" if switch else "nocap")
-    if value is None and switch is None:
-        return
-    _amixer(*args, "capture", run=run)
-
-
-def apply(device, saved, log=None, run=subprocess.run):
-    """Старт ефіру: збережені значення → мікшер, якщо вхід той самий."""
-    if not available() or not saved or saved.get("device") != device:
-        return
-    card = card_of(device, run)
-    if card is None:
-        return
-    for item in saved.get("controls", []):
-        try:
-            set_control(card, item["name"], item.get("index", 0), item.get("value"), item.get("switch"), run=run)
-        except (OSError, subprocess.TimeoutExpired, KeyError, TypeError, ValueError) as exc:
-            if log:
-                log.warning("Підсилення «%s» не застосовано: %s", item.get("name"), exc)

@@ -1,8 +1,7 @@
 """Вибір звукових пристроїв цієї машини: файл .local-audio.json, не база — база переїжджає між Mac і Pi.
 
-Зберігається лише вибране; `.env` важливіший. Пристрої діють після перезапуску ефіру,
-підсилення входу (shared/mixer.py) — одразу, а при старті ефіру застосовується знову.
-З Mac для Pi: ``python -m shared.audio_choice read``, ``write <json>`` або ``mixer <json>`` (у каталозі проєкту).
+Зберігається лише вибране; `.env` важливіший. Діє після перезапуску ефіру.
+З Mac для Pi: ``python -m shared.audio_choice read``, ``write <json>`` або ``highpass <json>`` (у каталозі проєкту).
 """
 import json
 import os
@@ -78,52 +77,11 @@ def write(root, values, revision):
         raise Conflict("Налаштування пристроїв змінилися. Оновіть сторінку.")
     data = {"values": values, "revision": revision + 1}
     old = _file(root)
-    for key in ("mixer", "highpass"):
+    for key in ("highpass",):
         if key in old:
             data[key] = old[key]
     _save(root, data)
     return read(root)
-
-
-def _input(root):
-    return read(root)["values"].get("RADIO_INPUT_DEVICE", "")
-
-
-def set_mixer(root, name, index=0, value=None, switch=None, run=None):
-    """Регулятор запису вибраного входу: змінити зараз і запам'ятати для старту ефіру."""
-    from shared import mixer
-    kwargs = {"run": run} if run else {}
-    if not isinstance(name, str) or not name or len(name) > MAX_NAME:
-        raise ValueError("Некоректний регулятор")
-    if value is not None and (type(value) is not int):
-        raise ValueError("Рівень має бути цілим числом")
-    if switch is not None and type(switch) is not bool:
-        raise ValueError("Перемикач має бути так/ні")
-    device = _input(root)
-    state = mixer.read(device, **kwargs)
-    control = next((c for c in state["controls"] if c["name"] == name and c["index"] == index), None)
-    if state["card"] is None or control is None:
-        raise ValueError("Такого регулятора на вибраному вході немає")
-    if value is not None and not (control.get("min", 0) <= value <= control.get("max", 0)):
-        raise ValueError("Рівень поза межами регулятора")
-    try:
-        mixer.set_control(state["card"], name, index, value, switch, **kwargs)
-    except OSError as exc:
-        raise ValueError(f"Мікшер не прийняв значення: {exc}") from None
-    data = _file(root)
-    saved = data.get("mixer") if isinstance(data.get("mixer"), dict) and data["mixer"].get("device") == device else {"device": device, "controls": []}
-    controls = [c for c in saved.get("controls", []) if isinstance(c, dict) and (c.get("name"), c.get("index", 0)) != (name, index)]
-    old = next((c for c in saved.get("controls", []) if isinstance(c, dict) and (c.get("name"), c.get("index", 0)) == (name, index)), {})
-    entry = {"name": name, "index": index, "value": old.get("value"), "switch": old.get("switch")}
-    if value is not None:
-        entry["value"] = value
-    if switch is not None:
-        entry["switch"] = switch
-    data["mixer"] = {"device": device, "controls": controls + [entry]}
-    data.setdefault("revision", 0)
-    data.setdefault("values", {})
-    _save(root, data)
-    return mixer.read(device, **kwargs)
 
 
 def highpass(root):
@@ -140,12 +98,6 @@ def set_highpass(root, enabled):
     data.setdefault("values", {})
     _save(root, data)
     return {"highpass": enabled}
-
-
-def apply_mixer(root, device, log=None):
-    """Старт ефіру: запам'ятоване підсилення → мікшер (лише для того самого входу)."""
-    from shared import mixer
-    mixer.apply(device, _file(root).get("mixer"), log)
 
 
 def apply(root, target):
@@ -180,9 +132,6 @@ def main(argv):
             data = {"settings": write(ROOT, payload["values"], payload["revision"])}
         elif argv[:1] == ["highpass"]:
             data = set_highpass(ROOT, json.loads(argv[1])["enabled"])
-        elif argv[:1] == ["mixer"]:
-            payload = json.loads(argv[1])
-            data = {"mixer": set_mixer(ROOT, payload["name"], payload.get("index", 0), payload.get("value"), payload.get("switch"))}
         else:
             return 2
     except Conflict as exc:

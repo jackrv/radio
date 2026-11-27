@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from typing import Literal
 
 import config
-from server.api.panel.models import AudioDevicesUpdate, HighpassUpdate, HomeMoveStart, MixerUpdate, PauseUpdate
+from server.api.panel.models import AudioDevicesUpdate, HighpassUpdate, HomeMoveStart, PauseUpdate
 from server.api.panel.common import backups_overview, read_diagnostics, diagnostics_view
 from shared.paths import root_of
 
@@ -190,17 +190,6 @@ def register(app, ctx):
             raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
         try:
             return device_state.save_highpass(device, payload.enabled)
-        except devices.Refused as exc:
-            raise HTTPException(409, str(exc)) from None
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
-
-    @app.put("/api/devices/{device}/mixer")
-    def device_mixer_save(device: Literal["mac", "pi"], payload: MixerUpdate, admin=Depends(actor)):
-        if device_state is None:
-            raise HTTPException(409, "Керування пристроями — лише з панелі на Mac")
-        try:
-            return device_state.save_mixer(device, payload.model_dump())
         except devices.Refused as exc:
             raise HTTPException(409, str(exc)) from None
         except ValueError as exc:

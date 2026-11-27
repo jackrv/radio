@@ -1,6 +1,4 @@
-"""Підсилення входу (amixer) і зріз гулу: розбір, збереження, застосування на старті."""
-from types import SimpleNamespace
-
+"""Читання мікшера (amixer) і зріз гулу: розбір, збереження галочки, фільтр."""
 import numpy as np
 import pytest
 
@@ -23,16 +21,6 @@ Simple mixer control 'PCM',0
 DEVICE = "Test USB Audio: - (hw:1,0)"
 
 
-def fake_amixer():
-    calls = []
-
-    def run(command, **kwargs):
-        calls.append(command)
-        return SimpleNamespace(returncode=0, stdout=AMIXER, stderr="")
-    run.calls = calls
-    return run
-
-
 def test_parse_keeps_only_capture_controls():
     assert mixer.parse(AMIXER) == [{"name": "Headset", "index": 0, "switch": True,
                                     "min": 0, "max": 120, "value": 96, "db": -6.0}]
@@ -41,28 +29,6 @@ def test_parse_keeps_only_capture_controls():
 def test_card_comes_from_hw_or_plughw_name():
     assert mixer.card_of(DEVICE) == 1
     assert mixer.card_of("X: - (plughw:2,0)") == 2
-
-
-def test_set_mixer_applies_now_and_restores_on_start(tmp_path, monkeypatch):
-    monkeypatch.setattr(mixer, "available", lambda platform=None: True)
-    monkeypatch.delenv("RADIO_INPUT_DEVICE", raising=False)
-    a.write(tmp_path, {"RADIO_INPUT_DEVICE": DEVICE, "RADIO_OUTPUT_DEVICE": ""}, 0)
-    run = fake_amixer()
-    a.set_mixer(tmp_path, "Headset", 0, 100, None, run=run)
-    assert run.calls[-2][:5] == ["amixer", "-c", "1", "-q", "sset"] and "100" in run.calls[-2]
-    with pytest.raises(ValueError):
-        a.set_mixer(tmp_path, "Headset", 0, 500, None, run=run)
-    with pytest.raises(ValueError):
-        a.set_mixer(tmp_path, "PCM", 0, 10, None, run=run)
-    # Зміна пристроїв не губить підсилення; старт ефіру повторює його лише для того самого входу.
-    a.write(tmp_path, {"RADIO_INPUT_DEVICE": DEVICE, "RADIO_OUTPUT_DEVICE": "null"}, 1)
-    saved = a._file(tmp_path)["mixer"]
-    start = fake_amixer()
-    mixer.apply(DEVICE, saved, run=start)
-    assert any("100" in c for c in start.calls)
-    other = fake_amixer()
-    mixer.apply("Other: - (hw:3,0)", saved, run=other)
-    assert other.calls == []
 
 
 def test_highpass_flag_survives_device_save(tmp_path):

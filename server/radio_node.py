@@ -144,8 +144,6 @@ def main():
     control.apply_startup(config)
     from shared import audio_choice
     audio_choice.apply(config.BASE_DIR, config)
-    from shared.audio_devices import configured as configured_device
-    audio_choice.apply_mixer(config.BASE_DIR, configured_device("RADIO_INPUT_DEVICE", config), log)
     config.RADIO_HIGHPASS = audio_choice.highpass(config.BASE_DIR)
     if config.RADIO_HIGHPASS:
         log.info("Зріз гулу нижче 200 Гц увімкнено", extra={"console": True})

@@ -1741,11 +1741,6 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .device-audio label:not(.switch) { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .device-audio select { width: 100%; }
 .device-audio button { justify-self: start; }
-.audio-gain { display: grid; gap: 6px; }
-.audio-gain-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.audio-gain-row input[type=range] { flex: 1 1 140px; min-width: 0; }
-.audio-gain-name { flex: 1 0 100%; }
-.audio-gain-value { min-width: 9ch; font-variant-numeric: tabular-nums; color: var(--text); }
 .device-audio > .switch { justify-self: start; max-width: 100%; }
 .device-update { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b; width: auto; padding: 0 10px; white-space: nowrap; }

@@ -220,6 +220,11 @@ def build_transcriber(
         worker.echo_min_run = values["DICTIONARY_ECHO_MIN_RUN"]
         event_processor.reject_bare_callsign = values["REJECT_BARE_CALLSIGN"]
         worker.fresh_s = values["PHRASE_FRESH_S"]
+        from shared import template_text
+        template_text.DOUBLE_OVER = values["TEXT_FIX_DOUBLE_OVER"]
+        template_text.CLOSING_TURN = values["TEXT_FIX_CLOSING_TURN"]
+        template_text.JOIN_NUMBERS = values["TEXT_FIX_JOIN_NUMBERS"]
+        template_text.I_BEFORE_CALLSIGN = values["TEXT_FIX_I_BEFORE_CALLSIGN"]
         worker.spectral_mode = values["SPECTRAL_NOTIFICATION_MODE"]
         spectral_matcher.threshold = values["SPECTRAL_NOTIFICATION_THRESHOLD"]
         spectral_matcher.max_outside_s = values["SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S"]

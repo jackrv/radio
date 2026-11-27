@@ -593,6 +593,12 @@
         chip.title = "Whisper найменш упевнений (нижня чверть) — серед таких фраз без правок майже немає; уважно прослухайте";
         title.append(chip);
       }
+      // Перегруз: звук упирався в стелю АЦП (хрип, спотворення). Від 0,1 % — помітно на слух.
+      if ((signal.clipping_ratio || 0) >= 0.001) {
+        const chip = el("span", "rec-doubt rec-clip", `перегруз ${pct(signal.clipping_ratio)}`);
+        chip.title = `Частка звуку в стелі АЦП; пік ${fix(signal.peak, 2)}. Тихіше рацію чи далі мікрофон — менше спотворень`;
+        title.append(chip);
+      }
       header.append(title);
       const audio = el("audio"); audio.controls = false; audio.preload = "none";
       audio.src = `/api/recordings/${item.id}/audio`;

@@ -1063,6 +1063,10 @@
     SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S: "Звуку поза збігом не більше, с",
     SPECTRAL_NOTIFICATION_MAX_EXTRA: "Сторонньої енергії не більше (0–1)",
     TELEGRAM_AUTO_DELETE_HOURS: "Автовидалення копій Telegram, год (0 — вимкнено)",
+    TEXT_FIX_DOUBLE_OVER: "«прийом, прийом» → «прийнято, прийом»",
+    TEXT_FIX_CLOSING_TURN: "Кінцеве «прийом» + випадкове слово → «прийнято, прийом»",
+    TEXT_FIX_JOIN_NUMBERS: "Розірваний номер позивного разом: «Клен, 700, 73» → «Клен 773»",
+    TEXT_FIX_I_BEFORE_CALLSIGN: "«і» перед позивним → «я»: «Клен 700 і Клен 708»",
   };
   const SETTINGS_SECTIONS = [
     { title: "Звук і нарізка на фрази", about: "Що вважати фразою — ще до Whisper.", fields: [
@@ -1079,6 +1083,9 @@
       ["runtime", "GARBAGE_MIN_WORDS"], ["runtime", "GARBAGE_MIN_UNIQUE_RATIO"], ["runtime", "GARBAGE_MAX_WORDS_PER_S"],
       ["runtime", "GARBAGE_EXTRA_WORDS"], ["runtime", "LOW_CONFIDENCE_MAX_WORDS"], ["runtime", "LOW_CONFIDENCE_LOGPROB"],
       ["runtime", "DICTIONARY_ECHO_MIN_RUN"], ["runtime", "REJECT_BARE_CALLSIGN"]] },
+    { title: "Виправлення тексту", about: "Після словника: правлять написання, нічого не відкидають. Сирий текст Whisper лишається в архіві.", link: ["texts", "Шаблони фраз →"], fields: [
+      ["runtime", "TEXT_FIX_I_BEFORE_CALLSIGN"], ["runtime", "TEXT_FIX_JOIN_NUMBERS"],
+      ["runtime", "TEXT_FIX_DOUBLE_OVER"], ["runtime", "TEXT_FIX_CLOSING_TURN"]] },
     { title: "Події й сповіщення", about: "Коли фраза стає подією й повідомленням.", fields: [
       ["runtime", "COOLDOWN_S"], ["runtime", "LOG_CALLSIGNS_ONLY"], ["runtime", "PHRASE_FRESH_S"]] },
   ];

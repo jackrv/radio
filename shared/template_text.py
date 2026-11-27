@@ -114,7 +114,13 @@ _OVER_RUN = re.compile(r"(?<![^\W\d_])прийом(?:\s*,?\s*прийом)+(?![^
 _OVER_WORD = re.compile(r"прийом", re.IGNORECASE)
 
 
+DOUBLE_OVER = True    # вимикач у панелі: TEXT_FIX_DOUBLE_OVER
+
+
 def fix_double_over(text):
+    if not DOUBLE_OVER:
+        return text
+
     def run(match):
         words = _OVER_WORD.findall(match.group(0))
         if len(words) != 2:
@@ -130,7 +136,7 @@ def fix_double_over(text):
 #   R2  «… прийом прийом [прийом…]»     → «… прийнято, прийом»
 #   R1  «… прийом <випадкове>»           → «… прийнято, прийом»
 #   R3  «… <число|позивний> <випадкове> прийом» → «… <число|позивний> прийнято, прийом»
-CLOSING_TURN = True
+CLOSING_TURN = True   # вимикач у панелі: TEXT_FIX_CLOSING_TURN
 _CLOSING_FAMILY = {"прийом", "прийнято", "прийняв", "я"}
 
 
@@ -168,6 +174,30 @@ _HUNDREDS_SPLIT = re.compile(_NAME + r",?\s+(\d00),\s*(\d{1,2})\b(?!\s*\d)")
 _NAME_COMMA_NUMBER = re.compile(_NAME + r",\s+(\d{1,4})\b")
 
 
+JOIN_NUMBERS = True   # вимикач у панелі: TEXT_FIX_JOIN_NUMBERS
+# «Липка 700, і, Липка 708» — Whisper чує «я» перед своїм позивним як «і» (27.11.2026: в еталонах
+# «і» лише 5 разів на 2289 мовлень, у тексті програми — 75). Окреме «і» прямо перед позивним
+# зі словника → «я»: на архіві 11 фраз змінено, 10 краще, 0 гірше; немовлення — 1 з 1604.
+I_BEFORE_CALLSIGN = True   # вимикач у панелі: TEXT_FIX_I_BEFORE_CALLSIGN
+_I_WORD = re.compile(r"(^|[,.;:]\s*|\d\s+)([іІ]),?(\s+)(?=([^\W\d_]+))")
+
+
+def fix_i_before_callsign(text, is_callsign):
+    """«і» на початку, після розділового знака чи номера, прямо перед позивним → «я».
+
+    «Клен 700 і Клен 708» → «Клен 700 я Клен 708»; «Дуб і Клен» (між словами) не чіпаємо.
+    """
+    if not I_BEFORE_CALLSIGN:
+        return text
+
+    def one(match):
+        if not is_callsign(match.group(4)):
+            return match.group(0)
+        return match.group(1) + ("Я" if match.group(2) == "І" else "я") + match.group(3)
+
+    return _I_WORD.sub(one, text)
+
+
 def join_callsign_numbers(text, callsigns):
     """Номер позивного, розірваний Whisper, — разом, лише якщо такий номер є в словнику позивного.
 
@@ -187,6 +217,8 @@ def join_callsign_numbers(text, callsigns):
     def comma(match):
         return f"{match.group(1)} {match.group(2)}" if match.group(2) in allowed(match.group(1)) else match.group(0)
 
+    if not JOIN_NUMBERS:
+        return text
     return _NAME_COMMA_NUMBER.sub(comma, _HUNDREDS_SPLIT.sub(hundreds, text))
 
 
@@ -283,6 +315,8 @@ def template_text(text, callsigns, known_names=()):
     from shared.phrase_patterns import apply_patterns
     text = fix_double_over(apply_patterns("".join(out) + text[pos:], callsigns, known_names=known_names))
     callsign_names = {_fold(n) for n in callsigns.names}
+    # Лише назви позивних: «і» перед назвою команди може бути справжнім.
+    text = fix_i_before_callsign(text, lambda w: _fold(w) in callsign_names)
     text = fix_closing_turn(text, lambda w: protected(w) or _fold(w) in vocabulary,
                             lambda w: _fold(w) in callsign_names or basic_normalize(w) in address_forms)
     return strip_final_period(split_code_pairs(text))

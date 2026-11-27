@@ -135,6 +135,32 @@ def test_closing_turn_can_be_switched_off():
         tt.CLOSING_TURN = True
 
 
+def test_i_before_callsign_becomes_ya():
+    # Whisper чує «я» перед своїм позивним як «і»; коми ставляться пізніше, тож і після номера.
+    assert snap("клен 15 і береза 31 на зв'язок").startswith("клен 15 я береза 31")
+    assert snap("Клен 15, і, Береза 31, прийом").startswith("Клен 15, я Береза 31")
+    assert snap("і береза 56, прийом").startswith("я береза 56")
+
+
+def test_i_stays_between_words_and_before_non_callsigns():
+    assert " і " in snap("дуб і береза 31")             # «X і Береза» — справжнє «і»
+    assert ", і роботу" in snap("Клен 15, і роботу закінчив")
+
+
+def test_text_fixes_can_be_switched_off(monkeypatch):
+    import shared.template_text as tt
+    monkeypatch.setattr(tt, "I_BEFORE_CALLSIGN", False)
+    monkeypatch.setattr(tt, "DOUBLE_OVER", False)
+    monkeypatch.setattr(tt, "JOIN_NUMBERS", False)
+    monkeypatch.setattr(tt, "CLOSING_TURN", False)   # R2 теж ловить «прийом прийом»
+    assert " і " in snap("клен 15 і береза 31")
+    assert snap("Клен 15, прийом, прийом").endswith("прийом, прийом")
+    import config
+    from shared.runtime_settings import FIELDS
+    for key in ("TEXT_FIX_DOUBLE_OVER", "TEXT_FIX_CLOSING_TURN", "TEXT_FIX_JOIN_NUMBERS", "TEXT_FIX_I_BEFORE_CALLSIGN"):
+        assert FIELDS[key][0] is bool and getattr(config, key) is True
+
+
 def test_roles_keep_only_confident_callsigns_without_number():
     from shared.analyzer import confident_roles, split_roles
     def roles(text):

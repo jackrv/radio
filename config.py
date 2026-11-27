@@ -7,7 +7,8 @@
 - Без перезапуску («Обробка без перезапуску»): COOLDOWN_S, LOG_CALLSIGNS_ONLY,
   GARBAGE_*, LOW_CONFIDENCE_*, MIN_RMS, WHISPER_RETRY_WITHOUT_PROMPT,
   WHISPER_PROMPT_DAILY_CODE, WHISPER_COMPRESSION_LIMIT, WHISPER_NO_SPEECH_*,
-  DICTIONARY_ECHO_MIN_RUN, REJECT_BARE_CALLSIGN, PHRASE_FRESH_S, SPECTRAL_NOTIFICATION_* (shared/runtime_settings.py).
+  DICTIONARY_ECHO_MIN_RUN, REJECT_BARE_CALLSIGN, PHRASE_FRESH_S, TEXT_FIX_*,
+  SPECTRAL_NOTIFICATION_* (shared/runtime_settings.py).
 - Після перезапуску приймача («Розпізнавання»): USE_LLM, VAD_LEVEL, SILENCE_END_MS,
   MIN_SPEECH_MS, MAX_SEGMENT_S (server/management/settings.py).
 - Решта — лише тут, діє після перезапуску. Секрети й адреси — у .env.
@@ -100,6 +101,11 @@ WHISPER_NO_SPEECH_PROB = 0.6      # тиша: no_speech_prob вище…
 WHISPER_NO_SPEECH_LOGPROB = -0.8  # …і впевненість нижче
 DICTIONARY_ECHO_MIN_RUN = 3       # перелік назв із підказки: від N назв підряд за абеткою (0 — вимкнено)
 REJECT_BARE_CALLSIGN = True       # відкидати одиночний позивний без номера й команд
+# Виправлення тексту після словника (shared/template_text.py); вимикачі — у панелі.
+TEXT_FIX_DOUBLE_OVER = True        # «прийом, прийом» → «прийнято, прийом»
+TEXT_FIX_CLOSING_TURN = True       # кінцеве «прийом» + випадкове слово → «прийнято, прийом» (R1–R3)
+TEXT_FIX_JOIN_NUMBERS = True       # «Клен, 700, 73» → «Клен 773», якщо номер є в словнику
+TEXT_FIX_I_BEFORE_CALLSIGN = True  # «Клен 700 і Клен 708» → «… я Клен 708»
 # Фраза, старша за це (Mac спав, черга), лише в архів — без події й Telegram, щоб не сповіщати про давнє.
 PHRASE_FRESH_S = 300
 

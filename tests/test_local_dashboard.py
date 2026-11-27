@@ -901,7 +901,7 @@ def test_quality_text_impact_endpoint_returns_local_countercheck(local, monkeypa
     text_jobs.work(text_jobs.directory(path))
     result = client.get("/api/text-jobs/" + job["id"]).json()["result"]
     assert result["records"] == 0
-    assert result["checks"] == []
+    assert [c["kind"] for c in result["checks"]] == ["text_fix"] * 4   # лише вимикачі «Виправлення тексту»
 
 
 def test_suggestions_refresh_is_a_resumable_background_job(local, monkeypatch):

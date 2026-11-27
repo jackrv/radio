@@ -69,21 +69,21 @@ test('lab refresh preserves the actual window editor nodes and an unfinished tim
   assert.ok(row.children.some(n=>n.type==='date'));
 });
 
-test('large rule reports render in bounded chunks and keep the remaining results available', () => {
+test('large rule reports are grouped by verdict and bounded', () => {
   const box = new Node('div');
   const code = source('04-analysis.js');
   const ctx = vm.createContext({$:()=>box,el:(...args)=>new Node(...args),num:String,
     IMPACT_NAMES:{},IMPACT_LABELS:{}});
   vm.runInContext(code.slice(code.indexOf('  function renderTextImpact('),code.indexOf('\n  $("text-impact-run")'))+'\nglobalThis.render = renderTextImpact;',ctx);
-  const check = {kind:'text_alias',label:'синтетичне правило',effect:'helpful',no_edits_delta:0,missed_delta:0,wer_delta:0,
-    false_text_delta:0,worse:0,better:0,examples:[],false_text_examples:[]};
-  ctx.render({records:1,non_speech_records:0,checks:Array.from({length:85},()=>check),
+  const check = effect => ({kind:'text_alias',label:'синтетичне правило',effect,no_edits_delta:0,missed_delta:0,wer_delta:0,
+    false_text_delta:0,worse:effect==='harmful'?2:0,better:1,examples:[],false_text_examples:[]});
+  ctx.render({records:1,non_speech_records:0,checks:[check('harmful'),...Array.from({length:85},()=>check('helpful'))],
     current:{false_text:0,false_text_by_label:{noise:0,notification:0,room:0}},scope:'test'});
-  const count = () => box.children.filter(n=>n.className.startsWith('eval-item')).length;
-  const more = box.children.find(n=>n.tag==='button');
-  assert.equal(count(),40);
-  more.events.click(); assert.equal(count(),80);
-  more.events.click(); assert.equal(count(),85); assert.equal(more.hidden,true);
+  const groups = box.children.filter(n=>n.className.startsWith('impact-group'));
+  assert.equal(groups.length,2);
+  assert.match(groups[0].className,/bad/);
+  assert.equal(groups[1].children.filter(n=>n.className==='impact-row').length,30);
+  assert.ok(groups[1].children.some(n=>/Показано 30 з 85/.test(n.textContent||'')));
 });
 
 test('capture panel shows persisted audio separately from backlog and exposes processed records', () => {

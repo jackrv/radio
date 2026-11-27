@@ -19,14 +19,14 @@ test('text-impact report displays non-speech analysis when there are no speech r
   };
   const context=vm.createContext({
     $:id=>id==='text-impact-run'?button:box,
-    el:(tag,className,text)=>({tagName:tag,className,textContent:text}),
+    el:(tag,className,text)=>({tagName:tag,className,textContent:text,children:[],append(...c){this.children.push(...c);}}),
     num:String,
     request:async()=>report,
   });
   vm.runInContext(source.slice(start,end)+'\nglobalThis.renderTextImpact=renderTextImpact;',context);
   context.renderTextImpact(report);
   const rendered=box.children.map(child=>child.textContent).join(' ');
-  assert.match(rendered,/0 фраз мовлення і 1 прикладів шуму/);
+  assert.match(rendered,/0 розмічених фразах мовлення і 1 записах шуму/);
   assert.match(rendered,/Активних текстових правил для перевірки немає/);
   assert.doesNotMatch(rendered,/Розмічених текстів для перевірки немає/);
   assert.equal(button.disabled,false);

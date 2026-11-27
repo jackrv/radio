@@ -70,7 +70,9 @@ def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path, monkeyp
     # Перевіряється сам шаблон фраз: кінцеве правило «прийнято, прийом» виправило б приклад і без нього.
     monkeypatch.setattr('shared.template_text.CLOSING_TURN', False)
     from shared.text_replay import countercheck
+    from shared.runtime_settings import write_runtime_settings
     path = base_db(tmp_path)
+    write_runtime_settings(path, {"TEXT_FIX_CLOSING_TURN": False}, 0)   # контр-перевірка бере вимикачі з бази
     store = archive(tmp_path, [("клен 15, приняте, прийом", "Клен 15, прийнято, прийом", "speech")])
     data = read_lists(path)
     write_list(path, "phrase_patterns",
@@ -82,6 +84,8 @@ def test_text_countercheck_measures_each_active_phrase_pattern(tmp_path, monkeyp
     assert pattern["no_edits_delta"] == 1
     assert pattern["worse"] == 0
     assert pattern["label"] == "{П}, прийнято, прийом"
+    assert "кінцеве" not in " ".join(c["label"] for c in result["checks"] if c["kind"] == "text_fix"), "вимкнене не перевіряється"
+    assert {c["setting"] for c in result["checks"] if c["kind"] == "text_fix"} >= {"TEXT_FIX_I_BEFORE_CALLSIGN"}
 
 
 def test_text_countercheck_measures_active_blacklist_entries(tmp_path):

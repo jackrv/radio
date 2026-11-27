@@ -138,17 +138,46 @@ def run(rows, dictionaries, short_garbage, blacklist=(), *, progress=None):
     return totals, outputs
 
 
+# Контекстні правила з вимикачами в панелі («Налаштування» → «Виправлення тексту»).
+TEXT_FIXES = (
+    ("I_BEFORE_CALLSIGN", "«і» перед позивним → «я»"),
+    ("JOIN_NUMBERS", "розірваний номер позивного разом"),
+    ("DOUBLE_OVER", "«прийом, прийом» → «прийнято, прийом»"),
+    ("CLOSING_TURN", "кінцеве «прийом» + слово → «прийнято, прийом»"),
+)
+
+
 def countercheck(archive, db_path, *, show=3, progress=None):
     """По одному вимикає активні текстові правила на тих самих розмічених фразах."""
     rows = load_records(archive, include_non_speech=True)
     dictionaries, short_garbage, values = load_setup(db_path,archive)
+    import shared.template_text as tt
+    from shared.runtime_settings import _read as read_settings
+    db = read_only(db_path)
+    try:
+        settings = read_settings(db)[0]
+    finally:
+        db.close()
+    saved = {flag: getattr(tt, flag) for flag, _ in TEXT_FIXES}
+    # Як у приймачі: вимкнене в панелі правило не діє й не перевіряється.
+    for flag, _ in TEXT_FIXES:
+        setattr(tt, flag, settings["TEXT_FIX_" + flag])
+    try:
+        return _countercheck(rows, dictionaries, short_garbage, values, tt,
+                             [(flag, label) for flag, label in TEXT_FIXES if getattr(tt, flag)], show, progress)
+    finally:
+        for flag, value in saved.items():
+            setattr(tt, flag, value)
+
+
+def _countercheck(rows, dictionaries, short_garbage, values, tt, fixes, show, progress):
     current = {
         "phrases": tuple(values.get("phrase_templates", ())),
         "patterns": tuple(values.get("phrase_patterns", ())),
         "aliases": (dict(values.get("aliases", {})), dict(values.get("callsign_aliases", {}))),
     }
     active_blacklist = tuple(values.get("blacklist", ()))
-    total = len(rows) * (1 + len(current["phrases"]) + len(current["patterns"])
+    total = len(rows) * (1 + len(fixes) + len(current["phrases"]) + len(current["patterns"])
                          + sum(len(a) for a in current["aliases"]) + len(short_garbage) + len(active_blacklist))
     completed = 0
     def replay(garbage, blacklist):
@@ -162,9 +191,15 @@ def countercheck(archive, db_path, *, show=3, progress=None):
     references = {row[0]: row[1] for row in rows}
     checks = []
 
-    def add_check(kind, label, before, *, garbage=short_garbage, blacklist=active_blacklist):
+    def add_check(kind, label, before, *, garbage=short_garbage, blacklist=active_blacklist, flag=None):
         with templates(**before):
-            without, outputs = replay(garbage, blacklist)
+            if flag:
+                setattr(tt, flag, False)
+            try:
+                without, outputs = replay(garbage, blacklist)
+            finally:
+                if flag:
+                    setattr(tt, flag, True)
         changed, false_text_examples = [], []
         for record_id, (errors, text, record_label) in outputs.items():
             old_errors, old_text, _ = current_outputs[record_id]
@@ -185,7 +220,7 @@ def countercheck(archive, db_path, *, show=3, progress=None):
         harmful = no_edits_delta < 0 or missed_delta > 0 or wer_delta > 1e-12 or false_text_delta > 0
         helpful = no_edits_delta > 0 or missed_delta < 0 or wer_delta < -1e-12 or false_text_delta < 0
         checks.append({
-            "kind": kind, "label": label,
+            "kind": kind, "label": label, **({"setting": "TEXT_FIX_" + flag} if flag else {}),
             "effect": "mixed" if harmful and helpful else "harmful" if harmful else "helpful" if helpful else "neutral",
             "changed": len(changed), "worse": len(worse), "better": len(better),
             "no_edits_delta": no_edits_delta, "missed_delta": missed_delta, "wer_delta": wer_delta,
@@ -194,6 +229,8 @@ def countercheck(archive, db_path, *, show=3, progress=None):
             "false_text_examples": false_text_examples[:show],
         })
 
+    for flag, label in fixes:
+        add_check("text_fix", label, current, flag=flag)
     for phrase in current["phrases"]:
         add_check("phrase_template", phrase,
                   {**current, "phrases": tuple(item for item in current["phrases"] if item != phrase)})

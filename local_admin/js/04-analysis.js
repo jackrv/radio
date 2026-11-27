@@ -241,6 +241,7 @@
     callsign_alias: "Аліас позивного",
     short_garbage: "Фільтр короткого шуму",
     blacklist: "Чорний список",
+    text_fix: "Виправлення тексту",
   };
   const IMPACT_LABELS = { noise: "шум", notification: "сигнал", room: "кімната" };
   let impactTask = null;
@@ -252,74 +253,102 @@
   async function textImpact() { return impactPanel().run(); }
   function renderTextImpact(report) {
     const box = $("text-impact-results");
-      if (!report.records && !report.non_speech_records) {
-        box.replaceChildren(el("p", "muted", "Розмічених текстів для перевірки немає."));
-        return;
+    if (!report.records && !report.non_speech_records) {
+      box.replaceChildren(el("p", "muted", "Розмічених текстів для перевірки немає."));
+      return;
+    }
+    const by = effect => report.checks.filter(item => item.effect === effect);
+    const summary = el("div", "impact-summary");
+    for (const g of impactGroups()) {
+      const n = by(g.effect).length;
+      summary.append(el("span", `impact-count ${g.tone}${n ? "" : " zero"}`, `${g.title.split(" — ")[0]}: ${num(n)}`));
+    }
+    const parts = [summary, el("p", "muted small",
+      `Перевірено на ${num(report.records)} розмічених фразах мовлення і ${num(report.non_speech_records)} записах шуму, сигналів і кімнати.`)];
+    if (!report.checks.length) parts.push(el("p", "muted", "Активних текстових правил для перевірки немає."));
+    for (const g of impactGroups()) {
+      const items = by(g.effect);
+      if (!items.length) continue;
+      const section = el("section", `impact-group ${g.tone}`);
+      section.append(el("h3", "", `${g.title} (${num(items.length)})`));
+      if (g.about) section.append(el("p", "muted small", g.about));
+      if (g.effect === "neutral") {
+        section.append(el("p", "small impact-names", items.map(i => i.label).join(" · ")));
+      } else {
+        const compact = g.effect === "helpful";
+        const list = items.slice(0, 30).map(i => impactRow(i, compact));
+        section.append(...list);
+        if (items.length > 30) section.append(el("p", "muted small", `Показано 30 з ${num(items.length)}.`));
       }
-      const signed = value => `${value > 0 ? "+" : ""}${num(value)}`;
-      const signedPp = value => `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)} п.п.`;
-      const renderRows = items => items.map(item => {
-        const tone = item.effect === "harmful" ? "bad" : item.effect === "helpful" ? "ok" : "";
-        const row = el("div", `eval-item ${tone}`);
-        const title = el("button", "link-button", `${IMPACT_NAMES[item.kind] || item.kind}: ${item.label}`);
-        title.type='button'; title.title='Відкрити чернетку без цього правила й перевірити вплив; збереження окреме';
-        title.addEventListener('click', () => {
-          const types = {phrase_template:'phrase_templates',phrase_pattern:'phrase_patterns',text_alias:'aliases',callsign_alias:'callsign_aliases',short_garbage:'short_garbage',blacklist:'blacklist'};
-          textListType = types[item.kind];
-          if (!textListType) return;
-          pendingRuleDisable = {type:textListType,label:item.label};
-          loaded.delete('texts'); show('texts');
-        });
-        const effect = item.effect === "harmful" ? "може шкодити"
-          : item.effect === "helpful" ? "допомагає"
-          : item.effect === "mixed" ? "змішаний вплив" : "не змінило розмічені фрази";
-        row.append(title, el("div", "small", `${effect} · без правок ${signed(item.no_edits_delta)} · пропущено ${signed(item.missed_delta)} · WER ${signedPp(item.wer_delta)} · хибний текст на шумі/сигналах/у кімнаті ${signed(item.false_text_delta)} · гірше ${num(item.worse)}, краще ${num(item.better)}`));
-        for (const example of item.examples) {
-          const open = el("button", "link-button small", `Запис ${example.id.slice(0, 8)}`);
-          open.type = "button"; open.addEventListener("click", () => showIds([example.id]));
-          row.append(open, el("div", "small", `з правилом: ${example.current}`),
-            el("div", "small", `без нього: ${example.without}`),
-            el("div", "small muted", `еталон: ${example.reference}`));
-        }
-        for (const example of item.false_text_examples) {
-          const open = el("button", "link-button small", `Запис ${example.id.slice(0, 8)}`);
-          open.type = "button"; open.addEventListener("click", () => showIds([example.id]));
-          row.append(open, el("div", "small muted", `${IMPACT_LABELS[example.label] || example.label}: з правилом «${example.current || "порожньо"}» · без нього «${example.without || "порожньо"}»`));
-        }
-        return row;
-      });
-      const relevant = report.checks.filter(item => item.effect !== 'neutral');
-      const neutral = report.checks.filter(item => item.effect === 'neutral');
-      let shown = Math.min(40, relevant.length);
-      const rows = renderRows(relevant.slice(0, shown));
-      const currentNoiseText = report.current.false_text_by_label;
-      box.replaceChildren(
-        el("p", "muted small", `${num(report.records)} фраз мовлення і ${num(report.non_speech_records)} прикладів шуму, сигналів та кімнати. Поточний хибний текст: ${num(report.current.false_text)} (шум ${num(currentNoiseText.noise)}, сигнали ${num(currentNoiseText.notification)}, кімната ${num(currentNoiseText.room)}). Різниця — поточний результат мінус результат без конкретного правила.`),
-        ...(rows.length ? rows : [el("p", "muted", report.checks.length ? 'Помітного впливу активних правил на цей набір немає.' : "Активних текстових правил для перевірки немає.")]),
-        el("p", "muted small", report.scope),
-      );
-      if (neutral.length) {
-        const details = el('details','impact-neutral'), heading = el('summary','',`Без змін на цьому наборі (${neutral.length})`);
-        details.append(heading);
-        let revealed = false;
-        details.addEventListener('toggle', () => { if (details.open && !revealed) {
-          revealed=true; details.append(...renderRows(neutral.slice(0,40)));
-          if (neutral.length>40) details.append(el('p','muted small','Показано перші 40; відсутність впливу на цьому наборі не доводить непотрібність правила.'));
-        }});
-        box.append(details);
-      }
-      if (shown < relevant.length) {
-        const more = el("button", "ghost small-button", `Ще перевірки (${relevant.length - shown})`); more.type = "button";
-        more.addEventListener("click", () => {
-          box.append(...renderRows(relevant.slice(shown, shown + 40)));
-          shown = Math.min(shown + 40, relevant.length);
-          more.hidden = shown === relevant.length;
-          more.textContent = `Ще перевірки (${relevant.length - shown})`;
-        });
-        box.append(more);
-      }
+      parts.push(section);
+    }
+    parts.push(el("p", "muted small", report.scope));
+    box.replaceChildren(...parts);
   }
 
+  // Відповідає на одне питання: які правила лишити, які прибрати. Блоки — за вердиктом, найважливіше вгорі.
+  function impactGroups() { return [
+    { effect: "harmful", title: "Шкодять — вимкнути", tone: "bad",
+      about: "Без цього правила розмічені фрази були б точнішими. Вимкніть і перевірте ще раз." },
+    { effect: "mixed", title: "І допомагають, і шкодять — подивіться приклади", tone: "warn",
+      about: "Частину фраз правило виправляє, частину псує. Відкрийте приклади: якщо псує важливе — вимкніть." },
+    { effect: "helpful", title: "Допомагають — лишити", tone: "ok", about: "" },
+    { effect: "neutral", title: "Не спрацювали на розміченому", tone: "",
+      about: "На розміченому архіві нічого не змінили. Не шкодять; прибирати — лише якщо список захаращений." },
+  ]; }
+  function plural(n, one, few, many) { const a = Math.abs(n) % 100, b = a % 10;
+    return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; }
+  function phrases(n) { return `${num(n)} ${plural(n, "фразу", "фрази", "фраз")}`; }
+  function impactSummary(item) {
+    const parts = [];
+    if (item.better) parts.push(`виправляє ${phrases(item.better)}`);
+    if (item.worse) parts.push(`псує ${phrases(item.worse)}`);
+    if (item.missed_delta > 0) parts.push(`губить мовлення: ${phrases(item.missed_delta)}`);
+    if (item.missed_delta < 0) parts.push(`рятує від пропуску ${phrases(-item.missed_delta)}`);
+    if (item.false_text_delta < 0) parts.push(`прибирає хибний текст на шумі: ${num(-item.false_text_delta)}`);
+    if (item.false_text_delta > 0) parts.push(`додає хибний текст на шумі: ${num(item.false_text_delta)}`);
+    if (item.no_edits_delta) parts.push(`«без правок» ${item.no_edits_delta > 0 ? "+" : ""}${num(item.no_edits_delta)}`);
+    return parts.join(" · ") || "нічого не змінило";
+  }
+  function impactOpen(item) {
+    if (item.kind === "text_fix") {
+      show("settings");
+      const search = $("settings-search");
+      if (search) { search.value = item.label.split("→")[0].trim(); search.dispatchEvent(new Event("input")); }
+      return;
+    }
+    const types = {phrase_template:'phrase_templates',phrase_pattern:'phrase_patterns',text_alias:'aliases',callsign_alias:'callsign_aliases',short_garbage:'short_garbage',blacklist:'blacklist'};
+    textListType = types[item.kind];
+    if (!textListType) return;
+    pendingRuleDisable = {type:textListType,label:item.label};
+    loaded.delete('texts'); show('texts');
+  }
+  function impactRow(item, compact) {
+    const row = el("div", "impact-row");
+    const head = el("div", "impact-head");
+    head.append(el("span", "impact-kind", IMPACT_NAMES[item.kind] || item.kind), el("b", "impact-label", item.label));
+    row.append(head, el("div", "small", impactSummary(item)));
+    if (compact) return row;
+    const off = el("button", "ghost small-button", item.kind === "text_fix" ? "Вимкнути в налаштуваннях →" : "Вимкнути в списку →");
+    off.type = "button"; off.title = "Відкрити, де правило вимикається; збереження — окремо";
+    off.addEventListener("click", () => impactOpen(item));
+    row.append(off);
+    const examples = [...item.examples, ...item.false_text_examples];
+    if (examples.length) {
+      const more = el("details", "impact-examples"); more.append(el("summary", "", `Що саме псує (${examples.length})`));
+      for (const ex of examples) {
+        const open = el("button", "link-button small", `запис ${ex.id.slice(0, 8)}`);
+        open.type = "button"; open.addEventListener("click", () => showIds([ex.id]));
+        const box = el("div", "impact-example");
+        if (ex.label) box.append(open, el("div", "small", `${IMPACT_LABELS[ex.label] || ex.label} — з правилом: «${ex.current || "порожньо"}», без нього: «${ex.without || "порожньо"}»`));
+        else box.append(open, el("div", "small", `з правилом: ${ex.current || "порожньо"}`),
+          el("div", "small", `без нього: ${ex.without || "порожньо"}`), el("div", "small muted", `сказано: ${ex.reference}`));
+        more.append(box);
+      }
+      row.append(more);
+    }
+    return row;
+  }
   $("text-impact-run").addEventListener("click", () => textImpact());
 
   // ---------- Аналіз: набір для дообучення ----------

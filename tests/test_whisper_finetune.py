@@ -119,3 +119,24 @@ def test_prepare_copies_only_train_validation_and_keeps_sources(tmp_path, monkey
             assert (target / r['audio']).read_bytes() == (archive / (r['id']+'.wav')).read_bytes()
     with pytest.raises(FileExistsError):
         ft.prepare(archive, target)
+
+
+def test_prepare_keeps_profile_filter_and_counts_profiles(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'; archive.mkdir()
+    records = []
+    for number in range(1, 70):
+        identifier = f'sample-{number}'
+        with wave.open(str(archive / (identifier + '.wav')), 'wb') as wav:
+            wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(16000)
+            wav.writeframes(number.to_bytes(2, 'little') * 16000)
+        records.append({'id': identifier, 'created': 1800000000 + number * ft.SPLIT_BLOCK_S + 100, 'label': 'speech',
+                        'reference': 'Вишня 210, прийом', 'profile': 'pi-webcam'})
+    seen = {}
+    def fake(*a, **k):
+        seen.update(k)
+        return records
+    monkeypatch.setattr(ft, 'load_records', fake)
+    summary = ft.prepare(archive, tmp_path / 'dataset', profile='pi-webcam')
+    assert seen['profile'] == 'pi-webcam' and summary['profile'] == 'pi-webcam'
+    assert set(summary['splits']['train']['profiles']) == {'pi-webcam'}
+    assert all(r['profile'] == 'pi-webcam' for r in ft.checked_manifest(tmp_path / 'dataset', 345))

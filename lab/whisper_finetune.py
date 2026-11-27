@@ -61,12 +61,13 @@ def read_pcm(path):
         return audio.readframes(audio.getnframes()), duration
 
 
-def prepare(archive, output, seed=345):
+def prepare(archive, output, seed=345, profile=None):
+    """profile — лише цей канал запису (shared.capture_profiles); інакше всі, з підсумком по каналах."""
     archive, output = Path(archive).resolve(), Path(output).resolve()
     if output.exists():
         raise FileExistsError('Каталог набору вже існує')
     candidates, rejected = [], Counter()
-    for r in load_records(archive, labelled_only=True):
+    for r in load_records(archive, labelled_only=True, profile=profile):
         label = r['label']
         if label not in ('speech', 'noise', 'notification', 'room'):
             continue
@@ -80,7 +81,7 @@ def prepare(archive, output, seed=345):
         except (OSError, ValueError, wave.Error, EOFError):
             rejected['unusable_wav'] += 1
             continue
-        candidates.append({'id': r['id'], 'created': r['created'], 'label': label,
+        candidates.append({'id': r['id'], 'created': r['created'], 'label': label, 'profile': r.get('profile'),
                            'text': text, 'duration_s': duration, 'split': partition(r['created'], seed),
                            'pcm_sha256': hashlib.sha256(pcm).hexdigest(), 'source': str(source)})
     rows, duplicates = separate_duplicates(candidates)
@@ -114,10 +115,11 @@ def prepare(archive, output, seed=345):
     manifest = output / 'manifest.json'
     manifest.write_text(json.dumps(selected, ensure_ascii=False, indent=2))
     manifest.chmod(0o600)
-    summary = {'seed': seed, 'rejected': dict(rejected),
+    summary = {'seed': seed, 'profile': profile, 'rejected': dict(rejected),
                'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
                'splits': {s: {'labels': dict(Counter(r['label'] for r in selected if r['split'] == s)),
-                              'seconds': round(sum(r['duration_s'] for r in selected if r['split'] == s), 2)}
+                              'seconds': round(sum(r['duration_s'] for r in selected if r['split'] == s), 2),
+                              'profiles': dict(Counter(r['profile'] for r in selected if r['split'] == s))}
                           for s in ('train', 'validation', 'test')}}
     (output / 'summary.json').write_text(json.dumps(summary, indent=2))
     return summary
@@ -313,6 +315,7 @@ def main():
     prep.add_argument('--archive', default=str(config.RECORDINGS_DIR))
     prep.add_argument('--output', required=True)
     prep.add_argument('--seed', type=int, default=345)
+    prep.add_argument('--profile', help='лише цей канал запису: mac-mic, pi-webcam… (docs/data.md)')
     run = subs.add_parser('train')
     run.add_argument('--dataset', required=True)
     run.add_argument('--base-model', required=True)
@@ -327,7 +330,7 @@ def main():
     run.add_argument('--seed', type=int, default=345)
     args = parser.parse_args()
     if args.command == 'prepare':
-        print(json.dumps(prepare(args.archive, args.output, args.seed), indent=2))
+        print(json.dumps(prepare(args.archive, args.output, args.seed, args.profile), indent=2, ensure_ascii=False))
     else:
         for key in ('steps', 'accumulate', 'validate_every', 'val_limit', 'max_seconds', 'max_memory_gb', 'learning_rate'):
             value = getattr(args, key)

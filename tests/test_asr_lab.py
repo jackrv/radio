@@ -346,3 +346,16 @@ def test_resume_continues_same_records_on_same_snapshot_without_repeating_done(t
     (run_dir / "metrics.json").unlink()
     with pytest.raises(SystemExit, match="resegment"), patch("shared.recognition.WhisperRecognizer", FakeWhisper):
         asr_lab.main([*args, "--resegment", "energy", "--resume", run_dir.name])
+
+
+def test_load_records_filters_by_capture_profile(tmp_path):
+    from shared.recordings import RecordingStore
+    store = RecordingStore(tmp_path / "recordings")
+    pcm = np.zeros(1600, "<i2").tobytes()
+    mac = store.save(pcm, 16000, {"status": "ready", "capture_source": "portaudio"})
+    pi = store.save(pcm, 16000, {"status": "ready", "capture_source": "legacy"})
+    cable = store.save(pcm, 16000, {"status": "ready", "capture_source": "legacy",
+                                    "input": {"device": "USB Audio", "profile": "pi-cable"}})
+    rows = {r["id"]: r["profile"] for r in asr_lab.load_records(tmp_path / "recordings")}
+    assert rows == {mac: "mac-mic", pi: "pi-webcam", cable: "pi-cable"}
+    assert [r["id"] for r in asr_lab.load_records(tmp_path / "recordings", profile="pi-cable")] == [cable]

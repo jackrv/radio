@@ -64,7 +64,9 @@ def split_of(created):
     return "holdout" if digest % 3 == 0 else "tune"
 
 
-def load_records(archive=ARCHIVE, *, statuses=None, labelled_only=False, split="all", limit=None, ids=None):
+def load_records(archive=ARCHIVE, *, statuses=None, labelled_only=False, split="all", limit=None, ids=None, profile=None):
+    """profile — лише цей канал запису (shared.capture_profiles): mac-mic, pi-webcam…"""
+    from shared.capture_profiles import profile_of
     with read_only(Path(archive) / "index.sqlite3") as db:
         db.row_factory = sqlite3.Row
         rows = db.execute("SELECT * FROM recordings ORDER BY created").fetchall()
@@ -73,6 +75,7 @@ def load_records(archive=ARCHIVE, *, statuses=None, labelled_only=False, split="
         item = dict(row)
         item["data"] = json.loads(item["data"])
         item["split"] = split_of(item["created"])
+        item["profile"] = profile_of(item["data"])
         if statuses and item["status"] not in statuses:
             continue
         if labelled_only and item["label"] is None:
@@ -80,6 +83,8 @@ def load_records(archive=ARCHIVE, *, statuses=None, labelled_only=False, split="
         if split != "all" and item["split"] != split:
             continue
         if ids is not None and item["id"] not in ids:
+            continue
+        if profile and item["profile"] != profile:
             continue
         result.append(item)
     return result[:limit] if limit else result
@@ -401,7 +406,8 @@ class Lab:
                                     "compression_ratio_threshold": 2.4, **self.whisper_options},
                 "seed": self.args.seed, "resegment": self.args.resegment, "gate_db": self.args.gate_db,
                 "bandpass": [self.args.band_low, self.args.band_high] if self.args.bandpass == "on" else None,
-                "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only}
+                "split": self.args.split, "statuses": self.args.status, "labelled_only": self.args.labelled_only,
+                "profile": getattr(self.args, "profile", None)}
 
     def apply_rules(self, text):
         from shared.word_rule_engine import apply_verified_word_rules
@@ -648,7 +654,8 @@ def _run_checked(args):
             # Прогін до появи records.txt: ті самі умови вибірки й лише записи, що існували на старті.
             started_at = datetime.strptime(saved["started_utc"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).timestamp()
             ids = [r["id"] for r in load_records(args.archive, statuses=statuses, labelled_only=args.labelled_only,
-                                                  split=args.split, limit=args.limit) if r["created"] <= started_at]
+                                                  split=args.split, limit=args.limit, profile=saved.get("profile"))
+                   if r["created"] <= started_at]
         order = {record_id: i for i, record_id in enumerate(ids)}
         records = sorted(load_records(args.archive, ids=set(ids)), key=lambda r: order[r["id"]])
         lab = Lab(args, run_dir, reuse_snapshot=True)
@@ -667,7 +674,7 @@ def _run_checked(args):
         run_dir.mkdir(parents=True, mode=0o700)
         ids = set(Path(args.ids).read_text().split()) if args.ids else None
         records = load_records(args.archive, statuses=statuses, labelled_only=args.labelled_only,
-                               split=args.split, limit=args.limit, ids=ids)
+                               split=args.split, limit=args.limit, ids=ids, profile=args.profile)
         lab = Lab(args, run_dir)
         params = {**lab.params(), "records": len(records), "archive": str(Path(args.archive).resolve()),
                   "started_utc": started, "git_head": os.popen(f"git -C {ROOT} rev-parse HEAD").read().strip()}
@@ -696,7 +703,7 @@ def _run_checked(args):
                 wav_sha = hashlib.sha256((Path(args.archive) / f"{record['id']}.wav").read_bytes()).hexdigest()
             except OSError:
                 wav_sha = None
-            item = {"id": record["id"], "created": record["created"], "split": record["split"],
+            item = {"id": record["id"], "created": record["created"], "split": record["split"], "profile": record.get("profile"),
                     "wav_sha256": wav_sha, "session": record["data"].get("session"),
                     "status": record["status"], "label": record["label"], "reference": record["reference"],
                     "reference_recipient": record["reference_recipient"], "reference_sender": record["reference_sender"],
@@ -819,6 +826,7 @@ def main(argv=None):
     r.add_argument("--status", help="статуси через кому (типово — усі)")
     r.add_argument("--split", choices=("all", "tune", "holdout"), default="all")
     r.add_argument("--labelled-only", action="store_true")
+    r.add_argument("--profile", help="лише цей канал запису: mac-mic, pi-webcam… (docs/data.md)")
     r.add_argument("--limit", type=int)
     r.add_argument("--ids", help="файл з ідентифікаторами записів")
     r.add_argument("--language", default="uk", help="uk, ru або auto")

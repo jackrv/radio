@@ -260,7 +260,7 @@
         gain.replaceChildren();
         if (mixer?.error) gain.append(el("p", "alert small", mixer.error));
         else if (!(mixer?.controls || []).length) gain.append(el("p", "muted small", "Підсилення: у цього входу регуляторів немає."));
-        for (const c of mixer?.controls || []) {
+        for (const c of (mixer?.controls || []).filter(c => c.max != null || c.switch === false)) {
           const row = el("div", "audio-gain-row"), title = el("span", "audio-gain-name", `Підсилення · ${c.name}`);
           row.append(title);
           const send = async body => {
@@ -277,12 +277,8 @@
             range.addEventListener("change", () => send({ value: Number(range.value) }));
             show(); row.append(range, out);
           }
-          if (c.switch != null) {
-            const toggle = el("label", "switch"), box = el("input"); box.type = "checkbox"; box.checked = c.switch;
-            toggle.append(box, c.switch ? "Запис увімк." : "Запис вимк.");
-            box.addEventListener("change", () => send({ switch: box.checked }));
-            row.append(toggle);
-          }
+          // Вимикач запису карти («mute») не показуємо: вимкнений — ефір глухий, а користі немає.
+          if (c.switch === false) row.append(el("span", "alert small", "Запис на карті вимкнено — ефір нічого не чує"));
           gain.append(row);
         }
       };

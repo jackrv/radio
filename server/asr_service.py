@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from shared.paths import place
 
-FRESH_S = 300
+FRESH_S = 300   # типове; живе значення — PHRASE_FRESH_S у панелі (worker.fresh_s)
 MAX_ATTEMPTS = 5
 
 
@@ -60,7 +60,7 @@ class AsrService:
         try:
             if self.recorder.store.exists(record_id):
                 pass   # збій між записом в архів і видаленням файла
-            elif time.time() - ended > self.fresh_s or self.attempts.get(record_id):
+            elif time.time() - ended > getattr(self.worker, "fresh_s", self.fresh_s) or self.attempts.get(record_id):
                 self.worker._store_deferred(pcm)   # стара чи повторна: без подій
             else:
                 self.worker._tracked(pcm)   # з відміткою для контролю зависання й серії помилок

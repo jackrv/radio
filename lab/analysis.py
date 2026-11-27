@@ -9,6 +9,7 @@
   .venv/bin/python -m lab.analysis conditions           # без правок за тривалістю, гучністю, упевненістю
   .venv/bin/python -m lab.analysis callsigns            # точність по позивних і вигадані позивні
   .venv/bin/python -m lab.analysis records numbers -n 10  # самі фрази певного виду: еталон і що вийшло
+  .venv/bin/python -m lab.analysis filters --profile pi-webcam  # що відкинув кожен фільтр і вердикт (docs/filters.md)
   .venv/bin/python -m lab.analysis checks               # можливі помилки у вашій розмітці (як «Потребує уваги»)
   .venv/bin/python -m lab.analysis runs                 # прогони лабораторії з «без правок»
   .venv/bin/python -m lab.analysis compare <A> <B>      # два прогони на спільних записах
@@ -111,6 +112,27 @@ def conditions(args):
     if c["separation"] is not None:
         print(f"Різниця «без правок» між найбільш і найменш упевненою чвертю: {c['separation'] * 100:.0f} п.п. "
               f"({'упевненість передбачає правки' if c['separation'] >= 0.15 else 'слабо передбачає'}).")
+
+
+VERDICTS = {"off": "ВИМКНУТИ: шкодить більше, ніж допомагає", "relax": "ПОСЛАБИТИ поріг",
+            "keep": "лишити: працює", "label": "мало розмітки", "info": "втрачене мовлення"}
+
+
+def filters(args):
+    rows = error_analysis.filter_stats(_store(), args.days, args.profile)
+    if args.json:
+        return rows
+    print(f"{'Фільтр':<26}{'відкинуто':>10}{'за добу':>9}{'шкода':>10}{'користь':>10}{'не розм.':>10}  Вердикт")
+    for r in rows:
+        verdict = VERDICTS[r["verdict"]]
+        if r["verdict"] == "label":
+            verdict += f": розмітьте ще {r['need']}"
+        else:
+            verdict += f" (шкода {_pct(r['lost_share'])})"
+        if r["note"]:
+            verdict += f" — {r['note']}"
+        print(f"{r['title']:<26}{r['dropped']:>10}{r['per_day']:>9.1f}{r['lost']:>10}{r['caught']:>10}{r['unlabelled']:>10}  {verdict}")
+    print("Що робити з кожним вердиктом і де вимикати — docs/filters.md.")
 
 
 def callsigns(args):
@@ -222,6 +244,9 @@ def main(argv=None):
         p = sub.add_parser(name, parents=[common], help=helptext)
         p.add_argument("--days", type=int, default=0, help="лише останні N діб (0 — увесь архів)")
         p.add_argument("--profile", help="лише цей канал запису: mac-mic, pi-webcam… (docs/data.md)")
+    p = sub.add_parser("filters", parents=[common], help="що відкинув кожен фільтр і чи він потрібен")
+    p.add_argument("--days", type=int, default=0, help="лише останні N діб (0 — увесь архів)")
+    p.add_argument("--profile", help="лише цей канал запису: mac-mic, pi-webcam…")
     p = sub.add_parser("records", parents=[common], help="фрази певного виду з еталоном і результатом")
     p.add_argument("kind", choices=KINDS)
     p.add_argument("--days", type=int, default=0)
@@ -236,7 +261,7 @@ def main(argv=None):
     p.add_argument("a"); p.add_argument("b")
     sub.add_parser("queue", parents=[common], help="черга тестів лабораторії")
     args = parser.parse_args(argv)
-    result = {"summary": summary, "errors": errors, "conditions": conditions, "callsigns": callsigns, "records": records,
+    result = {"summary": summary, "errors": errors, "conditions": conditions, "callsigns": callsigns, "filters": filters, "records": records,
               "checks": checks, "runs": runs, "compare": compare, "queue": queue}[args.command](args)
     if args.json:
         json.dump(result, sys.stdout, ensure_ascii=False, indent=1, default=str)

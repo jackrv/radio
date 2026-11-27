@@ -51,6 +51,9 @@ class Transcriber:
         # Другий шанс: якщо з підказкою Whisper зациклився й тексту не лишилося — ще раз без
         # підказки (назви словника в підказці провокують такі петлі). Вмикає фабрика з config.
         self.retry_without_prompt = False
+        # Пороги мовчазного відсіву шматків Whisper і переліку назв (docs/filters.md); None — типові з коду.
+        self.segment_limits = None
+        self.echo_min_run = 3
         self._whisper_called = False
         self._whisper_failed = False
         self._unavailable = False
@@ -93,6 +96,10 @@ class Transcriber:
             return True
         parts = [k for k in (self._blacklist_key(p) for p in re.split(r"[.!?;…]+", text)) if k]
         return len(parts) > 1 and all(p in keys for p in parts)
+
+    def _text(self, result):
+        limits = self.segment_limits
+        return self.recognizer.extract_text(result, **limits) if limits else self.recognizer.extract_text(result)
 
     def process_segment(self, pcm, deferred_id=None):
         from shared.recording_trace import _trace
@@ -210,13 +217,17 @@ class Transcriber:
         try:
             with runtime.timed("asr.whisper"):
                 result = self.recognizer.transcribe(audio)
-            raw_text = self.recognizer.extract_text(result)
+            raw_text = self._text(result)
             from shared.recording_trace import note
-            if not raw_text and self.retry_without_prompt and getattr(self.recognizer, "prompt", "") and is_looped(result):
+            limits = self.segment_limits or {}
+            if limits:
+                note(segment_limits=dict(limits))   # з якими порогами відсіяно — для lab.analysis filters
+            if not raw_text and self.retry_without_prompt and getattr(self.recognizer, "prompt", "") and is_looped(
+                    result, **({"compression_limit": limits["compression_limit"]} if "compression_limit" in limits else {})):
                 runtime.count("asr.whisper_retry")
                 with runtime.timed("asr.whisper_retry"):
                     retry = self.recognizer.transcribe(audio, prompt="")
-                retry_text = self.recognizer.extract_text(retry)
+                retry_text = self._text(retry)
                 note(whisper_retry=bool(retry_text))
                 if retry_text:
                     runtime.count("asr.whisper_retry_recovered")
@@ -263,7 +274,8 @@ class Transcriber:
             dictionaries = tuple(
                 d for d in (getattr(self.event_processor, n, None) for n in ("callsigns", "commands", "watch"))
                 if isinstance(getattr(d, "names", None), (list, tuple, set, frozenset)))
-            cleaned, echo = strip_dictionary_echo(raw_text, dictionaries) if dictionaries else (raw_text, False)
+            cleaned, echo = (strip_dictionary_echo(raw_text, dictionaries, self.echo_min_run)
+                             if dictionaries and self.echo_min_run else (raw_text, False))
         except Exception:
             self.log.exception("Помилка перевірки переліку назв; текст передано далі без змін")
             cleaned, echo = raw_text, False

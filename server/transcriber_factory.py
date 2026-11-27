@@ -214,6 +214,12 @@ def build_transcriber(
         worker.low_confidence = {"max_words": values["LOW_CONFIDENCE_MAX_WORDS"], "logprob": values["LOW_CONFIDENCE_LOGPROB"]}
         worker.min_rms = values["MIN_RMS"]
         worker.retry_without_prompt = values["WHISPER_RETRY_WITHOUT_PROMPT"]
+        worker.segment_limits = {"compression_limit": values["WHISPER_COMPRESSION_LIMIT"],
+                                 "no_speech_prob": values["WHISPER_NO_SPEECH_PROB"],
+                                 "no_speech_logprob": values["WHISPER_NO_SPEECH_LOGPROB"]}
+        worker.echo_min_run = values["DICTIONARY_ECHO_MIN_RUN"]
+        event_processor.reject_bare_callsign = values["REJECT_BARE_CALLSIGN"]
+        worker.fresh_s = values["PHRASE_FRESH_S"]
         worker.spectral_mode = values["SPECTRAL_NOTIFICATION_MODE"]
         spectral_matcher.threshold = values["SPECTRAL_NOTIFICATION_THRESHOLD"]
         spectral_matcher.max_outside_s = values["SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S"]

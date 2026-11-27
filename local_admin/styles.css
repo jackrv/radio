@@ -1872,3 +1872,77 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
   :is(#learning-items, #activity-items) tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
   .table-wrap :is(#learning-items, #activity-items) td, .table-wrap :is(#learning-items, #activity-items) td:first-child { position: static; padding: 2px 0; border: 0; white-space: normal; overflow-wrap: break-word; }
 }
+
+/* Налаштування: одна форма, розділи-картки у дві колонки, пошук і «Зберегти» в закріпленому рядку. */
+.settings-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 10px 0; margin-bottom: 4px; background: var(--bg); border-bottom: 1px solid var(--border); }
+#settings-search { flex: 0 1 280px; min-width: 180px; }
+.settings-nav { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; }
+.nav-chip { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+  padding: 4px 11px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.nav-chip:hover { color: var(--text); border-color: #3a4d61; }
+.nav-chip.changed::after { content: " •"; color: var(--warn); }
+.nav-chip.dirty { color: var(--cyan); border-color: var(--cyan); }
+.nav-chip.dirty::after { content: " •"; color: var(--cyan); }
+.settings-dirty { color: var(--cyan); font-size: 13px; font-weight: 600; }
+#settings-save:disabled { opacity: .45; cursor: default; }
+.settings-help { margin: 8px 0 12px; }
+.settings-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.settings-sections .panel { margin: 0; scroll-margin-top: 70px; }
+.settings-section > p.muted { margin: 2px 0 6px; }
+.settings-fields { display: flex; flex-direction: column; }
+.setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 14px;
+  padding: 9px 10px; margin: 0 -10px; border-bottom: 1px solid var(--border); border-radius: 8px; cursor: default; }
+.setting-row:last-child { border-bottom: 0; }
+.setting-row[hidden] { display: none; }
+.setting-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.setting-name { font-size: 13px; color: var(--text); }
+.setting-hint { font-size: 11px; color: var(--muted); }
+.setting-control { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.setting-control input[type="number"] { width: 78px; padding: 5px 8px; text-align: right; }
+.setting-range { width: 150px; accent-color: var(--lime); }
+.setting-row.changed { box-shadow: inset 3px 0 0 var(--warn); }
+.setting-row.dirty { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(140, 196, 255, .06); }
+/* Перемикач замість галочки. */
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+.switch-input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch-track { position: absolute; inset: 0; background: #2a3a4c; border-radius: 999px; transition: background .15s; }
+.switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: #c9d4e0; transition: transform .15s; }
+.switch-input:checked + .switch-track { background: var(--lime2); }
+.switch-input:checked + .switch-track::after { transform: translateX(18px); background: #10180d; }
+.switch-input:focus-visible + .switch-track { outline: 2px solid var(--cyan); outline-offset: 2px; }
+/* Варіанти чипами замість списку. */
+.choice-chips { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.choice-chip { background: transparent; border: 0; color: var(--muted); padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.choice-chip + .choice-chip { border-left: 1px solid var(--border); }
+.choice-chip.active { background: var(--lime2); color: #10180d; }
+/* Цифри фільтра поруч із його полем: скільки відкинув і вердикт docs/filters.md. */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+.filter-chip { align-self: flex-start; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--muted); background: var(--surface2); cursor: help; }
+.filter-chip.ok { color: var(--lime); border-color: rgba(184, 239, 134, .35); }
+.filter-chip.warn { color: var(--warn); border-color: rgba(255, 200, 100, .4); }
+.filter-chip.bad { color: var(--bad, #ff8a80); border-color: rgba(255, 138, 128, .45); }
+@media (max-width: 1100px) { .settings-sections { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .setting-row { grid-template-columns: 1fr; row-gap: 8px; }
+  .setting-row:has(.switch) { grid-template-columns: minmax(0, 1fr) auto; }
+  .setting-control { justify-content: flex-start; }
+  .setting-range { flex: 1; width: auto; }
+  .settings-bar { flex-wrap: nowrap; }
+  #settings-search { flex: 1 1 auto; min-width: 0; }
+  .settings-nav { display: none; }
+  .settings-dirty { font-size: 12px; white-space: nowrap; }
+}
+
+/* Телефон: таблиця-картки замість горизонтальної прокрутки; підпис колонки — з data-label (labelCells). */
+@media (max-width: 700px) {
+  table.mobile-cards, table.mobile-cards :is(tbody, tr, td) { display: block; width: 100%; }
+  table.mobile-cards tr:has(> th) { display: none; }
+  table.mobile-cards tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .table-wrap table.mobile-cards td, .table-wrap table.mobile-cards td:first-child { position: static; padding: 0; border: 0; background: none; white-space: normal; }
+  table.mobile-cards td:first-child { grid-column: 1 / -1; font-weight: 700; color: var(--text); }
+  table.mobile-cards td[data-label]:not(:first-child)::before { content: attr(data-label) " "; color: var(--muted); font-size: 11px; }
+  table.mobile-cards td[colspan] { grid-column: 1 / -1; }
+}

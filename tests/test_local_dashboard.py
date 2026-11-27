@@ -877,6 +877,19 @@ def test_quality_errors_explain_what_needs_edits(local):
     assert data["with_edits"] == 1 and data["categories"]["callsigns"]["ids"] == [record]
 
 
+def test_filter_stats_use_the_newest_capture_profile(local):
+    client, _, tmp = local
+    from shared.recordings import RecordingStore
+    assert client.get("/api/filter-stats").json() == {"days": 14, "profile": None, "filters": []}
+    store = RecordingStore(tmp / "recordings")
+    store.save(pcm(segment()), 16000, {"status": "low_rms", "capture_source": "portaudio"})
+    lost = store.save(pcm(segment()), 16000, {"status": "low_rms", "capture_source": "legacy"})
+    store.review(lost, "Клен 48", "speech", 0)
+    data = client.get("/api/filter-stats?days=7").json()
+    assert data["profile"] == "pi-webcam" and data["days"] == 7
+    assert [(f["status"], f["dropped"], f["lost"]) for f in data["filters"]] == [("low_rms", 1, 1)]
+
+
 def test_quality_text_impact_endpoint_returns_local_countercheck(local, monkeypatch):
     from shared import panel_jobs as text_jobs
     monkeypatch.setattr(text_jobs, "_launch", lambda root: None)

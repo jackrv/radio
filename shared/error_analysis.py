@@ -272,3 +272,110 @@ def analyse(records, names):
             "number_confusions": number_confusions_out,
             "inserted": [{"word": w, "count": n} for w, n in inserted.most_common(10) if n >= 2],
             "deleted": [{"word": w, "count": n} for w, n in deleted.most_common(10) if n >= 2]}
+
+
+# Фільтри приймача: статус запису → назва. Порядок — як вони спрацьовують (docs/filters.md).
+FILTERS = {
+    "low_rms": "тихо (MIN_RMS)", "notification": "сигнал сповіщення", "empty_text": "порожній текст Whisper",
+    "garbage": "довге сміття", "blacklist": "чорний список", "dictionary_echo": "перелік назв із підказки",
+    "low_confidence": "коротке невпевнене", "short_garbage": "короткі вигадки", "bare_callsign": "лише позивний",
+}
+NON_SPEECH = ("noise", "room", "notification")
+# Мовчазний відсів шматків Whisper (shared/whisper_result.py): статусу немає, рахується за whisper_segments.
+SEGMENT_FILTERS = {"segment_loop": ("loop", "шматок-зациклення Whisper"), "segment_silence": ("silence", "шматок-тиша Whisper")}
+# Особливі: empty_text — не поріг, а зациклення Whisper; low_rms без розмітки живе лише годину (TTL архіву).
+FILTER_NOTES = {"empty_text": "не фільтр: зациклення Whisper, порогу немає",
+                "low_rms": "нерозмічене видаляється за 1 год — розмічайте одразу",
+                "segment_loop": "користь — проти тексту з повтором; втрату початку фрази видно в «порожній текст»"}
+FILTER_MIN_LABELLED = 20   # менше — вердикту немає, лише «розмітьте ще»
+
+
+def filter_verdict(lost, caught):
+    """Вердикт за розміченим: lost — шкода (відкинуто мовлення), caught — користь (відкинуто не мовлення)."""
+    labelled = lost + caught
+    if labelled < FILTER_MIN_LABELLED:
+        return "label", FILTER_MIN_LABELLED - labelled
+    share = lost / labelled
+    return ("off" if share >= 0.5 else "relax" if share >= 0.1 else "keep"), share
+
+
+def filter_stats(store, days=0, profile=None):
+    """Що відкинув кожен фільтр і що з того, за вашою розміткою, було мовленням. Лише читає."""
+    import json
+    import time
+    from shared.capture_profiles import profile_of
+    since = time.time() - max(1, min(days, 365)) * 86400 if days else 0
+    marks = ",".join("?" * len(FILTERS))
+    with store.connect() as db:
+        rows = db.execute(f"SELECT status, label, created, data FROM recordings WHERE status IN ({marks}) AND created >= ?",
+                          (*FILTERS, since)).fetchall()
+    titles = {**FILTERS, **{key: title for key, (_, title) in SEGMENT_FILTERS.items()}}
+    stats = {key: {"status": key, "title": title, "dropped": 0, "lost": 0, "caught": 0, "unclear": 0, "unlabelled": 0,
+                   "first": None, "last": None} for key, title in titles.items()}
+    for status, label, created, data in rows:
+        if profile and profile_of(json.loads(data)) != profile:
+            continue
+        s = stats[status]
+        s["dropped"] += 1
+        s["first"] = created if s["first"] is None else min(s["first"], created)
+        s["last"] = created if s["last"] is None else max(s["last"], created)
+        key = "lost" if label == "speech" else "caught" if label in NON_SPEECH else "unlabelled" if label is None else "unclear"
+        s[key] += 1
+    _segment_stats(store, since, profile, stats)
+    out = []
+    for s in stats.values():
+        if not s["dropped"]:
+            continue
+        verdict, value = filter_verdict(s["lost"], s["caught"])
+        if s["status"] == "empty_text" and verdict != "label":
+            verdict = "info"
+        span = max(1.0, ((s["last"] or 0) - (s["first"] or 0)) / 86400)
+        out.append({**s, "per_day": s["dropped"] / span, "verdict": verdict, "note": FILTER_NOTES.get(s["status"]),
+                    "need": value if verdict == "label" else 0, "lost_share": None if verdict == "label" else value})
+    return out
+
+
+def _segment_stats(store, since, profile, stats):
+    """Шматки, які extract_text відкинув мовчки. Для мовлення порівнюємо з еталоном:
+    шкода — з відкинутим шматком помилок було б менше; користь — більше; інакше — нейтрально."""
+    import json
+    from shared.capture_profiles import profile_of
+    from shared.whisper_result import dropped_reason
+    with store.connect() as db:
+        rows = db.execute("SELECT label, reference, created, data FROM recordings WHERE created >= ? AND data LIKE '%whisper_segments%'",
+                          (since,)).fetchall()
+    for label, reference, created, data in rows:
+        data = json.loads(data)
+        if profile and profile_of(data) != profile:
+            continue
+        segments = [s for s in data.get("whisper_segments") or () if isinstance(s, dict)]
+        limits = data.get("segment_limits") if isinstance(data.get("segment_limits"), dict) else {}
+        reasons = [dropped_reason(s, **limits) for s in segments]
+        for key, (reason, _) in SEGMENT_FILTERS.items():
+            if reason not in reasons:
+                continue
+            st = stats[key]
+            st["dropped"] += 1
+            st["first"] = created if st["first"] is None else min(st["first"], created)
+            st["last"] = created if st["last"] is None else max(st["last"], created)
+            if label is None:
+                st["unlabelled"] += 1
+            elif label in NON_SPEECH:
+                st["caught"] += 1
+            elif label == "speech" and reference is not None:
+                kept = " ".join((s.get("text") or "").strip() for s, r in zip(segments, reasons) if r is None)
+                back = " ".join((s.get("text") or "").strip() for s, r in zip(segments, reasons) if r in (None, reason))
+                ref = metric_words(reference)
+                without, with_it = Levenshtein.distance(ref, metric_words(kept)), Levenshtein.distance(ref, metric_words(back))
+                st["lost" if with_it < without else "caught" if with_it > without else "unclear"] += 1
+            else:
+                st["unclear"] += 1
+
+
+def current_profile(store):
+    """Канал запису найновішого запису архіву (None — архів порожній)."""
+    import json
+    from shared.capture_profiles import profile_of
+    with store.connect() as db:
+        row = db.execute("SELECT data FROM recordings ORDER BY created DESC LIMIT 1").fetchone()
+    return profile_of(json.loads(row[0])) if row else None

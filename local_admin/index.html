@@ -242,14 +242,15 @@
 
       <!-- Налаштування -->
       <section data-panel="settings" hidden>
-        <div class="grid two settings-grid">
-        <article class="panel"><h2>Розпізнавання</h2><p class="muted">Застосовуються після перезапуску приймача. Збереження його не перезапускає.</p>
-          <p id="models" class="muted small"></p><form id="settings"><div id="fields" class="fields"></div><button>Зберегти</button></form></article>
-        <article class="panel"><h2>Обробка без перезапуску</h2>
-          <p class="muted">Застосовуються приймачем за кілька секунд, до наступного сегмента. Словники позивних, команд і Telegram (розділ «Словники») теж діють без перезапуску.</p>
-          <p id="runtime-status" class="muted small"></p>
-          <form id="runtime-settings"><div id="runtime-fields" class="fields"></div><button>Зберегти</button></form></article>
-        </div>
+        <form id="settings-form" class="settings-page">
+          <div class="settings-bar">
+            <input id="settings-search" type="search" placeholder="Знайти параметр: тиша, RMS, позивний…" aria-label="Знайти параметр">
+            <div id="settings-nav" class="settings-nav" role="navigation" aria-label="Розділи налаштувань"></div>
+            <span id="settings-dirty" class="settings-dirty"></span><button id="settings-save">Зберегти</button>
+          </div>
+          <p id="settings-status" class="muted small settings-help"></p>
+          <div id="settings-sections" class="settings-sections"></div>
+        </form>
       </section>
 
       <!-- Користувачі -->
@@ -309,7 +310,7 @@
         <div class="analysis-split">
           <div class="analysis-subpanel" data-analysis-panel="overview">
             <article class="panel"><div class="panel-head"><h2>По днях</h2><span class="muted small">за вашими еталонами мовлення</span></div>
-              <div class="table-wrap"><table id="quality-days" class="compact quality-table"></table></div>
+              <div class="table-wrap"><table id="quality-days" class="compact quality-table mobile-cards"></table></div>
               <details class="small page-help"><summary>Що означають колонки</summary>
                 <p class="muted">Кожен рядок — записи, зроблені того дня й розмічені вами як «Мовлення». <b>«Без правок»</b> — частка фраз, де підсумковий текст збігся з вашим еталоном слово в слово (головна мета). «Пропущено» — мовлення, з якого тексту не вийшло зовсім. «Помилка в словах» — частка слів, записаних не так (менше — краще): «Whisper» — сирий текст, «після обробки» — після словників, шаблонів і навчених правил. Номери — частка фраз із числами, де всі числа збіглися. Адресат — частка фраз, де програма правильно визначила, кому адресовано.</p></details></article>
           </div>

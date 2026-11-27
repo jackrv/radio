@@ -6,7 +6,8 @@
 
 - Без перезапуску («Обробка без перезапуску»): COOLDOWN_S, LOG_CALLSIGNS_ONLY,
   GARBAGE_*, LOW_CONFIDENCE_*, MIN_RMS, WHISPER_RETRY_WITHOUT_PROMPT,
-  WHISPER_PROMPT_DAILY_CODE, SPECTRAL_NOTIFICATION_* (shared/runtime_settings.py).
+  WHISPER_PROMPT_DAILY_CODE, WHISPER_COMPRESSION_LIMIT, WHISPER_NO_SPEECH_*,
+  DICTIONARY_ECHO_MIN_RUN, REJECT_BARE_CALLSIGN, PHRASE_FRESH_S, SPECTRAL_NOTIFICATION_* (shared/runtime_settings.py).
 - Після перезапуску приймача («Розпізнавання»): USE_LLM, VAD_LEVEL, SILENCE_END_MS,
   MIN_SPEECH_MS, MAX_SEGMENT_S (server/management/settings.py).
 - Решта — лише тут, діє після перезапуску. Секрети й адреси — у .env.
@@ -93,6 +94,14 @@ GARBAGE_EXTRA_WORDS = 3
 # Фраза з командою чи позивним із номером не відкидається.
 LOW_CONFIDENCE_MAX_WORDS = 2
 LOW_CONFIDENCE_LOGPROB = -0.7
+# Шматки відповіді Whisper, що відкидаються мовчки (shared/whisper_result.py; 0 — вимкнено), docs/filters.md:
+WHISPER_COMPRESSION_LIMIT = 2.4   # зациклення: стиснення шматка вище
+WHISPER_NO_SPEECH_PROB = 0.6      # тиша: no_speech_prob вище…
+WHISPER_NO_SPEECH_LOGPROB = -0.8  # …і впевненість нижче
+DICTIONARY_ECHO_MIN_RUN = 3       # перелік назв із підказки: від N назв підряд за абеткою (0 — вимкнено)
+REJECT_BARE_CALLSIGN = True       # відкидати одиночний позивний без номера й команд
+# Фраза, старша за це (Mac спав, черга), лише в архів — без події й Telegram, щоб не сповіщати про давнє.
+PHRASE_FRESH_S = 300
 
 # Другий шанс Whisper: якщо з підказкою модель зациклилася («Грозу, Грозу…») і тексту
 # не лишилося, сегмент розпізнається ще раз без підказки. 18.11.2026 на 325 еталонах:

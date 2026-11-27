@@ -23,3 +23,22 @@ def test_conditions_split_no_edits_by_profile():
     groups = {g["profile"]: g for g in analyse(rows, {"клен"})["conditions"]["profile"]}
     assert (groups[MAC_MIC]["records"], groups[MAC_MIC]["no_edits"]) == (4, 2)
     assert (groups[PI_WEBCAM]["records"], groups[PI_WEBCAM]["no_edits"]) == (2, 1)
+
+
+def test_filter_stats_count_losses_and_verdicts(tmp_path):
+    import numpy as np
+    from shared.error_analysis import filter_stats, filter_verdict
+    from shared.recordings import RecordingStore
+    assert filter_verdict(3, 10)[0] == "label"
+    assert filter_verdict(12, 8)[0] == "off" and filter_verdict(5, 15)[0] == "relax" and filter_verdict(1, 19)[0] == "keep"
+    store = RecordingStore(tmp_path / "rec")
+    pcm = np.zeros(1600, "<i2").tobytes()
+    ids = [store.save(pcm, 16000, {"status": "notification", "capture_source": "legacy"}) for _ in range(3)]
+    store.save(pcm, 16000, {"status": "notification", "capture_source": "portaudio"})
+    store.save(pcm, 16000, {"status": "ready", "capture_source": "legacy"})
+    store.review(ids[0], "Клен 48", "speech", 0)
+    store.review(ids[1], "", "noise", 0)
+    rows = {r["status"]: r for r in filter_stats(store, profile=PI_WEBCAM)}
+    assert list(rows) == ["notification"]
+    assert (rows["notification"]["dropped"], rows["notification"]["lost"], rows["notification"]["caught"],
+            rows["notification"]["unlabelled"]) == (3, 1, 1, 1)

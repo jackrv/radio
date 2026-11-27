@@ -20,7 +20,7 @@ class TextAnalysis:
     partial_commands: frozenset = frozenset()   # (назва, код) команд, чий код почуто наполовину
 
 
-def analyze_text(text, callsigns, commands, watch, short_garbage, log):
+def analyze_text(text, callsigns, commands, watch, short_garbage, log, reject_bare_callsign=True):
     """Ті самі правила й порядок, що в EventProcessor; побічних дій немає."""
     original = text
     try:
@@ -40,7 +40,7 @@ def analyze_text(text, callsigns, commands, watch, short_garbage, log):
     rejected = None
     if is_short_garbage(text, short_garbage) and not cs_found and not cmd_found and not watch_found:
         rejected = "short_garbage"
-    elif not cmd_found and not watch_found and is_bare_callsign(text, cs_found, callsigns):
+    elif reject_bare_callsign and not cmd_found and not watch_found and is_bare_callsign(text, cs_found, callsigns):
         rejected = "bare_callsign"
     try:
         # Лише позначка для шапки: збій тут не повинен зупинити подію чи сповіщення.

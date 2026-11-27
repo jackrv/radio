@@ -60,6 +60,14 @@ def register(app, ctx):
             names = callsign_names(db)
         return analyse(records, names)
 
+    @app.get("/api/filter-stats")
+    def filter_stats_view(days: int = 14, admin=Depends(actor)):
+        """Що відкинув кожен фільтр і вердикт (docs/filters.md) — на каналі найновішого запису."""
+        from shared.error_analysis import current_profile, filter_stats
+        days = max(1, min(days, 365))
+        profile = current_profile(recordings)
+        return {"days": days, "profile": profile, "filters": filter_stats(recordings, days, profile)}
+
     @app.post("/api/quality/text-impact", status_code=202)
     def quality_text_impact(admin=Depends(actor)):
         """Фонова контр-перевірка; результат доступний після закриття сторінки."""

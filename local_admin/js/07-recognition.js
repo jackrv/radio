@@ -1037,130 +1037,279 @@
     return wrap;
   }
 
-  async function settings() {
-    current = await request("/api/summary");
-    $("models").textContent = `Whisper: ${current.settings.whisper_model} · Qwen: ${current.settings.correction_model}`;
-    $("fields").replaceChildren();
-    for (const [key, value] of Object.entries(current.settings.values)) {
-      const label = el("label", typeof value === "boolean" ? "inline" : "", LABELS[key] || key), input = el("input");
-      input.id = `setting-${key}`; input.type = typeof value === "boolean" ? "checkbox" : "number";
-      if (input.type === "checkbox") { input.checked = value; label.prepend(input); }
-      else { input.value = value; input.step = "1"; input.required = true; label.append(input); }
-      const fallback = current.settings.defaults?.[key];
-      if (fallback !== undefined) {
-        const changed = value !== fallback;
-        label.classList.toggle("changed", changed);
-        label.append(el("span", "muted small", `${changed ? "змінено · " : ""}типово ${typeof fallback === "boolean" ? (fallback ? "так" : "ні") : fallback}`));
-      }
-      $("fields").append(label);
-    }
-  }
-  // ---------- Обробка без перезапуску ----------
+  // ---------- Налаштування: одна сторінка, розділи в порядку обробки фрази, одна кнопка «Зберегти» ----------
+  // "restart" — /api/settings (діє після перезапуску приймача), "runtime" — /api/runtime-settings (за кілька секунд).
   const RUNTIME_LABELS = {
     COOLDOWN_S: "Пауза між однаковими повідомленнями, с",
     LOG_CALLSIGNS_ONLY: "Записувати події з позивними навіть без команд",
-    GARBAGE_MIN_WORDS: "Перевіряти фрази від N слів",
-    GARBAGE_MIN_UNIQUE_RATIO: "Мінімальна частка різних слів (0–1)",
-    GARBAGE_MAX_WORDS_PER_S: "Максимум слів за секунду аудіо",
-    GARBAGE_EXTRA_WORDS: "Запас слів понад цю норму",
+    PHRASE_FRESH_S: "Фраза старша за N с — лише в архів, без події й Telegram",
+    GARBAGE_MIN_WORDS: "Довге сміття: перевіряти фрази від N слів",
+    GARBAGE_MIN_UNIQUE_RATIO: "…мінімальна частка різних слів (0–1)",
+    GARBAGE_MAX_WORDS_PER_S: "…максимум слів за секунду аудіо",
+    GARBAGE_EXTRA_WORDS: "…запас слів понад цю норму",
     LOW_CONFIDENCE_MAX_WORDS: "Коротка невпевнена фраза: до N слів (0 — вимкнено)",
     LOW_CONFIDENCE_LOGPROB: "…і впевненість Whisper нижча за (avg_logprob)",
-    LIVE_MIN_RMS: "«Наживо»: мовчати, доки рівень нижчий за (RMS, 0 — вимкнено)",
-    MIN_RMS: "Мінімальна гучність сегмента (RMS)",
+    DICTIONARY_ECHO_MIN_RUN: "Перелік назв із підказки: від N назв підряд (0 — вимкнено)",
+    REJECT_BARE_CALLSIGN: "Відкидати одиночний позивний без номера й команди",
+    LIVE_MIN_RMS: "«Наживо» на iPhone: мовчати, доки рівень нижчий за (RMS, 0 — вимкнено)",
+    MIN_RMS: "Тихіше за цей рівень — не розпізнавати (RMS, 0 — вимкнено)",
     WHISPER_RETRY_WITHOUT_PROMPT: "Другий шанс: зациклився з підказкою — ще раз без неї",
     WHISPER_PROMPT_DAILY_CODE: "Останній код доби в підказці Whisper",
+    WHISPER_COMPRESSION_LIMIT: "Відкидати шматок зі стисненням вище (зациклення; 0 — вимкнено)",
+    WHISPER_NO_SPEECH_PROB: "Шматок-тиша: no_speech вище (0 — вимкнено)",
+    WHISPER_NO_SPEECH_LOGPROB: "…і впевненість нижча за (avg_logprob)",
     SPECTRAL_NOTIFICATION_MODE: "Режим",
     SPECTRAL_NOTIFICATION_THRESHOLD: "Поріг схожості на зразок",
     SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S: "Звуку поза збігом не більше, с",
     SPECTRAL_NOTIFICATION_MAX_EXTRA: "Сторонньої енергії не більше (0–1)",
     TELEGRAM_AUTO_DELETE_HOURS: "Автовидалення копій Telegram, год (0 — вимкнено)",
   };
-  const RUNTIME_GROUPS = [
-    ["Сповіщення", ["COOLDOWN_S", "LOG_CALLSIGNS_ONLY"]],
-    ["Whisper", ["WHISPER_RETRY_WITHOUT_PROMPT", "WHISPER_PROMPT_DAILY_CODE", "MIN_RMS"]],
-    ["Прослуховування на iPhone", ["LIVE_MIN_RMS"]],
-    ["Відсів сміття й невпевнених фраз", ["GARBAGE_MIN_WORDS", "GARBAGE_MIN_UNIQUE_RATIO", "GARBAGE_MAX_WORDS_PER_S", "GARBAGE_EXTRA_WORDS",
-                                          "LOW_CONFIDENCE_MAX_WORDS", "LOW_CONFIDENCE_LOGPROB"]],
-    ["Фільтр сигналів сповіщень", ["SPECTRAL_NOTIFICATION_MODE", "SPECTRAL_NOTIFICATION_THRESHOLD", "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S",
-                                   "SPECTRAL_NOTIFICATION_MAX_EXTRA"]],
+  const SETTINGS_SECTIONS = [
+    { title: "Звук і нарізка на фрази", about: "Що вважати фразою — ще до Whisper.", fields: [
+      ["restart", "VAD_LEVEL"], ["restart", "SILENCE_END_MS"], ["restart", "MIN_SPEECH_MS"], ["restart", "MAX_SEGMENT_S"],
+      ["runtime", "MIN_RMS"], ["runtime", "LIVE_MIN_RMS"]] },
+    { title: "Фільтр сигналів сповіщень", about: "Звук телефона відкидається до Whisper.", link: ["filter", "Зразки й перевірка →"], fields: [
+      ["runtime", "SPECTRAL_NOTIFICATION_MODE"], ["runtime", "SPECTRAL_NOTIFICATION_THRESHOLD"],
+      ["runtime", "SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S"], ["runtime", "SPECTRAL_NOTIFICATION_MAX_EXTRA"]] },
+    { title: "Whisper", about: "Підказка, другий шанс і шматки відповіді, що відкидаються мовчки.", fields: [
+      ["runtime", "WHISPER_RETRY_WITHOUT_PROMPT"], ["runtime", "WHISPER_PROMPT_DAILY_CODE"],
+      ["runtime", "WHISPER_COMPRESSION_LIMIT"], ["runtime", "WHISPER_NO_SPEECH_PROB"], ["runtime", "WHISPER_NO_SPEECH_LOGPROB"],
+      ["restart", "USE_LLM"]] },
+    { title: "Відсів тексту", about: "Що відкидається після Whisper.", link: ["texts", "Списки фраз →"], fields: [
+      ["runtime", "GARBAGE_MIN_WORDS"], ["runtime", "GARBAGE_MIN_UNIQUE_RATIO"], ["runtime", "GARBAGE_MAX_WORDS_PER_S"],
+      ["runtime", "GARBAGE_EXTRA_WORDS"], ["runtime", "LOW_CONFIDENCE_MAX_WORDS"], ["runtime", "LOW_CONFIDENCE_LOGPROB"],
+      ["runtime", "DICTIONARY_ECHO_MIN_RUN"], ["runtime", "REJECT_BARE_CALLSIGN"]] },
+    { title: "Події й сповіщення", about: "Коли фраза стає подією й повідомленням.", fields: [
+      ["runtime", "COOLDOWN_S"], ["runtime", "LOG_CALLSIGNS_ONLY"], ["runtime", "PHRASE_FRESH_S"]] },
   ];
+  // Має своє місце: «Система → Дані й копії» поруч з іншими строками зберігання.
+  const SETTINGS_ELSEWHERE = new Set(["TELEGRAM_AUTO_DELETE_HOURS"]);
   const RUNTIME_CHOICES = { off: "вимкнено", shadow: "лише оцінювати", active: "відкидати сигнали" };
-  let runtimeCurrent = null;
-  async function runtimeSettings() {
-    runtimeCurrent = await request("/api/runtime-settings");
-    const a = runtimeCurrent.applied || {}, live = a.receiver === "listening" || a.receiver === "paused";
-    $("runtime-status").textContent = `Збережена ревізія: ${runtimeCurrent.revision}. ` + (!live
-      ? "Приймач не працює — значення застосуються під час запуску."
-      : a.revision === runtimeCurrent.revision ? "Приймач уже використовує ці значення."
-      : `Приймач: ревізія ${a.revision ?? "—"} (знімок метрик оновлюється ~30 с; самі значення діють за кілька секунд).`);
-    $("runtime-fields").replaceChildren();
-    const shown = new Set();
-    const groups = [...RUNTIME_GROUPS, ["Інше", Object.keys(runtimeCurrent.values).filter(k => !RUNTIME_GROUPS.some(([, keys]) => keys.includes(k)))]];
-    for (const [title, keys] of groups) {
-      const present = keys.filter(k => k in runtimeCurrent.values && !shown.has(k));
-      if (!present.length) continue;
-      const box = el("fieldset", "runtime-group"); box.append(el("legend", "", title));
-      for (const key of present) { shown.add(key); box.append(runtimeField(key)); }
-      const group = el('details','runtime-fold');
-      group.append(el('summary','',title), box);
-      group.addEventListener('toggle', () => {
-        if (group.open) for (const sibling of $('runtime-fields').children) if (sibling!==group) sibling.open=false;
-      });
-      $("runtime-fields").append(group);
-    }
-  }
+  let runtimeCurrent = null, restartCurrent = null;
   const showValue = (value, limits) => limits.type === "str" ? RUNTIME_CHOICES[value] || value
     : limits.type === "bool" ? (value ? "так" : "ні") : String(value).replace(".", ",");
-  // Поле налаштування: змінене відносно config.py — підсвічене, «↺» повертає значення за замовчуванням.
-  function runtimeField(key) {
-    const value = runtimeCurrent.values[key], limits = runtimeCurrent.limits[key], fallback = runtimeCurrent.defaults[key];
-    const label = el("label", limits.type === "bool" ? "inline" : "", RUNTIME_LABELS[key] || key);
-    let input;
-    if (limits.type === "str") {
-      input = el("select");
-      for (const choice of limits.choices) { const o = el("option", "", RUNTIME_CHOICES[choice] || choice); o.value = choice; input.append(o); }
-      input.value = value; label.append(input);
-    } else {
-      input = el("input");
-      if (limits.type === "bool") { input.type = "checkbox"; input.checked = value; label.prepend(input); }
-      else {
-        input.type = "number"; input.value = value; input.required = true;
-        input.min = limits.min; input.max = limits.max; input.step = limits.type === "int" ? "1" : limits.max <= 1 ? "0.001" : "0.01";
-        label.append(input);
-      }
+  const settingInput = (source, key) => $(`${source === "runtime" ? "runtime" : "setting"}-${key}`);
+  const readInput = (input, limits) => limits.type === "bool" ? input.checked : limits.type === "str" ? input.value
+    : limits.type === "int" ? parseInt(input.value, 10) : Number(input.value);
+  function settingSpec(source, key) {
+    if (source === "runtime") {
+      if (!runtimeCurrent || !(key in runtimeCurrent.values)) return null;
+      return { value: runtimeCurrent.values[key], fallback: runtimeCurrent.defaults[key], limits: runtimeCurrent.limits[key],
+               label: RUNTIME_LABELS[key] || key };
     }
-    input.id = `runtime-${key}`;
-    const changed = value !== fallback;
-    label.classList.toggle("changed", changed);
-    const info = el("span", "muted small", `${changed ? "змінено · " : ""}типово ${showValue(fallback, limits)}` +
-      (limits.type === "int" || limits.type === "float" ? ` · від ${limits.min} до ${limits.max}` : ""));
+    if (!restartCurrent || !(key in restartCurrent.values)) return null;
+    const value = restartCurrent.values[key];
+    return { value, fallback: restartCurrent.defaults?.[key], label: LABELS[key] || key,
+             limits: { type: typeof value === "boolean" ? "bool" : "int", min: 0 } };
+  }
+  // Зручний діапазон повзунка: [мін, макс, крок]. Поле числа поруч приймає й значення поза ним (у межах limits).
+  const SETTING_SLIDERS = {
+    VAD_LEVEL: [0, 3, 1], SILENCE_END_MS: [200, 2000, 50], MIN_SPEECH_MS: [100, 2000, 50], MAX_SEGMENT_S: [5, 30, 1],
+    MIN_RMS: [0, 0.06, 0.001], LIVE_MIN_RMS: [0, 0.06, 0.001],
+    SPECTRAL_NOTIFICATION_THRESHOLD: [0.5, 0.99, 0.01], SPECTRAL_NOTIFICATION_MAX_OUTSIDE_S: [0, 3, 0.1],
+    SPECTRAL_NOTIFICATION_MAX_EXTRA: [0, 0.5, 0.01],
+    WHISPER_COMPRESSION_LIMIT: [0, 6, 0.1], WHISPER_NO_SPEECH_PROB: [0, 1, 0.05], WHISPER_NO_SPEECH_LOGPROB: [-3, 0, 0.05],
+    GARBAGE_MIN_WORDS: [4, 60, 1], GARBAGE_MIN_UNIQUE_RATIO: [0, 1, 0.05], GARBAGE_MAX_WORDS_PER_S: [1, 15, 0.5],
+    GARBAGE_EXTRA_WORDS: [0, 20, 1], LOW_CONFIDENCE_MAX_WORDS: [0, 10, 1], LOW_CONFIDENCE_LOGPROB: [-3, 0, 0.05],
+    DICTIONARY_ECHO_MIN_RUN: [0, 10, 1], COOLDOWN_S: [0, 120, 1], PHRASE_FRESH_S: [30, 3600, 30],
+  };
+  // Який фільтр (статус у lab.analysis filters) керується цим полем — поруч показуємо його цифри й вердикт.
+  const FILTER_OF_SETTING = { MIN_RMS: "low_rms", SPECTRAL_NOTIFICATION_MODE: "notification", GARBAGE_MIN_WORDS: "garbage",
+    LOW_CONFIDENCE_MAX_WORDS: "low_confidence", DICTIONARY_ECHO_MIN_RUN: "dictionary_echo", REJECT_BARE_CALLSIGN: "bare_callsign",
+    WHISPER_COMPRESSION_LIMIT: "segment_loop", WHISPER_NO_SPEECH_PROB: "segment_silence", WHISPER_RETRY_WITHOUT_PROMPT: "empty_text" };
+  const FILTER_OF_SECTION = { "Відсів тексту": ["blacklist", "short_garbage"] };
+  const VERDICT_CHIP = { off: ["bad", "вимкнути"], relax: ["warn", "послабити"], keep: ["ok", "працює"],
+    label: ["", "мало розмітки"], info: ["warn", "втрачене мовлення"] };
+  let filterStats = null;
+  const decimals = step => (String(step).split(".")[1] || "").length;
+  function filterChip(status) {
+    const f = filterStats?.filters?.find(x => x.status === status);
+    if (!f) return null;
+    const [tone, word] = VERDICT_CHIP[f.verdict] || ["", f.verdict];
+    const chip = el("span", `filter-chip ${tone}`, `${f.title}: ${f.dropped} за ${filterStats.days} діб · ${word}`);
+    chip.title = `Шкода ${f.lost}, користь ${f.caught}, не розмічено ${f.unlabelled}` +
+      (f.verdict === "label" ? `. Для вердикту розмітьте ще ${f.need} з відкинутого.` : "") + (f.note ? `. ${f.note}` : "");
+    return chip;
+  }
+  // Поле: змінене відносно config.py — смуга ліворуч і «↺»; ⟳ — діє лише після перезапуску приймача.
+  function settingField(source, key) {
+    const spec = settingSpec(source, key);
+    if (!spec) return null;
+    const { value, fallback, limits } = spec;
+    const row = el("label", "setting-row");
+    row.dataset.source = source; row.dataset.key = key;
+    row.dataset.search = `${spec.label} ${key}`.toLowerCase();
+    const text = el("span", "setting-text"), control = el("span", "setting-control");
+    text.append(el("span", "setting-name", spec.label));
+    const id = `${source === "runtime" ? "runtime" : "setting"}-${key}`;
+    let input;
+    if (limits.type === "bool") {
+      input = el("input"); input.type = "checkbox"; input.checked = value; input.className = "switch-input";
+      const sw = el("span", "switch"); sw.append(input, el("span", "switch-track"));
+      control.append(sw);
+    } else if (limits.type === "str") {
+      // Варіанти — чипи; значення тримає приховане поле, щоб збереження читало його як раніше.
+      input = el("input"); input.type = "hidden"; input.value = value;
+      const chips = el("span", "choice-chips");
+      for (const choice of limits.choices) {
+        const b = el("button", "choice-chip" + (choice === value ? " active" : ""), RUNTIME_CHOICES[choice] || choice);
+        b.type = "button"; b.dataset.value = choice;
+        b.addEventListener("click", () => {
+          input.value = choice;
+          for (const other of chips.children) other.classList.toggle("active", other === b);
+          settingsDirty();
+        });
+        chips.append(b);
+      }
+      control.append(chips, input);
+    } else {
+      input = el("input"); input.type = "number"; input.value = value; input.required = true;
+      if (limits.min !== undefined) input.min = limits.min;
+      if (limits.max !== undefined) input.max = limits.max;
+      input.step = limits.type === "int" ? "1" : limits.max <= 1 ? "0.001" : "0.01";
+      const slide = SETTING_SLIDERS[key];
+      if (slide) {
+        const range = el("input"); range.type = "range"; range.className = "setting-range";
+        [range.min, range.max, range.step] = slide; range.value = value;
+        range.setAttribute("aria-label", spec.label);
+        if (fallback !== undefined) {   // позначка «типово» на шкалі
+          const list = el("datalist"); list.id = `${id}-default`;
+          const o = el("option"); o.value = fallback; list.append(o);
+          range.setAttribute("list", list.id); control.append(list);
+        }
+        range.addEventListener("input", () => { input.value = Number(range.value).toFixed(decimals(slide[2])).replace(/\.?0+$/, "") || "0"; settingsDirty(); });
+        input.addEventListener("input", () => { range.value = input.value; });
+        control.append(range);
+      }
+      control.append(input);
+    }
+    input.id = id;
+    input.dataset.saved = JSON.stringify(value);
+    const changed = fallback !== undefined && value !== fallback;
+    row.classList.toggle("changed", changed);
+    const info = el("span", "setting-hint", (source === "restart" ? "⟳ після перезапуску · " : "") +
+      (fallback === undefined ? "" : `${changed ? "змінено · " : ""}типово ${showValue(fallback, limits)}`));
     if (changed) {
       const reset = el("button", "ghost small-button", "↺"); reset.type = "button"; reset.title = "Повернути значення з config.py";
-      reset.addEventListener("click", () => {
-        if (limits.type === "bool") input.checked = fallback; else input.value = fallback;
-        note("Повернуто значення за замовчуванням — натисніть «Зберегти».");
+      reset.addEventListener("click", e => {
+        e.preventDefault();
+        if (limits.type === "bool") input.checked = fallback;
+        else if (limits.type === "str") control.querySelector(`[data-value="${fallback}"]`)?.click();
+        else { input.value = fallback; const r = control.querySelector(".setting-range"); if (r) r.value = fallback; }
+        settingsDirty();
       });
       info.append(" ", reset);
     }
-    label.append(info);
-    return label;
+    text.append(info);
+    const chip = FILTER_OF_SETTING[key] && filterChip(FILTER_OF_SETTING[key]);
+    if (chip) text.append(chip);
+    row.append(text, control);
+    return row;
   }
-  $("runtime-settings").addEventListener("submit", e => { e.preventDefault(); action(async () => {
-    const values = {};
-    for (const [key, limits] of Object.entries(runtimeCurrent.limits)) {
-      const input = $(`runtime-${key}`);
-      values[key] = limits.type === "bool" ? input.checked : limits.type === "str" ? input.value
-        : limits.type === "int" ? parseInt(input.value, 10) : Number(input.value);
+  function settingsChanges() {
+    const out = { runtime: {}, restart: {} };
+    for (const label of $("settings-sections").querySelectorAll(".setting-row")) {
+      const { source, key } = label.dataset, spec = settingSpec(source, key), input = settingInput(source, key);
+      if (!spec || !input) continue;
+      const now = readInput(input, spec.limits);
+      const dirty = JSON.stringify(now) !== input.dataset.saved;
+      label.classList.toggle("dirty", dirty);
+      if (dirty) out[source][key] = now;
     }
-    const r = await request("/api/runtime-settings", "PUT", { values, expected_revision: runtimeCurrent.revision });
-    await runtimeSettings();
-    note(`Збережено (ревізія ${r.revision}). Приймач застосує без перезапуску за кілька секунд.`);
-  }); });
-
-  $("settings").addEventListener("submit", e => { e.preventDefault(); action(async () => {
-    const values = {};
-    for (const key of Object.keys(current.settings.values)) { const i = $(`setting-${key}`); values[key] = i.type === "checkbox" ? i.checked : Number(i.value); }
-    await request("/api/settings", "PUT", { values, expected_revision: current.settings.revision });
-    await settings(); note("Збережено. Діятиме після перезапуску ефіру.");
+    return out;
+  }
+  function settingsDirty() {
+    const c = settingsChanges(), n = Object.keys(c.runtime).length + Object.keys(c.restart).length;
+    $("settings-dirty").textContent = n ? `Не збережено: ${n}` : "";
+    $("settings-save").disabled = !n;
+    for (const chip of $("settings-nav").children) {
+      const card = $(chip.dataset.target);
+      chip.classList.toggle("dirty", !!card?.querySelector(".setting-row.dirty"));
+      chip.classList.toggle("changed", !!card?.querySelector(".setting-row.changed"));
+    }
+  }
+  function settingsStatus() {
+    const a = runtimeCurrent?.applied || {}, live = a.receiver === "listening" || a.receiver === "paused";
+    const applied = !live ? "Приймач не працює — значення застосуються під час запуску."
+      : a.revision === runtimeCurrent.revision ? "Приймач уже використовує збережені значення."
+      : "Приймач підхопить збережене за кілька секунд.";
+    const profile = filterStats?.profile ? ` Цифри фільтрів — канал ${filterStats.profile}, ${filterStats.days} діб.` : "";
+    $("settings-status").textContent = `${applied} Позначка ⟳ — діє лише після перезапуску приймача.${profile}`;
+  }
+  async function settings() {
+    const [runtime, summary, stats] = await Promise.all([request("/api/runtime-settings"), request("/api/summary"),
+      request("/api/filter-stats").catch(() => null)]);
+    runtimeCurrent = runtime; restartCurrent = summary.settings; filterStats = stats;
+    const nav = $("settings-nav"); nav.replaceChildren();
+    const box = $("settings-sections"), placed = new Set();
+    box.replaceChildren();
+    const known = new Set(SETTINGS_SECTIONS.flatMap(s => s.fields.map(([src, key]) => `${src}:${key}`)));
+    const rest = [...Object.keys(runtime.values).filter(k => !known.has(`runtime:${k}`) && !SETTINGS_ELSEWHERE.has(k)).map(k => ["runtime", k]),
+                  ...Object.keys(restartCurrent.values).filter(k => !known.has(`restart:${k}`)).map(k => ["restart", k])];
+    for (const section of [...SETTINGS_SECTIONS, { title: "Інше", about: "", fields: rest }]) {
+      const fields = section.fields.map(([src, key]) => placed.has(`${src}:${key}`) ? null : (placed.add(`${src}:${key}`), settingField(src, key))).filter(Boolean);
+      if (!fields.length) continue;
+      const card = el("article", "panel settings-section"), head = el("div", "panel-head");
+      card.id = `settings-${box.children.length}`;
+      head.append(el("h2", "", section.title));
+      const jump = el("button", "nav-chip", section.title); jump.type = "button"; jump.dataset.target = card.id;
+      jump.addEventListener("click", () => card.scrollIntoView({ behavior: "smooth", block: "start" }));
+      nav.append(jump);
+      if (section.link) {
+        const go = el("button", "link-button small", section.link[1]); go.type = "button";
+        go.addEventListener("click", () => show(section.link[0]));
+        head.append(go);
+      }
+      card.append(head);
+      if (section.about) card.append(el("p", "muted small", section.about));
+      const sectionChips = (FILTER_OF_SECTION[section.title] || []).map(filterChip).filter(Boolean);
+      if (sectionChips.length) { const line = el("p", "filter-chips"); line.append(...sectionChips); card.append(line); }
+      const list = el("div", "settings-fields"); list.append(...fields);
+      card.append(list);
+      box.append(card);
+    }
+    if (filterStats?.profile) $("settings-status").dataset.profile = filterStats.profile;
+    settingsStatus(); settingsDirty(); settingsFilter();
+  }
+  // Пошук параметра за назвою: решта рядків і порожні розділи ховаються.
+  function settingsFilter() {
+    const q = ($("settings-search").value || "").trim().toLowerCase();
+    for (const card of $("settings-sections").children) {
+      let shown = 0;
+      for (const row of card.querySelectorAll(".setting-row")) {
+        const hit = !q || row.dataset.search.includes(q);
+        row.hidden = !hit; shown += hit;
+      }
+      card.hidden = !shown;
+      const chip = $("settings-nav").querySelector(`[data-target="${card.id}"]`);
+      if (chip) chip.hidden = !shown;
+    }
+  }
+  $("settings-search").addEventListener("input", settingsFilter);
+  async function runtimeSettings() { /* сумісність: усе завантажує settings() */ }
+  $("settings-sections").addEventListener("input", settingsDirty);
+  $("settings-sections").addEventListener("change", settingsDirty);
+  $("settings-form").addEventListener("submit", e => { e.preventDefault(); action(async () => {
+    const c = settingsChanges(), parts = [];
+    if (Object.keys(c.runtime).length) {
+      const values = {};
+      for (const [key, limits] of Object.entries(runtimeCurrent.limits)) {
+        const input = $(`runtime-${key}`);
+        values[key] = input ? readInput(input, limits) : runtimeCurrent.values[key];
+      }
+      const r = await request("/api/runtime-settings", "PUT", { values, expected_revision: runtimeCurrent.revision });
+      parts.push(`діє за кілька секунд (ревізія ${r.revision})`);
+    }
+    if (Object.keys(c.restart).length) {
+      const values = {};
+      for (const key of Object.keys(restartCurrent.values)) {
+        const input = $(`setting-${key}`);
+        values[key] = input.type === "checkbox" ? input.checked : Number(input.value);
+      }
+      await request("/api/settings", "PUT", { values, expected_revision: restartCurrent.revision });
+      parts.push("поля ⟳ — після перезапуску приймача");
+    }
+    await settings();
+    note(parts.length ? `Збережено: ${parts.join("; ")}.` : "Змін немає.");
   }); });
 

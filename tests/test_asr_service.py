@@ -157,3 +157,12 @@ def test_input_device_reaches_the_archive_record(system):
         data = json.loads(db.execute("SELECT data FROM recordings").fetchone()[0])
     assert data["input"] == {"device": "USB Audio Device", "profile": "test-cable"}
     assert profile_of(data) == "test-cable"
+
+
+def test_freshness_comes_from_panel_setting(system):
+    system.worker.fresh_s = 10
+    system.spool.put(phrase(age=60), 16000)
+    assert system.service.step() and system.events.live == [], "старша за 10 с — лише в архів"
+    system.worker.fresh_s = 300
+    system.spool.put(phrase(age=60), 16000)
+    assert system.service.step() and system.events.live == ["клен"]

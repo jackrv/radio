@@ -16,7 +16,20 @@
   const yes = v => (v ? "так" : "ні");
   const ROLES = { admin: "Адміністратор", editor: "Редактор", viewer: "Спостерігач" };
   const MODES = { all: "усі фрази", watch: "спостереження", commands: "команди й позивні", off: "вимкнено" };
-  const LABELS = { USE_LLM: "Корекція Qwen", VAD_LEVEL: "Рівень VAD (0–3)", SILENCE_END_MS: "Тиша до завершення, мс",
+  // Телефон: рядки таблиць-карток підписують клітинки заголовком колонки (CSS бере його з data-label).
+  function labelCells(table) {
+    const heads = [...(table.querySelector("tr:has(> th)")?.children || [])].map(th => th.textContent.trim());
+    for (const row of table.querySelectorAll("tr")) {
+      [...row.children].forEach((cell, i) => { if (cell.tagName === "TD" && heads[i] && !(cell.colSpan > 1)) cell.dataset.label = heads[i]; });
+    }
+  }
+  const cardTables = new MutationObserver(records => {
+    for (const table of new Set(records.map(r => r.target.closest?.("table.mobile-cards")).filter(Boolean))) labelCells(table);
+  });
+  document.addEventListener("DOMContentLoaded", () => {
+    for (const t of document.querySelectorAll("table.mobile-cards")) cardTables.observe(t, { childList: true, subtree: true });
+  });
+  const LABELS = { USE_LLM: "Корекція Qwen (вимкнено 17.11: без покращень, +1,6 с)", VAD_LEVEL: "Рівень VAD (0–3)", SILENCE_END_MS: "Тиша до завершення, мс",
     MIN_SPEECH_MS: "Мінімальне мовлення, мс", MAX_SEGMENT_S: "Максимальний сегмент, с" };
   const LATENCY = { total_latency_s: "До готового тексту", queue_wait_s: "Очікування в черзі", whisper_s: "Whisper",
     qwen_s: "Qwen", speech_tail_s: "Завершення фрази (VAD)", rtf: "RTF (час / тривалість)" };

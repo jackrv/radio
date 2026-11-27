@@ -24,6 +24,7 @@ class EventProcessor:
         self.commands = commands
         self.watch = watch
         self.short_garbage = short_garbage
+        self.reject_bare_callsign = True   # панель «Налаштування» (REJECT_BARE_CALLSIGN)
         self.save_event = save_event
         self.telegram_service = telegram_service
         self.fresh = fresh
@@ -43,7 +44,8 @@ class EventProcessor:
         лишаються без словникових блоків і ролей та не потрапляють до виду «Ефір».
         """
         original = text
-        analysis = analyze_text(text, self.callsigns, self.commands, self.watch, self.short_garbage, self.log)
+        analysis = analyze_text(text, self.callsigns, self.commands, self.watch, self.short_garbage, self.log,
+                                getattr(self, "reject_bare_callsign", True))
         text = analysis.text
 
         from shared.recording_trace import note

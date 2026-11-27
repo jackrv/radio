@@ -30,6 +30,10 @@ def test_saved_hw_name_finds_plughw_device():
     devices = [{"name": "Test USB Audio: - (plughw:0,0)", "max_input_channels": 2, "max_output_channels": 2}]
     assert ad.find_device("Test USB Audio: - (hw:0,0)", "input", devices) == 0
     assert ad.find_device("test usb audio: - (plughw:0,0)", "input", devices) == 0
+    # Назва зайнятої карти з /proc: інший підпис, той самий порт.
+    assert ad.find_device("Test USB Audio: USB Audio (hw:0,0)", "input", devices) == 0
+    with pytest.raises(ad.DeviceNotFound):
+        ad.find_device("Test USB Audio: USB Audio (hw:1,0)", "input", devices)
 
 
 def test_rechunking_callback_emits_equal_frames_with_shifted_adc_time():

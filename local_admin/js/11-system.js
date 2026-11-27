@@ -218,7 +218,10 @@
         const system = (list || []).find(x => x.default), options = [["", `Системний${system ? ` (${system.name})` : ""}`]];
         for (const x of list || []) options.push([x.name, x.name]);
         if (key === "RADIO_OUTPUT_DEVICE" && !options.some(o => o[0] === "null")) options.push(["null", "У порожнечу (без звуку)"]);
-        const match = chosen === "null" && key === "RADIO_OUTPUT_DEVICE" ? { name: "null" } : (list || []).find(x => x.name === chosen) || (list || []).find(x => chosen && x.name.toLowerCase().includes(chosen.toLowerCase()));
+        // «(plughw:0,0)» = «(hw:0,0)»; зайнята карта з /proc має іншу назву, але той самий порт.
+        const alsa = n => n.toLowerCase().replace("(plughw:", "(hw:"), port = n => (alsa(n).match(/\(hw:\d+,\d+\)/) || [])[0];
+        const match = chosen === "null" && key === "RADIO_OUTPUT_DEVICE" ? { name: "null" } : (list || []).find(x => x.name === chosen)
+          || (list || []).find(x => chosen && alsa(x.name).includes(alsa(chosen))) || (list || []).find(x => chosen && port(chosen) && port(x.name) === port(chosen));
         if (chosen && !match) options.push([chosen, `${chosen} — не знайдено`]);
         for (const [value, text] of options) { const o = el("option", "", text); o.value = value; select.append(o); }
         select.value = chosen ? (match ? match.name : chosen) : ""; select.dataset.saved = select.value;

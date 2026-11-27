@@ -1738,7 +1738,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .icon-button { width: 28px; height: 28px; padding: 0; line-height: 1; }
 @media (max-width: 800px) { .device-grid { grid-template-columns: 1fr; } }
 .device-audio { display: grid; gap: 8px; margin: 8px 0; }
-.device-audio label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.device-audio label:not(.switch) { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .device-audio select { width: 100%; }
 .device-audio button { justify-self: start; }
 .audio-gain { display: grid; gap: 6px; }
@@ -1746,7 +1746,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 .audio-gain-row input[type=range] { flex: 1 1 140px; min-width: 0; }
 .audio-gain-name { flex: 1 0 100%; }
 .audio-gain-value { min-width: 9ch; font-variant-numeric: tabular-nums; color: var(--text); }
-.device-audio > .switch { justify-self: start; max-width: 100%; white-space: normal; }
+.device-audio > .switch { justify-self: start; max-width: 100%; }
 .device-update { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b; width: auto; padding: 0 10px; white-space: nowrap; }
 .device-ask { margin-top: auto; padding: 12px; border: 1px solid #4f7359; border-radius: 10px; display: grid; gap: 8px; }
@@ -1910,7 +1910,7 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
 .setting-row.changed { box-shadow: inset 3px 0 0 var(--warn); }
 .setting-row.dirty { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(140, 196, 255, .06); }
 /* Перемикач замість галочки. */
-.switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+.toggle-switch { position: relative; display: inline-block; flex: none; width: 40px; height: 22px; }
 .switch-input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
 .switch-track { position: absolute; inset: 0; background: #2a3a4c; border-radius: 999px; transition: background .15s; }
 .switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
@@ -1933,7 +1933,7 @@ button.armed { background: #4b2427; color: var(--bad); border: 1px solid #6b3b3b
 @media (max-width: 1100px) { .settings-sections { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
   .setting-row { grid-template-columns: 1fr; row-gap: 8px; }
-  .setting-row:has(.switch) { grid-template-columns: minmax(0, 1fr) auto; }
+  .setting-row:has(.toggle-switch) { grid-template-columns: minmax(0, 1fr) auto; }
   .setting-control { justify-content: flex-start; }
   .setting-range { flex: 1; width: auto; }
   .settings-bar { flex-wrap: nowrap; }

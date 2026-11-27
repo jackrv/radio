@@ -48,10 +48,18 @@ def find_device(name, kind, devices=None):
     wanted = _alsa_name(name)
     matches = [i for i, d in enumerate(devices) if d.get(key, 0) > 0 and wanted in _alsa_name(d["name"])]
     if not matches:
+        # Назва зайнятої карти з /proc (add_busy) інша, ніж у PortAudio; спільний — лише «(hw:N,M)».
+        port = HW_PORT.search(wanted)
+        matches = [i for i, d in enumerate(devices) if port and d.get(key, 0) > 0
+                   and (HW_PORT.search(_alsa_name(d["name"])) or [None])[0] == port[0]]
+    if not matches:
         raise DeviceNotFound(f"Звуковий пристрій «{name}» ({'вхід' if kind == 'input' else 'вихід'}) не знайдено")
     # Точний збіг назви важливіший за перший частковий.
     exact = [i for i in matches if _alsa_name(devices[i]["name"]) == wanted]
     return (exact or matches)[0]
+
+
+HW_PORT = re.compile(r"\(hw:\d+,\d+\)")
 
 
 def _alsa_name(name):

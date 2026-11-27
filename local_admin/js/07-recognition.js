@@ -1145,7 +1145,7 @@
     let input;
     if (limits.type === "bool") {
       input = el("input"); input.type = "checkbox"; input.checked = value; input.className = "switch-input";
-      const sw = el("span", "switch"); sw.append(input, el("span", "switch-track"));
+      const sw = el("span", "toggle-switch"); sw.append(input, el("span", "switch-track"));
       control.append(sw);
     } else if (limits.type === "str") {
       // Варіанти — чипи; значення тримає приховане поле, щоб збереження читало його як раніше.

@@ -83,7 +83,7 @@ class ModelGate:
         # між прогонами все одно розходяться; причина не встановлена (звіт 2026-11-23-pi-hub).
         self.thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper")
         self.mutex = threading.Lock()
-        self.lock_fd, self.state = None, "waiting"
+        self.lock_fd, self.state, self.closing = None, "waiting", False
 
     def _set(self, state):
         if state != self.state:
@@ -101,6 +101,8 @@ class ModelGate:
         return self.state == "ready"
 
     def tick(self):
+        if self.closing:
+            return
         wanted = not self.pause.requested()
         if self.state == ("ready" if wanted else "paused"):
             return
@@ -139,16 +141,25 @@ class ModelGate:
         if not self.mutex.acquire(blocking=False):
             raise Paused
         try:
-            if self.state != "ready" or self.pause.requested():
+            if self.closing or self.state != "ready" or self.pause.requested():
                 raise Paused
             return self.thread.submit(self.model.transcribe, audio, prompt=prompt).result()
         finally:
             self.mutex.release()
 
     def finish(self):
-        if self.lock_fd is not None:
-            self.close(self.lock_fd)
-            self.lock_fd = None
+        """Зупинка: нові запити — Paused, замок віддається лише після поточної фрази.
+
+        Інакше інший процес (лабораторія, навчання) міг завантажити модель, поки ця ще
+        розпізнає (аудит 2026-11-27-pi-mac-reliability-audit, п. 1). Зависла модель
+        тримає замок, доки живе процес: так безпечніше, ніж дві моделі в пам'яті.
+        """
+        self.closing = True
+        with self.mutex:   # чекає transcribe/tick, що вже виконується
+            self.thread.shutdown(wait=True)
+            if self.lock_fd is not None:
+                self.close(self.lock_fd)
+                self.lock_fd = None
 
 
 def build_transcribe(config, gate):

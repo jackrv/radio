@@ -156,6 +156,27 @@ def test_pause_waits_for_the_current_phrase(node):
     assert node.gate.state == "paused"
 
 
+def test_finish_keeps_the_lock_until_the_current_phrase_ends(node):
+    node.gate.open()
+    node.model.hold = threading.Event()
+    phrase = threading.Thread(target=node.gate.transcribe, args=(AUDIO, ""), daemon=True)
+    phrase.start()
+    while "transcribe" not in node.model.events:
+        time.sleep(0.01)
+    stop = threading.Thread(target=node.gate.finish, daemon=True)
+    stop.start()
+    time.sleep(0.2)
+    assert stop.is_alive() and not model_lock_free(node.root), "замок віддано посеред фрази"
+    with pytest.raises(Paused):
+        node.gate.transcribe(AUDIO, "")
+    node.model.hold.set()
+    stop.join(5)
+    phrase.join(5)
+    assert not stop.is_alive() and model_lock_free(node.root)
+    node.gate.tick()   # після зупинки модель не береться знову
+    assert node.gate.lock_fd is None
+
+
 def test_node_starts_paused_without_loading_the_model(node):
     node.pause.start(time.time() + 60)
     assert node.gate.open() and node.model.events == [] and model_lock_free(node.root)

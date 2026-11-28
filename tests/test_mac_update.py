@@ -157,3 +157,15 @@ def test_service_folder_takes_main_of_the_dev_folder_without_github(tmp_path):
     assert updater.state["changed"] is True and git(service, "rev-parse", "HEAD") == git(dev, "rev-parse", "HEAD")
     assert calls == [["-c", "import server.radio_node,server.asr_service,server.api.local_dashboard,server.api.local_server,worker.asr_worker,radio345"]]
     assert restarted == [("restart", ["worker"])]
+
+
+def test_read_never_reports_a_stale_phase_as_finished(tmp_path):
+    # available() може йти в мережу секундами; оновлення за цей час завершується.
+    updater = u.MacUpdate(tmp_path)
+    updater.state = {"phase": "copying"}
+    finished = SimpleNamespace(is_alive=lambda: False)
+    def slow_network():
+        updater.state = {"phase": "done", "changed": True}
+        return None
+    updater.thread, updater.available = finished, slow_network
+    assert updater.read()["phase"] == "done"

@@ -46,7 +46,11 @@ class MacUpdate:
         return self._available
 
     def read(self):
-        return {**self.state, "available": self.available(), "active": self.thread is not None and self.thread.is_alive()}
+        # Спершу «чи триває», потім стан: available() ходить у мережу до 10 с, і швидке оновлення
+        # (служба з сусідньої папки) встигало завершитися — повертався застарілий «copying» з active=False.
+        active = self.thread is not None and self.thread.is_alive()
+        available = self.available()
+        return {**self.state, "available": available, "active": active}
 
     def precheck(self):
         if self.git("rev-parse", "--abbrev-ref", "HEAD") != "main":

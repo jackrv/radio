@@ -9,7 +9,8 @@ from shared.paths import place, root_of
 
 @contextmanager
 def lab_model_slot(db_path):
-    root = root_of(db_path)
+    from shared.model_pause import model_root
+    root = model_root(root_of(db_path))   # вузол Whisper може працювати з іншої папки
     lab = acquire_instance_lock(place(root, ".asr-lab.lock"))
     if lab is None:
         raise RuntimeError('Інший лабораторний прогін уже використовує модель')

@@ -302,3 +302,23 @@ def test_pause_follows_the_lock_root_of_the_node(tmp_path, monkeypatch):
     monkeypatch.setenv("RADIO_ASR_LOCK_ROOT", str(tmp_path))
     assert radio345.lock_root() == tmp_path == model_root("/інше")
     assert model_root("/інше", {}) == radio345.Path("/інше")
+
+
+def test_lab_slot_sees_a_worker_running_from_another_folder(tmp_path, monkeypatch):
+    # Служба launchd працює з окремої папки; лабораторія в папці розробки читає її з .env.
+    from shared.model_exclusion import lab_model_slot
+    from shared.model_pause import model_root
+    monkeypatch.delenv("RADIO_ASR_LOCK_ROOT", raising=False)
+    service, dev = tmp_path / "service", tmp_path / "dev"
+    service.mkdir(), dev.mkdir()
+    (dev / ".env").write_text(f"RADIO_ASR_LOCK_ROOT={service}\n")
+    assert model_root(dev) == service and model_root(service) == service
+    held = acquire_instance_lock(place(service, ".radio345.lock"))   # модель тримає служба
+    try:
+        with pytest.raises(RuntimeError, match="pause-model"):
+            with lab_model_slot(dev / "events.db"):
+                pass
+    finally:
+        os.close(held)
+    with lab_model_slot(dev / "events.db"):
+        assert acquire_instance_lock(place(service, ".radio345.lock")) is None, "лабораторія тримає модель служби"

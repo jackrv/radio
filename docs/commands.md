@@ -44,6 +44,20 @@
 
 Лабораторія — [lab.md](lab.md).
 
+## Служба Whisper на Mac (`~/radio345-mac`)
+
+Окрема папка з git (профіль `mac-worker`: лише файли вузла Whisper, свій `.venv`, `.env` = `RADIO345_PROFILE=mac-worker`).
+launchd не бачить `~/Documents`, тому служба живе тут, а розробка — у `~/Documents/Projects/radio`.
+
+| Де | Команда | Що робить |
+| --- | --- | --- |
+| `~/radio345-mac` | `./r345 service on` / `off` / `status` | Whisper службою: сам після входу й після падіння |
+| `~/radio345-mac` | `./r345 update mac` | код служби з GitHub (лише вперед, з чистої папки); спершу push із розробки |
+| `~/radio345-mac` | `./r345 status` | стан вузла |
+| розробка | `./r345 pause-model` / `resume-model`, лабораторія | діють на службу: `RADIO_ASR_LOCK_ROOT=~/radio345-mac` у `.env` розробки — спільні замки моделі |
+
+У папці розробки `worker` не запускайте: одна модель на Mac.
+
 ## На Pi (`ssh <користувач>@radio345`, каталог `~/radio345-hub`)
 
 | Команда | Коли |

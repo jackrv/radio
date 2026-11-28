@@ -16,8 +16,21 @@ WORKER_LOCK = ".radio345-worker.lock"   # вузол тримає весь ча�
 
 
 def model_root(default, env=None):
-    """Каталог замків моделі: інший checkout вказують через RADIO_ASR_LOCK_ROOT."""
-    return Path((os.environ if env is None else env).get("RADIO_ASR_LOCK_ROOT", "").strip() or default)
+    """Каталог замків моделі: інший checkout вказують через RADIO_ASR_LOCK_ROOT.
+
+    Без r345 (``python -m lab.asr_lab`` тощо) оточення не має значень із .env, тож за
+    відсутності змінної читається .env самого checkout: інакше лабораторія не побачить
+    вузол Whisper, що працює з окремої папки (служба launchd), і завантажить другу модель.
+    """
+    explicit = env is not None
+    value = (os.environ if env is None else env).get("RADIO_ASR_LOCK_ROOT", "").strip()
+    if not value and not explicit:
+        try:
+            from dotenv import dotenv_values
+            value = (dotenv_values(Path(default) / ".env").get("RADIO_ASR_LOCK_ROOT") or "").strip()
+        except ImportError:
+            pass
+    return Path(os.path.expanduser(value)) if value else Path(default)
 
 
 class ModelPause:

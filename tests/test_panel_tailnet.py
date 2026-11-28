@@ -48,3 +48,17 @@ def test_tailnet_mode_requires_tailscale(monkeypatch):
     monkeypatch.setattr("shared.radio_stream.tailscale_ipv4", lambda: None)
     with pytest.raises(SystemExit):
         local_dashboard.tailnet_access()
+
+
+def test_tailscale_cli_is_forced_into_cli_mode(monkeypatch):
+    # Бінарник застосунку macOS із Python під launchd інакше пробує запустити GUI.
+    import subprocess
+    from shared import radio_stream
+    seen = {}
+    monkeypatch.setattr(radio_stream.shutil, "which", lambda name: "/synthetic/tailscale")
+    def run(args, **kwargs):
+        seen.update(args=args, env=kwargs["env"])
+        return subprocess.CompletedProcess(args, 0, stdout="100.64.0.7\n", stderr="")
+    monkeypatch.setattr(radio_stream.subprocess, "run", run)
+    assert radio_stream.tailscale_ipv4() == "100.64.0.7"
+    assert seen["args"] == ["/synthetic/tailscale", "ip", "-4"] and seen["env"]["TAILSCALE_BE_CLI"] == "1"

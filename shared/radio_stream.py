@@ -45,18 +45,31 @@ HISTORY = 30                # останні фрази для списку й �
 CLIENT_QUEUE = 1500         # пакети ffmpeg ~144 байти: ≈ 50 с запасу на повільного клієнта
 BITRATE = "32k"
 TAILSCALE_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+
+def _tailscale(*args):
+    """Вивід CLI Tailscale або None, якщо його немає.
+
+    Бінарник застосунку macOS сам вирішує, чи він CLI: із Python під launchd (служба Mac)
+    він пробує відкрити GUI й пише «The Tailscale GUI failed to start». TAILSCALE_BE_CLI=1
+    вмикає режим CLI завжди; на Linux змінна ні на що не впливає.
+    """
+    cli = shutil.which("tailscale") or (TAILSCALE_CLI if os.path.exists(TAILSCALE_CLI) else None)
+    if not cli:
+        return None
+    return subprocess.run([cli, *args], capture_output=True, text=True, timeout=5,
+                          env={**os.environ, "TAILSCALE_BE_CLI": "1"}).stdout
 TAILNET = ipaddress.ip_network("100.64.0.0/10")
 TAILNET6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
 
 
 def tailscale_ipv4():
     """IPv4 цього Mac у tailnet або None (Tailscale вимкнено чи не встановлено)."""
-    cli = shutil.which("tailscale") or (TAILSCALE_CLI if os.path.exists(TAILSCALE_CLI) else None)
-    if not cli:
-        return None
     try:
-        out = subprocess.run([cli, "ip", "-4"], capture_output=True, text=True, timeout=5).stdout
+        out = _tailscale("ip", "-4")
     except (OSError, subprocess.SubprocessError):
+        return None
+    if out is None:
         return None
     for line in out.split():
         try:
@@ -356,10 +369,7 @@ class TailnetPeers:
 
 
 def _tailscale_status():
-    cli = shutil.which("tailscale") or (TAILSCALE_CLI if os.path.exists(TAILSCALE_CLI) else None)
-    if not cli:
-        return {}
-    out = subprocess.run([cli, "status", "--json"], capture_output=True, text=True, timeout=5).stdout
+    out = _tailscale("status", "--json")
     return json.loads(out or "{}")
 
 

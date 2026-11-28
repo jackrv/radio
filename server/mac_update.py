@@ -88,8 +88,8 @@ class MacUpdate:
         self.state = {"phase": "checking"}
         try:
             if any(n.startswith("deploy/requirements/") for n in changed):
-                self._python("-m", "pip", "install", "-q", "-r", "deploy/requirements/dev.txt", error="Залежності не встановилися")
-            self._python("-c", "import " + MODULES, error="Новий код не завантажується")
+                self._python("-m", "pip", "install", "-q", "-r", self.requirements(), error="Залежності не встановилися")
+            self._python("-c", "import " + ",".join(self.modules()), error="Новий код не завантажується")
         except UpdateError as exc:
             if self.git("reset", "-q", "--keep", before) is None:
                 raise UpdateError(f"{exc}; повернути попередній код не вдалося") from None
@@ -101,6 +101,25 @@ class MacUpdate:
             if running:
                 self.control.request("restart", [n for n, p in running["processes"].items() if p.get("wanted", True)])
         self.state = {"phase": "done", "changed": True, "supervisor": restart_all, "at": time.time()}
+
+    def modules(self):
+        """Лише модулі, що є в цій папці: служба Whisper (профіль mac-worker) має частину файлів."""
+        present = [m for m in MODULES.split(",") if (self.root / (m.replace(".", "/") + ".py")).is_file()]
+        return present or MODULES.split(",")
+
+    def requirements(self):
+        """Залежності профілю папки (RADIO345_PROFILE у .env); типово — повні для розробки."""
+        try:
+            from dotenv import dotenv_values
+            import tomllib
+            name = (dotenv_values(self.root / ".env").get("RADIO345_PROFILE") or "").strip()
+            with open(self.root / "deploy" / "profiles" / f"{name}.toml", "rb") as f:
+                wanted = tomllib.load(f).get("requirements")
+            if wanted and (self.root / wanted).is_file():
+                return wanted
+        except (OSError, ValueError, ImportError):
+            pass
+        return "deploy/requirements/dev.txt"
 
     def _python(self, *args, error):
         try:

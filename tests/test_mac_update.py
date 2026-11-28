@@ -71,6 +71,23 @@ def test_changed_requirements_are_installed_and_supervisor_is_reported(world):
     assert world.python == ["pip", "import"] and state["supervisor"] is True
 
 
+def test_worker_only_folder_checks_its_own_modules_and_requirements(tmp_path):
+    # Служба Whisper (профіль mac-worker) — лише частина файлів і свої залежності.
+    (tmp_path / "worker").mkdir()
+    (tmp_path / "worker" / "asr_worker.py").write_text("")
+    (tmp_path / "radio345.py").write_text("")
+    (tmp_path / "deploy" / "profiles").mkdir(parents=True)
+    (tmp_path / "deploy" / "requirements").mkdir()
+    (tmp_path / "deploy" / "requirements" / "worker.txt").write_text("")
+    (tmp_path / "deploy" / "profiles" / "mac-worker.toml").write_text('requirements = "deploy/requirements/worker.txt"\n')
+    (tmp_path / ".env").write_text("RADIO345_PROFILE=mac-worker\n")
+    updater = u.MacUpdate(tmp_path)
+    assert updater.modules() == ["worker.asr_worker", "radio345"]
+    assert updater.requirements() == "deploy/requirements/worker.txt"
+    (tmp_path / ".env").write_text("")
+    assert updater.requirements() == "deploy/requirements/dev.txt"
+
+
 @pytest.mark.parametrize("fail", ["import", "pip"])
 def test_broken_update_is_rolled_back(world, fail):
     before = git(world.mac, "rev-parse", "HEAD")

@@ -28,7 +28,7 @@ Claude Code підвантажує їх сам за `paths`; інші агент
 | Розпізнавання, словники, лабораторія (типова) | [recognition.md](.claude/rules/recognition.md) | «Розпізнавання» |
 | Панель, редактор, Mini App | [ui.md](.claude/rules/ui.md) | «UI й розмітка» |
 | Архів, Telegram, стан прийому | [data.md](.claude/rules/data.md) | «Дані й Telegram» |
-| iOS, Pi, PTT | [hardware.md](.claude/rules/hardware.md) | «Залізо» |
+| iOS, Android, Pi, PTT | [hardware.md](.claude/rules/hardware.md) | «Залізо» |
 
 Загальні заборони нижче діють завжди, незалежно від теми.
 

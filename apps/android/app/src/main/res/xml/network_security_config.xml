@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Вузол у Tailscale слухає звичайний HTTP (ім'я MagicDNS чи 100.x.y.z, задає власник):
+     трафік уже шифрує WireGuard. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

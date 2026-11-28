@@ -466,7 +466,7 @@ def service(switch):
     return 0
 
 
-UPDATE_PHASES = {"copying": "беру код із GitHub", "sending": "передаю код на Pi", "checking": "перевіряю", "restarting": "перезапускаю служби"}
+UPDATE_PHASES = {"copying": "беру код", "sending": "передаю код на Pi", "checking": "перевіряю", "restarting": "перезапускаю служби"}
 
 
 def follow(updater, refused):
@@ -487,14 +487,16 @@ def follow(updater, refused):
         time.sleep(0.5)
 
 
-def update(target="all", mac=None, pi=None):
-    """Mac — з GitHub, потім Pi — той самий коміт, напряму з Mac."""
+def update(target="all", mac=None, pi=None, whisper=None):
+    """Mac — з GitHub, служба Whisper і Pi — той самий коміт, напряму з цієї папки."""
     if sys.platform != "darwin":
         print("Оновлення запускають з Mac: ./r345 update там або кнопка в панелі")
         return 1
     code = 0
     if target in ("all", "mac"):
         code = update_mac(mac)
+        # Служба бере закомічене з цієї папки, навіть якщо тут є незакомічені правки.
+        code = update_service(whisper) or code
     if target in ("all", "pi") and code == 0:
         code = update_pi(pi)
     return code
@@ -511,6 +513,36 @@ def update_mac(updater=None):
     print("  оновлено, служби перезапускаються" if current.get("changed") else "  вже найновіший код")
     if current.get("supervisor"):
         print("  змінився сам r345: ./r345 stop, потім ./r345 up")
+    return 0
+
+
+def service_root():
+    """Окрема папка служби Whisper (RADIO_ASR_LOCK_ROOT), якщо це інший checkout; інакше None."""
+    root = lock_root()
+    try:
+        other = root.resolve() != ROOT.resolve()
+    except OSError:
+        return None
+    return root if other and (root / ".git").exists() and (root / "r345").is_file() else None
+
+
+def update_service(updater=None):
+    """Служба Whisper (~/radio345-mac) = коміт main цієї папки, як Pi; без GitHub."""
+    from server import mac_update
+    root = service_root()
+    if root is None and updater is None:
+        return 0
+    print("Служба Whisper", flush=True)
+    updater = updater or mac_update.MacUpdate(root, control=Control(place(root, ".radio345-launcher")),
+                                              source=str(ROOT), python=str(root / ".venv" / "bin" / "python"))
+    current = follow(updater, mac_update.UpdateError)
+    if current is None or current["phase"] != "done":
+        if current is not None:
+            print(f"  не оновлено: {current.get('error', 'невідома помилка')}")
+        return 1
+    print("  оновлено, Whisper перезапускається" if current.get("changed") else "  вже той самий код")
+    if current.get("supervisor"):
+        print(f"  змінився сам r345: cd {root} && ./r345 service off && ./r345 service on")
     return 0
 
 
@@ -700,7 +732,7 @@ def main(argv=None):
     sub.add_parser("pause-model", help="віддати модель лабораторії").add_argument("--minutes", type=int, default=120)
     sub.add_parser("resume-model", help="повернути модель вузлу")
     sub.add_parser("service", help="служба macOS замість вікна термінала").add_argument("switch", choices=("on", "off", "status"))
-    sub.add_parser("update", help="Mac — з GitHub, Pi — напряму з Mac").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
+    sub.add_parser("update", help="Mac — з GitHub; служба Whisper і Pi — напряму з цієї папки").add_argument("target", nargs="?", choices=("all", "mac", "pi"), default="all")
     sub.add_parser("link", help="посилання з ключем панелі дому — у буфер обміну")
     where = sub.add_parser("home", help="де працює система: показати, перенести, вимкнути")
     where.add_argument("target", nargs="?", choices=("pi", "mac", "off", "rollback"))

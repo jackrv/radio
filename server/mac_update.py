@@ -18,8 +18,11 @@ class UpdateError(Exception):
 
 
 class MacUpdate:
-    def __init__(self, root, run=subprocess.run, control=None, clock=time.monotonic):
+    def __init__(self, root, run=subprocess.run, control=None, clock=time.monotonic, source="origin", python=None):
+        """``source`` — звідки брати main: GitHub (origin) чи інша папка (служба Whisper бере коміт розробки,
+        як Pi); ``python`` — інтерпретатор цієї папки для перевірки імпорту й залежностей."""
         self.root, self.run, self.control, self.clock = Path(root), run, control, clock
+        self.source, self.python = source, python or sys.executable
         self.state, self.thread, self.guard = {"phase": "idle"}, None, threading.Lock()
         self._checked, self._available = float("-inf"), None
 
@@ -74,9 +77,9 @@ class MacUpdate:
 
     def _update(self):
         before = self.git("rev-parse", "HEAD")
-        if self.git("fetch", "-q", "origin", "main", timeout=120) is None:
-            raise UpdateError("GitHub недоступний: перевірте інтернет")
-        target = self.git("rev-parse", "origin/main")
+        if self.git("fetch", "-q", self.source, "main", timeout=120) is None:
+            raise UpdateError("GitHub недоступний: перевірте інтернет" if self.source == "origin" else "Папка розробки недоступна")
+        target = self.git("rev-parse", "FETCH_HEAD")
         if self.git("merge-base", "--is-ancestor", target, "HEAD") is not None:
             self.state = {"phase": "done", "changed": False}
             return
@@ -123,7 +126,7 @@ class MacUpdate:
 
     def _python(self, *args, error):
         try:
-            done = self.run([sys.executable, *args], cwd=self.root, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
+            done = self.run([self.python, *args], cwd=self.root, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
         except (OSError, subprocess.TimeoutExpired):
             raise UpdateError(error) from None
         if done.returncode:

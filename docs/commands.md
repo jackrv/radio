@@ -35,7 +35,7 @@
 
 | Команда | Що робить |
 | --- | --- |
-| `./r345 update` | Mac — з GitHub, потім Pi — напряму з Mac; `update mac` / `update pi` — окремо. Для Pi потрібен лише commit, без push. Те саме в панелі |
+| `./r345 update` | Mac — з GitHub, потім служба Whisper і Pi — напряму з цієї папки; `update mac` (папка + служба) / `update pi` — окремо. Для служби й Pi потрібен лише commit, без push. Те саме в панелі |
 | `./r345 doctor` | усе одним поглядом: служби, база, Pi, підпис iPhone, копії |
 | `./r345 service on` / `off` / `status` | на Mac: служба замість вікна термінала; проєкт має лежати не в `~/Documents` |
 | `./r345 pause-model` / `resume-model` | віддати модель лабораторії / повернути |
@@ -52,7 +52,8 @@ launchd не бачить `~/Documents`, тому служба живе тут, 
 | Де | Команда | Що робить |
 | --- | --- | --- |
 | `~/radio345-mac` | `./r345 service on` / `off` / `status` | Whisper службою: сам після входу й після падіння |
-| `~/radio345-mac` | `./r345 update mac` | код служби з GitHub (лише вперед, з чистої папки); спершу push із розробки |
+| розробка | `./r345 update` / `update mac` | служба бере закомічений `main` папки розробки (як Pi, без push), перевіряє імпорт своїм Python і перезапускає Whisper |
+| `~/radio345-mac` | `./r345 update mac` | запасний шлях: код служби з GitHub (потрібен push) |
 | `~/radio345-mac` | `./r345 status` | стан вузла |
 | розробка | `./r345 pause-model` / `resume-model`, лабораторія | діють на службу: `RADIO_ASR_LOCK_ROOT=~/radio345-mac` у `.env` розробки — спільні замки моделі |
 

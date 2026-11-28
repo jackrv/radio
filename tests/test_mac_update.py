@@ -130,3 +130,30 @@ def test_other_branch_and_busy_are_refused(world):
 def test_without_network_nothing_changes(world):
     git(world.mac, "remote", "set-url", "origin", str(world.mac / "none"))
     assert world.updater.available() is None and "GitHub" in finish(world)["error"]
+
+
+def test_service_folder_takes_main_of_the_dev_folder_without_github(tmp_path):
+    # Служба Whisper (~/radio345-mac) оновлюється з папки розробки, як Pi: потрібен лише коміт.
+    dev, service = tmp_path / "dev", tmp_path / "service"
+    dev.mkdir()
+    git(dev, "init", "-q", "-b", "main")
+    (dev / "a.py").write_text("1")
+    git(dev, "add", "-A"); git(dev, "commit", "-qm", "x")
+    subprocess.run(["git", "clone", "-q", str(dev), str(service)], env=ENV, check=True)
+    git(service, "remote", "set-url", "origin", "https://example.invalid/repo.git")   # GitHub недоступний
+    (dev / "a.py").write_text("2")
+    git(dev, "commit", "-qam", "y")
+    calls, restarted = [], []
+
+    def run(command, **kwargs):
+        if command[0] == "/service/python":
+            calls.append(command[1:3])
+            return SimpleNamespace(returncode=0, stdout="")
+        return subprocess.run(command, **kwargs)
+    control = SimpleNamespace(read=lambda: {"processes": {"worker": {"wanted": True}}},
+                              request=lambda verb, names: restarted.append((verb, names)))
+    updater = u.MacUpdate(service, run, control, source=str(dev), python="/service/python")
+    updater.start(); updater.thread.join(30)
+    assert updater.state["changed"] is True and git(service, "rev-parse", "HEAD") == git(dev, "rev-parse", "HEAD")
+    assert calls == [["-c", "import server.radio_node,server.asr_service,server.api.local_dashboard,server.api.local_server,worker.asr_worker,radio345"]]
+    assert restarted == [("restart", ["worker"])]

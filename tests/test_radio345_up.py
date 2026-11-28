@@ -391,10 +391,11 @@ def test_update_order_and_stop_on_failure(monkeypatch):
     done, result = [], {"mac": 0}
     monkeypatch.setattr(radio345, "update_mac", lambda updater=None: done.append("mac") or result["mac"])
     monkeypatch.setattr(radio345, "update_pi", lambda updater=None: done.append("pi") or 0)
-    assert radio345.update() == 0 and done == ["mac", "pi"]
+    monkeypatch.setattr(radio345, "update_service", lambda updater=None: done.append("service") or 0)
+    assert radio345.update() == 0 and done == ["mac", "service", "pi"]
     done.clear()
     result["mac"] = 1
-    assert radio345.update() == 1 and done == ["mac"], "Pi не оновлюємо, якщо Mac не вдалося"
+    assert radio345.update() == 1 and done == ["mac", "service"], "служба бере закомічене й без GitHub; Pi — ні"
     done.clear()
     assert radio345.update("pi") == 0 and done == ["pi"]
 

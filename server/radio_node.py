@@ -135,6 +135,9 @@ def main():
             if getattr(config, "RADIO_HIGHPASS", False):
                 from shared.highpass import CUTOFF_HZ
                 data["highpass_hz"] = CUTOFF_HZ
+                from shared.highpass import NOTCH_HZ, notch_sections
+                if notch_sections(config.SR) is not None:
+                    data["notch_hz"] = list(NOTCH_HZ)
             return data
         sink = lambda item: spool.put(item, config.SR, source())
     from server.node_control import NodeControl, directory

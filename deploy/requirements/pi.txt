@@ -1,6 +1,7 @@
 # Радіовузол на Raspberry Pi (server/radio_node.py): без Whisper/MLX, Telegram і панелі.
 # Системне: sudo apt install ffmpeg libportaudio2 python3-venv; Tailscale — окремо.
 numpy==2.5.4
+scipy==1.18.1   # вирізи гулу 250–550 Гц (shared/highpass.py)
 sounddevice==0.5.6
 webrtcvad-wheels==2.0.14.post1
 python-dotenv==1.2.4

@@ -62,3 +62,17 @@ def test_wrap_filters_block_before_callback():
     cb = highpass.wrap(lambda data, n, t, s: got.append((len(data), n)), 16000)
     cb(np.zeros(480, np.int16).tobytes(), 480, None, None)
     assert got == [(960, 480)]
+
+
+def test_notches_cut_the_buzz_between_speech_frequencies():
+    pytest.importorskip("scipy")
+    for hz in (250, 350, 450, 550):
+        assert level_db(hz) < -20
+    for hz in (300, 400, 1000):
+        assert abs(level_db(hz)) < 0.5
+
+
+def test_without_scipy_only_the_cut_below_200_works(monkeypatch):
+    monkeypatch.setattr(highpass, "notch_sections", lambda *a, **k: None)
+    flt = highpass.HighPass(16000)
+    assert flt.sos is None and len(flt.process(np.zeros(480, np.int16).tobytes())) == 960
